@@ -26,7 +26,7 @@ DATABASES = {
 }
 
 INSTALLED_APPS += ["debug_toolbar"]
-MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]
+MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware", "whitenoise.middleware.WhiteNoiseMiddleware"]
 
 INTERNAL_IPS = ["127.0.0.1"]
 
