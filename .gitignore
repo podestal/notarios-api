@@ -1,0 +1,15 @@
+notarios-refactor
+.env
+.pytest_cache
+**__pycache__/
+.coverage
+db.sqlite3
+schema.yml
+.vscode
+htmlcov
+mediafiles
+firebase_service_account.json
+celerybeat-data/
+redis-data/
+*.sql
+*.dump
