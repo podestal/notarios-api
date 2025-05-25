@@ -22,8 +22,8 @@ python manage.py wait_for_db
 # daphne -b 0.0.0.0 -p 8000 amauta.asgi:application
 # gunicorn amauta.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
 
-echo "Starting server with Daphne for development..."
-exec daphne -b 0.0.0.0 -p 8000 amauta.asgi:application
+# echo "Starting server with Daphne for development..."
+# exec daphne -b 0.0.0.0 -p 8000 amauta.asgi:application
 
 # if [ "$ENVIRONMENT" = "development" ]; then
 #     echo "Starting server with Daphne for development..."
@@ -32,4 +32,12 @@ exec daphne -b 0.0.0.0 -p 8000 amauta.asgi:application
 #     echo "Starting server with Gunicorn for production..."
 #     exec gunicorn amauta.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
 # fi
+
+if [ "$ENVIRONMENT" = "development" ]; then
+    echo "Starting server with Daphne for development..."
+    exec daphne -b 0.0.0.0 -p 8000 notarios.asgi:application
+else
+    echo "Starting server with Gunicorn for production..."
+    exec gunicorn notarios.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
+fi
 
