@@ -114,6 +114,11 @@ class KardexViewSet(ModelViewSet):
         if not kardex_qs.exists():
             return Response({}, status=200)
 
+        paginator = self.paginator
+        paginated_kardex = paginator.paginate_queryset(kardex_qs, request)
+
+        # Order by fechaingreso
+
         # Prepare optimized data maps (same as in list)
         user_ids = set(obj.idusuario for obj in kardex_qs)
         kardex_ids = set(obj.kardex for obj in kardex_qs)
@@ -137,13 +142,13 @@ class KardexViewSet(ModelViewSet):
         }
 
         # Pass context manually
-        serializer = serializers.KardexSerializer(kardex_qs, many=True, context={
+        serializer = serializers.KardexSerializer(paginated_kardex, many=True, context={
             'usuarios_map': usuarios_map,
             'contratantes_map': contratantes_map,
             'clientes_map': clientes_map,
         })
 
-        return Response(serializer.data)
+        return self.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def by_name(self, request):
@@ -157,7 +162,7 @@ class KardexViewSet(ModelViewSet):
                 {"error": "name parameter is required."},
                 status=400
             )
-        print('name:', name)
+
         cliente = models.Cliente2.objects.filter(
             Q(nombre__icontains=name) |
             Q(apepat__icontains=name) |
@@ -166,7 +171,6 @@ class KardexViewSet(ModelViewSet):
             Q(segnom__icontains=name)
         ).values('idcontratante', 'idcliente', 'nombre', 'numdoc')
 
-        print('cliente:', cliente)
         clientes_map = {c['idcontratante']: c for c in cliente}
 
         if not cliente.exists():
@@ -174,7 +178,7 @@ class KardexViewSet(ModelViewSet):
                 {"error": "No records found for the given name."},
                 status=404
             )
-        
+
         contratantes_ids = [c["idcontratante"] for c in cliente]
         contratantes = models.Contratantes.objects.filter(
             idcontratante__in=contratantes_ids

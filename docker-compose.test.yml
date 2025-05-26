@@ -6,7 +6,7 @@ services:
       - ./app:/app
       - ./mediafiles:/vol/media
     ports:
-      - "8001:8000"
+      - "8000:8000"
     environment:
       - DATABASE_HOST=${DATABASE_HOST}
       - DATABASE_USER=${DATABASE_USER}
@@ -34,6 +34,32 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     restart: always
+
+  nginx:
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+    image: nginx:latest
+    links:
+      - app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+    entrypoint: >+
+      sh -c 'if [ "$ENVIRONMENT" = "production" ]; then
+              cp /etc/nginx/conf.d/nginx.prod.conf /etc/nginx/nginx.conf;
+             elif [ "$ENVIRONMENT" = "testing" ]; then
+              cp /etc/nginx/conf.d/nginx.test.conf /etc/nginx/nginx.conf;
+             else
+              cp /etc/nginx/conf.d/nginx.dev.conf /etc/nginx/nginx.conf;
+             fi &&
+             nginx -g "daemon off;"'
 
 volumes:
   db_data:
