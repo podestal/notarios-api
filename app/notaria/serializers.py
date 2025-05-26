@@ -127,4 +127,12 @@ class TiposDeActosSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = models.Tiposdeacto
-        fields = '__all__'
+        fields = [
+            'idtipoacto',
+            'actosunat',
+            'actouif',
+            'idtipkar',
+            'desacto',
+            'umbral',
+            'impuestos'
+        ]
