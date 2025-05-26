@@ -34,12 +34,13 @@ python manage.py wait_for_db
 # fi
 
 if [ "$ENVIRONMENT" = "development" ]; then
-    echo "Starting server with Daphne for development..."
-    # echo "Starting server with Dev server for development..."
-    exec daphne -b 0.0.0.0 -p 8000 notarios.asgi:application
-    # exec python manage.py runserver
+    # echo "Starting server with Daphne for development..."
+    echo "Starting server with Dev server for development..."
+    # exec daphne -b 0.0.0.0 -p 8000 notarios.asgi:application
+    exec python manage.py runserver
 else
-    echo "Starting server with Gunicorn for production..."
-    exec gunicorn notarios.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
+    echo "Starting server with Daphne for testing..."
+    # exec gunicorn notarios.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
+    exec daphne -b 0.0.0.0 -p 8000 notarios.asgi:application
 fi
 

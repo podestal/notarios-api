@@ -32,6 +32,6 @@ EXPOSE 8000
 
 
 ENV PATH="/scripts:$PATH"
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
-# CMD ["/scripts/run.sh"]
+# CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["/scripts/run.sh"]
 
