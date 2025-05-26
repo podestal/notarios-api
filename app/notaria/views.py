@@ -296,3 +296,11 @@ class Cliente2ViewSet(ModelViewSet):
     queryset = models.Cliente2.objects.all()
     serializer_class = serializers.Cliente2Serializer
     pagination_class = pagination.KardexPagination
+
+
+class TiposDeActosViewSet(ModelViewSet):
+    """
+    ViewSet for the TiposDeActos model.
+    """
+    queryset = models.Tiposdeacto.objects.all()
+    serializer_class = serializers.TiposDeActosSerializer

@@ -306,3 +306,23 @@ class Cliente2(models.Model):
     class Meta:
         managed = False
         db_table = 'cliente2'
+
+
+class Tiposdeacto(models.Model):
+    idtipoacto = models.CharField(primary_key=True, max_length=6)
+    actosunat = models.CharField(max_length=25, blank=True, null=True)
+    actouif = models.CharField(max_length=25, blank=True, null=True)
+    idtipkar = models.IntegerField()
+    desacto = models.CharField(max_length=300)
+    umbral = models.IntegerField(blank=True, null=True)
+    impuestos = models.IntegerField(blank=True, null=True)
+    idcalnot = models.IntegerField(blank=True, null=True)
+    idecalreg = models.IntegerField(blank=True, null=True)
+    idmodelo = models.IntegerField(blank=True, null=True)
+    rol_part = models.CharField(max_length=10, blank=True, null=True)
+    cod_ancert = models.CharField(max_length=5, blank=True, null=True)
+    tipoplantilla_default = models.CharField(max_length=1, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tiposdeacto'
