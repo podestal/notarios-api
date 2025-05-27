@@ -304,3 +304,11 @@ class TiposDeActosViewSet(ModelViewSet):
     """
     queryset = models.Tiposdeacto.objects.all()
     serializer_class = serializers.TiposDeActosSerializer
+
+
+class TbAbogadoViewSet(ModelViewSet):
+    """
+    ViewSet for the TbAbogado model.
+    """
+    queryset = models.TbAbogado.objects.all()
+    serializer_class = serializers.TbAbogadoSerializer

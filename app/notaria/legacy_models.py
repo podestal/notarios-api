@@ -8,21 +8,17 @@
 from django.db import models
 
 
-class Tiposdeacto(models.Model):
-    idtipoacto = models.CharField(primary_key=True, max_length=6)
-    actosunat = models.CharField(max_length=25, blank=True, null=True)
-    actouif = models.CharField(max_length=25, blank=True, null=True)
-    idtipkar = models.IntegerField()
-    desacto = models.CharField(max_length=300)
-    umbral = models.IntegerField(blank=True, null=True)
-    impuestos = models.IntegerField(blank=True, null=True)
-    idcalnot = models.IntegerField(blank=True, null=True)
-    idecalreg = models.IntegerField(blank=True, null=True)
-    idmodelo = models.IntegerField(blank=True, null=True)
-    rol_part = models.CharField(max_length=10, blank=True, null=True)
-    cod_ancert = models.CharField(max_length=5, blank=True, null=True)
-    tipoplantilla_default = models.CharField(max_length=1, blank=True, null=True)
+class TbAbogado(models.Model):
+    idabogado = models.CharField(primary_key=True, max_length=10)
+    razonsocial = models.CharField(max_length=1000, blank=True, null=True)
+    direccion = models.CharField(max_length=3000, blank=True, null=True)
+    distrito = models.CharField(max_length=3000, blank=True, null=True)
+    documento = models.CharField(max_length=11, blank=True, null=True)
+    telefono = models.CharField(max_length=100, blank=True, null=True)
+    matricula = models.CharField(max_length=50, blank=True, null=True)
+    fax = models.CharField(max_length=100, blank=True, null=True)
+    sede_colegio = models.CharField(max_length=1000, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'tiposdeacto'
+        db_table = 'tb_abogado'

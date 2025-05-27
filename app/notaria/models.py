@@ -326,3 +326,19 @@ class Tiposdeacto(models.Model):
     class Meta:
         managed = False
         db_table = 'tiposdeacto'
+
+
+class TbAbogado(models.Model):
+    idabogado = models.CharField(primary_key=True, max_length=10)
+    razonsocial = models.CharField(max_length=1000, blank=True, null=True)
+    direccion = models.CharField(max_length=3000, blank=True, null=True)
+    distrito = models.CharField(max_length=3000, blank=True, null=True)
+    documento = models.CharField(max_length=11, blank=True, null=True)
+    telefono = models.CharField(max_length=100, blank=True, null=True)
+    matricula = models.CharField(max_length=50, blank=True, null=True)
+    fax = models.CharField(max_length=100, blank=True, null=True)
+    sede_colegio = models.CharField(max_length=1000, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tb_abogado'

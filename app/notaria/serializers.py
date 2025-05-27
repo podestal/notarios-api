@@ -136,3 +136,12 @@ class TiposDeActosSerializer(serializers.ModelSerializer):
             'umbral',
             'impuestos'
         ]
+
+
+class TbAbogadoSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the TbAbogado model.
+    """
+    class Meta:
+        model = models.TbAbogado
+        fields = '__all__'
