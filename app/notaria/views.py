@@ -271,6 +271,65 @@ class KardexViewSet(ModelViewSet):
 
         return self.get_paginated_response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def by_numescritura(self, request):
+        """
+        Get Kardex records by numescritura.
+        """
+        numescritura = request.query_params.get('numescritura')
+        idtipkar = self.request.query_params.get('idtipkar')
+        if not numescritura:
+            return Response(
+                {"error": "numescritura parameter is required."},
+                status=400
+            )
+
+        kardex_qs = models.Kardex.objects.filter(
+            numescritura=numescritura,
+            idtipkar=idtipkar
+        ).order_by('-fechaingreso')
+
+        if not kardex_qs.exists():
+            return Response({}, status=200)
+
+        paginator = self.paginator
+        paginated_kardex = paginator.paginate_queryset(kardex_qs, request)
+
+        user_ids = set(obj.idusuario for obj in paginated_kardex)
+        kardex_ids = set(obj.kardex for obj in paginated_kardex)
+
+        usuarios_map = {
+            u.idusuario: u
+            for u in models.Usuarios.objects.filter(idusuario__in=user_ids)
+        }
+
+        contratantes = models.Contratantes.objects.filter(
+            kardex__in=kardex_ids
+        ).values('idcontratante', 'kardex')
+        contratantes_map = {
+            c['kardex']: c['idcontratante']
+            for c in contratantes
+        }
+
+        contratante_ids = set(c['idcontratante'] for c in contratantes)
+
+        clientes_map = {
+            c['idcontratante']: c
+            for c in models.Cliente2.objects.filter(
+                idcontratante__in=contratante_ids
+            ).values(
+                'idcontratante', 'nombre', 'numdoc'
+            )
+        }
+
+        serializer = serializers.KardexSerializer(paginated_kardex, many=True, context={
+            'usuarios_map': usuarios_map,
+            'contratantes_map': contratantes_map,
+            'clientes_map': clientes_map,
+        })
+
+        return self.get_paginated_response(serializer.data)
+
 
 class TipoKarViewSet(ModelViewSet):
     """
