@@ -47,7 +47,7 @@ class CreateKardexSerializer(serializers.ModelSerializer):
         fields = [
             'idtipkar',
             'fechaingreso',
-            'tipoescritura',
+            'idtipkar',
             'referencia',
             'codactos',
             'contrato',

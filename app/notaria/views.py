@@ -4,8 +4,9 @@ from . import serializers
 from . import pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q
-
+from django.db.models import Q, Max, F, Func, Value
+from django.db.models.functions import Cast, Substr
+from django.db import models as django_models
 
 '''
 ViewSets for the Notaria app.
@@ -48,6 +49,11 @@ class KardexViewSet(ModelViewSet):
             return kardex_qs
 
         return None
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return serializers.CreateKardexSerializer
+        return serializers.KardexSerializer
 
     def list(self, request, *args, **kwargs):
         """
@@ -90,6 +96,65 @@ class KardexViewSet(ModelViewSet):
         })
 
         return self.get_paginated_response(serializer.data)
+    
+    def create(self, request, *args, **kwargs):
+        """
+        Override the create method to generate a Kardex number.
+        """
+        data = request.data
+        idtipkar = data.get("idtipkar")
+        fechaingreso = data.get("fechaingreso")
+        
+        # Validate required fields
+        if not idtipkar or not fechaingreso:
+            return Response({"error": "Missing required fields"}, status=400)
+
+        # Extract the year from fechaingreso
+        try:
+            anio = fechaingreso.split("/")[-1]  # Assuming format is DD/MM/YYYY
+        except IndexError:
+            return Response({"error": "Invalid fechaingreso format"}, status=400)
+
+        # Get abbreviation based on tipoescritura
+        abreviatura_map = {
+            "1": "KAR",  # ESCRITURAS PUBLICAS
+            "2": "NCT",  # ASUNTOS NO CONTENCIOSOS
+            "3": "ACT",  # TRANSFERENCIAS VEHICULARES
+            "4": "GAM",  # GARANTIAS MOBILIARIAS
+            "5": "TES",  # TESTAMENTOS
+        }
+        abreviatura = abreviatura_map.get(str(idtipkar))
+        if not abreviatura:
+            return Response({"error": "Invalid tipoescritura"}, status=400)
+
+        # Query the last Kardex number for the given idtipkar and year
+        last_kardex = models.Kardex.objects.filter(
+            idtipkar=idtipkar,
+            fechaingreso__endswith=anio,  # Match the year in fechaingreso
+            kardex__startswith=abreviatura
+        ).annotate(
+            numeric_part=Cast(Substr(F('kardex'), len(abreviatura) + 1, 4), output_field=django_models.IntegerField())
+        ).order_by('-numeric_part').first()
+
+        # # Extract the numeric part of the last Kardex number
+        if last_kardex and last_kardex.kardex:
+            try:
+                numeric_part = int("".join(filter(str.isdigit, last_kardex.kardex.split("-")[0])))
+            except ValueError:
+                numeric_part = 0
+        else:
+            numeric_part = 0  # Start from 0 if no Kardex exists
+        # # Increment the numeric part and generate the new Kardex number
+        new_kardex_number = f"{abreviatura}{numeric_part + 1}-{anio}"
+        # # Save the new Kardex record
+        # data["kardex"] = new_kardex_number
+        # serializer = self.get_serializer(data=data)
+        # serializer.is_valid(raise_exception=True)
+        # self.perform_create(serializer)
+
+        # return Response(serializer.data, status=201)
+
+        return Response([], status=200)
 
     @action(detail=False, methods=['get'])
     def kardex_by_correlative(self, request):
