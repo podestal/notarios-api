@@ -36,6 +36,26 @@ class TipoKarSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class CreateKardexSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a Kardex instance.
+    This serializer is used to validate and create a new Kardex record.
+    """
+
+    class Meta:
+        model = models.Kardex
+        fields = [
+            'idtipkar',
+            'fechaingreso',
+            'tipoescritura',
+            'referencia',
+            'codactos',
+            'contrato',
+            'idusuario',
+            'responsable',
+        ]
+
+
 class KardexSerializer(serializers.ModelSerializer):
     """
     Serializer for the Kardex model.
