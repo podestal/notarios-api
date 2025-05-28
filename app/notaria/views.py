@@ -39,7 +39,7 @@ class KardexViewSet(ModelViewSet):
     pagination_class = pagination.KardexPagination
 
     def get_queryset(self):
-        idtipkar = self.request.query_params.get('idtipkar')
+        idtipkar = self.request.query_params.get('idtipkar', '0')
         if idtipkar:
             kardex_qs = models.Kardex.objects.filter(
                 idtipkar=idtipkar
@@ -54,7 +54,7 @@ class KardexViewSet(ModelViewSet):
         List all Kardex objects.
         """
         page_kardex = self.paginate_queryset(self.get_queryset())
-
+        print('page_kardex:', page_kardex)
         user_ids = set(obj.idusuario for obj in page_kardex)
         kardex_ids = set(obj.kardex for obj in page_kardex)
 
