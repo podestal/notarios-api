@@ -101,10 +101,10 @@ class KardexViewSet(ModelViewSet):
         """
         Override the create method to generate a Kardex number.
         """
-        data = request.data
+        data = request.data.copy()
         idtipkar = data.get("idtipkar")
         fechaingreso = data.get("fechaingreso")
-        
+
         # Validate required fields
         if not idtipkar or not fechaingreso:
             return Response({"error": "Missing required fields"}, status=400)
@@ -147,14 +147,14 @@ class KardexViewSet(ModelViewSet):
         # # Increment the numeric part and generate the new Kardex number
         new_kardex_number = f"{abreviatura}{numeric_part + 1}-{anio}"
         # # Save the new Kardex record
-        # data["kardex"] = new_kardex_number
-        # serializer = self.get_serializer(data=data)
-        # serializer.is_valid(raise_exception=True)
-        # self.perform_create(serializer)
+        data["kardex"] = new_kardex_number
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
 
-        # return Response(serializer.data, status=201)
+        return Response(serializer.data, status=201)
 
-        return Response([], status=200)
+        # return Response([], status=200)
 
     @action(detail=False, methods=['get'])
     def kardex_by_correlative(self, request):

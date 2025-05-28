@@ -53,6 +53,13 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             'contrato',
             'idusuario',
             'responsable',
+            'retenido',
+            'desistido',
+            'autorizado',
+            'idrecogio',
+            'pagado',
+            'visita',
+            'idnotario',
         ]
 
 
@@ -87,6 +94,12 @@ class KardexSerializer(serializers.ModelSerializer):
             'idtipkar',
             # 'contratantes',
             'cliente',
+            'retenido',
+            'desistido',
+            'autorizado',
+            'idrecogio',
+            'pagado',
+            'visita',
         ]
 
     def get_usuario(self, obj):
