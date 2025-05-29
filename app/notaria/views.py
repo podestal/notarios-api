@@ -44,7 +44,7 @@ class KardexViewSet(ModelViewSet):
         if idtipkar:
             kardex_qs = models.Kardex.objects.filter(
                 idtipkar=idtipkar
-            ).order_by('-fechaingreso')
+            ).order_by('-idkardex')
 
             return kardex_qs
 
@@ -146,6 +146,7 @@ class KardexViewSet(ModelViewSet):
             numeric_part = 0  # Start from 0 if no Kardex exists
         # # Increment the numeric part and generate the new Kardex number
         new_kardex_number = f"{abreviatura}{numeric_part + 1}-{anio}"
+        print('new_kardex_number:', new_kardex_number)
         # # Save the new Kardex record
         data["kardex"] = new_kardex_number
         serializer = self.get_serializer(data=data)

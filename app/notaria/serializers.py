@@ -45,6 +45,8 @@ class CreateKardexSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Kardex
         fields = [
+            'idkardex',
+            'kardex',
             'idtipkar',
             'fechaingreso',
             'idtipkar',
