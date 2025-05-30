@@ -427,6 +427,20 @@ class ContratantesViewSet(ModelViewSet):
         contratantes = models.Contratantes.objects.filter(kardex=kardex)
         contratante_ids = set(c.idcontratante for c in contratantes)
 
+        contratantes_tipoactos = set(
+            c.condicion.split('.')[0] for c in contratantes
+        )
+        print('contratantes_tipoactos:', contratantes_tipoactos)
+
+        condicion_map = {
+            c['idcondicion']: c
+            for c in models.Actocondicion.objects.filter(
+                idcondicion__in=contratantes_tipoactos
+            ).values('idcondicion', 'condicion')
+        }
+
+        print('condicion_map:', condicion_map)
+
         clientes_map = {
             c['idcontratante']: c
             for c in models.Cliente2.objects.filter(
@@ -444,6 +458,7 @@ class ContratantesViewSet(ModelViewSet):
             many=True,
             context={
                 'clientes_map': clientes_map,
+                'condicion_map': condicion_map
             })
         return Response(serializer.data)
 
