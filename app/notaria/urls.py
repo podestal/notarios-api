@@ -21,5 +21,6 @@ router.register('tiposdeactos', views.TiposDeActosViewSet,
 router.register('abogados', views.TbAbogadoViewSet, basename='abogados')
 router.register('actocondicion', views.ActoCondicionViewSet,
                 basename='actocondicion')
+router.register('detalleactos', views.DetalleActosKardexViewSet)
 
 urlpatterns = router.urls

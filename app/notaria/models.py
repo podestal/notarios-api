@@ -346,6 +346,20 @@ class Actocondicion(models.Model):
         db_table = 'actocondicion'
 
 
+class DetalleActosKardex(models.Model):
+    item = models.AutoField(primary_key=True)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    idtipoacto = models.CharField(max_length=6)
+    actosunat = models.CharField(max_length=3)
+    actouif = models.CharField(max_length=3)
+    idtipkar = models.IntegerField()
+    desacto = models.CharField(max_length=500)
+
+    class Meta:
+        managed = False
+        db_table = 'detalle_actos_kardex'
+
+
 class TbAbogado(models.Model):
     idabogado = models.CharField(primary_key=True, max_length=10)
     razonsocial = models.CharField(max_length=1000, blank=True, null=True)

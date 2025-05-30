@@ -413,6 +413,26 @@ class ContratantesViewSet(ModelViewSet):
     serializer_class = serializers.ContratantesSerializer
     pagination_class = pagination.KardexPagination
 
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        """
+        Get Contratantes by Kardex.
+        """
+        kardex = request.query_params.get('kardex')
+        if not kardex:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+        print('kardex', kardex)
+        contratantes = models.Contratantes.objects.filter(kardex=kardex)
+
+        if not contratantes.exists():
+            return Response({}, status=200)
+
+        serializer = self.get_serializer(contratantes, many=True)
+        return Response(serializer.data)
+
 
 class Cliente2ViewSet(ModelViewSet):
     """
@@ -437,6 +457,15 @@ class ActoCondicionViewSet(ModelViewSet):
     """
     queryset = models.Actocondicion.objects.all()
     serializer_class = serializers.ActoCondicionSerializer
+
+
+class DetalleActosKardexViewSet(ModelViewSet):
+    """
+    ViewSet for the DetalleActosKardex model.
+    """
+    queryset = models.DetalleActosKardex.objects.all()
+    serializer_class = serializers.DetalleActosKardexSerializer
+    pagination_class = pagination.KardexPagination
 
 
 class TbAbogadoViewSet(ModelViewSet):

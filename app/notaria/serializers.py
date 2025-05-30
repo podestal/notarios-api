@@ -182,6 +182,15 @@ class ActoCondicionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class DetalleActosKardexSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the DetalleActosKardex model.
+    """
+    class Meta:
+        model = models.DetalleActosKardex
+        fields = '__all__'
+
+
 class TbAbogadoSerializer(serializers.ModelSerializer):
     """
     Serializer for the TbAbogado model.
