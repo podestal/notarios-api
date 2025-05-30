@@ -173,6 +173,15 @@ class TiposDeActosSerializer(serializers.ModelSerializer):
         ]
 
 
+class ActoCondicionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the ActoCondicion model.
+    """
+    class Meta:
+        model = models.Actocondicion
+        fields = '__all__'
+
+
 class TbAbogadoSerializer(serializers.ModelSerializer):
     """
     Serializer for the TbAbogado model.

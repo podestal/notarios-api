@@ -431,6 +431,14 @@ class TiposDeActosViewSet(ModelViewSet):
     serializer_class = serializers.TiposDeActosSerializer
 
 
+class ActoCondicionViewSet(ModelViewSet):
+    """
+    ViewSet for the ActoCondicion model.
+    """
+    queryset = models.Actocondicion.objects.all()
+    serializer_class = serializers.ActoCondicionSerializer
+
+
 class TbAbogadoViewSet(ModelViewSet):
     """
     ViewSet for the TbAbogado model.

@@ -328,6 +328,24 @@ class Tiposdeacto(models.Model):
         db_table = 'tiposdeacto'
 
 
+class Actocondicion(models.Model):
+    idcondicion = models.CharField(primary_key=True, max_length=3)
+    idtipoacto = models.CharField(max_length=6)
+    condicion = models.CharField(max_length=100)
+    parte = models.CharField(max_length=20, blank=True, null=True)
+    uif = models.CharField(max_length=20, blank=True, null=True)
+    formulario = models.CharField(max_length=20, blank=True, null=True)
+    montop = models.CharField(max_length=20, blank=True, null=True)
+    totorgante = models.CharField(max_length=2, blank=True, null=True)
+    condicionsisgen = models.CharField(max_length=100, blank=True, null=True)
+    codconsisgen = models.CharField(max_length=5, blank=True, null=True)
+    parte_generacion = models.CharField(max_length=1, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'actocondicion'
+
+
 class TbAbogado(models.Model):
     idabogado = models.CharField(primary_key=True, max_length=10)
     razonsocial = models.CharField(max_length=1000, blank=True, null=True)

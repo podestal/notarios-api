@@ -19,5 +19,7 @@ router.register('cliente2', views.Cliente2ViewSet, basename='cliente2')
 router.register('tiposdeactos', views.TiposDeActosViewSet,
                 basename='tiposdeactos')
 router.register('abogados', views.TbAbogadoViewSet, basename='abogados')
+router.register('actocondicion', views.ActoCondicionViewSet,
+                basename='actocondicion')
 
 urlpatterns = router.urls
