@@ -424,13 +424,27 @@ class ContratantesViewSet(ModelViewSet):
                 {"error": "kardex parameter is required."},
                 status=400
             )
-        print('kardex', kardex)
         contratantes = models.Contratantes.objects.filter(kardex=kardex)
+        contratante_ids = set(c.idcontratante for c in contratantes)
+
+        clientes_map = {
+            c['idcontratante']: c
+            for c in models.Cliente2.objects.filter(
+                idcontratante__in=contratante_ids
+            ).values(
+                'idcontratante', 'nombre', 'numdoc'
+            )
+        }
 
         if not contratantes.exists():
             return Response({}, status=200)
 
-        serializer = self.get_serializer(contratantes, many=True)
+        serializer = serializers.ContratantesKardexSerializer(
+            contratantes,
+            many=True,
+            context={
+                'clientes_map': clientes_map,
+            })
         return Response(serializer.data)
 
 

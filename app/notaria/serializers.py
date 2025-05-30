@@ -147,6 +147,54 @@ class ContratantesSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+    # idcontratante = models.CharField(primary_key=True, max_length=10)
+    # idtipkar = models.IntegerField()
+    # kardex = models.CharField(max_length=30, blank=True, null=True)
+    # condicion = models.CharField(max_length=100)
+    # firma = models.CharField(max_length=3)
+    # fechafirma = models.CharField(max_length=10)
+    # resfirma = models.IntegerField()
+    # tiporepresentacion = models.CharField(max_length=2)
+    # idcontratanterp = models.CharField(max_length=3000)
+    # idsedereg = models.CharField(max_length=3, blank=True, null=True)
+    # numpartida = models.CharField(max_length=50, blank=True, null=True)
+    # facultades = models.CharField(max_length=500)
+    # indice = models.CharField(max_length=3)
+    # visita = models.CharField(max_length=3)
+    # inscrito = models.CharField(max_length=1, blank=True, null=True)
+    # plantilla = models.CharField(max_length=3, blank=True, null=True)
+
+class ContratantesKardexSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the ContratantesKardex model.
+    This serializer is used to validate and serialize the
+    ContratantesKardex data.
+    """
+
+    cliente = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Contratantes
+        fields = [
+            'idcontratante',
+            'idtipkar',
+            'kardex',
+            'condicion',
+            'firma',
+            'fechafirma',
+            'cliente',
+        ]
+
+    def get_cliente(self, obj):
+        clientes_map = self.context.get('clientes_map', {})
+        cliente = clientes_map.get(obj.idcontratante)
+        if cliente:
+            return (
+                f"{cliente['nombre']}"
+            )
+        return ''
+
+
 class Cliente2Serializer(serializers.ModelSerializer):
     """
     Serializer for the Cliente2 model.
