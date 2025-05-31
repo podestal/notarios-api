@@ -374,3 +374,34 @@ class TbAbogado(models.Model):
     class Meta:
         managed = False
         db_table = 'tb_abogado'
+
+
+class Nacionalidades(models.Model):
+    idnacionalidad = models.AutoField(primary_key=True)
+    codnacion = models.CharField(max_length=10, blank=True, null=True)
+    desnacionalidad = models.CharField(max_length=200)
+    descripcion = models.CharField(max_length=500, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'nacionalidades'
+
+
+class Profesiones(models.Model):
+    idprofesion = models.AutoField(primary_key=True)
+    codprof = models.CharField(max_length=3)
+    desprofesion = models.CharField(max_length=200)
+
+    class Meta:
+        managed = False
+        db_table = 'profesiones'
+
+
+class Cargoprofe(models.Model):
+    idcargoprofe = models.AutoField(primary_key=True)
+    codcargoprofe = models.CharField(max_length=6)
+    descripcrapro = models.CharField(max_length=200)
+
+    class Meta:
+        managed = False
+        db_table = 'cargoprofe'

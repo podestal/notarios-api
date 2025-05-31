@@ -503,3 +503,27 @@ class TbAbogadoViewSet(ModelViewSet):
     """
     queryset = models.TbAbogado.objects.all()
     serializer_class = serializers.TbAbogadoSerializer
+
+
+class NacionalidadesViewSet(ModelViewSet):
+    """
+    ViewSet for the Nacionalidades model.
+    """
+    queryset = models.Nacionalidades.objects.all()
+    serializer_class = serializers.NacionalidadesSerializer
+
+
+class ProfesionesViewSet(ModelViewSet):
+    """
+    ViewSet for the Profesiones model.
+    """
+    queryset = models.Profesiones.objects.all()
+    serializer_class = serializers.ProfesionesSerializer
+
+
+class CargoprofeViewSet(ModelViewSet):
+    """
+    ViewSet for the Cargoprofe model.
+    """
+    queryset = models.Cargoprofe.objects.all()
+    serializer_class = serializers.CargoprofeSerializer

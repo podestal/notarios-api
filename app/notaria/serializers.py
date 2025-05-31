@@ -256,3 +256,31 @@ class TbAbogadoSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.TbAbogado
         fields = '__all__'
+
+
+class NacionalidadesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Nacionalidades model.
+    """
+    class Meta:
+        model = models.Nacionalidades
+        fields = '__all__'
+
+
+class ProfesionesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Profesion model.
+    """
+    class Meta:
+        model = models.Profesiones
+        fields = '__all__'
+
+
+class CargoprofeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Cargoprofe model.
+    """
+    class Meta:
+        model = models.Cargoprofe
+        fields = '__all__'
+
