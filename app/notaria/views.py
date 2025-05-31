@@ -471,6 +471,25 @@ class Cliente2ViewSet(ModelViewSet):
     serializer_class = serializers.Cliente2Serializer
     pagination_class = pagination.KardexPagination
 
+    @action(detail=False, methods=['get'])
+    def by_dni(self, request):
+        """
+        Get Cliente2 records by DNI.
+        """
+        dni = request.query_params.get('dni')
+        if not dni:
+            return Response(
+                {"error": "dni parameter is required."},
+                status=400
+            )
+
+        clientes = models.Cliente2.objects.filter(numdoc=dni)
+        if not clientes.exists():
+            return Response({}, status=200)
+
+        serializer = serializers.Cliente2Serializer(clientes[len(clientes) - 1])
+        return Response(serializer.data)
+
 
 class TiposDeActosViewSet(ModelViewSet):
     """
