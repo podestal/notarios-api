@@ -8,6 +8,8 @@ from django.db.models import Q, Max, F, Func, Value
 from django.db.models.functions import Cast, Substr
 from django.db import models as django_models
 
+from collections import defaultdict
+
 '''
 ViewSets for the Notaria app.
 These viewsets define the views for the Notaria app.
@@ -60,7 +62,7 @@ class KardexViewSet(ModelViewSet):
         List all Kardex objects.
         """
         page_kardex = self.paginate_queryset(self.get_queryset())
-        print('page_kardex:', page_kardex)
+
         user_ids = set(obj.idusuario for obj in page_kardex)
         kardex_ids = set(obj.kardex for obj in page_kardex)
 
@@ -72,11 +74,18 @@ class KardexViewSet(ModelViewSet):
         contratantes = models.Contratantes.objects.filter(
             kardex__in=kardex_ids
         ).values('idcontratante', 'kardex')
-        contratantes_map = {
-            c['kardex']: c['idcontratante']
-            for c in contratantes
-        }
 
+        print('contratantes length:', len(contratantes))
+
+        # contratantes_map = {
+        #     c['kardex']: c['idcontratante']
+        #     for c in contratantes
+        # }
+
+        contratantes_map = defaultdict(list)
+
+        for c in contratantes:
+            contratantes_map[c['kardex']].append(c['idcontratante'])
         contratante_ids = set(c['idcontratante'] for c in contratantes)
 
         clientes_map = {
