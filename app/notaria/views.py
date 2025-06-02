@@ -481,6 +481,39 @@ class ContratantesViewSet(ModelViewSet):
         return Response(serializer.data)
 
 
+class ClienteViewSet(ModelViewSet):
+    """
+    ViewSet for the Cliente model.
+    """
+    queryset = models.Cliente.objects.all()
+    serializer_class = serializers.ClienteSerializer
+    pagination_class = pagination.KardexPagination
+
+    # def get_serializer_class(self):
+    #     if self.request.method == 'POST':
+    #         return serializers.CreateClienteSerializer
+    #     return serializers.ClienteSerializer
+
+    @action(detail=False, methods=['get'])
+    def by_dni(self, request):
+        """
+        Get Cliente records by DNI.
+        """
+        dni = request.query_params.get('dni')
+        if not dni:
+            return Response(
+                {"error": "dni parameter is required."},
+                status=400
+            )
+
+        clientes = models.Cliente.objects.filter(numdoc=dni)
+        if not clientes.exists():
+            return Response({}, status=200)
+
+        serializer = serializers.ClienteSerializer(clientes[len(clientes) - 1])
+        return Response(serializer.data)
+
+
 class Cliente2ViewSet(ModelViewSet):
     """
     ViewSet for the Cliente2 model.

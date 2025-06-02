@@ -212,6 +212,17 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
                 f"{condicion['condicion']}"
             )
         return ''
+    
+
+class ClienteSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Cliente model.
+    This serializer is used to validate and serialize the Cliente data.
+    """
+
+    class Meta:
+        model = models.Cliente
+        fields = '__all__'
 
 
 class Cliente2Serializer(serializers.ModelSerializer):

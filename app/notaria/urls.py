@@ -16,6 +16,7 @@ router.register('tipokar', views.TipoKarViewSet, basename='tipokar')
 router.register('contratantes', views.ContratantesViewSet,
                 basename='contratantes')
 router.register('cliente2', views.Cliente2ViewSet, basename='cliente2')
+router.register('cliente', views.ClienteViewSet, basename='cliente')
 router.register('tiposdeactos', views.TiposDeActosViewSet,
                 basename='tiposdeactos')
 router.register('abogados', views.TbAbogadoViewSet, basename='abogados')
