@@ -75,13 +75,6 @@ class KardexViewSet(ModelViewSet):
             kardex__in=kardex_ids
         ).values('idcontratante', 'kardex')
 
-        print('contratantes length:', len(contratantes))
-
-        # contratantes_map = {
-        #     c['kardex']: c['idcontratante']
-        #     for c in contratantes
-        # }
-
         contratantes_map = defaultdict(list)
 
         for c in contratantes:
@@ -479,6 +472,11 @@ class Cliente2ViewSet(ModelViewSet):
     queryset = models.Cliente2.objects.all()
     serializer_class = serializers.Cliente2Serializer
     pagination_class = pagination.KardexPagination
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return serializers.CreateCliente2Serializer
+        return serializers.Cliente2Serializer
 
     @action(detail=False, methods=['get'])
     def by_dni(self, request):
