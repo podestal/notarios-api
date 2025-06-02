@@ -200,7 +200,11 @@ class KardexViewSet(ModelViewSet):
             kardex__in=kardex_ids
         ).values('idcontratante', 'kardex')
 
-        contratantes_map = {c['kardex']: c['idcontratante'] for c in contratantes}
+        contratantes_map = defaultdict(list)
+
+        for c in contratantes:
+            contratantes_map[c['kardex']].append(c['idcontratante'])
+        print('contratantes_map:', contratantes_map)
         contratante_ids = set(c['idcontratante'] for c in contratantes)
 
         clientes_map = {
@@ -252,7 +256,10 @@ class KardexViewSet(ModelViewSet):
             idcontratante__in=contratantes_ids
         ).values('idcontratante', 'kardex')
 
-        contratantes_map = {c['kardex']: c['idcontratante'] for c in contratantes}
+        contratantes_map = defaultdict(list)
+
+        for c in contratantes:
+            contratantes_map[c['kardex']].append(c['idcontratante'])
 
         kardex_ids = [c['kardex'] for c in contratantes]
         kardex_qs = models.Kardex.objects.filter(
@@ -297,6 +304,9 @@ class KardexViewSet(ModelViewSet):
         cliente = models.Cliente2.objects.filter(
             numdoc__icontains=document
         ).values('idcontratante', 'idcliente', 'nombre')
+        # clientes_map = defaultdict(list)
+        # for c in cliente:
+        #     clientes_map[c['idcontratante']].append(c)
         clientes_map = {c['idcontratante']: c for c in cliente}
 
         if not cliente.exists():
@@ -306,11 +316,17 @@ class KardexViewSet(ModelViewSet):
             )
         
         contratantes_ids = [c["idcontratante"] for c in cliente]
+
         contratantes = models.Contratantes.objects.filter(
             idcontratante__in=contratantes_ids
         ).values('idcontratante', 'kardex')
 
-        contratantes_map = {c['kardex']: c['idcontratante'] for c in contratantes}
+        contratantes_map = defaultdict(list)
+
+        for c in contratantes:
+            contratantes_map[c['kardex']].append(c['idcontratante'])
+
+        print('contratantes_map:', contratantes_map)
 
         kardex_ids = [c['kardex'] for c in contratantes]
         kardex_qs = models.Kardex.objects.filter(
@@ -374,10 +390,10 @@ class KardexViewSet(ModelViewSet):
         contratantes = models.Contratantes.objects.filter(
             kardex__in=kardex_ids
         ).values('idcontratante', 'kardex')
-        contratantes_map = {
-            c['kardex']: c['idcontratante']
-            for c in contratantes
-        }
+        contratantes_map = defaultdict(list)
+
+        for c in contratantes:
+            contratantes_map[c['kardex']].append(c['idcontratante'])
 
         contratante_ids = set(c['idcontratante'] for c in contratantes)
 
