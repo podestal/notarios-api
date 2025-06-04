@@ -489,10 +489,10 @@ class ClienteViewSet(ModelViewSet):
     serializer_class = serializers.ClienteSerializer
     pagination_class = pagination.KardexPagination
 
-    # def get_serializer_class(self):
-    #     if self.request.method == 'POST':
-    #         return serializers.CreateClienteSerializer
-    #     return serializers.ClienteSerializer
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return serializers.CreateClienteSerializer
+        return serializers.ClienteSerializer
 
     @action(detail=False, methods=['get'])
     def by_dni(self, request):
