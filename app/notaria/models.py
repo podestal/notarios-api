@@ -301,7 +301,6 @@ class Cliente(models.Model):
         db_table = 'cliente'
 
 
-
 class Cliente2(models.Model):
     """
     Model representing the client in the system.
