@@ -26,6 +26,6 @@ router.register('detalleactos', views.DetalleActosKardexViewSet)
 router.register('nacionalidades', views.NacionalidadesViewSet)
 router.register('cargoprofe', views.CargoprofeViewSet)
 router.register('profesiones', views.ProfesionesViewSet)
-router.register('ubigeo', views.UbigeoViewSet)
+router.register('ubigeos', views.UbigeoViewSet)
 
 urlpatterns = router.urls

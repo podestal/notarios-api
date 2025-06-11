@@ -267,6 +267,7 @@ class CreateClienteSerializer(serializers.ModelSerializer):
             'profocupa',
             'dirfer',
             'idubigeo',
+            'cumpclie'
         ]
 
     def create(self, validated_data):
