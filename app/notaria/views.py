@@ -602,3 +602,12 @@ class CargoprofeViewSet(ModelViewSet):
     """
     queryset = models.Cargoprofe.objects.all()
     serializer_class = serializers.CargoprofeSerializer
+
+
+class UbigeoViewSet(ModelViewSet):
+    """
+    ViewSet for the Ubigeo model.
+    """
+    queryset = models.Ubigeo.objects.all()
+    serializer_class = serializers.UbigeoSerializer
+    # pagination_class = pagination.KardexPagination

@@ -376,3 +376,13 @@ class CargoprofeSerializer(serializers.ModelSerializer):
         model = models.Cargoprofe
         fields = '__all__'
 
+
+class UbigeoSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Ubigeo model.
+    This serializer is used to validate and serialize the Ubigeo data.
+    """
+
+    class Meta:
+        model = models.Ubigeo
+        fields = '__all__'
