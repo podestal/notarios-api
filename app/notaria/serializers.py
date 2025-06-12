@@ -240,9 +240,12 @@ class CreateClienteSerializer(serializers.ModelSerializer):
     This serializer is used to validate and create a new Cliente record.
     """
 
+    idcliente = serializers.CharField(read_only=True)
+
     class Meta:
         model = models.Cliente
         fields = [
+            'idcliente',
             'tipper',
             'apepat',
             'apemat',
