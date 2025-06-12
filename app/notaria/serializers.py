@@ -84,6 +84,7 @@ class KardexSerializer(serializers.ModelSerializer):
             'kardex',
             'fechaingreso',
             'contrato',
+            'codactos',
             'fechaescritura',
             'numescritura',
             'numminuta',

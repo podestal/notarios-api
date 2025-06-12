@@ -562,6 +562,28 @@ class ActoCondicionViewSet(ModelViewSet):
     queryset = models.Actocondicion.objects.all()
     serializer_class = serializers.ActoCondicionSerializer
 
+    @action(detail=False, methods=['get'])
+    def by_tipoacto(self, request):
+        """
+        Get ActoCondicion records by tipoacto.
+        """
+        tipoacto = request.query_params.get('tipoacto')
+        if not tipoacto:
+            return Response(
+                {"error": "tipoacto parameter is required."},
+                status=400
+            )
+
+        acto_condiciones = models.Actocondicion.objects.filter(
+            idtipoacto=tipoacto
+        )
+
+        if not acto_condiciones.exists():
+            return Response({}, status=200)
+
+        serializer = serializers.ActoCondicionSerializer(acto_condiciones, many=True)
+        return Response(serializer.data)
+
 
 class DetalleActosKardexViewSet(ModelViewSet):
     """
