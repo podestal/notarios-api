@@ -431,6 +431,11 @@ class ContratantesViewSet(ModelViewSet):
     serializer_class = serializers.ContratantesSerializer
     pagination_class = pagination.KardexPagination
 
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return serializers.CreateContratantesSerializer
+        return serializers.ContratantesSerializer
+
     @action(detail=False, methods=['get'])
     def by_kardex(self, request):
         """
@@ -568,6 +573,7 @@ class ActoCondicionViewSet(ModelViewSet):
         Get ActoCondicion records by tipoacto.
         """
         tipoacto = request.query_params.get('tipoacto')
+        print()
         if not tipoacto:
             return Response(
                 {"error": "tipoacto parameter is required."},

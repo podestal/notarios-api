@@ -156,23 +156,59 @@ class ContratantesSerializer(serializers.ModelSerializer):
         model = models.Contratantes
         fields = '__all__'
 
+            # "idcontratante": "0000147215",
+            # "idtipkar": 1,
+            # "kardex": "KAR2315-2025",
+            # "condicion": "044.57535/",
+            # "firma": "1",
+            # "fechafirma": "",
+            # "resfirma": 0,
+            # "tiporepresentacion": "0",
+            # "idcontratanterp": "",
+            # "idsedereg": "",
+            # "numpartida": "",
+            # "facultades": "",
+            # "indice": "1",
+            # "visita": "0",
+            # "inscrito": "0",
+            # "plantilla": null
 
-    # idcontratante = models.CharField(primary_key=True, max_length=10)
-    # idtipkar = models.IntegerField()
-    # kardex = models.CharField(max_length=30, blank=True, null=True)
-    # condicion = models.CharField(max_length=100)
-    # firma = models.CharField(max_length=3)
-    # fechafirma = models.CharField(max_length=10)
-    # resfirma = models.IntegerField()
-    # tiporepresentacion = models.CharField(max_length=2)
-    # idcontratanterp = models.CharField(max_length=3000)
-    # idsedereg = models.CharField(max_length=3, blank=True, null=True)
-    # numpartida = models.CharField(max_length=50, blank=True, null=True)
-    # facultades = models.CharField(max_length=500)
-    # indice = models.CharField(max_length=3)
-    # visita = models.CharField(max_length=3)
-    # inscrito = models.CharField(max_length=1, blank=True, null=True)
-    # plantilla = models.CharField(max_length=3, blank=True, null=True)
+class CreateContratantesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a Contratantes instance.
+    This serializer is used to validate and create a new Contratantes record.
+    """
+
+    idcontratante = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = models.Contratantes
+        fields = [
+            'idcontratante',
+            'idtipkar',
+            'kardex',
+            'condicion',
+            'firma',
+            'fechafirma',
+            'resfirma',
+            'tiporepresentacion',
+            'indice',
+            'visita',
+            'inscrito',
+        ]
+
+    def create(self, validated_data):
+        # Generate new idcontratante
+        last_contratante = models.Contratantes.objects.order_by('-idcontratante').first()
+        if last_contratante and last_contratante.idcontratante.isdigit():
+            new_id = str(int(last_contratante.idcontratante) + 1).zfill(10)
+        else:
+            new_id = '0000000001'
+        return models.Contratantes.objects.create(
+            idcontratante=new_id,
+            **validated_data
+        )
+
 
 class ContratantesKardexSerializer(serializers.ModelSerializer):
     """
