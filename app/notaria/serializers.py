@@ -270,6 +270,65 @@ class Cliente2Serializer(serializers.ModelSerializer):
         model = models.Cliente2
         fields = '__all__'
 
+class CreateCliente2Serializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a Cliente2 instance.
+    This serializer is used to validate and create a new Cliente2 record.
+    """
+
+    idcliente = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = models.Cliente2
+        fields = [
+            'idcliente',
+            'idcontratante',
+            'tipper',
+            'apepat',
+            'apemat',
+            'prinom',
+            'segnom',
+            'nombre',
+            'direccion',
+            'idtipdoc',
+            'numdoc',
+            'email',
+            'telfijo',
+            'telcel',
+            'telofi',
+            'sexo',
+            'idestcivil',
+            'natper',
+            'conyuge',
+            'nacionalidad',
+            'idprofesion',
+            'detaprofesion',
+            'idcargoprofe',
+            'profocupa',
+            'dirfer',
+            'idubigeo',
+            'cumpclie'
+            'razonsocial',
+            'fechaing',
+            'residente',
+            'tipocli',
+            'profesion_plantilla',
+            'ubigeo_plantilla',
+            'fechaconstitu'
+        ]
+
+    def create(self, validated_data):
+        # Generate new idcliente
+        last_cliente = models.Cliente2.objects.order_by('-idcliente').first()
+        if last_cliente and last_cliente.idcliente.isdigit():
+            new_id = str(int(last_cliente.idcliente) + 1).zfill(10)
+        else:
+            new_id = '0000000001'
+        return models.Cliente2.objects.create(
+            idcliente=new_id,
+            **validated_data
+        )
+
 
 class CreateClienteSerializer(serializers.ModelSerializer):
     """
@@ -321,30 +380,6 @@ class CreateClienteSerializer(serializers.ModelSerializer):
             idcliente=new_id,
             **validated_data
         )
-
-
-class CreateCliente2Serializer(serializers.ModelSerializer):
-    """
-    Serializer for creating a Cliente2 instance.
-    This serializer is used to validate and create a new Cliente2 record.
-    """
-
-    class Meta:
-        model = models.Cliente2
-        fields = [
-            'idcliente',
-            'nombre',
-            'apepat',
-            'apemat',
-            'numdoc',
-            # 'ruc',
-            'direccion',
-            # 'telefono',
-            'email',
-            'nacionalidad',
-            'idprofesion',
-            'idcargoprofe',
-        ]
 
 
 class TiposDeActosSerializer(serializers.ModelSerializer):
