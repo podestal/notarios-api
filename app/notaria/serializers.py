@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from . import models
+from django.db import IntegrityError
 
 '''
 Serializers for the Notaria app.
@@ -319,16 +320,26 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        # Generate new idcliente
-        last_cliente = models.Cliente2.objects.order_by('-idcliente').first()
-        if last_cliente and last_cliente.idcliente.isdigit():
-            new_id = str(int(last_cliente.idcliente) + 1).zfill(10)
-        else:
-            new_id = '0000000001'
-        return models.Cliente2.objects.create(
-            idcliente=new_id,
-            **validated_data
-        )
+        attempts = 0
+        max_attempts = 5
+
+        while attempts < max_attempts:
+            last_cliente = models.Cliente2.objects.order_by('-idcliente').first()
+            if last_cliente and last_cliente.idcliente.isdigit():
+                new_id = str(int(last_cliente.idcliente) + 1).zfill(10)
+            else:
+                new_id = '0000000001'
+
+            try:
+                return models.Cliente2.objects.create(
+                    idcliente=new_id,
+                    **validated_data
+                )
+            except IntegrityError:
+                attempts += 1
+
+        raise serializers.ValidationError("Could not generate a unique client ID after several attempts.")
+        
 
 
 class CreateClienteSerializer(serializers.ModelSerializer):

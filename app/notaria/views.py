@@ -435,6 +435,15 @@ class ContratantesViewSet(ModelViewSet):
         if self.request.method == 'POST':
             return serializers.CreateContratantesSerializer
         return serializers.ContratantesSerializer
+    
+    def delete(self, request, *args, **kwargs):
+        """
+        Override the delete method to handle related Cliente2 records.
+        """
+        instance = self.get_object()
+        # Delete related Cliente2 records
+        models.Cliente2.objects.filter(idcontratante=instance.idcontratante).delete()
+        return super().delete(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'])
     def by_kardex(self, request):
@@ -453,7 +462,6 @@ class ContratantesViewSet(ModelViewSet):
         contratantes_tipoactos = set(
             c.condicion.split('.')[0] for c in contratantes
         )
-        print('contratantes_tipoactos:', contratantes_tipoactos)
 
         condicion_map = {
             c['idcondicion']: c
@@ -461,8 +469,6 @@ class ContratantesViewSet(ModelViewSet):
                 idcondicion__in=contratantes_tipoactos
             ).values('idcondicion', 'condicion')
         }
-
-        print('condicion_map:', condicion_map)
 
         clientes_map = {
             c['idcontratante']: c
