@@ -335,7 +335,7 @@ class Cliente2(models.Model):
     idubigeo = models.CharField(max_length=6)
     cumpclie = models.CharField(max_length=15)
     fechaing = models.CharField(max_length=10, blank=True, null=True)
-    razonsocial = models.CharField(max_length=3000)
+    razonsocial = models.CharField(max_length=3000, blank=True, null=True)
     domfiscal = models.CharField(max_length=3000)
     telempresa = models.CharField(max_length=12)
     mailempresa = models.CharField(max_length=200)
