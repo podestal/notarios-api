@@ -307,14 +307,15 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
             'profocupa',
             'dirfer',
             'idubigeo',
-            'cumpclie'
+            'cumpclie',
             'razonsocial',
             'fechaing',
             'residente',
             'tipocli',
             'profesion_plantilla',
             'ubigeo_plantilla',
-            'fechaconstitu'
+            'fechaconstitu',
+            'idsedereg',
         ]
 
     def create(self, validated_data):
