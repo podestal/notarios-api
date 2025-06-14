@@ -1,4 +1,5 @@
 from rest_framework.viewsets import ModelViewSet
+from rest_framework import status
 from . import models
 from . import serializers
 from . import pagination
@@ -10,7 +11,7 @@ from django.db import models as django_models
 from django.db import transaction
 
 from collections import defaultdict
-from utils import generate_new_id
+from . import utils
 
 
 '''
@@ -450,12 +451,18 @@ class ContratantesViewSet(ModelViewSet):
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        idcliente = request.parameters.get('idcliente')
+        """
+        Create a Contratante and a Cliente2 based on the provided idcliente.
+        This method will generate new IDs for Contratante and Cliente2,
+        and ensure that Cliente2 is not orphaned.
+        """
+        idcliente = request.query_params.get('idcliente')
 
         if not idcliente:
             return Response({"error": "Debe proporcionar el idcliente"}, status=400)
 
         # Step 1: Get Cliente1 info from numdoc
+        print('idcliente:', idcliente)
         cliente1 = models.Cliente.objects.filter(idcliente=idcliente).first()
         if not cliente1:
             return Response({"error": "No se encontró Cliente1 con ese número de documento"}, status=404)
@@ -464,8 +471,8 @@ class ContratantesViewSet(ModelViewSet):
         for attempt in range(5):
             try:
                 # Generate IDs
-                idcontratante = generate_new_id(models.Contratante, 'idcontratante')
-                idcliente2 = generate_new_id(models.Cliente2, 'idcliente')
+                idcontratante = utils.generate_new_id(models.Contratantes, 'idcontratante')
+                idcliente2 = utils.generate_new_id(models.Cliente2, 'idcliente')
 
                 # Check orphan
                 if models.Cliente2.objects.filter(idcontratante=idcontratante).exists():
@@ -476,9 +483,43 @@ class ContratantesViewSet(ModelViewSet):
                 contratante_serializer = self.get_serializer(data=request.data)
                 contratante_serializer.is_valid(raise_exception=True)
                 contratante_serializer.save(idcontratante=idcontratante)
-                logger.info(f"Contratante created with idcontratante: {idcontratante}")
 
                 # Build Cliente2 data from Cliente1
+                # idcontratante: res.idcontratante,
+                # //             tipper: cliente1.tipper, 
+                # //             apepat: cliente1.apepat,
+                # //             apemat: cliente1.apemat,
+                # //             prinom: cliente1.prinom,
+                # //             segnom: cliente1.segnom,
+                # //             nombre: `${cliente1.prinom} ${cliente1.segnom} ${cliente1.apepat} ${cliente1.apemat}`,
+                # //             direccion: cliente1.direccion,
+                # //             idtipdoc: cliente1.idtipdoc,
+                # //             numdoc: cliente1.numdoc,
+                # //             email: cliente1.email,
+                # //             telfijo: cliente1.telfijo,
+                # //             telcel: cliente1.telcel,
+                # //             telofi: cliente1.telofi || '',
+                # //             sexo: cliente1.sexo || '',
+                # //             idestcivil: cliente1.idestcivil || 0,
+                # //             natper: cliente1.nacionalidad || '',
+                # //             conyuge: '',
+                # //             nacionalidad: cliente1.nacionalidad || '',
+                # //             idprofesion: cliente1.idprofesion || 0,
+                # //             detaprofesion: cliente1.detaprofesion || '',
+                # //             idcargoprofe: cliente1.idcargoprofe || 0,
+                # //             profocupa: cliente1.detaprofesion || '',
+                # //             dirfer: cliente1.direccion,
+                # //             idubigeo: cliente1.idubigeo || '.',
+                # //             cumpclie: cliente1.cumpclie || '.',
+                # //             razonsocial: cliente1.razonsocial || '',
+                # //             fechaing: '',
+                # //             residente: cliente1.resedente || '0',
+                # //             tipocli: '0',
+                # //             profesion_plantilla: cliente1.detaprofesion || '',
+                # //             ubigeo_plantilla: cliente1.idubigeo || '',
+                # //             fechaconstitu: '',
+                # //             idsedereg: 1
+                # {'domfiscal': [ErrorDetail(string='This field is required.', code='required')], 'telempresa': [ErrorDetail(string='This field is required.', code='required')], 'mailempresa': [ErrorDetail(string='This field is required.', code='required')], 'contacempresa': [ErrorDetail(string='This field is required.', code='required')], 'numregistro': [ErrorDetail(string='This field is required.', code='required')], 'numpartida': [ErrorDetail(string='This field is required.', code='required')], 'actmunicipal': [ErrorDetail(string='This field is required.', code='required')], 'impeingre': [ErrorDetail(string='This field is required.', code='required')], 'impnumof': [ErrorDetail(string='This field is required.', code='required')], 'impeorigen': [ErrorDetail(string='This field is required.', code='required')], 'impentidad': [ErrorDetail(string='This field is required.', code='required')], 'impremite': [ErrorDetail(string='This field is required.', code='required')], 'impmotivo': [ErrorDetail(string='This field is required.', code='required')], 'docpaisemi': [ErrorDetail(string='This field is required.', code='required')]}"
                 cliente2_data = {
                     'idcliente': idcliente2,
                     'idcontratante': idcontratante,
@@ -487,38 +528,55 @@ class ContratantesViewSet(ModelViewSet):
                     'apemat': cliente1.apemat,
                     'prinom': cliente1.prinom,
                     'segnom': cliente1.segnom,
-                    'nombre': cliente1.nombre,
+                    'nombre': f"{cliente1.prinom} {cliente1.segnom} {cliente1.apepat} {cliente1.apemat}",
                     'direccion': cliente1.direccion,
                     'idtipdoc': cliente1.idtipdoc,
                     'numdoc': cliente1.numdoc,
                     'email': cliente1.email,
                     'telfijo': cliente1.telfijo,
                     'telcel': cliente1.telcel,
-                    'telofi': cliente1.telofi,
-                    'sexo': cliente1.sexo,
-                    'idestcivil': cliente1.idestcivil,
-                    'natper': cliente1.natper,
-                    'conyuge': cliente1.conyuge,
-                    'nacionalidad': cliente1.nacionalidad,
-                    'idprofesion': cliente1.idprofesion,
-                    'detaprofesion': cliente1.detaprofesion,
-                    'idcargoprofe': cliente1.idcargoprofe,
-                    'profocupa': cliente1.profocupa,
-                    'dirfer': cliente1.dirfer,
-                    'idubigeo': cliente1.idubigeo,
-                    'cumpclie': cliente1.cumpclie,
-                    'razonsocial': cliente1.razonsocial,
+                    'telofi': cliente1.telofi or '',
+                    'sexo': cliente1.sexo or '',
+                    'idestcivil': cliente1.idestcivil or 0,     
+                    'natper': cliente1.nacionalidad or '',
+                    'conyuge': '',
+                    'nacionalidad': cliente1.nacionalidad or '',
+                    'idprofesion': cliente1.idprofesion or 0,
+                    'detaprofesion': cliente1.detaprofesion or '',
+                    'idcargoprofe': cliente1.idcargoprofe or 0,
+                    'profocupa': cliente1.detaprofesion or '',
+                    'dirfer': cliente1.direccion,
+                    'idubigeo': cliente1.idubigeo or '.',
+                    'cumpclie': cliente1.cumpclie or '.',
+                    'razonsocial': cliente1.razonsocial or '',
+                    'fechaing': '',  # This will be set later
+                    'residente': cliente1.residente or '0',
                     'tipocli': '0',
-                    'residente': '0',
+                    'profesion_plantilla': cliente1.detaprofesion or '',
+                    'ubigeo_plantilla': cliente1.idubigeo or '',
+                    'fechaconstitu': '',  # This will be set later
+                    'idsedereg': 1,  # Assuming this is a constant value
+                    'domfiscal': '',
+                    'telempresa': '',
+                    'mailempresa': '',
+                    'contacempresa': '',
+                    'numregistro': '',
+                    'numpartida': '',
+                    'actmunicipal': '',
+                    'impeingre': '',
+                    'impnumof': '',
+                    'impeorigen': '',
+                    'impentidad': '',
+                    'impremite': '',
+                    'impmotivo': '',
+                    'docpaisemi': '',
                 }
 
                 cliente2_serializer = serializers.Cliente2Serializer(data=cliente2_data)
                 cliente2_serializer.is_valid(raise_exception=True)
                 cliente2_serializer.save()
-                logger.info(f"Cliente2 created with idcliente2: {idcliente2}")
 
                 # Return created contratante
-                logger.info(f"Contratante/Cliente2 created successfully: {contratante_serializer.data}")
                 return Response(contratante_serializer.data, status=status.HTTP_201_CREATED)
 
             except Exception as e:
@@ -529,51 +587,51 @@ class ContratantesViewSet(ModelViewSet):
 
         return Response({"error": "No se pudo generar un ID válido tras varios intentos"}, status=400)
 
-    # @action(detail=False, methods=['get'])
-    # def by_kardex(self, request):
-    #     """
-    #     Get Contratantes by Kardex.
-    #     """
-    #     kardex = request.query_params.get('kardex')
-    #     if not kardex:
-    #         return Response(
-    #             {"error": "kardex parameter is required."},
-    #             status=400
-    #         )
-    #     contratantes = models.Contratantes.objects.filter(kardex=kardex)
-    #     contratante_ids = set(c.idcontratante for c in contratantes)
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        """
+        Get Contratantes by Kardex.
+        """
+        kardex = request.query_params.get('kardex')
+        if not kardex:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+        contratantes = models.Contratantes.objects.filter(kardex=kardex)
+        contratante_ids = set(c.idcontratante for c in contratantes)
 
-    #     contratantes_tipoactos = set(
-    #         c.condicion.split('.')[0] for c in contratantes
-    #     )
+        contratantes_tipoactos = set(
+            c.condicion.split('.')[0] for c in contratantes
+        )
 
-    #     condicion_map = {
-    #         c['idcondicion']: c
-    #         for c in models.Actocondicion.objects.filter(
-    #             idcondicion__in=contratantes_tipoactos
-    #         ).values('idcondicion', 'condicion')
-    #     }
+        condicion_map = {
+            c['idcondicion']: c
+            for c in models.Actocondicion.objects.filter(
+                idcondicion__in=contratantes_tipoactos
+            ).values('idcondicion', 'condicion')
+        }
 
-    #     clientes_map = {
-    #         c['idcontratante']: c
-    #         for c in models.Cliente2.objects.filter(
-    #             idcontratante__in=contratante_ids
-    #         ).values(
-    #             'idcontratante', 'nombre', 'numdoc'
-    #         )
-    #     }
+        clientes_map = {
+            c['idcontratante']: c
+            for c in models.Cliente2.objects.filter(
+                idcontratante__in=contratante_ids
+            ).values(
+                'idcontratante', 'nombre', 'numdoc'
+            )
+        }
 
-    #     if not contratantes.exists():
-    #         return Response({}, status=200)
+        if not contratantes.exists():
+            return Response({}, status=200)
 
-    #     serializer = serializers.ContratantesKardexSerializer(
-    #         contratantes,
-    #         many=True,
-    #         context={
-    #             'clientes_map': clientes_map,
-    #             'condicion_map': condicion_map
-    #         })
-    #     return Response(serializer.data)
+        serializer = serializers.ContratantesKardexSerializer(
+            contratantes,
+            many=True,
+            context={
+                'clientes_map': clientes_map,
+                'condicion_map': condicion_map
+            })
+        return Response(serializer.data)
 
 
 class ClienteViewSet(ModelViewSet):
