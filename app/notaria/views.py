@@ -7,8 +7,11 @@ from rest_framework.response import Response
 from django.db.models import Q, Max, F, Func, Value
 from django.db.models.functions import Cast, Substr
 from django.db import models as django_models
+from django.db import transaction
 
 from collections import defaultdict
+from utils import generate_new_id
+
 
 '''
 ViewSets for the Notaria app.
@@ -444,52 +447,133 @@ class ContratantesViewSet(ModelViewSet):
         # Delete related Cliente2 records
         models.Cliente2.objects.filter(idcontratante=instance.idcontratante).delete()
         return super().delete(request, *args, **kwargs)
+    
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        idcliente = request.parameters.get('idcliente')
 
-    @action(detail=False, methods=['get'])
-    def by_kardex(self, request):
-        """
-        Get Contratantes by Kardex.
-        """
-        kardex = request.query_params.get('kardex')
-        if not kardex:
-            return Response(
-                {"error": "kardex parameter is required."},
-                status=400
-            )
-        contratantes = models.Contratantes.objects.filter(kardex=kardex)
-        contratante_ids = set(c.idcontratante for c in contratantes)
+        if not idcliente:
+            return Response({"error": "Debe proporcionar el idcliente"}, status=400)
 
-        contratantes_tipoactos = set(
-            c.condicion.split('.')[0] for c in contratantes
-        )
+        # Step 1: Get Cliente1 info from numdoc
+        cliente1 = models.Cliente.objects.filter(idcliente=idcliente).first()
+        if not cliente1:
+            return Response({"error": "No se encontró Cliente1 con ese número de documento"}, status=404)
 
-        condicion_map = {
-            c['idcondicion']: c
-            for c in models.Actocondicion.objects.filter(
-                idcondicion__in=contratantes_tipoactos
-            ).values('idcondicion', 'condicion')
-        }
+        # Step 2: Try up to 5 times to generate valid IDs
+        for attempt in range(5):
+            try:
+                # Generate IDs
+                idcontratante = generate_new_id(models.Contratante, 'idcontratante')
+                idcliente2 = generate_new_id(models.Cliente2, 'idcliente')
 
-        clientes_map = {
-            c['idcontratante']: c
-            for c in models.Cliente2.objects.filter(
-                idcontratante__in=contratante_ids
-            ).values(
-                'idcontratante', 'nombre', 'numdoc'
-            )
-        }
+                # Check orphan
+                if models.Cliente2.objects.filter(idcontratante=idcontratante).exists():
+                    models.Cliente2.objects.filter(idcontratante=idcontratante).delete()
+                    continue  # Try again with a new idcontratante
 
-        if not contratantes.exists():
-            return Response({}, status=200)
+                # Create Contratante
+                contratante_serializer = self.get_serializer(data=request.data)
+                contratante_serializer.is_valid(raise_exception=True)
+                contratante_serializer.save(idcontratante=idcontratante)
+                logger.info(f"Contratante created with idcontratante: {idcontratante}")
 
-        serializer = serializers.ContratantesKardexSerializer(
-            contratantes,
-            many=True,
-            context={
-                'clientes_map': clientes_map,
-                'condicion_map': condicion_map
-            })
-        return Response(serializer.data)
+                # Build Cliente2 data from Cliente1
+                cliente2_data = {
+                    'idcliente': idcliente2,
+                    'idcontratante': idcontratante,
+                    'tipper': cliente1.tipper,
+                    'apepat': cliente1.apepat,
+                    'apemat': cliente1.apemat,
+                    'prinom': cliente1.prinom,
+                    'segnom': cliente1.segnom,
+                    'nombre': cliente1.nombre,
+                    'direccion': cliente1.direccion,
+                    'idtipdoc': cliente1.idtipdoc,
+                    'numdoc': cliente1.numdoc,
+                    'email': cliente1.email,
+                    'telfijo': cliente1.telfijo,
+                    'telcel': cliente1.telcel,
+                    'telofi': cliente1.telofi,
+                    'sexo': cliente1.sexo,
+                    'idestcivil': cliente1.idestcivil,
+                    'natper': cliente1.natper,
+                    'conyuge': cliente1.conyuge,
+                    'nacionalidad': cliente1.nacionalidad,
+                    'idprofesion': cliente1.idprofesion,
+                    'detaprofesion': cliente1.detaprofesion,
+                    'idcargoprofe': cliente1.idcargoprofe,
+                    'profocupa': cliente1.profocupa,
+                    'dirfer': cliente1.dirfer,
+                    'idubigeo': cliente1.idubigeo,
+                    'cumpclie': cliente1.cumpclie,
+                    'razonsocial': cliente1.razonsocial,
+                    'tipocli': '0',
+                    'residente': '0',
+                }
+
+                cliente2_serializer = serializers.Cliente2Serializer(data=cliente2_data)
+                cliente2_serializer.is_valid(raise_exception=True)
+                cliente2_serializer.save()
+                logger.info(f"Cliente2 created with idcliente2: {idcliente2}")
+
+                # Return created contratante
+                logger.info(f"Contratante/Cliente2 created successfully: {contratante_serializer.data}")
+                return Response(contratante_serializer.data, status=status.HTTP_201_CREATED)
+
+            except Exception as e:
+                # Last attempt → return error
+                if attempt == 4:
+                    return Response({"error": f"Error al crear contratante/cliente2: {str(e)}"}, status=400)
+                continue  # Try again with new IDs
+
+        return Response({"error": "No se pudo generar un ID válido tras varios intentos"}, status=400)
+
+    # @action(detail=False, methods=['get'])
+    # def by_kardex(self, request):
+    #     """
+    #     Get Contratantes by Kardex.
+    #     """
+    #     kardex = request.query_params.get('kardex')
+    #     if not kardex:
+    #         return Response(
+    #             {"error": "kardex parameter is required."},
+    #             status=400
+    #         )
+    #     contratantes = models.Contratantes.objects.filter(kardex=kardex)
+    #     contratante_ids = set(c.idcontratante for c in contratantes)
+
+    #     contratantes_tipoactos = set(
+    #         c.condicion.split('.')[0] for c in contratantes
+    #     )
+
+    #     condicion_map = {
+    #         c['idcondicion']: c
+    #         for c in models.Actocondicion.objects.filter(
+    #             idcondicion__in=contratantes_tipoactos
+    #         ).values('idcondicion', 'condicion')
+    #     }
+
+    #     clientes_map = {
+    #         c['idcontratante']: c
+    #         for c in models.Cliente2.objects.filter(
+    #             idcontratante__in=contratante_ids
+    #         ).values(
+    #             'idcontratante', 'nombre', 'numdoc'
+    #         )
+    #     }
+
+    #     if not contratantes.exists():
+    #         return Response({}, status=200)
+
+    #     serializer = serializers.ContratantesKardexSerializer(
+    #         contratantes,
+    #         many=True,
+    #         context={
+    #             'clientes_map': clientes_map,
+    #             'condicion_map': condicion_map
+    #         })
+    #     return Response(serializer.data)
 
 
 class ClienteViewSet(ModelViewSet):

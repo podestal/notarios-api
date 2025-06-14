@@ -198,18 +198,6 @@ class CreateContratantesSerializer(serializers.ModelSerializer):
             'inscrito',
         ]
 
-    def create(self, validated_data):
-        # Generate new idcontratante
-        last_contratante = models.Contratantes.objects.order_by('-idcontratante').first()
-        if last_contratante and last_contratante.idcontratante.isdigit():
-            new_id = str(int(last_contratante.idcontratante) + 1).zfill(10)
-        else:
-            new_id = '0000000001'
-        return models.Contratantes.objects.create(
-            idcontratante=new_id,
-            **validated_data
-        )
-
 
 class ContratantesKardexSerializer(serializers.ModelSerializer):
     """
@@ -319,26 +307,26 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
             'idsedereg',
         ]
 
-    def create(self, validated_data):
-        attempts = 0
-        max_attempts = 5
+    # def create(self, validated_data):
+    #     attempts = 0
+    #     max_attempts = 5
 
-        while attempts < max_attempts:
-            last_cliente = models.Cliente2.objects.order_by('-idcliente').first()
-            if last_cliente and last_cliente.idcliente.isdigit():
-                new_id = str(int(last_cliente.idcliente) + 1).zfill(10)
-            else:
-                new_id = '0000000001'
+    #     while attempts < max_attempts:
+    #         last_cliente = models.Cliente2.objects.order_by('-idcliente').first()
+    #         if last_cliente and last_cliente.idcliente.isdigit():
+    #             new_id = str(int(last_cliente.idcliente) + 1).zfill(10)
+    #         else:
+    #             new_id = '0000000001'
 
-            try:
-                return models.Cliente2.objects.create(
-                    idcliente=new_id,
-                    **validated_data
-                )
-            except IntegrityError:
-                attempts += 1
+    #         try:
+    #             return models.Cliente2.objects.create(
+    #                 idcliente=new_id,
+    #                 **validated_data
+    #             )
+    #         except IntegrityError:
+    #             attempts += 1
 
-        raise serializers.ValidationError("Could not generate a unique client ID after several attempts.")
+    #     raise serializers.ValidationError("Could not generate a unique client ID after several attempts.")
         
 
 
