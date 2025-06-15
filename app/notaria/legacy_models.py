@@ -8,15 +8,12 @@
 from django.db import models
 
 
-class Ubigeo(models.Model):
-    coddis = models.CharField(primary_key=True, max_length=6, db_collation='latin1_swedish_ci')
-    nomdis = models.CharField(max_length=50, db_collation='latin1_swedish_ci')
-    nomprov = models.CharField(max_length=50, db_collation='latin1_swedish_ci')
-    nomdpto = models.CharField(max_length=50, db_collation='latin1_swedish_ci')
-    coddist = models.CharField(max_length=2, db_collation='latin1_swedish_ci')
-    codprov = models.CharField(max_length=2, db_collation='latin1_swedish_ci')
-    codpto = models.CharField(max_length=2, db_collation='latin1_swedish_ci')
+class Sedesregistrales(models.Model):
+    idsedereg = models.CharField(max_length=3)
+    dessede = models.CharField(max_length=50)
+    num_zona = models.CharField(max_length=10, blank=True, null=True)
+    zona_depar = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'ubigeo'
+        db_table = 'sedesregistrales'

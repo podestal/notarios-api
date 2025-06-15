@@ -462,3 +462,14 @@ class UbigeoSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Ubigeo
         fields = '__all__'
+
+
+class SedesregistralesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Sedesregistrales model.
+    This serializer is used to validate and serialize the Sedesregistrales data.
+    """
+
+    class Meta:
+        model = models.Sedesregistrales
+        fields = '__all__'

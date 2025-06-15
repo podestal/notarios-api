@@ -787,3 +787,10 @@ class UbigeoViewSet(ModelViewSet):
     queryset = models.Ubigeo.objects.all()
     serializer_class = serializers.UbigeoSerializer
     # pagination_class = pagination.KardexPagination
+
+class SedesRegistralesViewSet(ModelViewSet):
+    """
+    ViewSet for the SedesRegistrales model.
+    """
+    queryset = models.Sedesregistrales.objects.all()
+    serializer_class = serializers.SedesregistralesSerializer
