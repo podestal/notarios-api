@@ -208,6 +208,7 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
 
     cliente = serializers.SerializerMethodField()
     condicion = serializers.SerializerMethodField()
+    cliente_id = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Contratantes
@@ -219,6 +220,7 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
             'firma',
             'fechafirma',
             'cliente',
+            'cliente_id',
         ]
 
     def get_cliente(self, obj):
@@ -227,6 +229,15 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
         if cliente:
             return (
                 f"{cliente['nombre']}"
+            )
+        return ''
+    
+    def get_cliente_id(self, obj):
+        clientes_map = self.context.get('clientes_map', {})
+        cliente = clientes_map.get(obj.idcontratante)
+        if cliente:
+            return (
+                f"{cliente['idcliente']}"
             )
         return ''
     
@@ -479,8 +490,6 @@ class RepresentantesSerializer(serializers.ModelSerializer):
     Serializer for creating a Sedesregistrales instance.
     This serializer is used to validate and create a new Sedesregistrales record.
     """
-
-    idsedereg = serializers.CharField(read_only=True)
 
     class Meta:
         model = models.Representantes

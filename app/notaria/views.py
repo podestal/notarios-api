@@ -484,42 +484,6 @@ class ContratantesViewSet(ModelViewSet):
                 contratante_serializer.is_valid(raise_exception=True)
                 contratante_serializer.save(idcontratante=idcontratante)
 
-                # Build Cliente2 data from Cliente1
-                # idcontratante: res.idcontratante,
-                # //             tipper: cliente1.tipper, 
-                # //             apepat: cliente1.apepat,
-                # //             apemat: cliente1.apemat,
-                # //             prinom: cliente1.prinom,
-                # //             segnom: cliente1.segnom,
-                # //             nombre: `${cliente1.prinom} ${cliente1.segnom} ${cliente1.apepat} ${cliente1.apemat}`,
-                # //             direccion: cliente1.direccion,
-                # //             idtipdoc: cliente1.idtipdoc,
-                # //             numdoc: cliente1.numdoc,
-                # //             email: cliente1.email,
-                # //             telfijo: cliente1.telfijo,
-                # //             telcel: cliente1.telcel,
-                # //             telofi: cliente1.telofi || '',
-                # //             sexo: cliente1.sexo || '',
-                # //             idestcivil: cliente1.idestcivil || 0,
-                # //             natper: cliente1.nacionalidad || '',
-                # //             conyuge: '',
-                # //             nacionalidad: cliente1.nacionalidad || '',
-                # //             idprofesion: cliente1.idprofesion || 0,
-                # //             detaprofesion: cliente1.detaprofesion || '',
-                # //             idcargoprofe: cliente1.idcargoprofe || 0,
-                # //             profocupa: cliente1.detaprofesion || '',
-                # //             dirfer: cliente1.direccion,
-                # //             idubigeo: cliente1.idubigeo || '.',
-                # //             cumpclie: cliente1.cumpclie || '.',
-                # //             razonsocial: cliente1.razonsocial || '',
-                # //             fechaing: '',
-                # //             residente: cliente1.resedente || '0',
-                # //             tipocli: '0',
-                # //             profesion_plantilla: cliente1.detaprofesion || '',
-                # //             ubigeo_plantilla: cliente1.idubigeo || '',
-                # //             fechaconstitu: '',
-                # //             idsedereg: 1
-                # {'domfiscal': [ErrorDetail(string='This field is required.', code='required')], 'telempresa': [ErrorDetail(string='This field is required.', code='required')], 'mailempresa': [ErrorDetail(string='This field is required.', code='required')], 'contacempresa': [ErrorDetail(string='This field is required.', code='required')], 'numregistro': [ErrorDetail(string='This field is required.', code='required')], 'numpartida': [ErrorDetail(string='This field is required.', code='required')], 'actmunicipal': [ErrorDetail(string='This field is required.', code='required')], 'impeingre': [ErrorDetail(string='This field is required.', code='required')], 'impnumof': [ErrorDetail(string='This field is required.', code='required')], 'impeorigen': [ErrorDetail(string='This field is required.', code='required')], 'impentidad': [ErrorDetail(string='This field is required.', code='required')], 'impremite': [ErrorDetail(string='This field is required.', code='required')], 'impmotivo': [ErrorDetail(string='This field is required.', code='required')], 'docpaisemi': [ErrorDetail(string='This field is required.', code='required')]}"
                 cliente2_data = {
                     'idcliente': idcliente2,
                     'idcontratante': idcontratante,
@@ -617,7 +581,7 @@ class ContratantesViewSet(ModelViewSet):
             for c in models.Cliente2.objects.filter(
                 idcontratante__in=contratante_ids
             ).values(
-                'idcontratante', 'nombre', 'numdoc'
+                'idcontratante', 'nombre', 'numdoc', 'idcliente'
             )
         }
 
