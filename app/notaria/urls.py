@@ -27,6 +27,6 @@ router.register('nacionalidades', views.NacionalidadesViewSet)
 router.register('cargoprofe', views.CargoprofeViewSet)
 router.register('profesiones', views.ProfesionesViewSet)
 router.register('ubigeos', views.UbigeoViewSet)
-router.register('sedesregistrales', views.SedesRegistralesViewSet)
+router.register('sedes_registrales', views.SedesRegistralesViewSet)
 
 urlpatterns = router.urls

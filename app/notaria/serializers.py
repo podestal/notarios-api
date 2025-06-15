@@ -469,7 +469,6 @@ class SedesregistralesSerializer(serializers.ModelSerializer):
     Serializer for the Sedesregistrales model.
     This serializer is used to validate and serialize the Sedesregistrales data.
     """
-
     class Meta:
         model = models.Sedesregistrales
-        fields = '__all__'
+        fields = ['idsedereg', 'dessede', 'num_zona', 'zona_depar']
