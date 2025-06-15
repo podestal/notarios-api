@@ -794,3 +794,12 @@ class SedesRegistralesViewSet(ModelViewSet):
     """
     queryset = models.Sedesregistrales.objects.all()
     serializer_class = serializers.SedesregistralesSerializer
+
+
+class RepresentantesViewSet(ModelViewSet):
+    """
+    ViewSet for the Representantes model.
+    """
+    queryset = models.Representantes.objects.all()
+    serializer_class = serializers.RepresentantesSerializer
+    pagination_class = pagination.KardexPagination

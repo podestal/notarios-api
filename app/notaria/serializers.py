@@ -472,3 +472,16 @@ class SedesregistralesSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Sedesregistrales
         fields = ['idsedereg', 'dessede', 'num_zona', 'zona_depar']
+
+
+class RepresentantesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a Sedesregistrales instance.
+    This serializer is used to validate and create a new Sedesregistrales record.
+    """
+
+    idsedereg = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = models.Representantes
+        fields = '__all__'
