@@ -225,7 +225,7 @@ class Contratantes(models.Model):
     kardex = models.CharField(max_length=30, blank=True, null=True)
     condicion = models.CharField(max_length=100)
     firma = models.CharField(max_length=3)
-    fechafirma = models.CharField(max_length=10)
+    fechafirma = models.CharField(max_length=10, blank=True, null=True)
     resfirma = models.IntegerField()
     tiporepresentacion = models.CharField(max_length=2)
     idcontratanterp = models.CharField(max_length=3000)
