@@ -102,7 +102,8 @@ class KardexViewSet(ModelViewSet):
         })
 
         return self.get_paginated_response(serializer.data)
-    
+
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
         Override the create method to generate a Kardex number.
@@ -110,6 +111,7 @@ class KardexViewSet(ModelViewSet):
         data = request.data.copy()
         idtipkar = data.get("idtipkar")
         fechaingreso = data.get("fechaingreso")
+        idtipoacto = data.get("idtipoacto")
 
         # Validate required fields
         if not idtipkar or not fechaingreso:
@@ -152,16 +154,33 @@ class KardexViewSet(ModelViewSet):
             numeric_part = 0  # Start from 0 if no Kardex exists
         # # Increment the numeric part and generate the new Kardex number
         new_kardex_number = f"{abreviatura}{numeric_part + 1}-{anio}"
-        print('new_kardex_number:', new_kardex_number)
         # # Save the new Kardex record
         data["kardex"] = new_kardex_number
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        return Response(serializer.data, status=201)
+        try:
+            tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=idtipoacto)
+        except models.Tiposdeacto.DoesNotExist:
+            return Response(
+                {"error": "Tipo de acto no encontrado."},
+                status=404
+            )
 
-        # return Response([], status=200)
+        detalle_data = {
+            "kardex": new_kardex_number,
+            "idtipoacto": idtipoacto,
+            "actosunat": tipo_acto.actosunat,
+            "actouif": tipo_acto.actouif,
+            "idtipkar": int(idtipkar),
+            "desacto": tipo_acto.desacto,
+        }
+
+        models.DetalleActosKardex.objects.create(**detalle_data)
+
+        # Return the created Kardex object
+        return Response(serializer.data, status=201)
 
     @action(detail=False, methods=['get'])
     def kardex_by_correlative(self, request):

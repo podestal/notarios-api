@@ -8,19 +8,15 @@
 from django.db import models
 
 
-class Representantes(models.Model):
-    idcontratante = models.CharField(max_length=15, blank=True, null=True)
-    kardex = models.CharField(max_length=15, blank=True, null=True)
-    idtipoacto = models.CharField(max_length=15, blank=True, null=True)
-    facultades = models.CharField(max_length=150, blank=True, null=True)
-    inscrito = models.CharField(max_length=50, blank=True, null=True)
-    sede_registral = models.CharField(max_length=15, blank=True, null=True)
-    partida = models.CharField(max_length=50, blank=True, null=True)
-    idcontratante_r = models.CharField(max_length=15, blank=True, null=True)
-    id_ro_repre = models.CharField(max_length=50, blank=True, null=True)
-    ido = models.CharField(db_column='idO', max_length=5, blank=True, null=True)  # Field name made lowercase.
-    odb = models.CharField(db_column='odB', max_length=5, blank=True, null=True)  # Field name made lowercase.
+class DetalleActosKardex(models.Model):
+    item = models.AutoField(primary_key=True)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    idtipoacto = models.CharField(max_length=6)
+    actosunat = models.CharField(max_length=3)
+    actouif = models.CharField(max_length=3)
+    idtipkar = models.IntegerField()
+    desacto = models.CharField(max_length=500)
 
     class Meta:
         managed = False
-        db_table = 'representantes'
+        db_table = 'detalle_actos_kardex'
