@@ -111,7 +111,7 @@ class KardexViewSet(ModelViewSet):
         data = request.data.copy()
         idtipkar = data.get("idtipkar")
         fechaingreso = data.get("fechaingreso")
-        idtipoacto = data.get("idtipoacto")
+        idtipoacto = data.get("codactos")
 
         # Validate required fields
         if not idtipkar or not fechaingreso:
@@ -476,6 +476,27 @@ class ContratantesViewSet(ModelViewSet):
         and ensure that Cliente2 is not orphaned.
         """
         idcliente = request.query_params.get('idcliente')
+        data = request.data
+        print('data:', data)
+
+        try:
+            item = models.DetalleActosKardex.objects.get(
+                kardex=data.get('kardex')
+            ).item
+        except models.DetalleActosKardex.DoesNotExist:
+            return Response(
+                {"error": "DetalleActosKardex not found for the provided kardex."},
+                status=404
+            )
+        
+        if '/' not in data.get('condicion'):
+            data['condicion'] = f"{data.get('condicion')}.{item}/"  # Ensure it has a sub-condition
+        else:
+            conditions = data.get('condicion').split('/')
+            conditions_array = []
+            for condition in conditions:
+                conditions_array.append(f"{condition}.{item}/")
+            data['condicion'] = ''.join(conditions_array)
 
         if not idcliente:
             return Response({"error": "Debe proporcionar el idcliente"}, status=400)
