@@ -207,7 +207,7 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
     """
 
     cliente = serializers.SerializerMethodField()
-    condicion = serializers.SerializerMethodField()
+    condicion_str = serializers.SerializerMethodField()
     cliente_id = serializers.SerializerMethodField()
 
     class Meta:
@@ -217,10 +217,12 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
             'idtipkar',
             'kardex',
             'condicion',
+            'condicion_str',
             'firma',
             'fechafirma',
             'cliente',
             'cliente_id',
+            'idcontratanterp'
         ]
 
     def get_cliente(self, obj):
@@ -241,7 +243,7 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
             )
         return ''
     
-    def get_condicion(self, obj):
+    def get_condicion_str(self, obj):
         condicion_map = self.context.get('condicion_map', {})
         condicion = condicion_map.get(obj.condicion.split('.')[0])
         if condicion:

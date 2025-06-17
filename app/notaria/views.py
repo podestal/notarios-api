@@ -477,7 +477,6 @@ class ContratantesViewSet(ModelViewSet):
         """
         idcliente = request.query_params.get('idcliente')
         data = request.data
-        print('data:', data)
 
         try:
             item = models.DetalleActosKardex.objects.get(
