@@ -605,9 +605,13 @@ class ContratantesViewSet(ModelViewSet):
         contratantes = models.Contratantes.objects.filter(kardex=kardex)
         contratante_ids = set(c.idcontratante for c in contratantes)
 
+        print('contratante', contratantes)
+
         contratantes_tipoactos = set(
             c.condicion.split('.')[0] for c in contratantes
         )
+
+        print('contratantes_tipoactos:', contratantes_tipoactos)
 
         condicion_map = {
             c['idcondicion']: c
@@ -615,6 +619,8 @@ class ContratantesViewSet(ModelViewSet):
                 idcondicion__in=contratantes_tipoactos
             ).values('idcondicion', 'condicion')
         }
+
+        print('condicion_map:', condicion_map)
 
         clientes_map = {
             c['idcontratante']: c
@@ -703,6 +709,22 @@ class Cliente2ViewSet(ModelViewSet):
         serializer = serializers.Cliente2Serializer(clientes[len(clientes) - 1])
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def by_contratante(self, request):
+        """
+        Get Cliente2 records by Contratante ID.
+        """
+        idcontratante = request.query_params.get('idcontratante')
+        if not idcontratante:
+            return Response(
+                {"error": "idcontratante parameter is required."},
+                status=400
+            )   
+        cliente = models.Cliente2.objects.get(idcontratante=idcontratante)
+        if not cliente:
+            return Response({}, status=200)     
+        serializer = serializers.Cliente2Serializer(cliente)
+        return Response(serializer.data)
 
 class TiposDeActosViewSet(ModelViewSet):
     """
