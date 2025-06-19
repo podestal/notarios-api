@@ -487,6 +487,8 @@ class ContratantesViewSet(ModelViewSet):
                 {"error": "DetalleActosKardex not found for the provided kardex."},
                 status=404
             )
+
+        conditions = []
         
         if '/' not in data.get('condicion'):
             data['condicion'] = f"{data.get('condicion')}.{item}/"  # Ensure it has a sub-condition
@@ -501,7 +503,7 @@ class ContratantesViewSet(ModelViewSet):
             return Response({"error": "Debe proporcionar el idcliente"}, status=400)
 
         # Step 1: Get Cliente1 info from numdoc
-        print('idcliente:', idcliente)
+
         cliente1 = models.Cliente.objects.filter(idcliente=idcliente).first()
         if not cliente1:
             return Response({"error": "No se encontró Cliente1 con ese número de documento"}, status=404)
@@ -509,9 +511,31 @@ class ContratantesViewSet(ModelViewSet):
         # Step 2: Try up to 5 times to generate valid IDs
         for attempt in range(5):
             try:
+                sid = transaction.savepoint()
                 # Generate IDs
                 idcontratante = utils.generate_new_id(models.Contratantes, 'idcontratante')
                 idcliente2 = utils.generate_new_id(models.Cliente2, 'idcliente')
+
+                print('conditions:', conditions)
+                for condition in conditions:
+                    print('condition:', condition)
+                    acto_condicion = models.Actocondicion.objects.get(idcondicion=condition)
+                    models.Contratantesxacto.objects.create(
+                        idtipkar=acto_condicion.idtipoacto,
+                        kardex=data.get('kardex'),
+                        idtipoacto=acto_condicion.idtipoacto,
+                        idcontratante=idcontratante,
+                        item=item,
+                        idcondicion=condition,
+                        parte=acto_condicion.parte,
+                        porcentaje='',
+                        uif=acto_condicion.uif,
+                        formulario=acto_condicion.formulario,
+                        monto='',
+                        opago='',
+                        ofondo='',
+                        montop=acto_condicion.montop
+                    )
 
                 # Check orphan
                 if models.Cliente2.objects.filter(idcontratante=idcontratante).exists():
@@ -580,15 +604,152 @@ class ContratantesViewSet(ModelViewSet):
                 cliente2_serializer.save()
 
                 # Return created contratante
+                transaction.savepoint_commit(sid)
                 return Response(contratante_serializer.data, status=status.HTTP_201_CREATED)
 
             except Exception as e:
-                # Last attempt → return error
+                transaction.savepoint_rollback(sid)
                 if attempt == 4:
                     return Response({"error": f"Error al crear contratante/cliente2: {str(e)}"}, status=400)
-                continue  # Try again with new IDs
+                continue
 
         return Response({"error": "No se pudo generar un ID válido tras varios intentos"}, status=400)
+
+    # @transaction.atomic
+    # def create(self, request, *args, **kwargs):
+    #     idcliente = request.query_params.get('idcliente')
+    #     data = request.data
+
+    #     try:
+    #         item = models.DetalleActosKardex.objects.get(
+    #             kardex=data.get('kardex')
+    #         ).item
+    #     except models.DetalleActosKardex.DoesNotExist:
+    #         return Response(
+    #             {"error": "DetalleActosKardex not found for the provided kardex."},
+    #             status=404
+    #         )
+
+    #     if '/' not in data.get('condicion'):
+    #         data['condicion'] = f"{data.get('condicion')}.{item}/"
+    #         conditions = [data['condicion']]
+    #     else:
+    #         conditions_array = []
+    #         for condition in data.get('condicion').split('/'):
+    #             if condition:
+    #                 conditions_array.append(f"{condition}.{item}/")
+    #         conditions = conditions_array
+    #         data['condicion'] = ''.join(conditions_array)
+
+    #     if not idcliente:
+    #         return Response({"error": "Debe proporcionar el idcliente"}, status=400)
+
+    #     cliente1 = models.Cliente.objects.filter(idcliente=idcliente).first()
+    #     if not cliente1:
+    #         return Response({"error": "No se encontró Cliente1 con ese número de documento"}, status=404)
+
+    #     for attempt in range(5):
+    #         sid = transaction.savepoint()  # Create savepoint for rollback
+    #         try:
+    #             idcontratante = utils.generate_new_id(models.Contratantes, 'idcontratante')
+    #             idcliente2 = utils.generate_new_id(models.Cliente2, 'idcliente')
+
+    #             for singleCondition in conditions:
+    #                 print('condition:', singleCondition)
+    #                 acto_condicion = models.Actocondicion.objects.get(idcondicion=singleCondition)
+    #                 models.Contratantesxacto.objects.create(
+    #                     idtipkar=acto_condicion.idtipoacto,
+    #                     kardex=data.get('kardex'),
+    #                     idtipoacto=acto_condicion.idtipoacto,
+    #                     idcontratante=idcontratante,
+    #                     item=item,
+    #                     idcondicion=singleCondition,
+    #                     parte=acto_condicion.parte,
+    #                     porcentaje='',
+    #                     uif=acto_condicion.uif,
+    #                     formulario=acto_condicion.formulario,
+    #                     monto='',
+    #                     opago='',
+    #                     ofondo='',
+    #                     montop=acto_condicion.montop
+    #                 )
+
+    #             if models.Cliente2.objects.filter(idcontratante=idcontratante).exists():
+    #                 models.Cliente2.objects.filter(idcontratante=idcontratante).delete()
+    #                 transaction.savepoint_rollback(sid)
+    #                 continue
+
+    #             contratante_serializer = self.get_serializer(data=request.data)
+    #             contratante_serializer.is_valid(raise_exception=True)
+    #             contratante_serializer.save(idcontratante=idcontratante)
+
+    #             cliente2_data = {
+    #                 'idcliente': idcliente2,
+    #                 'idcontratante': idcontratante,
+    #                 'tipper': cliente1.tipper,
+    #                 'apepat': cliente1.apepat,
+    #                 'apemat': cliente1.apemat,
+    #                 'prinom': cliente1.prinom,
+    #                 'segnom': cliente1.segnom,
+    #                 'nombre': f"{cliente1.prinom} {cliente1.segnom} {cliente1.apepat} {cliente1.apemat}",
+    #                 'direccion': cliente1.direccion,
+    #                 'idtipdoc': cliente1.idtipdoc,
+    #                 'numdoc': cliente1.numdoc,
+    #                 'email': cliente1.email,
+    #                 'telfijo': cliente1.telfijo,
+    #                 'telcel': cliente1.telcel,
+    #                 'telofi': cliente1.telofi or '',
+    #                 'sexo': cliente1.sexo or '',
+    #                 'idestcivil': cliente1.idestcivil or 0,
+    #                 'natper': cliente1.nacionalidad or '',
+    #                 'conyuge': '',
+    #                 'nacionalidad': cliente1.nacionalidad or '',
+    #                 'idprofesion': cliente1.idprofesion or 0,
+    #                 'detaprofesion': cliente1.detaprofesion or '',
+    #                 'idcargoprofe': cliente1.idcargoprofe or 0,
+    #                 'profocupa': cliente1.detaprofesion or '',
+    #                 'dirfer': cliente1.direccion,
+    #                 'idubigeo': cliente1.idubigeo or '.',
+    #                 'cumpclie': cliente1.cumpclie or '.',
+    #                 'razonsocial': cliente1.razonsocial or '',
+    #                 'fechaing': '',
+    #                 'residente': cliente1.residente or '0',
+    #                 'tipocli': '0',
+    #                 'profesion_plantilla': cliente1.detaprofesion or '',
+    #                 'ubigeo_plantilla': cliente1.idubigeo or '',
+    #                 'fechaconstitu': '',
+    #                 'idsedereg': 1,
+    #                 'domfiscal': '',
+    #                 'telempresa': '',
+    #                 'mailempresa': '',
+    #                 'contacempresa': '',
+    #                 'numregistro': '',
+    #                 'numpartida': '',
+    #                 'actmunicipal': '',
+    #                 'impeingre': '',
+    #                 'impnumof': '',
+    #                 'impeorigen': '',
+    #                 'impentidad': '',
+    #                 'impremite': '',
+    #                 'impmotivo': '',
+    #                 'docpaisemi': '',
+    #             }
+
+    #             cliente2_serializer = serializers.Cliente2Serializer(data=cliente2_data)
+    #             cliente2_serializer.is_valid(raise_exception=True)
+    #             cliente2_serializer.save()
+
+    #             transaction.savepoint_commit(sid)
+    #             return Response(contratante_serializer.data, status=status.HTTP_201_CREATED)
+
+    #         except Exception as e:
+    #             transaction.savepoint_rollback(sid)
+    #             if attempt == 4:
+    #                 return Response({"error": f"Error al crear contratante/cliente2: {str(e)}"}, status=400)
+    #             continue
+
+    #     return Response({"error": "No se pudo generar un ID válido tras varios intentos"}, status=400)
+
 
     @action(detail=False, methods=['get'])
     def by_kardex(self, request):

@@ -196,6 +196,7 @@ class CreateContratantesSerializer(serializers.ModelSerializer):
             'indice',
             'visita',
             'inscrito',
+            'idcontratanterp',
         ]
 
 
