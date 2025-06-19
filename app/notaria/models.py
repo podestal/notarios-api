@@ -242,6 +242,28 @@ class Contratantes(models.Model):
         db_table = 'contratantes'
 
 
+class Contratantesxacto(models.Model):
+    id = models.AutoField(primary_key=True)
+    idtipkar = models.IntegerField()
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    idtipoacto = models.CharField(max_length=6)
+    idcontratante = models.CharField(max_length=10)
+    item = models.IntegerField()
+    idcondicion = models.CharField(max_length=3)
+    parte = models.CharField(max_length=3)
+    porcentaje = models.CharField(max_length=50)
+    uif = models.CharField(max_length=5)
+    formulario = models.CharField(max_length=2)
+    monto = models.CharField(max_length=100)
+    opago = models.CharField(max_length=2)
+    ofondo = models.CharField(max_length=300)
+    montop = models.CharField(max_length=2)
+
+    class Meta:
+        managed = False
+        db_table = 'contratantesxacto'
+
+
 class Cliente(models.Model):
     idcliente = models.CharField(primary_key=True, max_length=10)
     tipper = models.CharField(max_length=1, blank=True, null=True)

@@ -8,15 +8,22 @@
 from django.db import models
 
 
-class DetalleActosKardex(models.Model):
-    item = models.AutoField(primary_key=True)
+class Contratantesxacto(models.Model):
+    idtipkar = models.IntegerField()
     kardex = models.CharField(max_length=30, blank=True, null=True)
     idtipoacto = models.CharField(max_length=6)
-    actosunat = models.CharField(max_length=3)
-    actouif = models.CharField(max_length=3)
-    idtipkar = models.IntegerField()
-    desacto = models.CharField(max_length=500)
+    idcontratante = models.CharField(max_length=10)
+    item = models.IntegerField()
+    idcondicion = models.CharField(max_length=3)
+    parte = models.CharField(max_length=3)
+    porcentaje = models.CharField(max_length=50)
+    uif = models.CharField(max_length=5)
+    formulario = models.CharField(max_length=2)
+    monto = models.CharField(max_length=100)
+    opago = models.CharField(max_length=2)
+    ofondo = models.CharField(max_length=300)
+    montop = models.CharField(max_length=2)
 
     class Meta:
         managed = False
-        db_table = 'detalle_actos_kardex'
+        db_table = 'contratantesxacto'

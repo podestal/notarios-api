@@ -641,6 +641,20 @@ class ContratantesViewSet(ModelViewSet):
                 'condicion_map': condicion_map
             })
         return Response(serializer.data)
+    
+
+class ContratantesxactoViewSet(ModelViewSet):
+    """
+    ViewSet for the Contratantesxacto model.
+    """
+    queryset = models.Contratantesxacto.objects.all()
+    serializer_class = serializers.ContratantesxactoSerializer
+    pagination_class = pagination.KardexPagination
+
+    # def get_serializer_class(self):
+    #     if self.request.method == 'POST':
+    #         return serializers.CreateContratantesxactoSerializer
+    #     return serializers.ContratantesxactoSerializer
 
 
 class ClienteViewSet(ModelViewSet):

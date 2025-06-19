@@ -253,6 +253,17 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
         return ''
     
 
+class ContratantesxactoSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Contratantesxacto model.
+    This serializer is used to validate and serialize the Contratantesxacto data.
+    """
+
+    class Meta:
+        model = models.Contratantesxacto
+        fields = '__all__'
+
+
 class ClienteSerializer(serializers.ModelSerializer):
     """
     Serializer for the Cliente model.
