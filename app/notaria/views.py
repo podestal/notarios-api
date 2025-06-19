@@ -458,12 +458,45 @@ class ContratantesViewSet(ModelViewSet):
         if self.request.method == 'POST':
             return serializers.CreateContratantesSerializer
         return serializers.ContratantesSerializer
+
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        print('idcontratante:', instance.idcontratante)
+        print('instance:', instance.condicion)
+        conditions = instance.condicion.split('/')
+        for condition in conditions:
+            if condition:
+                print('condition:', condition)
+                idcondicion = condition.split('.')[0]
+                item = condition.split('.')[1]
+
+                contratantexacto = models.Contratantesxacto.objects.get(
+                    idcontratante=instance.idcontratante,
+                    idcondicion=idcondicion,
+                    item=item
+                )
+
+                print('contratantexacto:', contratantexacto)
+                # acto_condicion = models.Actocondicion.objects.get(idcondicion=condition)
+                # print('acto_condicion:', acto_condicion)
+        # print('conditions:', conditions)
+        data = request.data.copy()
+        print('data:', data)
+
+
+        return Response({}, status=status.HTTP_200_OK)
+        # Update the instance with the new data
+        # serializer = self.get_serializer(instance, data=data, partial=True)
+        # serializer.is_valid(raise_exception=True)
+        # serializer.save()
+        # return Response(serializer.data)
     
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         """
-        Override the destroy method to handle related deletions.
+        Delete a Contratante and all related Cliente2 and Contratantesxacto records.
         """
-        print('override destroy method')
         instance = self.get_object()
 
         # Optional: delete related data
@@ -496,7 +529,9 @@ class ContratantesViewSet(ModelViewSet):
         conditions = []
         
         if '/' not in data.get('condicion'):
+            conditions = [data.get('condicion')]
             data['condicion'] = f"{data.get('condicion')}.{item}/"  # Ensure it has a sub-condition
+
         else:
             conditions = data.get('condicion').split('/')
             conditions_array = []
@@ -521,9 +556,7 @@ class ContratantesViewSet(ModelViewSet):
                 idcontratante = utils.generate_new_id(models.Contratantes, 'idcontratante')
                 idcliente2 = utils.generate_new_id(models.Cliente2, 'idcliente')
 
-                print('conditions:', conditions)
                 for condition in conditions:
-                    print('condition:', condition)
                     acto_condicion = models.Actocondicion.objects.get(idcondicion=condition)
                     models.Contratantesxacto.objects.create(
                         idtipkar=acto_condicion.idtipoacto,
