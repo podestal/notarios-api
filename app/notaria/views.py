@@ -459,38 +459,87 @@ class ContratantesViewSet(ModelViewSet):
             return serializers.CreateContratantesSerializer
         return serializers.ContratantesSerializer
 
-
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
+        """ 
+        Update a Contratante and its related Contratantesxacto records.
+        This method will update the Contratante and ensure that the related
+        Contratantesxacto records are also updated based on the provided conditions.
+        """
+        print('updating Contratante')
         instance = self.get_object()
-        print('idcontratante:', instance.idcontratante)
-        print('instance:', instance.condicion)
+        data = request.data
+        print('data:', data)
+        data_conditions = []
+        # item = instance.
+        if '/' not in data.get('condicion'):
+            data_conditions = [data.get('condicion')]
+            item = instance
+        else :
+            data_conditions = data.get('condicion').split('/')
+            item = data_conditions[0].split('.')[1] if '.' in data_conditions[0] else ''
+
         conditions = instance.condicion.split('/')
+        item = conditions[0].split('.')[1] if '.' in conditions[0] else ''
+
+        consditions_normalized = []
+
         for condition in conditions:
             if condition:
-                print('condition:', condition)
                 idcondicion = condition.split('.')[0]
-                item = condition.split('.')[1]
+                consditions_normalized.append(idcondicion)
 
-                contratantexacto = models.Contratantesxacto.objects.get(
-                    idcontratante=instance.idcontratante,
-                    idcondicion=idcondicion,
-                    item=item
-                )
+        set_data = set(data_conditions)
+        set_conditions = set(consditions_normalized)
 
-                print('contratantexacto:', contratantexacto)
-                # acto_condicion = models.Actocondicion.objects.get(idcondicion=condition)
-                # print('acto_condicion:', acto_condicion)
-        # print('conditions:', conditions)
-        data = request.data.copy()
-        print('data:', data)
+        # Check if the conditions in the data are already in the instance
+        only_in_set_data = set_data - set_conditions
+        # print('only_in_set_data:', only_in_set_data)
 
+        for condition in only_in_set_data:
+            print('adding contratantexacto for condition:', condition)
+            # If the condition is in the data but not in the instance, add it
+            acto_condicion = models.Actocondicion.objects.get(idcondicion=condition)
+            models.Contratantesxacto.objects.create(
+                idtipkar=acto_condicion.idtipoacto,
+                kardex=data.get('kardex'),
+                idtipoacto=acto_condicion.idtipoacto,
+                idcontratante=instance.idcontratante,
+                item=item,
+                idcondicion=condition,
+                parte=acto_condicion.parte,
+                porcentaje='',
+                uif=acto_condicion.uif,
+                formulario=acto_condicion.formulario,
+                monto='',
+                opago='',
+                ofondo='',
+                montop=acto_condicion.montop
+            )
 
-        return Response({}, status=status.HTTP_200_OK)
-        # Update the instance with the new data
-        # serializer = self.get_serializer(instance, data=data, partial=True)
-        # serializer.is_valid(raise_exception=True)
-        # serializer.save()
-        # return Response(serializer.data)
+        only_in_set_conditions = set_conditions - set_data
+        # print('only_in_set_conditions:', only_in_set_conditions)
+        for condition in only_in_set_conditions:
+            print('removing contratantexacto for condition:', condition)
+            # If the condition is in the instance but not in the data, delete it
+            models.Contratantesxacto.objects.filter(
+                idcontratante=instance.idcontratante,
+                idcondicion=condition,
+                kardex=instance.kardex,
+                # item=instance.item
+            ).delete()
+
+        conditions_formatted_array = []
+        for single_condition in  data.get('condicion').split('/'):
+            if single_condition:
+                conditions_formatted_array.append(f"{single_condition}.{item}/")
+
+        data['condicion'] = ''.join(conditions_formatted_array)
+
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
     
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
