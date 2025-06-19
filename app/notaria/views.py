@@ -459,14 +459,19 @@ class ContratantesViewSet(ModelViewSet):
             return serializers.CreateContratantesSerializer
         return serializers.ContratantesSerializer
     
-    def delete(self, request, *args, **kwargs):
+    def destroy(self, request, *args, **kwargs):
         """
-        Override the delete method to handle related Cliente2 records.
+        Override the destroy method to handle related deletions.
         """
+        print('override destroy method')
         instance = self.get_object()
-        # Delete related Cliente2 records
+
+        # Optional: delete related data
         models.Cliente2.objects.filter(idcontratante=instance.idcontratante).delete()
-        return super().delete(request, *args, **kwargs)
+        models.Contratantesxacto.objects.filter(idcontratante=instance.idcontratante).delete()
+
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -765,13 +770,9 @@ class ContratantesViewSet(ModelViewSet):
         contratantes = models.Contratantes.objects.filter(kardex=kardex)
         contratante_ids = set(c.idcontratante for c in contratantes)
 
-        print('contratante', contratantes)
-
         contratantes_tipoactos = set(
             c.condicion.split('.')[0] for c in contratantes
         )
-
-        print('contratantes_tipoactos:', contratantes_tipoactos)
 
         condicion_map = {
             c['idcondicion']: c
@@ -779,8 +780,6 @@ class ContratantesViewSet(ModelViewSet):
                 idcondicion__in=contratantes_tipoactos
             ).values('idcondicion', 'condicion')
         }
-
-        print('condicion_map:', condicion_map)
 
         clientes_map = {
             c['idcontratante']: c
