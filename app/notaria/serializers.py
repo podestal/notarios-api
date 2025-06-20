@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from . import models
 from django.db import IntegrityError
+from .constants import MONEDAS
 
 '''
 Serializers for the Notaria app.
@@ -516,6 +517,20 @@ class PatrimonialSerializer(serializers.ModelSerializer):
     This serializer is used to validate and serialize the Patrimonial data.
     """
 
+    moneda = serializers.SerializerMethodField()
+
     class Meta:
         model = models.Patrimonial
-        fields = '__all__'
+        fields = ['itemmp', 'kardex', 'idtipoacto', 'nminuta', 'idmon',
+                  'tipocambio', 'importetrans', 'exhibiomp', 'presgistral',
+                  'nregistral', 'idsedereg', 'fpago', 'idoppago', 'ofondos',
+                  'item', 'des_idoppago', 'moneda']
+        
+    def get_moneda(self, obj):
+        """
+        Returns the currency associated with the Patrimonial instance.
+        """
+        moneda_des = MONEDAS[obj.idmon]['desmon']
+        return moneda_des
+
+    
