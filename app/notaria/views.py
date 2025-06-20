@@ -548,6 +548,11 @@ class ContratantesViewSet(ModelViewSet):
         """
         instance = self.get_object()
 
+        # BEFORE REMOVE THE CONTRATANTE CHECK IF
+        # - idcontratanterp filled
+        #   - if so remove representante with the current contratante id
+        # - check for all contratantes with the same kardex of the current one and if they have idcontratanterp field with the id of the current contratante
+        #   - if so remove the idcontratanterp field from those contratantes as well as the representantes
         # Optional: delete related data
         models.Cliente2.objects.filter(idcontratante=instance.idcontratante).delete()
         models.Contratantesxacto.objects.filter(idcontratante=instance.idcontratante).delete()
