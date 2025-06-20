@@ -1099,3 +1099,22 @@ class PatrimonialViewSet(ModelViewSet):
     serializer_class = serializers.PatrimonialSerializer
     pagination_class = pagination.KardexPagination
 
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        """
+        Get Patrimonial records by Kardex.
+        """
+        kardex = request.query_params.get('kardex')
+        if not kardex:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+        
+        patrimonial = models.Patrimonial.objects.filter(kardex=kardex)
+        if not patrimonial.exists():
+            return Response([], status=200)
+
+        serializer = serializers.PatrimonialSerializer(patrimonial, many=True)
+        return Response(serializer.data)
+
