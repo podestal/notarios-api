@@ -508,3 +508,14 @@ class RepresentantesSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Representantes
         fields = '__all__'
+
+
+class PatrimonialSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Patrimonial model.
+    This serializer is used to validate and serialize the Patrimonial data.
+    """
+
+    class Meta:
+        model = models.Patrimonial
+        fields = '__all__'

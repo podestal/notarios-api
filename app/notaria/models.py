@@ -529,3 +529,27 @@ class Representantes(models.Model):
     class Meta:
         managed = False
         db_table = 'representantes'
+
+
+class Patrimonial(models.Model):
+
+    itemmp = models.CharField(max_length=6, primary_key=True)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    idtipoacto = models.CharField(max_length=6)
+    nminuta = models.CharField(max_length=30)
+    idmon = models.IntegerField()
+    tipocambio = models.CharField(max_length=10)
+    importetrans = models.DecimalField(max_digits=12, decimal_places=2)
+    exhibiomp = models.CharField(max_length=2)
+    presgistral = models.CharField(max_length=50)
+    nregistral = models.CharField(max_length=50)
+    idsedereg = models.CharField(max_length=3)
+    fpago = models.CharField(max_length=3)
+    idoppago = models.CharField(max_length=5)
+    ofondos = models.CharField(max_length=150)
+    item = models.IntegerField()
+    des_idoppago = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'patrimonial'

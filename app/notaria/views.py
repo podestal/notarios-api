@@ -1089,3 +1089,13 @@ class RepresentantesViewSet(ModelViewSet):
     queryset = models.Representantes.objects.all()
     serializer_class = serializers.RepresentantesSerializer
     pagination_class = pagination.KardexPagination
+
+
+class PatrimonialViewSet(ModelViewSet):
+    """
+    ViewSet for the Patrimonial model.
+    """
+    queryset = models.Patrimonial.objects.all()
+    serializer_class = serializers.PatrimonialSerializer
+    pagination_class = pagination.KardexPagination
+
