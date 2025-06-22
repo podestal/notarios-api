@@ -501,7 +501,7 @@ class ContratantesViewSet(ModelViewSet):
         instance = self.get_object()
         data = request.data
         print('data:', data)
-        data_conditions = []
+        data_conditions = data.get('condicion').split('/') if data.get('condicion') else []
         # item = instance.
         if '/' not in data.get('condicion'):
             data_conditions = [data.get('condicion')]
@@ -521,51 +521,52 @@ class ContratantesViewSet(ModelViewSet):
                 consditions_normalized.append(idcondicion)
 
         set_data = set(data_conditions)
-        set_conditions = set(consditions_normalized)
+        set_conditions = set(conditions)
 
         # Check if the conditions in the data are already in the instance
         only_in_set_data = set_data - set_conditions
-        # print('only_in_set_data:', only_in_set_data)
 
         for condition in only_in_set_data:
-            print('adding contratantexacto for condition:', condition)
-            # If the condition is in the data but not in the instance, add it
-            acto_condicion = models.Actocondicion.objects.get(idcondicion=condition)
-            models.Contratantesxacto.objects.create(
-                idtipkar=acto_condicion.idtipoacto,
-                kardex=data.get('kardex'),
-                idtipoacto=acto_condicion.idtipoacto,
-                idcontratante=instance.idcontratante,
-                item=item,
-                idcondicion=condition,
-                parte=acto_condicion.parte,
-                porcentaje='',
-                uif=acto_condicion.uif,
-                formulario=acto_condicion.formulario,
-                monto='',
-                opago='',
-                ofondo='',
-                montop=acto_condicion.montop
-            )
+
+            if condition:
+                idcondicion, item = condition.split('.')
+                acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
+                models.Contratantesxacto.objects.create(
+                    idtipkar=acto_condicion.idtipoacto,
+                    kardex=data.get('kardex'),
+                    idtipoacto=acto_condicion.idtipoacto,
+                    idcontratante=instance.idcontratante,
+                    item=item,
+                    idcondicion=idcondicion,
+                    parte=acto_condicion.parte,
+                    porcentaje='',
+                    uif=acto_condicion.uif,
+                    formulario=acto_condicion.formulario,
+                    monto='',
+                    opago='',
+                    ofondo='',
+                    montop=acto_condicion.montop
+                )
 
         only_in_set_conditions = set_conditions - set_data
-        # print('only_in_set_conditions:', only_in_set_conditions)
         for condition in only_in_set_conditions:
-            print('removing contratantexacto for condition:', condition)
-            # If the condition is in the instance but not in the data, delete it
-            models.Contratantesxacto.objects.filter(
-                idcontratante=instance.idcontratante,
-                idcondicion=condition,
-                kardex=instance.kardex,
-                # item=instance.item
-            ).delete()
+            if condition:
+                idcondicion, item = condition.split('.')
+                print('removing contratantexacto for condition:', condition)
+                # If the condition is in the instance but not in the data, delete it
+                models.Contratantesxacto.objects.filter(
+                    idcontratante=instance.idcontratante,
+                    idcondicion=idcondicion,
+                    kardex=instance.kardex,
+                    # item=instance.item
+                ).delete()
 
-        conditions_formatted_array = []
-        for single_condition in  data.get('condicion').split('/'):
-            if single_condition:
-                conditions_formatted_array.append(f"{single_condition}.{item}/")
+        # conditions_formatted_array = []
+        # for single_condition in  data.get('condicion').split('/'):
+        #     if single_condition:
+        #         conditions_formatted_array.append(f"{single_condition}.{item}/")
 
-        data['condicion'] = ''.join(conditions_formatted_array)
+        # data['condicion'] = ''.join(conditions_formatted_array)
 
         serializer = self.get_serializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -601,29 +602,6 @@ class ContratantesViewSet(ModelViewSet):
         idcliente = request.query_params.get('idcliente')
         data = request.data
 
-        # try:
-        #     item = models.DetalleActosKardex.objects.get(
-        #         kardex=data.get('kardex')
-        #     ).item
-        # except models.DetalleActosKardex.DoesNotExist:
-        #     return Response(
-        #         {"error": "DetalleActosKardex not found for the provided kardex."},
-        #         status=404
-        #     )
-
-        # conditions = []
-        
-        # if '/' not in data.get('condicion'):
-        #     conditions = [data.get('condicion')]
-        #     data['condicion'] = f"{data.get('condicion')}.{item}/"  # Ensure it has a sub-condition
-
-        # else:
-        #     conditions = data.get('condicion').split('/')
-        #     conditions_array = []
-        #     for condition in conditions:
-        #         conditions_array.append(f"{condition}.{item}/")
-        #     data['condicion'] = ''.join(conditions_array)
-
         if not idcliente:
             return Response({"error": "Debe proporcionar el idcliente"}, status=400)
 
@@ -632,11 +610,6 @@ class ContratantesViewSet(ModelViewSet):
         cliente1 = models.Cliente.objects.filter(idcliente=idcliente).first()
         if not cliente1:
             return Response({"error": "No se encontró Cliente1 con ese número de documento"}, status=404)
-
-        print('data', data.get('condicion').split('/'))
-
-        
-        # return Response({}, status=200)
 
         # Step 2: Try up to 5 times to generate valid IDs
         for attempt in range(5):
