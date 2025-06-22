@@ -8,24 +8,30 @@
 from django.db import models
 
 
-class Patrimonial(models.Model):
-    itemmp = models.CharField(max_length=6)
+class Detallevehicular(models.Model):
+    detveh = models.AutoField()
     kardex = models.CharField(max_length=30, blank=True, null=True)
-    idtipoacto = models.CharField(max_length=6)
-    nminuta = models.CharField(max_length=30)
-    idmon = models.IntegerField()
-    tipocambio = models.CharField(max_length=10)
-    importetrans = models.DecimalField(max_digits=12, decimal_places=2)
-    exhibiomp = models.CharField(max_length=2)
-    presgistral = models.CharField(max_length=50)
-    nregistral = models.CharField(max_length=50)
-    idsedereg = models.CharField(max_length=3)
-    fpago = models.CharField(max_length=3)
-    idoppago = models.CharField(max_length=5)
-    ofondos = models.CharField(max_length=150)
-    item = models.IntegerField()
-    des_idoppago = models.CharField(max_length=50, blank=True, null=True)
+    idtipacto = models.CharField(max_length=20, blank=True, null=True)
+    idplaca = models.CharField(max_length=3)
+    numplaca = models.CharField(max_length=50)
+    clase = models.CharField(max_length=50, blank=True, null=True)
+    marca = models.CharField(max_length=100, blank=True, null=True)
+    anofab = models.CharField(max_length=30, blank=True, null=True)
+    modelo = models.CharField(max_length=100, blank=True, null=True)
+    combustible = models.CharField(max_length=100, blank=True, null=True)
+    carroceria = models.CharField(max_length=100, blank=True, null=True)
+    fecinsc = models.CharField(max_length=30, blank=True, null=True)
+    color = models.CharField(max_length=100, blank=True, null=True)
+    motor = models.CharField(max_length=100, blank=True, null=True)
+    numcil = models.CharField(max_length=3, blank=True, null=True)
+    numserie = models.CharField(max_length=30, blank=True, null=True)
+    numrueda = models.CharField(max_length=3, blank=True, null=True)
+    idmon = models.CharField(max_length=5, blank=True, null=True)
+    precio = models.DecimalField(max_digits=16, decimal_places=2, blank=True, null=True)
+    codmepag = models.CharField(max_length=4, blank=True, null=True)
+    pregistral = models.CharField(max_length=100, blank=True, null=True)
+    idsedereg = models.CharField(max_length=100, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'patrimonial'
+        db_table = 'detallevehicular'

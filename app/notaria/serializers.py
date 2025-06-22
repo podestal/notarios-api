@@ -534,3 +534,10 @@ class PatrimonialSerializer(serializers.ModelSerializer):
         return moneda_des
 
     
+class DetallevehicularSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Detallevehicular model.
+    """
+    class Meta:
+        model = models.Detallevehicular
+        fields = '__all__'
