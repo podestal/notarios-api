@@ -601,28 +601,28 @@ class ContratantesViewSet(ModelViewSet):
         idcliente = request.query_params.get('idcliente')
         data = request.data
 
-        try:
-            item = models.DetalleActosKardex.objects.get(
-                kardex=data.get('kardex')
-            ).item
-        except models.DetalleActosKardex.DoesNotExist:
-            return Response(
-                {"error": "DetalleActosKardex not found for the provided kardex."},
-                status=404
-            )
+        # try:
+        #     item = models.DetalleActosKardex.objects.get(
+        #         kardex=data.get('kardex')
+        #     ).item
+        # except models.DetalleActosKardex.DoesNotExist:
+        #     return Response(
+        #         {"error": "DetalleActosKardex not found for the provided kardex."},
+        #         status=404
+        #     )
 
-        conditions = []
+        # conditions = []
         
-        if '/' not in data.get('condicion'):
-            conditions = [data.get('condicion')]
-            data['condicion'] = f"{data.get('condicion')}.{item}/"  # Ensure it has a sub-condition
+        # if '/' not in data.get('condicion'):
+        #     conditions = [data.get('condicion')]
+        #     data['condicion'] = f"{data.get('condicion')}.{item}/"  # Ensure it has a sub-condition
 
-        else:
-            conditions = data.get('condicion').split('/')
-            conditions_array = []
-            for condition in conditions:
-                conditions_array.append(f"{condition}.{item}/")
-            data['condicion'] = ''.join(conditions_array)
+        # else:
+        #     conditions = data.get('condicion').split('/')
+        #     conditions_array = []
+        #     for condition in conditions:
+        #         conditions_array.append(f"{condition}.{item}/")
+        #     data['condicion'] = ''.join(conditions_array)
 
         if not idcliente:
             return Response({"error": "Debe proporcionar el idcliente"}, status=400)
@@ -632,6 +632,9 @@ class ContratantesViewSet(ModelViewSet):
         cliente1 = models.Cliente.objects.filter(idcliente=idcliente).first()
         if not cliente1:
             return Response({"error": "No se encontró Cliente1 con ese número de documento"}, status=404)
+
+        print('data', data)
+        return Response({}, status=200)
 
         # Step 2: Try up to 5 times to generate valid IDs
         for attempt in range(5):
@@ -1063,6 +1066,36 @@ class DetalleActosKardexViewSet(ModelViewSet):
     queryset = models.DetalleActosKardex.objects.all()
     serializer_class = serializers.DetalleActosKardexSerializer
     pagination_class = pagination.KardexPagination
+
+    @action(detail=False, methods=['get'])
+    def by_kardex_tipoacto(self, request):
+        """
+        Get DetalleActosKardex records by kardex and tipoacto.
+        """
+        kardex = request.query_params.get('kardex')
+        tipoacto = request.query_params.get('tipoacto')
+
+        if not kardex or not tipoacto:
+            return Response(
+                {"error": "kardex and tipoacto parameters are required."},
+                status=400
+            )
+        
+        try:
+            detalle_actos = models.DetalleActosKardex.objects.get(
+                kardex=kardex,
+                idtipoacto=tipoacto
+            )
+
+        except models.DetalleActosKardex.DoesNotExist:
+            return Response(
+                {"error": "No DetalleActosKardex found for the given kardex and tipoacto."},
+                status=404
+            )
+        
+
+        serializer = serializers.DetalleActosKardexSerializer(detalle_actos)
+        return Response(serializer.data)
 
 
 class TbAbogadoViewSet(ModelViewSet):
