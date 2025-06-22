@@ -633,8 +633,10 @@ class ContratantesViewSet(ModelViewSet):
         if not cliente1:
             return Response({"error": "No se encontró Cliente1 con ese número de documento"}, status=404)
 
-        print('data', data)
-        return Response({}, status=200)
+        print('data', data.get('condicion').split('/'))
+
+        
+        # return Response({}, status=200)
 
         # Step 2: Try up to 5 times to generate valid IDs
         for attempt in range(5):
@@ -644,24 +646,27 @@ class ContratantesViewSet(ModelViewSet):
                 idcontratante = utils.generate_new_id(models.Contratantes, 'idcontratante')
                 idcliente2 = utils.generate_new_id(models.Cliente2, 'idcliente')
 
+                conditions = data.get('condicion').split('/')
                 for condition in conditions:
-                    acto_condicion = models.Actocondicion.objects.get(idcondicion=condition)
-                    models.Contratantesxacto.objects.create(
-                        idtipkar=acto_condicion.idtipoacto,
-                        kardex=data.get('kardex'),
-                        idtipoacto=acto_condicion.idtipoacto,
-                        idcontratante=idcontratante,
-                        item=item,
-                        idcondicion=condition,
-                        parte=acto_condicion.parte,
-                        porcentaje='',
-                        uif=acto_condicion.uif,
-                        formulario=acto_condicion.formulario,
-                        monto='',
-                        opago='',
-                        ofondo='',
-                        montop=acto_condicion.montop
-                    )
+                    if condition:
+                        idcondicion, item = condition.split('.')
+                        acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
+                        models.Contratantesxacto.objects.create(
+                            idtipkar=acto_condicion.idtipoacto,
+                            kardex=data.get('kardex'),
+                            idtipoacto=acto_condicion.idtipoacto,
+                            idcontratante=idcontratante,
+                            item=item,
+                            idcondicion=idcondicion,
+                            parte=acto_condicion.parte,
+                            porcentaje='',
+                            uif=acto_condicion.uif,
+                            formulario=acto_condicion.formulario,
+                            monto='',
+                            opago='',
+                            ofondo='',
+                            montop=acto_condicion.montop
+                        )              
 
                 # Check orphan
                 if models.Cliente2.objects.filter(idcontratante=idcontratante).exists():
