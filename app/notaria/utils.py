@@ -1,4 +1,4 @@
-def generate_new_id(model, id_field='id'):
+def generate_new_id(model, id_field='id', fill=10):
     """
     Generate a new 10-digit ID for the given model based on the given field.
     """
@@ -6,5 +6,5 @@ def generate_new_id(model, id_field='id'):
     if last_instance:
         last_id = getattr(last_instance, id_field, '0')
         if last_id.isdigit():
-            return str(int(last_id) + 1).zfill(10)
+            return str(int(last_id) + 1).zfill(fill)
     return '0000000001'

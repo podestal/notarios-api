@@ -1141,6 +1141,32 @@ class PatrimonialViewSet(ModelViewSet):
     serializer_class = serializers.PatrimonialSerializer
     pagination_class = pagination.KardexPagination
 
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+
+        for attempt in range(5):
+            try:
+                sid = transaction.savepoint()
+                # Generate ID
+                itemmp = utils.generate_new_id(models.Patrimonial, 'itemmp', 6)
+
+            except Exception as e:
+                transaction.savepoint_rollback(sid)
+                if attempt == 4:
+                    return Response({"error": f"Error al crear Patrimonial: {str(e)}"}, status=400)
+                continue
+
+            data = request.data
+            data['itemmp'] = itemmp
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response({"error": "No se pudo generar un ID válido tras varios intentos"}, status=400)
+        
+
     @action(detail=False, methods=['get'])
     def by_kardex(self, request):
         """
@@ -1159,4 +1185,5 @@ class PatrimonialViewSet(ModelViewSet):
 
         serializer = serializers.PatrimonialSerializer(patrimonial, many=True)
         return Response(serializer.data)
+        
 
