@@ -111,7 +111,7 @@ class KardexViewSet(ModelViewSet):
         data = request.data.copy()
         idtipkar = data.get("idtipkar")
         fechaingreso = data.get("fechaingreso")
-        idtipoacto = data.get("codactos")
+        idtipoactos = data.get("codactos")
 
         # Validate required fields
         if not idtipkar or not fechaingreso:
@@ -154,32 +154,63 @@ class KardexViewSet(ModelViewSet):
             numeric_part = 0  # Start from 0 if no Kardex exists
         # # Increment the numeric part and generate the new Kardex number
         new_kardex_number = f"{abreviatura}{numeric_part + 1}-{anio}"
+        
         # # Save the new Kardex record
+
         data["kardex"] = new_kardex_number
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        try:
-            tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=idtipoacto)
-        except models.Tiposdeacto.DoesNotExist:
-            return Response(
-                {"error": "Tipo de acto no encontrado."},
-                status=404
-            )
+        id_tipo_actos_array = [idtipoactos[i:i+3] for i in range(0, len(idtipoactos), 3)]
+        for idtipoacto in id_tipo_actos_array:
+            try:
+                tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=idtipoacto)
+            except models.Tiposdeacto.DoesNotExist:
+                return Response(
+                    {"error": "Tipo de acto no encontrado."},
+                    status=404
+                )
+            
+            detalle_data = {
+                "kardex": new_kardex_number,
+                "idtipoacto": idtipoacto,
+                "actosunat": tipo_acto.actosunat,
+                "actouif": tipo_acto.actouif,
+                "idtipkar": int(idtipkar),
+                "desacto": tipo_acto.desacto,
+            }
 
-        detalle_data = {
-            "kardex": new_kardex_number,
-            "idtipoacto": idtipoacto,
-            "actosunat": tipo_acto.actosunat,
-            "actouif": tipo_acto.actouif,
-            "idtipkar": int(idtipkar),
-            "desacto": tipo_acto.desacto,
-        }
+            models.DetalleActosKardex.objects.create(**detalle_data)
+        # return Response({}, status=200)
 
-        models.DetalleActosKardex.objects.create(**detalle_data)
+        # data["kardex"] = new_kardex_number
+        # serializer = self.get_serializer(data=data)
+        # serializer.is_valid(raise_exception=True)
+        # self.perform_create(serializer)
 
-        # Return the created Kardex object
+        # try:
+        #     tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=idtipoacto)
+        # except models.Tiposdeacto.DoesNotExist:
+        #     return Response(
+        #         {"error": "Tipo de acto no encontrado."},
+        #         status=404
+        #     )
+
+        # detalle_data = {
+        #     "kardex": new_kardex_number,
+        #     "idtipoacto": idtipoacto,
+        #     "actosunat": tipo_acto.actosunat,
+        #     "actouif": tipo_acto.actouif,
+        #     "idtipkar": int(idtipkar),
+        #     "desacto": tipo_acto.desacto,
+        # }
+
+        # # solve detalle acto kardex now we are sending multiple tipose de acto
+
+        # models.DetalleActosKardex.objects.create(**detalle_data)
+
+        # # Return the created Kardex object
         return Response(serializer.data, status=201)
 
     @action(detail=False, methods=['get'])
