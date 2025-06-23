@@ -46,15 +46,11 @@ class KardexViewSet(ModelViewSet):
     pagination_class = pagination.KardexPagination
 
     def get_queryset(self):
-        idtipkar = self.request.query_params.get('idtipkar', '0')
-        if idtipkar:
-            kardex_qs = models.Kardex.objects.filter(
-                idtipkar=idtipkar
-            ).order_by('-idkardex')
-
-            return kardex_qs
-
-        return None
+        idtipkar = self.request.query_params.get('idtipkar')
+        qs = models.Kardex.objects.all().order_by('-idkardex')
+        if idtipkar is not None:
+            qs = qs.filter(idtipkar=idtipkar)
+        return qs
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -112,9 +108,21 @@ class KardexViewSet(ModelViewSet):
             # else remove the deselected actos as well as detalle actos instances from table
 
         # there is no issue in adding actos
+        instance = self.get_object()
         data = request.data
+        set_data = set(data.codactos)
+        set_conditions = set(instance.codactos)
+
+        only_in_set_data = set_data - set_conditions
+        only_in_set_conditions = set_conditions - set_data
+
+        print('set_data:', set_data)
+        print('set_conditions:', set_conditions)
+
+        # Check if the conditions in the data are already in the instance
+        only_in_set_data = set_data - set_conditions
         return ({}, status.HTTP_200_OK)
-        return super().update(request, *args, **kwargs)
+        # return super().update(request, *args, **kwargs)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -510,10 +518,10 @@ class ContratantesViewSet(ModelViewSet):
         This method will update the Contratante and ensure that the related
         Contratantesxacto records are also updated based on the provided conditions.
         """
-        print('updating Contratante')
+
         instance = self.get_object()
         data = request.data
-        print('data:', data)
+
         data_conditions = data.get('condicion').split('/') if data.get('condicion') else []
         # item = instance.
         if '/' not in data.get('condicion'):
