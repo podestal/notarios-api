@@ -110,8 +110,6 @@ class KardexViewSet(ModelViewSet):
         # there is no issue in adding actos
         instance = self.get_object()
         data = request.data
-        print('instance:', instance.codactos)
-        print('data:', data.get('codactos', ''))
         codactos = data.get('codactos', '')
         id_tipo_actos_array = [codactos[i:i+3] for i in range(0, len(codactos), 3)]
         set_data = set(id_tipo_actos_array)
@@ -119,30 +117,29 @@ class KardexViewSet(ModelViewSet):
         set_instance = set(id_tipo_actos_array_instance)
 
         only_in_set_data = set_data - set_instance
-        print('only_in_set_data:', only_in_set_data)
 
 
         # return Response({}, status.HTTP_200_OK)
 
-        # for id_tipo_acto in only_in_set_data:
-        #     try:
-        #         tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
-        #     except models.Tiposdeacto.DoesNotExist:
-        #         return Response(
-        #             {"error": "Tipo de acto no encontrado."},
-        #             status=404
-        #         )
+        for id_tipo_acto in only_in_set_data:
+            try:
+                tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
+            except models.Tiposdeacto.DoesNotExist:
+                return Response(
+                    {"error": "Tipo de acto no encontrado."},
+                    status=404
+                )
             
-        #     detalle_data = {
-        #         "kardex": instance.kardex,
-        #         "idtipoacto": id_tipo_acto,
-        #         "actosunat": tipo_acto.actosunat,
-        #         "actouif": tipo_acto.actouif,
-        #         "idtipkar": int(instance.idtipkar),
-        #         "desacto": tipo_acto.desacto,
-        #     }
+            detalle_data = {
+                "kardex": instance.kardex,
+                "idtipoacto": id_tipo_acto,
+                "actosunat": tipo_acto.actosunat,
+                "actouif": tipo_acto.actouif,
+                "idtipkar": int(instance.idtipkar),
+                "desacto": tipo_acto.desacto,
+            }
 
-        #     models.DetalleActosKardex.objects.create(**detalle_data)
+            models.DetalleActosKardex.objects.create(**detalle_data)
         
         # serializer = serializers.CreateKardexSerializer(data=data)
         # serializer.is_valid(raise_exception=True)
