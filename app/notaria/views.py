@@ -101,13 +101,7 @@ class KardexViewSet(ModelViewSet):
     
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        # check if the updates are related to the actos
-        # if so check if user is removing or adding actos
-            # if removing check if contratantes are using already selected actos
-                # if so, do not allow update
-            # else remove the deselected actos as well as detalle actos instances from table
 
-        # there is no issue in adding actos
         instance = self.get_object()
         data = request.data
         codactos = data.get('codactos', '')
@@ -117,9 +111,32 @@ class KardexViewSet(ModelViewSet):
         set_instance = set(id_tipo_actos_array_instance)
 
         only_in_set_data = set_data - set_instance
+        only_in_set_conditions = set_instance - set_data
 
+        for id_tipo_acto in only_in_set_conditions:
+            try:
+                tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
+            except tipo_acto.DoesNotExist:
+                return Response(
+                    {"error": "Tipo de acto no encontrado."},
+                    status=404
+                )
+            
+            # Check if there are any contratantes using this tipo_acto
+            if models.Contratantesxacto.objects.filter(
+                kardex=instance.kardex,
+                idtipoacto=id_tipo_acto
+            ).exists():
+                return Response(
+                    {"error": "No se puede eliminar el tipo de acto porque hay contratantes asociados."},
+                    status=400
+                )
 
-        # return Response({}, status.HTTP_200_OK)
+            # If no contratantes are using this tipo_acto, delete the detalle acto
+            models.DetalleActosKardex.objects.filter(
+                kardex=instance.kardex,
+                idtipoacto=id_tipo_acto
+            ).delete()
 
         for id_tipo_acto in only_in_set_data:
             try:
@@ -141,20 +158,6 @@ class KardexViewSet(ModelViewSet):
 
             models.DetalleActosKardex.objects.create(**detalle_data)
         
-        # serializer = serializers.CreateKardexSerializer(data=data)
-        # serializer.is_valid(raise_exception=True)
-        # self.perform_update(serializer)
-        # return Response(serializer.data, status=status.HTTP_200_OK)
-            # models.DetalleActosKardex.objects.create(**detalle_data)
-        # only_in_set_conditions = set_conditions - set_data
-
-        # print('set_data:', set_data)
-        # print('set_conditions:', set_conditions)
-
-        # Check if the conditions in the data are already in the instance
-        # only_in_set_data = set_data - set_conditions
-
-        # return Response({}, status.HTTP_200_OK)
         return super().update(request, *args, **kwargs)
 
     @transaction.atomic
@@ -236,35 +239,7 @@ class KardexViewSet(ModelViewSet):
             }
 
             models.DetalleActosKardex.objects.create(**detalle_data)
-        # return Response({}, status=200)
 
-        # data["kardex"] = new_kardex_number
-        # serializer = self.get_serializer(data=data)
-        # serializer.is_valid(raise_exception=True)
-        # self.perform_create(serializer)
-
-        # try:
-        #     tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=idtipoacto)
-        # except models.Tiposdeacto.DoesNotExist:
-        #     return Response(
-        #         {"error": "Tipo de acto no encontrado."},
-        #         status=404
-        #     )
-
-        # detalle_data = {
-        #     "kardex": new_kardex_number,
-        #     "idtipoacto": idtipoacto,
-        #     "actosunat": tipo_acto.actosunat,
-        #     "actouif": tipo_acto.actouif,
-        #     "idtipkar": int(idtipkar),
-        #     "desacto": tipo_acto.desacto,
-        # }
-
-        # # solve detalle acto kardex now we are sending multiple tipose de acto
-
-        # models.DetalleActosKardex.objects.create(**detalle_data)
-
-        # # Return the created Kardex object
         return Response(serializer.data, status=201)
 
     @action(detail=False, methods=['get'])
