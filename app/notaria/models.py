@@ -556,7 +556,7 @@ class Patrimonial(models.Model):
 
 
 class Detallevehicular(models.Model):
-    detveh = models.AutoField()
+    detveh = models.AutoField(primary_key=True)
     kardex = models.CharField(max_length=30, blank=True, null=True)
     idtipacto = models.CharField(max_length=20, blank=True, null=True)
     idplaca = models.CharField(max_length=3)

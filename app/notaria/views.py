@@ -102,6 +102,19 @@ class KardexViewSet(ModelViewSet):
         })
 
         return self.get_paginated_response(serializer.data)
+    
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        # check if the updates are related to the actos
+        # if so check if user is removing or adding actos
+            # if removing check if contratantes are using already selected actos
+                # if so, do not allow update
+            # else remove the deselected actos as well as detalle actos instances from table
+
+        # there is no issue in adding actos
+        data = request.data
+        return ({}, status.HTTP_200_OK)
+        return super().update(request, *args, **kwargs)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -1192,24 +1205,5 @@ class DetalleVehicularViewSet(ModelViewSet):
     ViewSet for the DetalleVehicular model.
     """
     queryset = models.Detallevehicular.objects.all()
-    serializer_class = serializers.DetalleVehicularSerializer
+    serializer_class = serializers.DetallevehicularSerializer
     pagination_class = pagination.KardexPagination
-
-    # @action(detail=False, methods=['get'])
-    # def by_kardex(self, request):
-    #     """
-    #     Get DetalleVehicular records by Kardex.
-    #     """
-    #     kardex = request.query_params.get('kardex')
-    #     if not kardex:
-    #         return Response(
-    #             {"error": "kardex parameter is required."},
-    #             status=400
-    #         )
-        
-    #     vehicular = models.Detallevehicular.objects.filter(kardex=kardex)
-    #     if not vehicular.exists():
-    #         return Response([], status=200)
-
-    #     serializer = serializers.DetalleVehicularSerializer(vehicular, many=True)
-    #     return Response(serializer.data)
