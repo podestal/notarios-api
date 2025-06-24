@@ -159,6 +159,27 @@ class KardexViewSet(ModelViewSet):
             models.DetalleActosKardex.objects.create(**detalle_data)
         
         return super().update(request, *args, **kwargs)
+    
+    # @transaction.atomic
+    # def destroy(self, request, *args, **kwargs):
+    #     """
+    #     Delete a Kardex and all related DetalleActosKardex records.
+    #     """
+    #     instance = self.get_object()
+
+    #     # Check if there are any contratantes using this kardex
+    #     if models.Contratantes.objects.filter(kardex=instance.kardex).exists():
+    #         return Response(
+    #             {"error": "No se puede eliminar el Kardex porque hay contratantes asociados."},
+    #             status=400
+    #         )
+
+    #     # Delete related DetalleActosKardex records
+    #     models.DetalleActosKardex.objects.filter(kardex=instance.kardex).delete()
+
+    #     # Delete the Kardex record itself
+    #     instance.delete()
+    #     return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -241,6 +262,8 @@ class KardexViewSet(ModelViewSet):
             models.DetalleActosKardex.objects.create(**detalle_data)
 
         return Response(serializer.data, status=201)
+
+    
 
     @action(detail=False, methods=['get'])
     def kardex_by_correlative(self, request):
@@ -1223,3 +1246,24 @@ class DetalleVehicularViewSet(ModelViewSet):
     queryset = models.Detallevehicular.objects.all()
     serializer_class = serializers.DetallevehicularSerializer
     pagination_class = pagination.KardexPagination
+
+
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        """
+        Get DetalleVehicular records by Kardex.
+        """
+        kardex = request.query_params.get('kardex')
+        idtipoacto = request.query_params.get('idtipoacto')
+        if not kardex:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+        
+        detalle_vehicular = models.Detallevehicular.objects.filter(kardex=kardex, idtipacto=idtipoacto)
+        if not detalle_vehicular.exists():
+            return Response([], status=200)
+
+        serializer = serializers.DetallevehicularSerializer(detalle_vehicular, many=True)
+        return Response(serializer.data)

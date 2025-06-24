@@ -64,6 +64,7 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             'pagado',
             'visita',
             'idnotario',
+            'numescritura',
         ]
 
 
