@@ -1193,6 +1193,27 @@ class PatrimonialViewSet(ModelViewSet):
     serializer_class = serializers.PatrimonialSerializer
     pagination_class = pagination.KardexPagination
 
+    def update(self, request, *args, **kwargs):
+        """ Update a Patrimonial record.
+        This method will ensure that the itemmp field is not modified.
+        """
+        data = request.data
+        instance = self.get_object()
+
+        if data.get('idtipoacto') != instance.idtipoacto:
+            vehicular = models.Detallevehicular.objects.filter(
+                kardex=instance.kardex,
+                idtipacto=instance.idtipoacto
+            ).first()
+            if vehicular:
+                return Response(
+                    {"error": "No se puede cambiar el idtipoacto de un Patrimonial que tiene un DetalleVehicular asociado."},
+                    status=400
+                )
+
+        return super().update(request, *args, **kwargs)
+        
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
 
@@ -1282,8 +1303,8 @@ class DetalleVehicularViewSet(ModelViewSet):
             )
         
         detalle_vehicular = models.Detallevehicular.objects.filter(numplaca=numplaca).first()
-        if not detalle_vehicular.exists():
-            return Response([], status=200)
+        if not detalle_vehicular:
+            return Response({"error": "No DetalleVehicular found for the given numplaca."}, status=404)
 
         serializer = serializers.DetallevehicularSerializer(detalle_vehicular)
         return Response(serializer.data)
