@@ -1267,3 +1267,23 @@ class DetalleVehicularViewSet(ModelViewSet):
 
         serializer = serializers.DetallevehicularSerializer(detalle_vehicular, many=True)
         return Response(serializer.data)
+
+
+    @action(detail=False, methods=['get'])
+    def by_numplaca(self, request):
+        """
+        Get DetalleVehicular records by numplaca.
+        """
+        numplaca = request.query_params.get('numplaca')
+        if not numplaca:
+            return Response(
+                {"error": "numplaca parameter is required."},
+                status=400
+            )
+        
+        detalle_vehicular = models.Detallevehicular.objects.filter(numplaca=numplaca).first()
+        if not detalle_vehicular.exists():
+            return Response([], status=200)
+
+        serializer = serializers.DetallevehicularSerializer(detalle_vehicular)
+        return Response(serializer.data)
