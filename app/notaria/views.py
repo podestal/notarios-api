@@ -132,6 +132,16 @@ class KardexViewSet(ModelViewSet):
                     status=400
                 )
 
+            # chec if there any patrimonial records using this tipo_acto
+            if models.Patrimonial.objects.filter(
+                kardex=instance.kardex,
+                idtipoacto=id_tipo_acto
+            ).exists():
+                return Response(
+                    {"error": "No se puede eliminar el tipo de acto porque hay patrimoniales asociados."},
+                    status=400
+                )
+
             # If no contratantes are using this tipo_acto, delete the detalle acto
             models.DetalleActosKardex.objects.filter(
                 kardex=instance.kardex,
