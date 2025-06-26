@@ -1318,3 +1318,30 @@ class DetalleVehicularViewSet(ModelViewSet):
 
         serializer = serializers.DetallevehicularSerializer(detalle_vehicular)
         return Response(serializer.data)
+
+class TemplateViewSet(ModelViewSet):
+    """
+    ViewSet for the TplTemplate model.
+    """
+    queryset = models.TplTemplate.objects.all()
+    serializer_class = serializers.TemplateSerializer
+    pagination_class = pagination.KardexPagination
+
+    @action(detail=False, methods=['get'])
+    def by_actos(self, request):
+        """
+        Get TplTemplate records by acto.
+        """
+        codactos = request.query_params.get('codactos')
+        if not codactos:
+            return Response(
+                {"error": "acto parameter is required."},
+                status=400
+            )
+        codactos_array = [codactos[i:i+3] for i in range(0, len(codactos), 3)]
+        templates = models.TplTemplate.objects.filter(codeActs__in=codactos_array)
+        if not templates.exists():
+            return Response([], status=200)
+
+        serializer = serializers.TemplateSerializer(templates, many=True)
+        return Response(serializer.data)

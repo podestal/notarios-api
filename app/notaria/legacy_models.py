@@ -8,30 +8,17 @@
 from django.db import models
 
 
-class Detallevehicular(models.Model):
-    detveh = models.AutoField()
-    kardex = models.CharField(max_length=30, blank=True, null=True)
-    idtipacto = models.CharField(max_length=20, blank=True, null=True)
-    idplaca = models.CharField(max_length=3)
-    numplaca = models.CharField(max_length=50)
-    clase = models.CharField(max_length=50, blank=True, null=True)
-    marca = models.CharField(max_length=100, blank=True, null=True)
-    anofab = models.CharField(max_length=30, blank=True, null=True)
-    modelo = models.CharField(max_length=100, blank=True, null=True)
-    combustible = models.CharField(max_length=100, blank=True, null=True)
-    carroceria = models.CharField(max_length=100, blank=True, null=True)
-    fecinsc = models.CharField(max_length=30, blank=True, null=True)
-    color = models.CharField(max_length=100, blank=True, null=True)
-    motor = models.CharField(max_length=100, blank=True, null=True)
-    numcil = models.CharField(max_length=3, blank=True, null=True)
-    numserie = models.CharField(max_length=30, blank=True, null=True)
-    numrueda = models.CharField(max_length=3, blank=True, null=True)
-    idmon = models.CharField(max_length=5, blank=True, null=True)
-    precio = models.DecimalField(max_digits=16, decimal_places=2, blank=True, null=True)
-    codmepag = models.CharField(max_length=4, blank=True, null=True)
-    pregistral = models.CharField(max_length=100, blank=True, null=True)
-    idsedereg = models.CharField(max_length=100, blank=True, null=True)
+class TplTemplate(models.Model):
+    pktemplate = models.AutoField(db_column='pkTemplate', primary_key=True)  # Field name made lowercase.
+    nametemplate = models.CharField(db_column='nameTemplate', max_length=250, blank=True, null=True)  # Field name made lowercase.
+    fktypekardex = models.IntegerField(db_column='fkTypeKardex', blank=True, null=True)  # Field name made lowercase.
+    codeacts = models.CharField(db_column='codeActs', max_length=50, blank=True, null=True)  # Field name made lowercase.
+    contract = models.CharField(max_length=3000, blank=True, null=True)
+    urltemplate = models.CharField(db_column='urlTemplate', max_length=250, blank=True, null=True)  # Field name made lowercase.
+    filename = models.CharField(db_column='fileName', max_length=250, blank=True, null=True)  # Field name made lowercase.
+    registrationdate = models.DateTimeField(db_column='registrationDate', blank=True, null=True)  # Field name made lowercase.
+    statusregister = models.IntegerField(db_column='statusRegister', blank=True, null=True)  # Field name made lowercase.
 
     class Meta:
         managed = False
-        db_table = 'detallevehicular'
+        db_table = 'tpl_template'
