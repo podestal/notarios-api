@@ -172,3 +172,34 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
+
+# CLOUDFLARE SETUP
+
+CLOUDFLARE_R2_BUCKET = os.environ.get('CLOUDFLARE_R2_BUCKET')
+CLOUDFLARE_R2_ACCESS_KEY= os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
+CLOUDFLARE_R2_SECRET_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_KEY')
+CLOUDFLARE_R2_ENDPOINT = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
+
+
+CLOUDFLARE_R2_CONFIG_OPTIONS = {
+    'access_key': CLOUDFLARE_R2_ACCESS_KEY,
+    'secret_key': CLOUDFLARE_R2_SECRET_KEY,
+    'endpoint_url': CLOUDFLARE_R2_ENDPOINT,
+    'bucket_name': CLOUDFLARE_R2_BUCKET,
+    'default_acl': 'public-read',  # or 'private'
+    'region_name': 'auto',         # R2 ignores this but boto3 needs it
+    'signature_version': 's3v4',
+}
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': CLOUDFLARE_R2_CONFIG_OPTIONS,
+    },
+    'staticfiles': {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': CLOUDFLARE_R2_CONFIG_OPTIONS,
+    }
+}
+
+AWS_S3_ADDRESSING_STYLE = "virtual"

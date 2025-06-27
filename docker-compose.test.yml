@@ -19,6 +19,10 @@ services:
       - FRONTEND_URL=${FRONTEND_URL}
       - ENVIRONMENT=${ENVIRONMENT}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - CLOUDFLARE_R2_BUCKET=${CLOUDFLARE_R2_BUCKET}
+      - CLOUDFLARE_R2_ACCESS_KEY=${CLOUDFLARE_R2_ACCESS_KEY}
+      - CLOUDFLARE_R2_SECRET_KEY=${CLOUDFLARE_R2_SECRET_KEY}
+      - CLOUDFLARE_R2_ENDPOINT=${CLOUDFLARE_R2_ENDPOINT}
     depends_on:
       - db
 
@@ -53,13 +57,13 @@ services:
       - ENVIRONMENT=${ENVIRONMENT}
     entrypoint: >+
       sh -c 'if [ "$ENVIRONMENT" = "production" ]; then
-              cp /etc/nginx/conf.d/nginx.prod.conf /etc/nginx/nginx.conf;
-             elif [ "$ENVIRONMENT" = "testing" ]; then
-              cp /etc/nginx/conf.d/nginx.test.conf /etc/nginx/nginx.conf;
-             else
-              cp /etc/nginx/conf.d/nginx.dev.conf /etc/nginx/nginx.conf;
-             fi &&
-             nginx -g "daemon off;"'
+        cp /etc/nginx/conf.d/nginx.prod.conf /etc/nginx/nginx.conf;
+          elif [ "$ENVIRONMENT" = "testing" ]; then
+        cp /etc/nginx/conf.d/nginx.test.conf /etc/nginx/nginx.conf;
+          else
+        cp /etc/nginx/conf.d/nginx.dev.conf /etc/nginx/nginx.conf;
+          fi &&
+          nginx -g "daemon off;"'
 
 volumes:
   db_data:
