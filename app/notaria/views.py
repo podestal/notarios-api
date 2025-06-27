@@ -169,27 +169,6 @@ class KardexViewSet(ModelViewSet):
             models.DetalleActosKardex.objects.create(**detalle_data)
         
         return super().update(request, *args, **kwargs)
-    
-    # @transaction.atomic
-    # def destroy(self, request, *args, **kwargs):
-    #     """
-    #     Delete a Kardex and all related DetalleActosKardex records.
-    #     """
-    #     instance = self.get_object()
-
-    #     # Check if there are any contratantes using this kardex
-    #     if models.Contratantes.objects.filter(kardex=instance.kardex).exists():
-    #         return Response(
-    #             {"error": "No se puede eliminar el Kardex porque hay contratantes asociados."},
-    #             status=400
-    #         )
-
-    #     # Delete related DetalleActosKardex records
-    #     models.DetalleActosKardex.objects.filter(kardex=instance.kardex).delete()
-
-    #     # Delete the Kardex record itself
-    #     instance.delete()
-    #     return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -1339,7 +1318,7 @@ class TemplateViewSet(ModelViewSet):
                 status=400
             )
         codactos_array = [codactos[i:i+3] for i in range(0, len(codactos), 3)]
-        templates = models.TplTemplate.objects.filter(codeActs__in=codactos_array)
+        templates = models.TplTemplate.objects.filter(codeacts__in=codactos_array)
         if not templates.exists():
             return Response([], status=200)
 
