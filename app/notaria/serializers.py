@@ -555,3 +555,14 @@ class TemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.TplTemplate
         fields = '__all__'
+
+
+class DocumentosGeneradosSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Documentogenerados model.
+    This serializer is used to validate and serialize the Documentogenerados data.
+    """
+
+    class Meta:
+        model = models.Documentogenerados
+        fields = '__all__'
