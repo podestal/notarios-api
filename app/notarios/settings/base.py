@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -41,7 +42,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'core',
-    'notaria'
+    'notaria',
 ]
 
 MIDDLEWARE = [
@@ -173,33 +174,51 @@ CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
 
+AUTH_USER_MODEL = 'core.User'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
+DJOSER = {
+    'SERIALIZERS': {
+        "user_create": "core.serializers.CreateUserSerializer",
+    },
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1)
+}
+
 # CLOUDFLARE SETUP
 
-CLOUDFLARE_R2_BUCKET = os.environ.get('CLOUDFLARE_R2_BUCKET')
-CLOUDFLARE_R2_ACCESS_KEY= os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
-CLOUDFLARE_R2_SECRET_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_KEY')
-CLOUDFLARE_R2_ENDPOINT = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
+# CLOUDFLARE_R2_BUCKET = os.environ.get('CLOUDFLARE_R2_BUCKET')
+# CLOUDFLARE_R2_ACCESS_KEY= os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
+# CLOUDFLARE_R2_SECRET_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_KEY')
+# CLOUDFLARE_R2_ENDPOINT = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
 
 
-CLOUDFLARE_R2_CONFIG_OPTIONS = {
-    'access_key': CLOUDFLARE_R2_ACCESS_KEY,
-    'secret_key': CLOUDFLARE_R2_SECRET_KEY,
-    'endpoint_url': CLOUDFLARE_R2_ENDPOINT,
-    'bucket_name': CLOUDFLARE_R2_BUCKET,
-    'default_acl': 'public-read',  # or 'private'
-    'region_name': 'auto',         # R2 ignores this but boto3 needs it
-    'signature_version': 's3v4',
-}
+# CLOUDFLARE_R2_CONFIG_OPTIONS = {
+#     'access_key': CLOUDFLARE_R2_ACCESS_KEY,
+#     'secret_key': CLOUDFLARE_R2_SECRET_KEY,
+#     'endpoint_url': CLOUDFLARE_R2_ENDPOINT,
+#     'bucket_name': CLOUDFLARE_R2_BUCKET,
+#     'default_acl': 'public-read',  # or 'private'
+#     'region_name': 'auto',         # R2 ignores this but boto3 needs it
+#     'signature_version': 's3v4',
+# }
 
-STORAGES = {
-    'default': {
-        'BACKEND': 'storages.backends.s3.S3Storage',
-        'OPTIONS': CLOUDFLARE_R2_CONFIG_OPTIONS,
-    },
-    'staticfiles': {
-        'BACKEND': 'storages.backends.s3.S3Storage',
-        'OPTIONS': CLOUDFLARE_R2_CONFIG_OPTIONS,
-    }
-}
+# STORAGES = {
+#     'default': {
+#         'BACKEND': 'storages.backends.s3.S3Storage',
+#         'OPTIONS': CLOUDFLARE_R2_CONFIG_OPTIONS,
+#     },
+#     'staticfiles': {
+#         'BACKEND': 'storages.backends.s3.S3Storage',
+#         'OPTIONS': CLOUDFLARE_R2_CONFIG_OPTIONS,
+#     }
+# }
 
 AWS_S3_ADDRESSING_STYLE = "virtual"
