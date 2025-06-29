@@ -32,5 +32,6 @@ router.register('sedes_registrales', views.SedesRegistralesViewSet)
 router.register('representantes', views.RepresentantesViewSet)
 router.register('patrimonial', views.PatrimonialViewSet)
 router.register('detallevehicular', views.DetalleVehicularViewSet)
+router.register('templates', views.TemplateViewSet)
 
 urlpatterns = router.urls

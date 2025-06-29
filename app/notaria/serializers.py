@@ -544,3 +544,14 @@ class DetallevehicularSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Detallevehicular
         fields = '__all__'
+
+
+class TemplateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the TplTemplate model.
+    This serializer is used to validate and serialize the TplTemplate data.
+    """
+
+    class Meta:
+        model = models.TplTemplate
+        fields = '__all__'
