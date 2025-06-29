@@ -23,6 +23,7 @@ class Command(BaseCommand):
         for usuario in usuarios:
             self.stdout.write(f'Creating user: {usuario.prinom} {usuario.apepat}')
             user = User.objects.create_user(
+                idusuario=usuario.idusuario,
                 username=usuario.loginusuario.lower(),
                 password=usuario.password.lower(),
                 email=f'{usuario.loginusuario.lower()}@signatum.com',
