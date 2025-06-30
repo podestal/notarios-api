@@ -51,6 +51,11 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             return Response({"error": "Missing template_id parameter."}, status=400)
 
         try:
+            template_id = int(template_id)  # this ensures we only accept clean integers
+        except ValueError:
+            return Response({"error": "Invalid template_id format."}, status=400)
+
+        try:
             template = TplTemplate.objects.get(pktemplate=template_id)
         except TplTemplate.DoesNotExist:
             return Response({"error": "Template not found."}, status=404)
