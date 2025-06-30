@@ -94,8 +94,17 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             buffer.seek(0)
 
             # Respond directly with the document
-            response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-            response['Content-Disposition'] = f'inline; filename="{template.filename}"'  # NOT attachment
+            # response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            # response['Content-Disposition'] = f'inline; filename="{template.filename}"'  # NOT attachment
+            # return response
+
+            response = HttpResponse(
+                buffer.read(),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'inline; filename="{template.filename}"'
+            response['Content-Length'] = str(buffer.getbuffer().nbytes)
+            response['Access-Control-Allow-Origin'] = '*'
             return response
 
         except Exception as e:
