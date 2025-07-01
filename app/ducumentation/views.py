@@ -3,7 +3,7 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from . import models, serializers
-from notaria.models import TplTemplate
+from notaria.models import TplTemplate, Detallevehicular
 from notaria import pagination
 from django.http import HttpResponse
 import boto3
@@ -137,7 +137,7 @@ class VehicleTransferDocumentService:
         document_data = self._get_document_data(num_kardex, anio_kardex)
         
         # Vehicle data
-        vehicle_data = self._get_vehicle_data()
+        vehicle_data = self._get_vehicle_data(num_kardex)
         
         # Payment data
         payment_data = self._get_payment_data()
@@ -177,29 +177,34 @@ class VehicleTransferDocumentService:
             'FECHA_MAX': self.letras.date_to_letters(fecha_escritura),
         }
     
-    def _get_vehicle_data(self) -> Dict[str, str]:
+    def _get_vehicle_data(self, kardex) -> Dict[str, str]:
         """
         Get vehicle information
         """
+
+        vehicle = Detallevehicular.objects.filter(
+            kardex=kardex
+        ).first()
+
         return {
-            'PLACA': 'ABC-123',
-            'CLASE': 'AUTOMÓVIL',
-            'MARCA': 'TOYOTA',
-            'MODELO': 'COROLLA',
-            'AÑO_FABRICACION': '2020',
-            'CARROCERIA': 'SEDAN',
-            'COLOR': 'BLANCO',
-            'NRO_MOTOR': 'ABC123456789',
-            'NRO_SERIE': 'XYZ987654321',
-            'FEC_INS': '15/01/2020',
-            'FECHA_INSCRIPCION': '15/01/2020',
-            'ZONA_REGISTRAL': 'LIMA - LIMA',
-            'NUM_ZONA_REG': '01',
-            'SEDE': 'LIMA',
+            'PLACA': vehicle.numplaca if vehicle else '',
+            'CLASE': vehicle.clase if vehicle else '',
+            'MARCA': vehicle.marca if vehicle else '',
+            'MODELO': vehicle.modelo if vehicle else '',
+            'AÑO_FABRICACION': vehicle.anofab if vehicle else '',
+            'CARROCERIA': vehicle.carroceria if vehicle else '',
+            'COLOR': vehicle.color if vehicle else '',
+            'NRO_MOTOR': vehicle.motor if vehicle else '',
+            'NRO_SERIE': vehicle.numserie if vehicle else '',
+            'FEC_INS': vehicle.fecinsc if vehicle else '',
+            'FECHA_INSCRIPCION': vehicle.fecinsc if vehicle else '',
+            'ZONA_REGISTRAL': vehicle.idsedereg if vehicle else '',
+            'NUM_ZONA_REG': vehicle.idsedereg if vehicle else '',
+            'SEDE': '',
             'INSTRUIDO': 'INSTRUIDO',
-            'COMBUSTIBLE': 'GASOLINA',
-            'NRO_TARJETA': '123456789',
-            'NRO_CILINDROS': '4',
+            'COMBUSTIBLE': vehicle.combustible if vehicle else '',
+            'NRO_TARJETA': '',
+            'NRO_CILINDROS': vehicle.numcil if vehicle else '',
         }
     
     def _get_payment_data(self) -> Dict[str, str]:
@@ -404,6 +409,27 @@ class NumberToLetterConverter:
                 return self.decenas[decena]
             else:
                 return f"{self.decenas[decena]} Y {self.unidades[unidad]}"
+        elif num < 1000:
+            centena = num // 100
+            resto = num % 100
+            if resto == 0:
+                return f"{self.unidades[centena]}CIENTOS"
+            else:
+                return f"{self.unidades[centena]}CIENTOS {self._convert_number_to_letters(resto)}"
+        elif num < 1000000:
+            miles = num // 1000
+            resto = num % 1000
+            if miles == 1:
+                return f"MIL {self._convert_number_to_letters(resto)}"
+            else:
+                return f"{self._convert_number_to_letters(miles)} MIL {self._convert_number_to_letters(resto)}"
+        elif num < 1000000000:
+            millones = num // 1000000
+            resto = num % 1000000
+            if millones == 1:
+                return f"UN MILLÓN {self._convert_number_to_letters(resto)}"
+            else:
+                return f"{self._convert_number_to_letters(millones)} MILLONES {self._convert_number_to_letters(resto)}"
         else:
             return str(num)  # Simplified for demo
     
@@ -479,8 +505,8 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='open-template')
     def open_template(self, request):
-        template_id = request.query_params.get("template_id")
-        num_kardex = request.query_params.get("num_kardex", "ACT2040-2024")
+        template_id = request.query_params.get("template_id", '2')
+        num_kardex = request.query_params.get("num_kardex", "ACT401-2025")
         action = request.query_params.get("action", "generate")
         
         if not template_id:
