@@ -260,74 +260,180 @@ class VehicleTransferDocumentService:
             'USO': '',
         }
     
+    # def _get_contractors_data(self) -> Dict[str, str]:
+    #     """
+    #     Get contractors (transferor and acquirer) information
+    #     """
+    #     # Transferor data
+    #     transferor_data = {
+    #         'P_NOM': 'MARÍA GONZÁLEZ LÓPEZ, ',
+    #         'P_NACIONALIDAD': 'PERUANA, ',
+    #         'P_TIP_DOC': 'DNI',
+    #         'P_DOC': 'IDENTIFICADA CON DNI N° 12345678, ',
+    #         'P_OCUPACION': 'INGENIERA CIVIL',
+    #         'P_ESTADO_CIVIL': 'CASADA, ',
+    #         'P_DOMICILIO': 'CON DOMICILIO EN AV. AREQUIPA 123 DEL DISTRITO DE MIRAFLORES PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+    #         'P_IDE': ' ',
+    #         'SEXO_P': 'F',
+    #         'P_FIRMAN': 'MARÍA GONZÁLEZ LÓPEZ, ',
+    #         'P_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
+    #     }
+        
+    #     # Acquirer data
+    #     acquirer_data = {
+    #         'C_NOM': 'CARLOS RODRÍGUEZ MARTÍNEZ, ',
+    #         'C_NACIONALIDAD': 'PERUANO, ',
+    #         'C_TIP_DOC': 'DNI',
+    #         'C_DOC': 'IDENTIFICADO CON DNI N° 87654321, ',
+    #         'C_OCUPACION': 'ABOGADO',
+    #         'C_ESTADO_CIVIL': 'SOLTERO, ',
+    #         'C_DOMICILIO': 'CON DOMICILIO EN JR. BOLÍVAR 456 DEL DISTRITO DE SAN ISIDRO PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+    #         'C_IDE': ' ',
+    #         'SEXO_C': 'M',
+    #         'C_FIRMAN': 'CARLOS RODRÍGUEZ MARTÍNEZ, ',
+    #         'C_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
+    #     }
+        
+    #     # Articles and grammar
+    #     articles_data = {
+    #         'EL_P': 'LA',
+    #         'EL_C': 'EL',
+    #         'AMBOS': ' AMBOS ',
+    #         'S_P': '  ',
+    #         'ES_P': '  ',
+    #         'C_INICIO': ' SEÑOR',
+    #         'C_CALIDAD': 'COMPRADOR',
+    #         'Y_CON_C': '',
+    #         'N_C': '',
+    #         'Y_C': '',
+    #         'L_C': '',
+    #         'O_A_C': 'O',
+    #         'C_FIRMA': 'FIRMA EN',
+    #         'C_AMBOS': ' ',
+    #         'P_INICIO': ' SEÑORA',
+    #         'P_CALIDAD': 'VENDEDORA',
+    #         'Y_CON_P': '',
+    #         'N_P': '',
+    #         'Y_P': '',
+    #         'L_P': '',
+    #         'O_A_P': 'A',
+    #         'P_FIRMA': 'FIRMA EN',
+    #         'P_AMBOS': ' ',
+    #     }
+        
+    #     # Merge all contractor data
+    #     contractors_data = {}
+    #     contractors_data.update(transferor_data)
+    #     contractors_data.update(acquirer_data)
+    #     contractors_data.update(articles_data)
+        
+    #     return contractors_data
+
     def _get_contractors_data(self) -> Dict[str, str]:
         """
-        Get contractors (transferor and acquirer) information
+        Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
         """
-        # Transferor data
+        # 1. Define your people lists (simulate DB or input)
+        transferors = [
+            {
+                'sexo': 'F',
+                'condiciones': 'VENDEDOR',
+                'idCliente': 1,
+                'idConyuge': 2,
+                'nombres': 'MARÍA GONZÁLEZ LÓPEZ',
+                'nacionalidad': 'PERUANA',
+                'tipoDocumento': 'DNI',
+                'numeroDocumento': '12345678',
+                'ocupacion': 'INGENIERA CIVIL',
+                'estadoCivil': 'CASADA',
+                'direccion': 'AV. AREQUIPA 123 DEL DISTRITO DE MIRAFLORES PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+            }
+            # Add more transferors as needed
+        ]
+        acquirers = [
+            {
+                'sexo': 'M',
+                'condiciones': 'COMPRADOR',
+                'idCliente': 3,
+                'idConyuge': None,
+                'nombres': 'CARLOS RODRÍGUEZ MARTÍNEZ',
+                'nacionalidad': 'PERUANO',
+                'tipoDocumento': 'DNI',
+                'numeroDocumento': '87654321',
+                'ocupacion': 'ABOGADO',
+                'estadoCivil': 'SOLTERO',
+                'direccion': 'JR. BOLÍVAR 456 DEL DISTRITO DE SAN ISIDRO PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+            }
+            # Add more acquirers as needed
+        ]
+
+        # 2. Build the data for the first transferor/acquirer (for placeholders)
         transferor_data = {
-            'P_NOM': 'MARÍA GONZÁLEZ LÓPEZ, ',
-            'P_NACIONALIDAD': 'PERUANA, ',
-            'P_TIP_DOC': 'DNI',
-            'P_DOC': 'IDENTIFICADA CON DNI N° 12345678, ',
-            'P_OCUPACION': 'INGENIERA CIVIL',
-            'P_ESTADO_CIVIL': 'CASADA, ',
-            'P_DOMICILIO': 'CON DOMICILIO EN AV. AREQUIPA 123 DEL DISTRITO DE MIRAFLORES PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+            'P_NOM': transferors[0]['nombres'] + ', ',
+            'P_NACIONALIDAD': transferors[0]['nacionalidad'] + ', ',
+            'P_TIP_DOC': transferors[0]['tipoDocumento'],
+            'P_DOC': f"IDENTIFICADA CON {transferors[0]['tipoDocumento']} N° {transferors[0]['numeroDocumento']}, ",
+            'P_OCUPACION': transferors[0]['ocupacion'],
+            'P_ESTADO_CIVIL': transferors[0]['estadoCivil'] + ', ',
+            'P_DOMICILIO': 'CON DOMICILIO EN ' + transferors[0]['direccion'],
             'P_IDE': ' ',
-            'SEXO_P': 'F',
-            'P_FIRMAN': 'MARÍA GONZÁLEZ LÓPEZ, ',
+            'SEXO_P': transferors[0]['sexo'],
+            'P_FIRMAN': transferors[0]['nombres'] + ', ',
             'P_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
         }
-        
-        # Acquirer data
         acquirer_data = {
-            'C_NOM': 'CARLOS RODRÍGUEZ MARTÍNEZ, ',
-            'C_NACIONALIDAD': 'PERUANO, ',
-            'C_TIP_DOC': 'DNI',
-            'C_DOC': 'IDENTIFICADO CON DNI N° 87654321, ',
-            'C_OCUPACION': 'ABOGADO',
-            'C_ESTADO_CIVIL': 'SOLTERO, ',
-            'C_DOMICILIO': 'CON DOMICILIO EN JR. BOLÍVAR 456 DEL DISTRITO DE SAN ISIDRO PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+            'C_NOM': acquirers[0]['nombres'] + ', ',
+            'C_NACIONALIDAD': acquirers[0]['nacionalidad'] + ', ',
+            'C_TIP_DOC': acquirers[0]['tipoDocumento'],
+            'C_DOC': f"IDENTIFICADO CON {acquirers[0]['tipoDocumento']} N° {acquirers[0]['numeroDocumento']}, ",
+            'C_OCUPACION': acquirers[0]['ocupacion'],
+            'C_ESTADO_CIVIL': acquirers[0]['estadoCivil'] + ', ',
+            'C_DOMICILIO': 'CON DOMICILIO EN ' + acquirers[0]['direccion'],
             'C_IDE': ' ',
-            'SEXO_C': 'M',
-            'C_FIRMAN': 'CARLOS RODRÍGUEZ MARTÍNEZ, ',
+            'SEXO_C': acquirers[0]['sexo'],
+            'C_FIRMAN': acquirers[0]['nombres'] + ', ',
             'C_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
         }
-        
-        # Articles and grammar
-        articles_data = {
-            'EL_P': 'LA',
-            'EL_C': 'EL',
-            'AMBOS': ' AMBOS ',
-            'S_P': '  ',
-            'ES_P': '  ',
-            'C_INICIO': ' SEÑOR',
-            'C_CALIDAD': 'COMPRADOR',
-            'Y_CON_C': '',
-            'N_C': '',
-            'Y_C': '',
-            'L_C': '',
-            'O_A_C': 'O',
-            'C_FIRMA': 'FIRMA EN',
-            'C_AMBOS': ' ',
-            'P_INICIO': ' SEÑORA',
-            'P_CALIDAD': 'VENDEDORA',
-            'Y_CON_P': '',
-            'N_P': '',
-            'Y_P': '',
-            'L_P': '',
-            'O_A_P': 'A',
-            'P_FIRMA': 'FIRMA EN',
-            'P_AMBOS': ' ',
-        }
-        
-        # Merge all contractor data
+
+        # 3. Get articles/grammar dynamically
+        articles_transferor = self.get_articles_and_grammar(transferors, 'P')
+        articles_acquirer = self.get_articles_and_grammar(acquirers, 'C')
+
+        # 4. Merge all data
         contractors_data = {}
         contractors_data.update(transferor_data)
         contractors_data.update(acquirer_data)
-        contractors_data.update(articles_data)
-        
+        contractors_data.update(articles_transferor)
+        contractors_data.update(articles_acquirer)
+
         return contractors_data
+
+    def get_articles_and_grammar(self, people, role_prefix):
+        """
+        Returns a dict with the correct articles and word forms for the given people.
+        people: list of dicts with at least 'sexo' and 'condiciones'
+        role_prefix: 'P' for transferor, 'C' for acquirer
+        """
+        count = len(people)
+        all_female = all(p['sexo'] == 'F' for p in people)
+        all_male = all(p['sexo'] == 'M' for p in people)
+        ambos = ' AMBOS ' if count > 1 else ' '
+        if count > 1:
+            el = 'LAS' if all_female else 'LOS'
+            calidad = 'VENDEDORAS' if all_female else 'VENDEDORES'
+            inicio = ' SEÑORAS' if all_female else ' SEÑORES'
+        else:
+            el = 'LA' if all_female else 'EL'
+            calidad = 'VENDEDORA' if all_female else 'VENDEDOR'
+            inicio = ' SEÑORA' if all_female else ' SEÑOR'
+        # You can expand this for acquirers and other roles
+        return {
+            f'EL_{role_prefix}': el,
+            f'{role_prefix}_CALIDAD': calidad,
+            f'{role_prefix}_INICIO': inicio,
+            f'{role_prefix}_AMBOS': ambos,
+            # ...add more as needed
+        }
     
     def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
         """
