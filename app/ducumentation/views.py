@@ -334,6 +334,7 @@ class VehicleTransferDocumentService:
         Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
         """
         # 1. Define your people lists (simulate DB or input)
+
         transferors = [
             {
                 'sexo': 'F',
@@ -414,25 +415,39 @@ class VehicleTransferDocumentService:
         people: list of dicts with at least 'sexo' and 'condiciones'
         role_prefix: 'P' for transferor, 'C' for acquirer
         """
+
+        ROLE_LABELS = {
+            'VENDEDOR': {'M': 'VENDEDOR', 'F': 'VENDEDORA', 'M_PL': 'VENDEDORES', 'F_PL': 'VENDEDORAS'},
+            'COMPRADOR': {'M': 'COMPRADOR', 'F': 'COMPRADORA', 'M_PL': 'COMPRADORES', 'F_PL': 'COMPRADORAS'},
+            'DONANTE': {'M': 'DONANTE', 'F': 'DONANTE', 'M_PL': 'DONANTES', 'F_PL': 'DONANTES'},
+            'DONATARIO': {'M': 'DONATARIO', 'F': 'DONATARIA', 'M_PL': 'DONATARIOS', 'F_PL': 'DONATARIAS'},
+            'APODERADO': {'M': 'APODERADO', 'F': 'APODERADA', 'M_PL': 'APODERADOS', 'F_PL': 'APODERADAS'},
+            'REPRESENTANTE': {'M': 'REPRESENTANTE', 'F': 'REPRESENTANTE', 'M_PL': 'REPRESENTANTES', 'F_PL': 'REPRESENTANTES'},
+            'ADJUDICATARIO': {'M': 'ADJUDICATARIO', 'F': 'ADJUDICATARIA', 'M_PL': 'ADJUDICATARIOS', 'F_PL': 'ADJUDICATARIAS'},
+            # ...add more as needed
+        }
+
+
         count = len(people)
         all_female = all(p['sexo'] == 'F' for p in people)
         all_male = all(p['sexo'] == 'M' for p in people)
         ambos = ' AMBOS ' if count > 1 else ' '
+        # Get the main role (assume all have the same for this group)
+        main_role = people[0]['condiciones'] if people else ''
+        role_labels = ROLE_LABELS.get(main_role, {})
         if count > 1:
-            el = 'LAS' if all_female else 'LOS'
-            calidad = 'VENDEDORAS' if all_female else 'VENDEDORES'
+            calidad = role_labels.get('F_PL' if all_female else 'M_PL', main_role + 'S')
             inicio = ' SEÑORAS' if all_female else ' SEÑORES'
+            el = 'LAS' if all_female else 'LOS'
         else:
-            el = 'LA' if all_female else 'EL'
-            calidad = 'VENDEDORA' if all_female else 'VENDEDOR'
+            calidad = role_labels.get('F' if all_female else 'M', main_role)
             inicio = ' SEÑORA' if all_female else ' SEÑOR'
-        # You can expand this for acquirers and other roles
+            el = 'LA' if all_female else 'EL'
         return {
             f'EL_{role_prefix}': el,
             f'{role_prefix}_CALIDAD': calidad,
             f'{role_prefix}_INICIO': inicio,
             f'{role_prefix}_AMBOS': ambos,
-            # ...add more as needed
         }
     
     def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
