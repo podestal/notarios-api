@@ -3,7 +3,8 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from . import models, serializers
-from notaria.models import TplTemplate, Detallevehicular
+from notaria.models import TplTemplate, Detallevehicular, Patrimonial
+from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
 from django.http import HttpResponse
 import boto3
@@ -140,7 +141,7 @@ class VehicleTransferDocumentService:
         vehicle_data = self._get_vehicle_data(num_kardex)
         
         # Payment data
-        payment_data = self._get_payment_data()
+        payment_data = self._get_payment_data(num_kardex)
         
         # Contractors data
         contractors_data = self._get_contractors_data()
@@ -207,27 +208,32 @@ class VehicleTransferDocumentService:
             'NRO_CILINDROS': vehicle.numcil if vehicle else '',
         }
     
-    def _get_payment_data(self) -> Dict[str, str]:
+    def _get_payment_data(self, kardex) -> Dict[str, str]:
         """
         Get payment information based on payment method
         """
+
+        patrimonial = Patrimonial.objects.filter(
+            kardex=kardex)
+        if patrimonial.exists():
+            patrimonial = patrimonial.first()
+
         sunat_medio_pago = "008"  # Cash payment
-        precio = "25000.00"
-        moneda = "PEN"
-        simbolo_moneda = "S/"
+        precio = patrimonial.importetrans if patrimonial else '0.00'
+        moneda = MONEDAS[patrimonial.idmon]['desmon'] if patrimonial else '' 
+        simbolo_moneda = MONEDAS[patrimonial.idmon]['simbolo'] if patrimonial else ''
+        forma_pago = FORMAS_PAGO[patrimonial.fpago]['descripcion'] if patrimonial else ''
         
         # Payment method logic (similar to PHP switch)
         if sunat_medio_pago == "008":
             medio_pago = f'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 2,000.00 O US$ 500.00. EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". POR SER EL PAGO DEL PRECIO INFERIOR A 1 UIT. MODIFICADO POR EL DECRETO LEGISLATIVO N° 1529.'
             exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
             fin_medio_pago = 'EN DINERO EN EFECTIVO'
-            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
         else:
             # Default case
             medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA.'
             exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
             fin_medio_pago = 'EN DINERO EN EFECTIVO'
-            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
         
         return {
             'MONTO': precio,
