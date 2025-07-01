@@ -1,3 +1,4 @@
+import re
 from docx import Document
 
 def replace_placeholders(doc, data):
@@ -10,12 +11,20 @@ def replace_placeholders(doc, data):
                 paragraph.text = paragraph.text.replace(placeholder, value)
     return doc
 
+# def remove_placeholders(doc):
+#     """
+#     Remove unused placeholders from the document.
+#     """
+#     for paragraph in doc.paragraphs:
+#         paragraph.text = paragraph.text.replace("[E.", "").replace("]", "")
+#     return doc
+
 def remove_placeholders(doc):
     """
     Remove unused placeholders from the document.
     """
     for paragraph in doc.paragraphs:
-        paragraph.text = paragraph.text.replace("[E.", "").replace("]", "")
+        paragraph.text = re.sub(r"\[E\.[^\]]+\]", "", paragraph.text)  # Remove placeholders like [E.PLACEHOLDER]
     return doc
 
 def format_data(data, count, gender):
