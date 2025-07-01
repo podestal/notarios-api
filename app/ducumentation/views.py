@@ -13,6 +13,7 @@ import os
 from docx import Document
 import io
 import uuid
+from .utils.vehicular_utils import add_default_values, format_data, replace_placeholders, remove_placeholders
 
 class DocumentosGeneradosViewSet(ModelViewSet):
     """
@@ -41,6 +42,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         serializer = serializers.DocumentosGeneradosSerializer(documentos_generados, many=True)
         return Response(serializer.data)
     
+
     @action(detail=False, methods=['get'], url_path='open-template')
     def open_template(self, request):
         """
@@ -51,7 +53,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             return Response({"error": "Missing template_id parameter."}, status=400)
 
         try:
-            template_id = int(template_id)  # this ensures we only accept clean integers
+            template_id = int(template_id)  # Ensure template_id is an integer
         except ValueError:
             return Response({"error": "Invalid template_id format."}, status=400)
 
@@ -73,31 +75,62 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         )
 
         try:
-            # Retrieve and modify the file
+            # Retrieve the template file from R2
             s3_response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             file_stream = s3_response['Body'].read()
 
+            # Load the template into python-docx
             doc = Document(io.BytesIO(file_stream))
 
+            # Placeholder data
             acquirer_data = {
-                "[E.C_NOM_1]": "Juanito Pérez ",
-                # ... your other placeholder replacements ...
+                "[E.C_NOM_1]": "Juanito Pérez",
+                "[E.C_NOM_2]": "María López",
+                "[E.C_NACIONALIDAD_1]": "Español",
+                "[E.C_NACIONALIDAD_2]": "Mexicana",
+                "[E.C_TIP_DOC_1]": "DNI",
+                "[E.C_TIP_DOC_2]": "Pasaporte",
+                "[E.C_DOC_1]": "12345678",
+                "[E.C_DOC_2]": "987654321",
+                "[E.C_OCUPACION_1]": "Panadero",
+                "[E.C_OCUPACION_2]": "Ingeniera",
+                "[E.C_ESTADO_CIVIL_1]": "Soltero",
+                "[E.C_ESTADO_CIVIL_2]": "Casada",
+                "[E.C_DOMICILIO_1]": "Calle Falsa 123, Madrid",
+                "[E.C_DOMICILIO_2]": "Avenida Siempre Viva 456, Ciudad de México",
+                "[E.C_CALIDAD_1]": "Comprador",
+                "[E.C_CALIDAD_2]": "Compradora",
+                "[E.C_IDE_1]": "Identificación válida",
+                "[E.C_IDE_2]": "Identificación válida",
+                "[E.C_FIRMA_1]": "Firma de Juanito",
+                "[E.C_FIRMA_2]": "Firma de María",
+                "[E.C_AMBOS_1]": "Ambos",
+                "[E.C_AMBOS_2]": "Ambos",
             }
 
-            for paragraph in doc.paragraphs:
-                for placeholder, value in acquirer_data.items():
-                    if placeholder in paragraph.text:
-                        paragraph.text = paragraph.text.replace(placeholder, value)
+            # Add default values for missing placeholders
+            placeholders = [
+                "[E.C_NOM_3]", "[E.C_NACIONALIDAD_3]", "[E.C_TIP_DOC_3]", "[E.C_DOC_3]",
+                "[E.C_OCUPACION_3]", "[E.C_ESTADO_CIVIL_3]", "[E.C_DOMICILIO_3]",
+                "[E.C_CALIDAD_3]", "[E.C_IDE_3]", "[E.C_FIRMA_3]", "[E.C_AMBOS_3]"
+            ]
+            acquirer_data = add_default_values(acquirer_data, placeholders)
 
+            # Format data for singular/plural and gender-specific text
+            acquirer_data = format_data(acquirer_data, count=2, gender="M")
+
+            # Replace placeholders in the document
+            doc = replace_placeholders(doc, acquirer_data)
+
+            # Remove unused placeholders
+            doc = remove_placeholders(doc)
+
+            # Save the modified document to a buffer
             buffer = io.BytesIO()
             doc.save(buffer)
             buffer.seek(0)
 
-            # Respond directly with the document
-            # response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-            # response['Content-Disposition'] = f'inline; filename="{template.filename}"'  # NOT attachment
-            # return response
-
+            # Respond directly with the modified document
             response = HttpResponse(
                 buffer.read(),
                 content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -109,6 +142,164 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
         except Exception as e:
             return Response({"error": f"Failed to open document: {str(e)}"}, status=500)
+    
+    # @action(detail=False, methods=['get'], url_path='open-template')
+    # def open_template(self, request):
+    #     """
+    #     Stream a filled Word document (.docx) directly from R2 so Word can open it.
+    #     """
+    #     template_id = request.query_params.get("template_id")
+    #     if not template_id:
+    #         return Response({"error": "Missing template_id parameter."}, status=400)
+
+    #     try:
+    #         template_id = int(template_id)  # Ensure template_id is an integer
+    #     except ValueError:
+    #         return Response({"error": "Invalid template_id format."}, status=400)
+
+    #     try:
+    #         template = TplTemplate.objects.get(pktemplate=template_id)
+    #     except TplTemplate.DoesNotExist:
+    #         return Response({"error": "Template not found."}, status=404)
+
+    #     object_key = f"rodriguez-zea/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{template.filename}"
+
+    #     # Connect to R2
+    #     s3 = boto3.client(
+    #         's3',
+    #         endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+    #         aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+    #         aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+    #         config=Config(signature_version='s3v4'),
+    #         region_name='auto',
+    #     )
+
+    #     try:
+    #         # Retrieve the template file from R2
+    #         s3_response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
+    #         file_stream = s3_response['Body'].read()
+
+    #         # Load the template into python-docx
+    #         doc = Document(io.BytesIO(file_stream))
+
+    #         # Replace placeholders with actual data
+    #         acquirer_data = {
+    #             "[E.C_NOM_1]": "Juanito Pérez",
+    #             "[E.C_NOM_2]": "María López",
+    #             "[E.C_NACIONALIDAD_1]": "Español",
+    #             "[E.C_NACIONALIDAD_2]": "Mexicana",
+    #             "[E.C_TIP_DOC_1]": "DNI",
+    #             "[E.C_TIP_DOC_2]": "Pasaporte",
+    #             "[E.C_DOC_1]": "12345678",
+    #             "[E.C_DOC_2]": "987654321",
+    #             "[E.C_OCUPACION_1]": "Panadero",
+    #             "[E.C_OCUPACION_2]": "Ingeniera",
+    #             "[E.C_ESTADO_CIVIL_1]": "Soltero",
+    #             "[E.C_ESTADO_CIVIL_2]": "Casada",
+    #             "[E.C_DOMICILIO_1]": "Calle Falsa 123, Madrid",
+    #             "[E.C_DOMICILIO_2]": "Avenida Siempre Viva 456, Ciudad de México",
+    #             "[E.C_CALIDAD_1]": "Comprador",
+    #             "[E.C_CALIDAD_2]": "Compradora",
+    #             "[E.C_IDE_1]": "Identificación válida",
+    #             "[E.C_IDE_2]": "Identificación válida",
+    #             "[E.C_FIRMA_1]": "Firma de Juanito",
+    #             "[E.C_FIRMA_2]": "Firma de María",
+    #             "[E.C_AMBOS_1]": "Ambos",
+    #             "[E.C_AMBOS_2]": "Ambos",
+    #         }
+
+    #         # Replace placeholders in the document
+    #         for paragraph in doc.paragraphs:
+    #             for placeholder, value in acquirer_data.items():
+    #                 if placeholder in paragraph.text:
+    #                     paragraph.text = paragraph.text.replace(placeholder, value)
+
+    #         # Save the modified document to a buffer
+    #         buffer = io.BytesIO()
+    #         doc.save(buffer)
+    #         buffer.seek(0)
+
+    #         # Respond directly with the modified document
+    #         response = HttpResponse(
+    #             buffer.read(),
+    #             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    #         )
+    #         response['Content-Disposition'] = f'inline; filename="{template.filename}"'
+    #         response['Content-Length'] = str(buffer.getbuffer().nbytes)
+    #         response['Access-Control-Allow-Origin'] = '*'
+    #         return response
+
+    #     except Exception as e:
+    #         return Response({"error": f"Failed to open document: {str(e)}"}, status=500)
+    # /to download
+    # @action(detail=False, methods=['get'], url_path='open-template')
+    # def open_template(self, request):
+    #     """
+    #     Stream a filled Word document (.docx) directly from R2 so Word can open it.
+    #     """
+    #     template_id = request.query_params.get("template_id")
+    #     if not template_id:
+    #         return Response({"error": "Missing template_id parameter."}, status=400)
+
+    #     try:
+    #         template_id = int(template_id)  # this ensures we only accept clean integers
+    #     except ValueError:
+    #         return Response({"error": "Invalid template_id format."}, status=400)
+
+    #     try:
+    #         template = TplTemplate.objects.get(pktemplate=template_id)
+    #     except TplTemplate.DoesNotExist:
+    #         return Response({"error": "Template not found."}, status=404)
+
+    #     object_key = f"rodriguez-zea/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{template.filename}"
+
+    #     # Connect to R2
+    #     s3 = boto3.client(
+    #         's3',
+    #         endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+    #         aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+    #         aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+    #         config=Config(signature_version='s3v4'),
+    #         region_name='auto',
+    #     )
+
+    #     try:
+    #         # Retrieve and modify the file
+    #         s3_response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
+    #         file_stream = s3_response['Body'].read()
+
+    #         doc = Document(io.BytesIO(file_stream))
+
+    #         acquirer_data = {
+    #             "[E.C_NOM_1]": "Juanito Pérez ",
+    #             # ... your other placeholder replacements ...
+    #         }
+
+    #         for paragraph in doc.paragraphs:
+    #             for placeholder, value in acquirer_data.items():
+    #                 if placeholder in paragraph.text:
+    #                     paragraph.text = paragraph.text.replace(placeholder, value)
+
+    #         buffer = io.BytesIO()
+    #         doc.save(buffer)
+    #         buffer.seek(0)
+
+    #         # Respond directly with the document
+    #         # response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    #         # response['Content-Disposition'] = f'inline; filename="{template.filename}"'  # NOT attachment
+    #         # return response
+
+    #         response = HttpResponse(
+    #             buffer.read(),
+    #             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    #         )
+    #         response['Content-Disposition'] = f'inline; filename="{template.filename}"'
+    #         response['Content-Length'] = str(buffer.getbuffer().nbytes)
+    #         response['Access-Control-Allow-Origin'] = '*'
+    #         return response
+
+    #     except Exception as e:
+    #         return Response({"error": f"Failed to open document: {str(e)}"}, status=500)
 
     
     # @action(detail=False, methods=['get'], url_path='template-download')
