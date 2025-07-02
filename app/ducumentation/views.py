@@ -13,20 +13,12 @@ from django.conf import settings
 import os
 from docx import Document
 import io
-import uuid
-from .utils.vehicular_utils import add_default_values, format_data, replace_placeholders, remove_placeholders
 from .constants import ROLE_LABELS, TIPO_DOCUMENTO, CIVIL_STATUS
 import re
-
-import io
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Any
-from docx import Document
-from django.http import HttpResponse
-import boto3
+from typing import Dict, Any
 from botocore.config import Config
-import os
 
 
 class VehicleTransferDocumentService:
@@ -362,7 +354,7 @@ class VehicleTransferDocumentService:
                 'nacionalidad': nacionalidad.descripcion,
                 'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
                 'numeroDocumento': cliente2.numdoc,
-                'ocupacion': cliente2.detaprofesion if cliente2.detaprofesion else '',
+                'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
                 'estadoCivil': CIVIL_STATUS[cliente2.idestcivil]['label'] if cliente2.idestcivil in CIVIL_STATUS else '',
                 'direccion': cliente2.direccion if cliente2.direccion else '',
             }
