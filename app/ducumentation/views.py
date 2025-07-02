@@ -3,7 +3,7 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from . import models, serializers
-from notaria.models import TplTemplate, Detallevehicular, Patrimonial
+from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
 from django.http import HttpResponse
@@ -15,6 +15,7 @@ from docx import Document
 import io
 import uuid
 from .utils.vehicular_utils import add_default_values, format_data, replace_placeholders, remove_placeholders
+from .constants import ROLE_LABELS, TIPO_DOCUMENTO, CIVIL_STATUS
 import re
 
 import io
@@ -144,7 +145,7 @@ class VehicleTransferDocumentService:
         payment_data = self._get_payment_data(num_kardex)
         
         # Contractors data
-        contractors_data = self._get_contractors_data()
+        contractors_data = self._get_contractors_data(num_kardex)
         
         # Merge all data
         final_data = {}
@@ -329,11 +330,47 @@ class VehicleTransferDocumentService:
         
     #     return contractors_data
 
-    def _get_contractors_data(self) -> Dict[str, str]:
+    def _get_contractors_data(self, kardex) -> Dict[str, str]:
         """
         Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
         """
         # 1. Define your people lists (simulate DB or input)
+        
+        # update contractors view set and add a new field called condicion_str
+        # get contractors data
+        # try with more then vendedor y comprador
+
+        contratantes = Contratantes.objects.filter(kardex=kardex)
+
+
+        for contratante in contratantes:
+            # print('contratantes', contratante)
+            # print('condiciones', contratante.condicion.split('/'))
+            condiciones = contratante.condicion.split('/')
+            condiciones_list = []
+            for condicion in condiciones:
+                if condicion:
+                    condicion_int = condicion.split('.')[0]
+                    condicion_str = Actocondicion.objects.get(idcondicion=condicion_int).condicion
+                    condiciones_list.append(condicion_str)
+
+            # print('condiciones', (', ').join(condiciones_list))
+            cliente2 = Cliente2.objects.get(idcontratante=contratante.idcontratante)
+            nacionalidad = Nacionalidades.objects.get(idnacionalidad=cliente2.nacionalidad)
+            contratante_obj = {
+                'sexo': cliente2.sexo,
+                'condiciones': (', ').join(condiciones_list),
+                'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
+                'nacionalidad': nacionalidad.descripcion,
+                'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
+                'numeroDocumento': cliente2.numdoc,
+                'ocupacion': cliente2.detaprofesion if cliente2.detaprofesion else '',
+                'estadoCivil': CIVIL_STATUS[cliente2.idestcivil]['label'] if cliente2.idestcivil in CIVIL_STATUS else '',
+                'direccion': cliente2.direccion if cliente2.direccion else '',
+            }
+
+            print('contratante_obj', contratante_obj)
+
 
         transferors = [
             {
@@ -408,31 +445,11 @@ class VehicleTransferDocumentService:
         contractors_data.update(articles_acquirer)
 
         return contractors_data
-
     def get_articles_and_grammar(self, people, role_prefix):
-        """
-        Returns a dict with the correct articles and word forms for the given people.
-        people: list of dicts with at least 'sexo' and 'condiciones'
-        role_prefix: 'P' for transferor, 'C' for acquirer
-        """
-
-        ROLE_LABELS = {
-            'VENDEDOR': {'M': 'VENDEDOR', 'F': 'VENDEDORA', 'M_PL': 'VENDEDORES', 'F_PL': 'VENDEDORAS'},
-            'COMPRADOR': {'M': 'COMPRADOR', 'F': 'COMPRADORA', 'M_PL': 'COMPRADORES', 'F_PL': 'COMPRADORAS'},
-            'DONANTE': {'M': 'DONANTE', 'F': 'DONANTE', 'M_PL': 'DONANTES', 'F_PL': 'DONANTES'},
-            'DONATARIO': {'M': 'DONATARIO', 'F': 'DONATARIA', 'M_PL': 'DONATARIOS', 'F_PL': 'DONATARIAS'},
-            'APODERADO': {'M': 'APODERADO', 'F': 'APODERADA', 'M_PL': 'APODERADOS', 'F_PL': 'APODERADAS'},
-            'REPRESENTANTE': {'M': 'REPRESENTANTE', 'F': 'REPRESENTANTE', 'M_PL': 'REPRESENTANTES', 'F_PL': 'REPRESENTANTES'},
-            'ADJUDICATARIO': {'M': 'ADJUDICATARIO', 'F': 'ADJUDICATARIA', 'M_PL': 'ADJUDICATARIOS', 'F_PL': 'ADJUDICATARIAS'},
-            # ...add more as needed
-        }
-
-
         count = len(people)
         all_female = all(p['sexo'] == 'F' for p in people)
         all_male = all(p['sexo'] == 'M' for p in people)
         ambos = ' AMBOS ' if count > 1 else ' '
-        # Get the main role (assume all have the same for this group)
         main_role = people[0]['condiciones'] if people else ''
         role_labels = ROLE_LABELS.get(main_role, {})
         if count > 1:
@@ -449,6 +466,36 @@ class VehicleTransferDocumentService:
             f'{role_prefix}_INICIO': inicio,
             f'{role_prefix}_AMBOS': ambos,
         }
+
+    # def get_articles_and_grammar(self, people, role_prefix):
+    #     """
+    #     Returns a dict with the correct articles and word forms for the given people.
+    #     people: list of dicts with at least 'sexo' and 'condiciones'
+    #     role_prefix: 'P' for transferor, 'C' for acquirer
+    #     """
+
+
+    #     count = len(people)
+    #     all_female = all(p['sexo'] == 'F' for p in people)
+    #     all_male = all(p['sexo'] == 'M' for p in people)
+    #     ambos = ' AMBOS ' if count > 1 else ' '
+    #     # Get the main role (assume all have the same for this group)
+    #     main_role = people[0]['condiciones'] if people else ''
+    #     role_labels = ROLE_LABELS.get(main_role, {})
+    #     if count > 1:
+    #         calidad = role_labels.get('F_PL' if all_female else 'M_PL', main_role + 'S')
+    #         inicio = ' SEÑORAS' if all_female else ' SEÑORES'
+    #         el = 'LAS' if all_female else 'LOS'
+    #     else:
+    #         calidad = role_labels.get('F' if all_female else 'M', main_role)
+    #         inicio = ' SEÑORA' if all_female else ' SEÑOR'
+    #         el = 'LA' if all_female else 'EL'
+    #     return {
+    #         f'EL_{role_prefix}': el,
+    #         f'{role_prefix}_CALIDAD': calidad,
+    #         f'{role_prefix}_INICIO': inicio,
+    #         f'{role_prefix}_AMBOS': ambos,
+    #     }
     
     def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
         """
