@@ -355,7 +355,7 @@ class VehicleTransferDocumentService:
                 'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
                 'numeroDocumento': cliente2.numdoc,
                 'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
-                'estadoCivil': CIVIL_STATUS[cliente2.idestcivil]['label'] if cliente2.idestcivil in CIVIL_STATUS else '',
+                'estadoCivil': self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), cliente2.sexo) if cliente2.idestcivil in CIVIL_STATUS else '',
                 'direccion': cliente2.direccion if cliente2.direccion else '',
             }
             contratantes_list.append(contratante_obj)
@@ -403,7 +403,7 @@ class VehicleTransferDocumentService:
             'P_TIP_DOC': transferors[0]['tipoDocumento'],
             'P_DOC': f"IDENTIFICADA CON {transferors[0]['tipoDocumento']} N° {transferors[0]['numeroDocumento']}, ",
             'P_OCUPACION': transferors[0]['ocupacion'],
-            'P_ESTADO_CIVIL': transferors[0]['estadoCivil'] + ', ',
+            'P_ESTADO_CIVIL': transferors[0]['estadoCivil'],
             'P_DOMICILIO': 'CON DOMICILIO EN ' + transferors[0]['direccion'],
             'P_IDE': ' ',
             'SEXO_P': transferors[0]['sexo'],
@@ -416,7 +416,7 @@ class VehicleTransferDocumentService:
             'C_TIP_DOC': acquirers[0]['tipoDocumento'],
             'C_DOC': f"IDENTIFICADO CON {acquirers[0]['tipoDocumento']} N° {acquirers[0]['numeroDocumento']}, ",
             'C_OCUPACION': acquirers[0]['ocupacion'],
-            'C_ESTADO_CIVIL': acquirers[0]['estadoCivil'] + ', ',
+            'C_ESTADO_CIVIL': acquirers[0]['estadoCivil'],
             'C_DOMICILIO': 'CON DOMICILIO EN ' + acquirers[0]['direccion'],
             'C_IDE': ' ',
             'SEXO_C': acquirers[0]['sexo'],
@@ -439,7 +439,20 @@ class VehicleTransferDocumentService:
 
         return contractors_data
 
-  
+    def get_identification_phrase(self, gender, doc_type, doc_number):
+        if gender == 'F':
+            return f'IDENTIFICADA CON {doc_type} N° {doc_number}, '
+        else:
+            return f'IDENTIFICADO CON {doc_type} N° {doc_number}, '
+
+    def get_civil_status_by_gender(self, civil_status, gender):
+        if not civil_status:
+            return ''
+        if gender == 'F':
+            return civil_status[:-1] + 'A, '
+        else:
+            return civil_status + ', '
+
     def classify_contratantes(self, contratantes):
         TRANSFEROR_ROLES = {'VENDEDOR', 'DONANTE', 'APODERADO', 'CEDENTE', 'ARRENDADOR', 'MUTUANTE', 'ADJUDICANTE'}
         ACQUIRER_ROLES = {'COMPRADOR', 'DONATARIO', 'CESIONARIO', 'ARRENDATARIO', 'MUTUARIO', 'ADJUDICATARIO'}
