@@ -341,11 +341,10 @@ class VehicleTransferDocumentService:
         # try with more then vendedor y comprador
 
         contratantes = Contratantes.objects.filter(kardex=kardex)
+        contratantes_list = []
 
 
         for contratante in contratantes:
-            # print('contratantes', contratante)
-            # print('condiciones', contratante.condicion.split('/'))
             condiciones = contratante.condicion.split('/')
             condiciones_list = []
             for condicion in condiciones:
@@ -354,7 +353,6 @@ class VehicleTransferDocumentService:
                     condicion_str = Actocondicion.objects.get(idcondicion=condicion_int).condicion
                     condiciones_list.append(condicion_str)
 
-            # print('condiciones', (', ').join(condiciones_list))
             cliente2 = Cliente2.objects.get(idcontratante=contratante.idcontratante)
             nacionalidad = Nacionalidades.objects.get(idnacionalidad=cliente2.nacionalidad)
             contratante_obj = {
@@ -368,42 +366,43 @@ class VehicleTransferDocumentService:
                 'estadoCivil': CIVIL_STATUS[cliente2.idestcivil]['label'] if cliente2.idestcivil in CIVIL_STATUS else '',
                 'direccion': cliente2.direccion if cliente2.direccion else '',
             }
+            contratantes_list.append(contratante_obj)
 
-            print('contratante_obj', contratante_obj)
+        print('contratantes_list:', contratantes_list)
+        transferors, acquirers = self.classify_contratantes(contratantes_list)
 
-
-        transferors = [
-            {
-                'sexo': 'F',
-                'condiciones': 'VENDEDOR',
-                'idCliente': 1,
-                'idConyuge': 2,
-                'nombres': 'MARÍA GONZÁLEZ LÓPEZ',
-                'nacionalidad': 'PERUANA',
-                'tipoDocumento': 'DNI',
-                'numeroDocumento': '12345678',
-                'ocupacion': 'INGENIERA CIVIL',
-                'estadoCivil': 'CASADA',
-                'direccion': 'AV. AREQUIPA 123 DEL DISTRITO DE MIRAFLORES PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
-            }
-            # Add more transferors as needed
-        ]
-        acquirers = [
-            {
-                'sexo': 'M',
-                'condiciones': 'COMPRADOR',
-                'idCliente': 3,
-                'idConyuge': None,
-                'nombres': 'CARLOS RODRÍGUEZ MARTÍNEZ',
-                'nacionalidad': 'PERUANO',
-                'tipoDocumento': 'DNI',
-                'numeroDocumento': '87654321',
-                'ocupacion': 'ABOGADO',
-                'estadoCivil': 'SOLTERO',
-                'direccion': 'JR. BOLÍVAR 456 DEL DISTRITO DE SAN ISIDRO PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
-            }
-            # Add more acquirers as needed
-        ]
+        # transferors = [
+        #     {
+        #         'sexo': 'F',
+        #         'condiciones': 'VENDEDOR',
+        #         'idCliente': 1,
+        #         'idConyuge': 2,
+        #         'nombres': 'MARÍA GONZÁLEZ LÓPEZ',
+        #         'nacionalidad': 'PERUANA',
+        #         'tipoDocumento': 'DNI',
+        #         'numeroDocumento': '12345678',
+        #         'ocupacion': 'INGENIERA CIVIL',
+        #         'estadoCivil': 'CASADA',
+        #         'direccion': 'AV. AREQUIPA 123 DEL DISTRITO DE MIRAFLORES PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+        #     }
+        #     # Add more transferors as needed
+        # ]
+        # acquirers = [
+        #     {
+        #         'sexo': 'M',
+        #         'condiciones': 'COMPRADOR',
+        #         'idCliente': 3,
+        #         'idConyuge': None,
+        #         'nombres': 'CARLOS RODRÍGUEZ MARTÍNEZ',
+        #         'nacionalidad': 'PERUANO',
+        #         'tipoDocumento': 'DNI',
+        #         'numeroDocumento': '87654321',
+        #         'ocupacion': 'ABOGADO',
+        #         'estadoCivil': 'SOLTERO',
+        #         'direccion': 'JR. BOLÍVAR 456 DEL DISTRITO DE SAN ISIDRO PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+        #     }
+        #     # Add more acquirers as needed
+        # ]
 
         # 2. Build the data for the first transferor/acquirer (for placeholders)
         transferor_data = {
@@ -445,6 +444,16 @@ class VehicleTransferDocumentService:
         contractors_data.update(articles_acquirer)
 
         return contractors_data
+
+  
+    def classify_contratantes(self, contratantes):
+        TRANSFEROR_ROLES = {'VENDEDOR', 'DONANTE', 'APODERADO', 'CEDENTE', 'ARRENDADOR', 'MUTUANTE', 'ADJUDICANTE'}
+        ACQUIRER_ROLES = {'COMPRADOR', 'DONATARIO', 'CESIONARIO', 'ARRENDATARIO', 'MUTUARIO', 'ADJUDICATARIO'}
+
+        transferors = [c for c in contratantes if c['condiciones'] in TRANSFEROR_ROLES]
+        acquirers = [c for c in contratantes if c['condiciones'] in ACQUIRER_ROLES]
+        return transferors, acquirers
+
     def get_articles_and_grammar(self, people, role_prefix):
         count = len(people)
         all_female = all(p['sexo'] == 'F' for p in people)
