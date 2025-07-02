@@ -351,7 +351,7 @@ class VehicleTransferDocumentService:
                 'sexo': cliente2.sexo,
                 'condiciones': (', ').join(condiciones_list),
                 'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
-                'nacionalidad': nacionalidad.descripcion,
+                'nacionalidad': self.get_nationality_by_gender(nacionalidad.descripcion, cliente2.sexo),
                 'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
                 'numeroDocumento': cliente2.numdoc,
                 'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
@@ -435,6 +435,8 @@ class VehicleTransferDocumentService:
         contractors_data.update(articles_transferor)
         contractors_data.update(articles_acquirer)
 
+        print('contractors_data:', contractors_data)
+
         return contractors_data
 
   
@@ -446,8 +448,23 @@ class VehicleTransferDocumentService:
         acquirers = [c for c in contratantes if c['condiciones'] in ACQUIRER_ROLES]
         return transferors, acquirers
 
+    def get_nationality_by_gender(self, nationality, gender):
+        if not nationality:
+            return ''
+        base = nationality[:-1]  # Remove last character
+        if gender == 'F':
+            return base + 'A'
+        else:
+            return base + 'O'
     def get_articles_and_grammar(self, people, role_prefix):
         count = len(people)
+        if count == 0:
+            return {
+                f'EL_{role_prefix}': '',
+                f'{role_prefix}_CALIDAD': '',
+                f'{role_prefix}_INICIO': '',
+                f'{role_prefix}_AMBOS': '',
+            }
         all_female = all(p['sexo'] == 'F' for p in people)
         all_male = all(p['sexo'] == 'M' for p in people)
         ambos = ' AMBOS ' if count > 1 else ' '
@@ -459,7 +476,7 @@ class VehicleTransferDocumentService:
             el = 'LAS' if all_female else 'LOS'
         else:
             calidad = role_labels.get('F' if all_female else 'M', main_role)
-            inicio = ' SEÑORA' if all_female else ' SEÑOR'
+            inicio = ' SEÑORA' if all_female else 'SEÑOR'
             el = 'LA' if all_female else 'EL'
         return {
             f'EL_{role_prefix}': el,
@@ -467,6 +484,29 @@ class VehicleTransferDocumentService:
             f'{role_prefix}_INICIO': inicio,
             f'{role_prefix}_AMBOS': ambos,
         }
+
+
+    # def get_articles_and_grammar(self, people, role_prefix):
+    #     count = len(people)
+    #     all_female = all(p['sexo'] == 'F' for p in people)
+    #     all_male = all(p['sexo'] == 'M' for p in people)
+    #     ambos = ' AMBOS ' if count > 1 else ' '
+    #     main_role = people[0]['condiciones'] if people else ''
+    #     role_labels = ROLE_LABELS.get(main_role, {})
+    #     if count > 1:
+    #         calidad = role_labels.get('F_PL' if all_female else 'M_PL', main_role + 'S')
+    #         inicio = ' SEÑORAS' if all_female else ' SEÑORES'
+    #         el = 'LAS' if all_female else 'LOS'
+    #     else:
+    #         calidad = role_labels.get('F' if all_female else 'M', main_role)
+    #         inicio = ' SEÑORA' if all_female else ' SEÑOR'
+    #         el = 'LA' if all_female else 'EL'
+    #     return {
+    #         f'EL_{role_prefix}': el,
+    #         f'{role_prefix}_CALIDAD': calidad,
+    #         f'{role_prefix}_INICIO': inicio,
+    #         f'{role_prefix}_AMBOS': ambos,
+    #     }
 
     # def get_articles_and_grammar(self, people, role_prefix):
     #     """
