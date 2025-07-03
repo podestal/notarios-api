@@ -326,15 +326,8 @@ class VehicleTransferDocumentService:
         """
         Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
         """
-        # 1. Define your people lists (simulate DB or input)
-        
-        # update contractors view set and add a new field called condicion_str
-        # get contractors data
-        # try with more then vendedor y comprador
-
         contratantes = Contratantes.objects.filter(kardex=kardex)
         contratantes_list = []
-
 
         for contratante in contratantes:
             condiciones = contratante.condicion.split('/')
@@ -353,91 +346,212 @@ class VehicleTransferDocumentService:
                 'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
                 'nacionalidad': self.get_nationality_by_gender(nacionalidad.descripcion, cliente2.sexo),
                 'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
-                'numeroDocumento': self.get_identification_phrase(cliente2.sexo, TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'], cliente2.numdoc),
+                'numeroDocumento': cliente2.numdoc,
                 'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
                 'estadoCivil': self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), cliente2.sexo) if cliente2.idestcivil in CIVIL_STATUS else '',
                 'direccion': cliente2.direccion if cliente2.direccion else '',
             }
             contratantes_list.append(contratante_obj)
 
-        print('contratantes_list:', contratantes_list)
         transferors, acquirers = self.classify_contratantes(contratantes_list)
 
-        # transferors = [
-        #     {
-        #         'sexo': 'F',
-        #         'condiciones': 'VENDEDOR',
-        #         'idCliente': 1,
-        #         'idConyuge': 2,
-        #         'nombres': 'MARÍA GONZÁLEZ LÓPEZ',
-        #         'nacionalidad': 'PERUANA',
-        #         'tipoDocumento': 'DNI',
-        #         'numeroDocumento': '12345678',
-        #         'ocupacion': 'INGENIERA CIVIL',
-        #         'estadoCivil': 'CASADA',
-        #         'direccion': 'AV. AREQUIPA 123 DEL DISTRITO DE MIRAFLORES PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
-        #     }
-        #     # Add more transferors as needed
-        # ]
-        # acquirers = [
-        #     {
-        #         'sexo': 'M',
-        #         'condiciones': 'COMPRADOR',
-        #         'idCliente': 3,
-        #         'idConyuge': None,
-        #         'nombres': 'CARLOS RODRÍGUEZ MARTÍNEZ',
-        #         'nacionalidad': 'PERUANO',
-        #         'tipoDocumento': 'DNI',
-        #         'numeroDocumento': '87654321',
-        #         'ocupacion': 'ABOGADO',
-        #         'estadoCivil': 'SOLTERO',
-        #         'direccion': 'JR. BOLÍVAR 456 DEL DISTRITO DE SAN ISIDRO PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
-        #     }
-        #     # Add more acquirers as needed
-        # ]
-
-        # 2. Build the data for the first transferor/acquirer (for placeholders)
-        transferor_data = {
-            'P_NOM': transferors[0]['nombres'] + ', ',
-            'P_NACIONALIDAD': transferors[0]['nacionalidad'] + ', ',
-            'P_TIP_DOC': transferors[0]['tipoDocumento'],
-            'P_DOC': f"{transferors[0]['numeroDocumento']}, ",
-            'P_OCUPACION': transferors[0]['ocupacion'],
-            'P_ESTADO_CIVIL': transferors[0]['estadoCivil'],
-            'P_DOMICILIO': 'CON DOMICILIO EN ' + transferors[0]['direccion'],
-            'P_IDE': ' ',
-            'SEXO_P': transferors[0]['sexo'],
-            'P_FIRMAN': transferors[0]['nombres'] + ', ',
-            'P_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
-        }
-        acquirer_data = {
-            'C_NOM': acquirers[0]['nombres'] + ', ',
-            'C_NACIONALIDAD': acquirers[0]['nacionalidad'] + ', ',
-            'C_TIP_DOC': acquirers[0]['tipoDocumento'],
-            'C_DOC': f"{transferors[0]['numeroDocumento']}, ",
-            'C_OCUPACION': acquirers[0]['ocupacion'],
-            'C_ESTADO_CIVIL': acquirers[0]['estadoCivil'],
-            'C_DOMICILIO': 'CON DOMICILIO EN ' + acquirers[0]['direccion'],
-            'C_IDE': ' ',
-            'SEXO_C': acquirers[0]['sexo'],
-            'C_FIRMAN': acquirers[0]['nombres'] + ', ',
-            'C_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
-        }
-
-        # 3. Get articles/grammar dynamically
-        articles_transferor = self.get_articles_and_grammar(transferors, 'P')
-        articles_acquirer = self.get_articles_and_grammar(acquirers, 'C')
-
-        # 4. Merge all data
         contractors_data = {}
-        contractors_data.update(transferor_data)
-        contractors_data.update(acquirer_data)
-        contractors_data.update(articles_transferor)
-        contractors_data.update(articles_acquirer)
 
-        print('contractors_data:', contractors_data)
+        # --- MULTIPLE TRANSFERORS ---
+        for idx, t in enumerate(transferors, 1):
+            contractors_data[f'P_NOM_{idx}'] = t['nombres'] + ', '
+            contractors_data[f'P_NACIONALIDAD_{idx}'] = t['nacionalidad'] + ', '
+            contractors_data[f'P_TIP_DOC_{idx}'] = t['tipoDocumento']
+            contractors_data[f'P_DOC_{idx}'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+            contractors_data[f'P_OCUPACION_{idx}'] = t['ocupacion']
+            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = t['estadoCivil']
+            contractors_data[f'P_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + t['direccion']
+            contractors_data[f'P_IDE_{idx}'] = ' '
+            contractors_data[f'SEXO_P_{idx}'] = t['sexo']
+            contractors_data[f'P_FIRMAN_{idx}'] = t['nombres'] + ', '
+            contractors_data[f'P_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
+
+        # --- MULTIPLE ACQUIRERS ---
+        for idx, c in enumerate(acquirers, 1):
+            contractors_data[f'C_NOM_{idx}'] = c['nombres'] + ', '
+            contractors_data[f'C_NACIONALIDAD_{idx}'] = c['nacionalidad'] + ', '
+            contractors_data[f'C_TIP_DOC_{idx}'] = c['tipoDocumento']
+            contractors_data[f'C_DOC_{idx}'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+            contractors_data[f'C_OCUPACION_{idx}'] = c['ocupacion']
+            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = c['estadoCivil']
+            contractors_data[f'C_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + c['direccion']
+            contractors_data[f'C_IDE_{idx}'] = ' '
+            contractors_data[f'SEXO_C_{idx}'] = c['sexo']
+            contractors_data[f'C_FIRMAN_{idx}'] = c['nombres'] + ', '
+            contractors_data[f'C_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
+
+        # --- Optionally, pad up to 10 for template compatibility ---
+        for idx in range(len(transferors) + 1, 11):
+            contractors_data[f'P_NOM_{idx}'] = f'[E.P_NOM_{idx}]'
+            contractors_data[f'P_NACIONALIDAD_{idx}'] = f'[E.P_NACIONALIDAD_{idx}]'
+            contractors_data[f'P_TIP_DOC_{idx}'] = f'[E.P_TIP_DOC_{idx}]'
+            contractors_data[f'P_DOC_{idx}'] = f'[E.P_DOC_{idx}]'
+            contractors_data[f'P_OCUPACION_{idx}'] = f'[E.P_OCUPACION_{idx}]'
+            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = f'[E.P_ESTADO_CIVIL_{idx}]'
+            contractors_data[f'P_DOMICILIO_{idx}'] = f'[E.P_DOMICILIO_{idx}]'
+            contractors_data[f'P_IDE_{idx}'] = f'[E.P_IDE_{idx}]'
+            contractors_data[f'SEXO_P_{idx}'] = f'[E.SEXO_P_{idx}]'
+            contractors_data[f'P_FIRMAN_{idx}'] = f'[E.P_FIRMAN_{idx}]'
+            contractors_data[f'P_IMPRIME_{idx}'] = f'[E.P_IMPRIME_{idx}]'
+
+        for idx in range(len(acquirers) + 1, 11):
+            contractors_data[f'C_NOM_{idx}'] = f'[E.C_NOM_{idx}]'
+            contractors_data[f'C_NACIONALIDAD_{idx}'] = f'[E.C_NACIONALIDAD_{idx}]'
+            contractors_data[f'C_TIP_DOC_{idx}'] = f'[E.C_TIP_DOC_{idx}]'
+            contractors_data[f'C_DOC_{idx}'] = f'[E.C_DOC_{idx}]'
+            contractors_data[f'C_OCUPACION_{idx}'] = f'[E.C_OCUPACION_{idx}]'
+            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = f'[E.C_ESTADO_CIVIL_{idx}]'
+            contractors_data[f'C_DOMICILIO_{idx}'] = f'[E.C_DOMICILIO_{idx}]'
+            contractors_data[f'C_IDE_{idx}'] = f'[E.C_IDE_{idx}]'
+            contractors_data[f'SEXO_C_{idx}'] = f'[E.SEXO_C_{idx}]'
+            contractors_data[f'C_FIRMAN_{idx}'] = f'[E.C_FIRMAN_{idx}]'
+            contractors_data[f'C_IMPRIME_{idx}'] = f'[E.C_IMPRIME_{idx}]'
+
+        if transferors:
+            contractors_data['P_NOM'] = contractors_data['P_NOM_1']
+            contractors_data['P_NACIONALIDAD'] = contractors_data['P_NACIONALIDAD_1']
+            contractors_data['P_TIP_DOC'] = contractors_data['P_TIP_DOC_1']
+            contractors_data['P_DOC'] = contractors_data['P_DOC_1']
+            contractors_data['P_OCUPACION'] = contractors_data['P_OCUPACION_1']
+            contractors_data['P_ESTADO_CIVIL'] = contractors_data['P_ESTADO_CIVIL_1']
+            contractors_data['P_DOMICILIO'] = contractors_data['P_DOMICILIO_1']
+            contractors_data['P_IDE'] = contractors_data['P_IDE_1']
+            contractors_data['SEXO_P'] = contractors_data['SEXO_P_1']
+            contractors_data['P_FIRMAN'] = contractors_data['P_FIRMAN_1']
+            contractors_data['P_IMPRIME'] = contractors_data['P_IMPRIME_1']
+
+        if acquirers:
+            contractors_data['C_NOM'] = contractors_data['C_NOM_1']
+            contractors_data['C_NACIONALIDAD'] = contractors_data['C_NACIONALIDAD_1']
+            contractors_data['C_TIP_DOC'] = contractors_data['C_TIP_DOC_1']
+            contractors_data['C_DOC'] = contractors_data['C_DOC_1']
+            contractors_data['C_OCUPACION'] = contractors_data['C_OCUPACION_1']
+            contractors_data['C_ESTADO_CIVIL'] = contractors_data['C_ESTADO_CIVIL_1']
+            contractors_data['C_DOMICILIO'] = contractors_data['C_DOMICILIO_1']
+            contractors_data['C_IDE'] = contractors_data['C_IDE_1']
+            contractors_data['SEXO_C'] = contractors_data['SEXO_C_1']
+            contractors_data['C_FIRMAN'] = contractors_data['C_FIRMAN_1']
+            contractors_data['C_IMPRIME'] = contractors_data['C_IMPRIME_1']
+
+        # --- Articles/grammar ---
+        contractors_data.update(self.get_articles_and_grammar(transferors, 'P'))
+        contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
 
         return contractors_data
+
+    # def _get_contractors_data(self, kardex) -> Dict[str, str]:
+    #     """
+    #     Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
+    #     """
+
+    #     contratantes = Contratantes.objects.filter(kardex=kardex)
+    #     contratantes_list = []
+
+
+    #     for contratante in contratantes:
+    #         condiciones = contratante.condicion.split('/')
+    #         condiciones_list = []
+    #         for condicion in condiciones:
+    #             if condicion:
+    #                 condicion_int = condicion.split('.')[0]
+    #                 condicion_str = Actocondicion.objects.get(idcondicion=condicion_int).condicion
+    #                 condiciones_list.append(condicion_str)
+
+    #         cliente2 = Cliente2.objects.get(idcontratante=contratante.idcontratante)
+    #         nacionalidad = Nacionalidades.objects.get(idnacionalidad=cliente2.nacionalidad)
+    #         contratante_obj = {
+    #             'sexo': cliente2.sexo,
+    #             'condiciones': (', ').join(condiciones_list),
+    #             'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
+    #             'nacionalidad': self.get_nationality_by_gender(nacionalidad.descripcion, cliente2.sexo),
+    #             'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
+    #             'numeroDocumento': self.get_identification_phrase(cliente2.sexo, TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'], cliente2.numdoc),
+    #             'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
+    #             'estadoCivil': self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), cliente2.sexo) if cliente2.idestcivil in CIVIL_STATUS else '',
+    #             'direccion': cliente2.direccion if cliente2.direccion else '',
+    #         }
+    #         contratantes_list.append(contratante_obj)
+
+    #     transferors, acquirers = self.classify_contratantes(contratantes_list)
+
+    #     # transferors = [
+    #     #     {
+    #     #         'sexo': 'F',
+    #     #         'condiciones': 'VENDEDOR',
+    #     #         'idCliente': 1,
+    #     #         'idConyuge': 2,
+    #     #         'nombres': 'MARÍA GONZÁLEZ LÓPEZ',
+    #     #         'nacionalidad': 'PERUANA',
+    #     #         'tipoDocumento': 'DNI',
+    #     #         'numeroDocumento': '12345678',
+    #     #         'ocupacion': 'INGENIERA CIVIL',
+    #     #         'estadoCivil': 'CASADA',
+    #     #         'direccion': 'AV. AREQUIPA 123 DEL DISTRITO DE MIRAFLORES PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+    #     #     }
+    #     #     # Add more transferors as needed
+    #     # ]
+    #     # acquirers = [
+    #     #     {
+    #     #         'sexo': 'M',
+    #     #         'condiciones': 'COMPRADOR',
+    #     #         'idCliente': 3,
+    #     #         'idConyuge': None,
+    #     #         'nombres': 'CARLOS RODRÍGUEZ MARTÍNEZ',
+    #     #         'nacionalidad': 'PERUANO',
+    #     #         'tipoDocumento': 'DNI',
+    #     #         'numeroDocumento': '87654321',
+    #     #         'ocupacion': 'ABOGADO',
+    #     #         'estadoCivil': 'SOLTERO',
+    #     #         'direccion': 'JR. BOLÍVAR 456 DEL DISTRITO DE SAN ISIDRO PROVINCIA DE LIMA Y DEPARTAMENTO DE LIMA',
+    #     #     }
+    #     #     # Add more acquirers as needed
+    #     # ]
+
+    #     # 2. Build the data for the first transferor/acquirer (for placeholders)
+    #     transferor_data = {
+    #         'P_NOM': transferors[0]['nombres'] + ', ',
+    #         'P_NACIONALIDAD': transferors[0]['nacionalidad'] + ', ',
+    #         'P_TIP_DOC': transferors[0]['tipoDocumento'],
+    #         'P_DOC': f"{transferors[0]['numeroDocumento']}, ",
+    #         'P_OCUPACION': transferors[0]['ocupacion'],
+    #         'P_ESTADO_CIVIL': transferors[0]['estadoCivil'],
+    #         'P_DOMICILIO': 'CON DOMICILIO EN ' + transferors[0]['direccion'],
+    #         'P_IDE': ' ',
+    #         'SEXO_P': transferors[0]['sexo'],
+    #         'P_FIRMAN': transferors[0]['nombres'] + ', ',
+    #         'P_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
+    #     }
+    #     acquirer_data = {
+    #         'C_NOM': acquirers[0]['nombres'] + ', ',
+    #         'C_NACIONALIDAD': acquirers[0]['nacionalidad'] + ', ',
+    #         'C_TIP_DOC': acquirers[0]['tipoDocumento'],
+    #         'C_DOC': f"{transferors[0]['numeroDocumento']}, ",
+    #         'C_OCUPACION': acquirers[0]['ocupacion'],
+    #         'C_ESTADO_CIVIL': acquirers[0]['estadoCivil'],
+    #         'C_DOMICILIO': 'CON DOMICILIO EN ' + acquirers[0]['direccion'],
+    #         'C_IDE': ' ',
+    #         'SEXO_C': acquirers[0]['sexo'],
+    #         'C_FIRMAN': acquirers[0]['nombres'] + ', ',
+    #         'C_IMPRIME': f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}',
+    #     }
+
+    #     # 3. Get articles/grammar dynamically
+    #     articles_transferor = self.get_articles_and_grammar(transferors, 'P')
+    #     articles_acquirer = self.get_articles_and_grammar(acquirers, 'C')
+
+    #     # 4. Merge all data
+    #     contractors_data = {}
+    #     contractors_data.update(transferor_data)
+    #     contractors_data.update(acquirer_data)
+    #     contractors_data.update(articles_transferor)
+    #     contractors_data.update(articles_acquirer)
+
+    #     return contractors_data
 
     def get_identification_phrase(self, gender, doc_type, doc_number):
         if gender == 'F':
