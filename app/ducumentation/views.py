@@ -19,6 +19,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, Any
 from botocore.config import Config
+from datetime import datetime
 
 
 class VehicleTransferDocumentService:
@@ -46,18 +47,42 @@ class VehicleTransferDocumentService:
 
     def remove_unfilled_placeholders(self, doc):
         """
-        Remove all [E.SOMETHING] placeholders that were not filled.
+        Remove all [E.SOMETHING] placeholders that were not filled,
+        and also remove the phrase 'EN REPRESENTACION DE  Y…………………………….'
         """
+        import re
         placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
+        # This regex matches: EN REPRESENTACION DE [spaces] Y [any number of dots, unicode ellipsis, or similar]
+        representation_pattern = re.compile(
+            r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
+        )
+
         for paragraph in doc.paragraphs:
-            if placeholder_pattern.search(paragraph.text):
-                paragraph.text = placeholder_pattern.sub('', paragraph.text)
+            # Remove unfilled placeholders
+            paragraph.text = placeholder_pattern.sub('', paragraph.text)
+            # Remove the unwanted phrase if the placeholder is empty
+            paragraph.text = representation_pattern.sub('', paragraph.text)
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
-                        if placeholder_pattern.search(paragraph.text):
-                            paragraph.text = placeholder_pattern.sub('', paragraph.text)
+                        paragraph.text = placeholder_pattern.sub('', paragraph.text)
+                        paragraph.text = representation_pattern.sub('', paragraph.text)
+
+    # def remove_unfilled_placeholders(self, doc):
+    #     """
+    #     Remove all [E.SOMETHING] placeholders that were not filled.
+    #     """
+    #     placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
+    #     for paragraph in doc.paragraphs:
+    #         if placeholder_pattern.search(paragraph.text):
+    #             paragraph.text = placeholder_pattern.sub('', paragraph.text)
+    #     for table in doc.tables:
+    #         for row in table.rows:
+    #             for cell in row.cells:
+    #                 for paragraph in cell.paragraphs:
+    #                     if placeholder_pattern.search(paragraph.text):
+    #                         paragraph.text = placeholder_pattern.sub('', paragraph.text)
     
     def _get_template_from_r2(self, template_id: int) -> bytes:
         """
@@ -321,14 +346,222 @@ class VehicleTransferDocumentService:
     #     contractors_data.update(articles_data)
         
     #     return contractors_data
+    # def _get_contractors_data(self, kardex) -> Dict[str, str]:
+    #     """
+    #     Faithfully replicates the PHP logic for transferors, acquirers, and representatives.
+    #     Uses id_to_contratante for correct linking. Does NOT concatenate 'EN REPRESENTACION DE ...'.
+    #     """
+    #     from datetime import datetime
+    #     import re
+
+    #     TRANSFEROR_ROLES = {
+    #         "VENDEDOR", "DONANTE", "PODERDANTE", "OTORGANTE", "REPRESENTANTE", "ANTICIPANTE",
+    #         "ADJUDICANTE", "USUFRUCTUANTE", "TRANSFERENTE", "TITULAR", "MUTUANTE", "PROPIETARIO",
+    #         "DEUDOR", "ASOCIANTE", "TRANSFERENTE / PROPIETARIO (VENDEDOR)", "APODERADO"
+    #     }
+    #     ACQUIRER_ROLES = {
+    #         "COMPRADOR", "DONATARIO", "APODERADO", "ANTICIPADO", "ADJUDICATARIO", "USUFRUCTUARIO",
+    #         "TESTIGO A RUEGO", "ADQUIRIENTE", "ACREEDOR", "OTORGADO", "MUTUATARIO", "BENEFICIARIA",
+    #         "ASOCIADO", "ADQUIRENTE / BENEFICIARIO (COMPRADOR)", "REPRESENTANTE"
+    #     }
+    #     REPRESENTATIVE_ROLES = {"APODERADO", "REPRESENTANTE"}
+
+    #     contratantes = list(Contratantes.objects.filter(kardex=kardex))
+    #     id_to_contratante = {c.idcontratante: c for c in contratantes}
+    #     contratantes_list = []
+
+    #     for contratante in contratantes:
+    #         condiciones = contratante.condicion.split('/')
+    #         condiciones_list = []
+    #         for condicion in condiciones:
+    #             if condicion:
+    #                 condicion_int = condicion.split('.')[0]
+    #                 condicion_str = Actocondicion.objects.get(idcondicion=condicion_int).condicion
+    #                 condiciones_list.append(condicion_str)
+    #         cliente2 = Cliente2.objects.get(idcontratante=contratante.idcontratante)
+    #         nacionalidad = Nacionalidades.objects.get(idnacionalidad=cliente2.nacionalidad)
+    #         contratante_obj = {
+    #             'idcontratante': contratante.idcontratante,
+    #             'sexo': cliente2.sexo,
+    #             'condiciones': (', ').join(condiciones_list),
+    #             'condicion_str': condiciones_list[0] if condiciones_list else '',
+    #             'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
+    #             'nacionalidad': self.get_nationality_by_gender(nacionalidad.descripcion, cliente2.sexo),
+    #             'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
+    #             'numeroDocumento': cliente2.numdoc,
+    #             'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
+    #             'estadoCivil': self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), cliente2.sexo) if cliente2.idestcivil in CIVIL_STATUS else '',
+    #             'direccion': cliente2.direccion if cliente2.direccion else '',
+    #             'idcontratanterp': getattr(contratante, 'idcontratanterp', None),
+    #         }
+    #         contratantes_list.append(contratante_obj)
+
+    #     # --- TRANSFERORS LOGIC (faithful to PHP) ---
+    #     transferors = []
+    #     for c in contratantes_list:
+    #         # If APODERADO or REPRESENTANTE, show as transferor, with representation
+    #         if c['condicion_str'] in REPRESENTATIVE_ROLES and c.get('idcontratanterp'):
+    #             principal_contratante = id_to_contratante.get(c['idcontratanterp'])
+    #             if principal_contratante:
+    #                 principal_cliente = Cliente2.objects.get(idcontratante=principal_contratante.idcontratante)
+    #                 principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
+    #                 c = c.copy()
+    #                 # DO NOT add 'EN REPRESENTACION DE ...' to the name
+    #                 c['principal_name'] = principal_name.strip()
+    #             transferors.append(c)
+    #         # If transferor role, only show if not represented by a representative
+    #         elif c['condicion_str'] in TRANSFEROR_ROLES:
+    #             represented = any(
+    #                 a['condicion_str'] in REPRESENTATIVE_ROLES and a.get('idcontratanterp') == c.get('idcontratante')
+    #                 for a in contratantes_list
+    #             )
+    #             if not represented:
+    #                 transferors.append(c)
+
+    #     # --- ACQUIRERS LOGIC (faithful to PHP) ---
+    #     acquirers = []
+    #     for c in contratantes_list:
+    #         if c['condicion_str'] in REPRESENTATIVE_ROLES and c.get('idcontratanterp'):
+    #             principal_contratante = id_to_contratante.get(c['idcontratanterp'])
+    #             if principal_contratante:
+    #                 principal_cliente = Cliente2.objects.get(idcontratante=principal_contratante.idcontratante)
+    #                 principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
+    #                 # Only add if principal is an acquirer role
+    #                 principal_condiciones = principal_contratante.condicion.split('/')
+    #                 principal_condicion_str = Actocondicion.objects.get(idcondicion=principal_condiciones[0].split('.')[0]).condicion if principal_condiciones and principal_condiciones[0] else ''
+    #                 if principal_condicion_str in ACQUIRER_ROLES:
+    #                     c = c.copy()
+    #                     c['principal_name'] = principal_name.strip()
+    #                     acquirers.append(c)
+    #         elif c['condicion_str'] in ACQUIRER_ROLES:
+    #             represented = any(
+    #                 a['condicion_str'] in REPRESENTATIVE_ROLES and a.get('idcontratanterp') == c.get('idcontratante')
+    #                 for a in contratantes_list
+    #             )
+    #             if not represented:
+    #                 acquirers.append(c)
+
+    #     contractors_data = {}
+
+    #     # --- MULTIPLE TRANSFERORS ---
+    #     for idx, t in enumerate(transferors, 1):
+    #         contractors_data[f'P_NOM_{idx}'] = t['nombres'] + ', '
+    #         contractors_data[f'P_NACIONALIDAD_{idx}'] = t['nacionalidad'] + ', '
+    #         contractors_data[f'P_TIP_DOC_{idx}'] = t['tipoDocumento']
+    #         contractors_data[f'P_DOC_{idx}'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+    #         contractors_data[f'P_OCUPACION_{idx}'] = t['ocupacion']
+    #         contractors_data[f'P_ESTADO_CIVIL_{idx}'] = t['estadoCivil']
+    #         contractors_data[f'P_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + t['direccion']
+    #         contractors_data[f'P_IDE_{idx}'] = ' '
+    #         contractors_data[f'SEXO_P_{idx}'] = t['sexo']
+    #         contractors_data[f'P_FIRMAN_{idx}'] = t['nombres'] + ', '
+    #         contractors_data[f'P_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
+    #         # contractors_data[f'P_REPRESENTADO_{idx}'] 
+    #         # Always fill P_REPRESENTADO_{idx}
+    #         if 'principal_name' in t:
+    #             contractors_data[f'P_REPRESENTADO_{idx}'] = t['principal_name']
+    #         else:
+    #             contractors_data[f'P_REPRESENTADO_{idx}'] = '\u00A0'  # non-breaking space, or use '-' if you prefer
+
+    #     # --- MULTIPLE ACQUIRERS ---
+    #     for idx, c in enumerate(acquirers, 1):
+    #         contractors_data[f'C_NOM_{idx}'] = c['nombres'] + ', '
+    #         contractors_data[f'C_NACIONALIDAD_{idx}'] = c['nacionalidad'] + ', '
+    #         contractors_data[f'C_TIP_DOC_{idx}'] = c['tipoDocumento']
+    #         contractors_data[f'C_DOC_{idx}'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+    #         contractors_data[f'C_OCUPACION_{idx}'] = c['ocupacion']
+    #         contractors_data[f'C_ESTADO_CIVIL_{idx}'] = c['estadoCivil']
+    #         contractors_data[f'C_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + c['direccion']
+    #         contractors_data[f'C_IDE_{idx}'] = ' '
+    #         contractors_data[f'SEXO_C_{idx}'] = c['sexo']
+    #         contractors_data[f'C_FIRMAN_{idx}'] = c['nombres'] + ', '
+    #         contractors_data[f'C_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
+    #         if 'principal_name' in c:
+    #             contractors_data[f'C_REPRESENTADO_{idx}'] = c['principal_name']
+
+    #     print('contractors_data', contractors_data)
+    #     # (Optionally pad up to 10 for template compatibility, as in your previous code...)
+    #     for idx in range(len(transferors) + 1, 11):
+    #         contractors_data[f'P_NOM_{idx}'] = f'[E.P_NOM_{idx}]'
+    #         contractors_data[f'P_NACIONALIDAD_{idx}'] = f'[E.P_NACIONALIDAD_{idx}]'
+    #         contractors_data[f'P_TIP_DOC_{idx}'] = f'[E.P_TIP_DOC_{idx}]'
+    #         contractors_data[f'P_DOC_{idx}'] = f'[E.P_DOC_{idx}]'
+    #         contractors_data[f'P_OCUPACION_{idx}'] = f'[E.P_OCUPACION_{idx}]'
+    #         contractors_data[f'P_ESTADO_CIVIL_{idx}'] = f'[E.P_ESTADO_CIVIL_{idx}]'
+    #         contractors_data[f'P_DOMICILIO_{idx}'] = f'[E.P_DOMICILIO_{idx}]'
+    #         contractors_data[f'P_IDE_{idx}'] = f'[E.P_IDE_{idx}]'
+    #         contractors_data[f'SEXO_P_{idx}'] = f'[E.SEXO_P_{idx}]'
+    #         contractors_data[f'P_FIRMAN_{idx}'] = f'[E.P_FIRMAN_{idx}]'
+    #         contractors_data[f'P_IMPRIME_{idx}'] = f'[E.P_IMPRIME_{idx}]'
+
+    #     for idx in range(len(acquirers) + 1, 11):
+    #         contractors_data[f'C_NOM_{idx}'] = f'[E.C_NOM_{idx}]'
+    #         contractors_data[f'C_NACIONALIDAD_{idx}'] = f'[E.C_NACIONALIDAD_{idx}]'
+    #         contractors_data[f'C_TIP_DOC_{idx}'] = f'[E.C_TIP_DOC_{idx}]'
+    #         contractors_data[f'C_DOC_{idx}'] = f'[E.C_DOC_{idx}]'
+    #         contractors_data[f'C_OCUPACION_{idx}'] = f'[E.C_OCUPACION_{idx}]'
+    #         contractors_data[f'C_ESTADO_CIVIL_{idx}'] = f'[E.C_ESTADO_CIVIL_{idx}]'
+    #         contractors_data[f'C_DOMICILIO_{idx}'] = f'[E.C_DOMICILIO_{idx}]'
+    #         contractors_data[f'C_IDE_{idx}'] = f'[E.C_IDE_{idx}]'
+    #         contractors_data[f'SEXO_C_{idx}'] = f'[E.SEXO_C_{idx}]'
+    #         contractors_data[f'C_FIRMAN_{idx}'] = f'[E.C_FIRMAN_{idx}]'
+    #         contractors_data[f'C_IMPRIME_{idx}'] = f'[E.C_IMPRIME_{idx}]'
+
+    #     if transferors:
+    #         contractors_data['P_NOM'] = contractors_data['P_NOM_1']
+    #         contractors_data['P_NACIONALIDAD'] = contractors_data['P_NACIONALIDAD_1']
+    #         contractors_data['P_TIP_DOC'] = contractors_data['P_TIP_DOC_1']
+    #         contractors_data['P_DOC'] = contractors_data['P_DOC_1']
+    #         contractors_data['P_OCUPACION'] = contractors_data['P_OCUPACION_1']
+    #         contractors_data['P_ESTADO_CIVIL'] = contractors_data['P_ESTADO_CIVIL_1']
+    #         contractors_data['P_DOMICILIO'] = contractors_data['P_DOMICILIO_1']
+    #         contractors_data['P_IDE'] = contractors_data['P_IDE_1']
+    #         contractors_data['SEXO_P'] = contractors_data['SEXO_P_1']
+    #         contractors_data['P_FIRMAN'] = contractors_data['P_FIRMAN_1']
+    #         contractors_data['P_IMPRIME'] = contractors_data['P_IMPRIME_1']
+
+    #     if acquirers:
+    #         contractors_data['C_NOM'] = contractors_data['C_NOM_1']
+    #         contractors_data['C_NACIONALIDAD'] = contractors_data['C_NACIONALIDAD_1']
+    #         contractors_data['C_TIP_DOC'] = contractors_data['C_TIP_DOC_1']
+    #         contractors_data['C_DOC'] = contractors_data['C_DOC_1']
+    #         contractors_data['C_OCUPACION'] = contractors_data['C_OCUPACION_1']
+    #         contractors_data['C_ESTADO_CIVIL'] = contractors_data['C_ESTADO_CIVIL_1']
+    #         contractors_data['C_DOMICILIO'] = contractors_data['C_DOMICILIO_1']
+    #         contractors_data['C_IDE'] = contractors_data['C_IDE_1']
+    #         contractors_data['SEXO_C'] = contractors_data['SEXO_C_1']
+    #         contractors_data['C_FIRMAN'] = contractors_data['C_FIRMAN_1']
+    #         contractors_data['C_IMPRIME'] = contractors_data['C_IMPRIME_1']
+
+    #     # --- Articles/grammar ---
+    #     contractors_data.update(self.get_articles_and_grammar(transferors, 'P'))
+    #     contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
+
+    #     return contractors_data
 
     def _get_contractors_data(self, kardex) -> Dict[str, str]:
         """
         Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
+        Faithfully replicates the PHP logic for APODERADO, REPRESENTANTE, and all other roles.
         """
-        contratantes = Contratantes.objects.filter(kardex=kardex)
+        # All possible roles as per PHP
+        TRANSFEROR_ROLES = {
+            "VENDEDOR", "DONANTE", "PODERDANTE", "OTORGANTE", "REPRESENTANTE", "ANTICIPANTE",
+            "ADJUDICANTE", "USUFRUCTUANTE", "TRANSFERENTE", "TITULAR", "MUTUANTE", "PROPIETARIO",
+            "DEUDOR", "ASOCIANTE", "TRANSFERENTE / PROPIETARIO (VENDEDOR)", "APODERADO"
+        }
+        ACQUIRER_ROLES = {
+            "COMPRADOR", "DONATARIO", "APODERADO", "ANTICIPADO", "ADJUDICATARIO", "USUFRUCTUARIO",
+            "TESTIGO A RUEGO", "ADQUIRIENTE", "ACREEDOR", "OTORGADO", "MUTUATARIO", "BENEFICIARIA",
+            "ASOCIADO", "ADQUIRENTE / BENEFICIARIO (COMPRADOR)", "REPRESENTANTE"
+        }
+        REPRESENTATIVE_ROLES = {"APODERADO", "REPRESENTANTE"}
+
+        contratantes = list(Contratantes.objects.filter(kardex=kardex))
+        id_to_contratante = {c.idcontratante: c for c in contratantes}
         contratantes_list = []
 
+        # Build a list of all contratantes with their data and resolved condition string
         for contratante in contratantes:
             condiciones = contratante.condicion.split('/')
             condiciones_list = []
@@ -337,12 +570,13 @@ class VehicleTransferDocumentService:
                     condicion_int = condicion.split('.')[0]
                     condicion_str = Actocondicion.objects.get(idcondicion=condicion_int).condicion
                     condiciones_list.append(condicion_str)
-
             cliente2 = Cliente2.objects.get(idcontratante=contratante.idcontratante)
             nacionalidad = Nacionalidades.objects.get(idnacionalidad=cliente2.nacionalidad)
             contratante_obj = {
+                'idcontratante': contratante.idcontratante,
                 'sexo': cliente2.sexo,
                 'condiciones': (', ').join(condiciones_list),
+                'condicion_str': condiciones_list[0] if condiciones_list else '',
                 'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
                 'nacionalidad': self.get_nationality_by_gender(nacionalidad.descripcion, cliente2.sexo),
                 'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
@@ -350,10 +584,54 @@ class VehicleTransferDocumentService:
                 'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
                 'estadoCivil': self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), cliente2.sexo) if cliente2.idestcivil in CIVIL_STATUS else '',
                 'direccion': cliente2.direccion if cliente2.direccion else '',
+                'idcontratanterp': getattr(contratante, 'idcontratanterp', None),
             }
             contratantes_list.append(contratante_obj)
 
-        transferors, acquirers = self.classify_contratantes(contratantes_list)
+        # --- TRANSFERORS LOGIC (faithful to PHP) ---
+        transferors = []
+        for c in contratantes_list:
+            # If APODERADO or REPRESENTANTE, show as transferor, with representation
+            if c['condicion_str'] in REPRESENTATIVE_ROLES and c.get('idcontratanterp'):
+                principal_contratante = id_to_contratante.get(c['idcontratanterp'])
+                if principal_contratante:
+                    principal_cliente = Cliente2.objects.get(idcontratante=principal_contratante.idcontratante)
+                    principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
+                    c = c.copy()
+                    # Only append the principal's name, not the phrase
+                    c['nombres'] = f"{c['nombres'].strip()}, EN REPRESENTACION DE {principal_name.strip()}"
+                transferors.append(c)
+            # If transferor role, only show if not represented by a representative
+            elif c['condicion_str'] in TRANSFEROR_ROLES:
+                represented = any(
+                    a['condicion_str'] in REPRESENTATIVE_ROLES and a.get('idcontratanterp') == c.get('idcontratante')
+                    for a in contratantes_list
+                )
+                if not represented:
+                    transferors.append(c)
+
+        # --- ACQUIRERS LOGIC (faithful to PHP) ---
+        acquirers = []
+        for c in contratantes_list:
+            if c['condicion_str'] in REPRESENTATIVE_ROLES and c.get('idcontratanterp'):
+                principal_contratante = id_to_contratante.get(c['idcontratanterp'])
+                if principal_contratante:
+                    principal_cliente = Cliente2.objects.get(idcontratante=principal_contratante.idcontratante)
+                    principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
+                    # Only add if principal is an acquirer role
+                    principal_condiciones = principal_contratante.condicion.split('/')
+                    principal_condicion_str = Actocondicion.objects.get(idcondicion=principal_condiciones[0].split('.')[0]).condicion if principal_condiciones and principal_condiciones[0] else ''
+                    if principal_condicion_str in ACQUIRER_ROLES:
+                        c = c.copy()
+                        c['nombres'] = f"{c['nombres'].strip()}, EN REPRESENTACION DE {principal_name.strip()}"
+                        acquirers.append(c)
+            elif c['condicion_str'] in ACQUIRER_ROLES:
+                represented = any(
+                    a['condicion_str'] in REPRESENTATIVE_ROLES and a.get('idcontratanterp') == c.get('idcontratante')
+                    for a in contratantes_list
+                )
+                if not represented:
+                    acquirers.append(c)
 
         contractors_data = {}
 
@@ -443,6 +721,136 @@ class VehicleTransferDocumentService:
         contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
 
         return contractors_data
+
+    # def _get_contractors_data(self, kardex) -> Dict[str, str]:
+    #     """
+    #     Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
+    #     """
+    #     contratantes = Contratantes.objects.filter(kardex=kardex)
+    #     contratantes_list = []
+
+    #     for contratante in contratantes:
+    #         condiciones = contratante.condicion.split('/')
+    #         condiciones_list = []
+    #         for condicion in condiciones:
+    #             if condicion:
+    #                 condicion_int = condicion.split('.')[0]
+    #                 condicion_str = Actocondicion.objects.get(idcondicion=condicion_int).condicion
+    #                 condiciones_list.append(condicion_str)
+
+    #         cliente2 = Cliente2.objects.get(idcontratante=contratante.idcontratante)
+    #         nacionalidad = Nacionalidades.objects.get(idnacionalidad=cliente2.nacionalidad)
+    #         contratante_obj = {
+    #             'sexo': cliente2.sexo,
+    #             'condiciones': (', ').join(condiciones_list),
+    #             'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
+    #             'nacionalidad': self.get_nationality_by_gender(nacionalidad.descripcion, cliente2.sexo),
+    #             'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
+    #             'numeroDocumento': cliente2.numdoc,
+    #             'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
+    #             'estadoCivil': self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), cliente2.sexo) if cliente2.idestcivil in CIVIL_STATUS else '',
+    #             'direccion': cliente2.direccion if cliente2.direccion else '',
+    #         }
+    #         contratantes_list.append(contratante_obj)
+
+    #     transferors, acquirers = self.classify_contratantes(contratantes_list)
+
+    #     contractors_data = {}
+
+    #     # --- MULTIPLE TRANSFERORS ---
+    #     for idx, t in enumerate(transferors, 1):
+    #         contractors_data[f'P_NOM_{idx}'] = t['nombres'] + ', '
+    #         contractors_data[f'P_NACIONALIDAD_{idx}'] = t['nacionalidad'] + ', '
+    #         contractors_data[f'P_TIP_DOC_{idx}'] = t['tipoDocumento']
+    #         contractors_data[f'P_DOC_{idx}'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+    #         contractors_data[f'P_OCUPACION_{idx}'] = t['ocupacion']
+    #         contractors_data[f'P_ESTADO_CIVIL_{idx}'] = t['estadoCivil']
+    #         contractors_data[f'P_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + t['direccion']
+    #         contractors_data[f'P_IDE_{idx}'] = ' '
+    #         contractors_data[f'SEXO_P_{idx}'] = t['sexo']
+    #         contractors_data[f'P_FIRMAN_{idx}'] = t['nombres'] + ', '
+    #         contractors_data[f'P_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
+
+    #     # --- MULTIPLE ACQUIRERS ---
+    #     for idx, c in enumerate(acquirers, 1):
+    #         contractors_data[f'C_NOM_{idx}'] = c['nombres'] + ', '
+    #         contractors_data[f'C_NACIONALIDAD_{idx}'] = c['nacionalidad'] + ', '
+    #         contractors_data[f'C_TIP_DOC_{idx}'] = c['tipoDocumento']
+    #         contractors_data[f'C_DOC_{idx}'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+    #         contractors_data[f'C_OCUPACION_{idx}'] = c['ocupacion']
+    #         contractors_data[f'C_ESTADO_CIVIL_{idx}'] = c['estadoCivil']
+    #         contractors_data[f'C_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + c['direccion']
+    #         contractors_data[f'C_IDE_{idx}'] = ' '
+    #         contractors_data[f'SEXO_C_{idx}'] = c['sexo']
+    #         contractors_data[f'C_FIRMAN_{idx}'] = c['nombres'] + ', '
+    #         contractors_data[f'C_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
+
+    #     # --- Optionally, pad up to 10 for template compatibility ---
+    #     for idx in range(len(transferors) + 1, 11):
+    #         contractors_data[f'P_NOM_{idx}'] = f'[E.P_NOM_{idx}]'
+    #         contractors_data[f'P_NACIONALIDAD_{idx}'] = f'[E.P_NACIONALIDAD_{idx}]'
+    #         contractors_data[f'P_TIP_DOC_{idx}'] = f'[E.P_TIP_DOC_{idx}]'
+    #         contractors_data[f'P_DOC_{idx}'] = f'[E.P_DOC_{idx}]'
+    #         contractors_data[f'P_OCUPACION_{idx}'] = f'[E.P_OCUPACION_{idx}]'
+    #         contractors_data[f'P_ESTADO_CIVIL_{idx}'] = f'[E.P_ESTADO_CIVIL_{idx}]'
+    #         contractors_data[f'P_DOMICILIO_{idx}'] = f'[E.P_DOMICILIO_{idx}]'
+    #         contractors_data[f'P_IDE_{idx}'] = f'[E.P_IDE_{idx}]'
+    #         contractors_data[f'SEXO_P_{idx}'] = f'[E.SEXO_P_{idx}]'
+    #         contractors_data[f'P_FIRMAN_{idx}'] = f'[E.P_FIRMAN_{idx}]'
+    #         contractors_data[f'P_IMPRIME_{idx}'] = f'[E.P_IMPRIME_{idx}]'
+
+    #     for idx in range(len(acquirers) + 1, 11):
+    #         contractors_data[f'C_NOM_{idx}'] = f'[E.C_NOM_{idx}]'
+    #         contractors_data[f'C_NACIONALIDAD_{idx}'] = f'[E.C_NACIONALIDAD_{idx}]'
+    #         contractors_data[f'C_TIP_DOC_{idx}'] = f'[E.C_TIP_DOC_{idx}]'
+    #         contractors_data[f'C_DOC_{idx}'] = f'[E.C_DOC_{idx}]'
+    #         contractors_data[f'C_OCUPACION_{idx}'] = f'[E.C_OCUPACION_{idx}]'
+    #         contractors_data[f'C_ESTADO_CIVIL_{idx}'] = f'[E.C_ESTADO_CIVIL_{idx}]'
+    #         contractors_data[f'C_DOMICILIO_{idx}'] = f'[E.C_DOMICILIO_{idx}]'
+    #         contractors_data[f'C_IDE_{idx}'] = f'[E.C_IDE_{idx}]'
+    #         contractors_data[f'SEXO_C_{idx}'] = f'[E.SEXO_C_{idx}]'
+    #         contractors_data[f'C_FIRMAN_{idx}'] = f'[E.C_FIRMAN_{idx}]'
+    #         contractors_data[f'C_IMPRIME_{idx}'] = f'[E.C_IMPRIME_{idx}]'
+
+    #     if transferors:
+    #         contractors_data['P_NOM'] = contractors_data['P_NOM_1']
+    #         contractors_data['P_NACIONALIDAD'] = contractors_data['P_NACIONALIDAD_1']
+    #         contractors_data['P_TIP_DOC'] = contractors_data['P_TIP_DOC_1']
+    #         contractors_data['P_DOC'] = contractors_data['P_DOC_1']
+    #         contractors_data['P_OCUPACION'] = contractors_data['P_OCUPACION_1']
+    #         contractors_data['P_ESTADO_CIVIL'] = contractors_data['P_ESTADO_CIVIL_1']
+    #         contractors_data['P_DOMICILIO'] = contractors_data['P_DOMICILIO_1']
+    #         contractors_data['P_IDE'] = contractors_data['P_IDE_1']
+    #         contractors_data['SEXO_P'] = contractors_data['SEXO_P_1']
+    #         contractors_data['P_FIRMAN'] = contractors_data['P_FIRMAN_1']
+    #         contractors_data['P_IMPRIME'] = contractors_data['P_IMPRIME_1']
+
+    #     if acquirers:
+    #         contractors_data['C_NOM'] = contractors_data['C_NOM_1']
+    #         contractors_data['C_NACIONALIDAD'] = contractors_data['C_NACIONALIDAD_1']
+    #         contractors_data['C_TIP_DOC'] = contractors_data['C_TIP_DOC_1']
+    #         contractors_data['C_DOC'] = contractors_data['C_DOC_1']
+    #         contractors_data['C_OCUPACION'] = contractors_data['C_OCUPACION_1']
+    #         contractors_data['C_ESTADO_CIVIL'] = contractors_data['C_ESTADO_CIVIL_1']
+    #         contractors_data['C_DOMICILIO'] = contractors_data['C_DOMICILIO_1']
+    #         contractors_data['C_IDE'] = contractors_data['C_IDE_1']
+    #         contractors_data['SEXO_C'] = contractors_data['SEXO_C_1']
+    #         contractors_data['C_FIRMAN'] = contractors_data['C_FIRMAN_1']
+    #         contractors_data['C_IMPRIME'] = contractors_data['C_IMPRIME_1']
+
+    #     for idx, t in enumerate(transferors, 1):
+    #         contractors_data[f'P_NOM_{idx}'] = t['nombres'] + ', '
+    #         # ... other fields ...
+    #         if t.get('condiciones') == 'APODERADO':
+    #             contractors_data[f'PODER_FRASIS_{idx}'] = f"actuando en calidad de apoderado de {t.get('representado', '[NOMBRE REPRESENTADO]')}"
+    #         else:
+    #             contractors_data[f'PODER_FRASIS_{idx}'] = ''
+
+    #     # --- Articles/grammar ---
+    #     contractors_data.update(self.get_articles_and_grammar(transferors, 'P'))
+    #     contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
+
+    #     return contractors_data
 
     # def _get_contractors_data(self, kardex) -> Dict[str, str]:
     #     """
