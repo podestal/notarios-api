@@ -847,12 +847,16 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='open-template')
     def open_template(self, request):
-        template_id = request.query_params.get("template_id", '2')
-        num_kardex = request.query_params.get("num_kardex", "ACT401-2025")
+
+        template_id = request.query_params.get("template_id")
+        kardex = request.query_params.get("kardex", "ACT401-2025")
         action = request.query_params.get("action", "generate")
         
         if not template_id:
             return HttpResponse({"error": "Missing template_id parameter."}, status=400)
+
+        if not kardex:
+            return HttpResponse({"error": "Missing kardex parameter."}, status=400)
         
         try:
             template_id = int(template_id)
@@ -860,7 +864,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             return HttpResponse({"error": "Invalid template_id format."}, status=400)
         
         service = VehicleTransferDocumentService()
-        return service.generate_vehicle_transfer_document(template_id, num_kardex, action)
+        return service.generate_vehicle_transfer_document(template_id, kardex, action)
     #     """
     #     Stream a filled Word document (.docx) directly from R2 so Word can open it.
     #     """
