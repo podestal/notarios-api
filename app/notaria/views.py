@@ -86,7 +86,7 @@ class KardexViewSet(ModelViewSet):
             for c in models.Cliente2.objects.filter(
                 idcontratante__in=contratante_ids
             ).values(
-                'idcontratante', 'nombre', 'numdoc'
+                'idcontratante', 'nombre', 'numdoc', 'razonsocial'
             )
         }
 
@@ -926,7 +926,7 @@ class ContratantesViewSet(ModelViewSet):
             for c in models.Cliente2.objects.filter(
                 idcontratante__in=contratante_ids
             ).values(
-                'idcontratante', 'nombre', 'numdoc', 'idcliente'
+                'idcontratante', 'nombre', 'numdoc', 'idcliente', 'razonsocial'
             )
         }
 

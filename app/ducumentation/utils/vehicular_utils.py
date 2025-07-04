@@ -11,13 +11,6 @@ def replace_placeholders(doc, data):
                 paragraph.text = paragraph.text.replace(placeholder, value)
     return doc
 
-# def remove_placeholders(doc):
-#     """
-#     Remove unused placeholders from the document.
-#     """
-#     for paragraph in doc.paragraphs:
-#         paragraph.text = paragraph.text.replace("[E.", "").replace("]", "")
-#     return doc
 
 def remove_placeholders(doc):
     """

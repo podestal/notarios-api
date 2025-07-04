@@ -143,11 +143,16 @@ class KardexSerializer(serializers.ModelSerializer):
             cliente = clientes_map.get(idcontratante)
             if cliente:
                 clientes.append(cliente)
-
+        # print('clientes',clientes)
         if cliente:
+
             return (
                 # f"{cliente['nombre']}"
-                ', '.join(f"{c['nombre']}" for c in clientes)
+                # ', '.join(f"{c['nombre'] if c['nombre'] else c['razonsocial']}" for c in clientes)
+                ', '.join(
+                    f"{c['razonsocial'] if c['razonsocial'] else c['nombre']}"
+                    for c in clientes
+                )
             )
 
         return ''
@@ -234,9 +239,14 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
         clientes_map = self.context.get('clientes_map', {})
         cliente = clientes_map.get(obj.idcontratante)
         if cliente:
-            return (
-                f"{cliente['nombre']}"
-            )
+            if cliente.get('razonsocial'):
+                return (
+                    f"{cliente['razonsocial']}"
+                )
+            elif cliente.get('nombre'):
+                return (
+                    f"{cliente['nombre']}"
+                )
         return ''
     
     def get_cliente_id(self, obj):
