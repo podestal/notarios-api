@@ -989,6 +989,25 @@ class ClienteViewSet(ModelViewSet):
         serializer = serializers.ClienteSerializer(clientes[len(clientes) - 1])
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def by_ruc(self, request):
+        """
+        Get Cliente records by RUC.
+        """
+        ruc = request.query_params.get('ruc')
+        if not ruc:
+            return Response(
+                {"error": "ruc parameter is required."},
+                status=400
+            )
+
+        clientes = models.Cliente.objects.filter(numdoc=ruc)
+        if not clientes.exists():
+            return Response({}, status=200)
+
+        serializer = serializers.ClienteSerializer(clientes[len(clientes) - 1])
+        return Response(serializer.data)
+
 
 class Cliente2ViewSet(ModelViewSet):
     """
