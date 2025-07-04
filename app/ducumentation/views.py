@@ -20,6 +20,7 @@ from decimal import Decimal
 from typing import Dict, Any
 from botocore.config import Config
 from datetime import datetime
+from docxtpl import DocxTemplate
 
 import re
 
@@ -520,24 +521,28 @@ class VehicleTransferDocumentService:
         """
         Process the document template with data
         """
-        doc = Document(io.BytesIO(template_bytes))
-        
-        # Replace placeholders in paragraphs
-        for paragraph in doc.paragraphs:
-            for placeholder, value in data.items():
-                if f'[E.{placeholder}]' in paragraph.text:
-                    paragraph.text = paragraph.text.replace(f'[E.{placeholder}]', str(value))
-        
-        # Replace placeholders in tables
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        for placeholder, value in data.items():
-                            if f'[E.{placeholder}]' in paragraph.text:
-                                paragraph.text = paragraph.text.replace(f'[E.{placeholder}]', str(value))
-        
+        buffer = io.BytesIO(template_bytes)
+        doc = DocxTemplate(buffer)
+        doc.render(data)
         return doc
+        # doc = Document(io.BytesIO(template_bytes))
+        
+        # # Replace placeholders in paragraphs
+        # for paragraph in doc.paragraphs:
+        #     for placeholder, value in data.items():
+        #         if f'[E.{placeholder}]' in paragraph.text:
+        #             paragraph.text = paragraph.text.replace(f'[E.{placeholder}]', str(value))
+        
+        # # Replace placeholders in tables
+        # for table in doc.tables:
+        #     for row in table.rows:
+        #         for cell in row.cells:
+        #             for paragraph in cell.paragraphs:
+        #                 for placeholder, value in data.items():
+        #                     if f'[E.{placeholder}]' in paragraph.text:
+        #                         paragraph.text = paragraph.text.replace(f'[E.{placeholder}]', str(value))
+        
+        # return doc
     
     def _create_response(self, doc: Document, filename: str) -> HttpResponse:
         """
@@ -546,7 +551,6 @@ class VehicleTransferDocumentService:
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
-        
         response = HttpResponse(
             buffer.read(),
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -554,8 +558,20 @@ class VehicleTransferDocumentService:
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         response['Content-Length'] = str(buffer.getbuffer().nbytes)
         response['Access-Control-Allow-Origin'] = '*'
-        
         return response
+        # buffer = io.BytesIO()
+        # doc.save(buffer)
+        # buffer.seek(0)
+        
+        # response = HttpResponse(
+        #     buffer.read(),
+        #     content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        # )
+        # response['Content-Disposition'] = f'inline; filename="{filename}"'
+        # response['Content-Length'] = str(buffer.getbuffer().nbytes)
+        # response['Access-Control-Allow-Origin'] = '*'
+        
+        # return response
 
 
 class NumberToLetterConverter:
