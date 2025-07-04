@@ -96,21 +96,6 @@ class VehicleTransferDocumentService:
         text = re.sub(r'^[,;\\s]+', '', text)
         text = re.sub(r'[,;\\s]+$', '', text)
         return text.strip()
-
-    # def remove_unfilled_placeholders(self, doc):
-    #     """
-    #     Remove all [E.SOMETHING] placeholders that were not filled.
-    #     """
-    #     placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
-    #     for paragraph in doc.paragraphs:
-    #         if placeholder_pattern.search(paragraph.text):
-    #             paragraph.text = placeholder_pattern.sub('', paragraph.text)
-    #     for table in doc.tables:
-    #         for row in table.rows:
-    #             for cell in row.cells:
-    #                 for paragraph in cell.paragraphs:
-    #                     if placeholder_pattern.search(paragraph.text):
-    #                         paragraph.text = placeholder_pattern.sub('', paragraph.text)
     
     def _get_template_from_r2(self, template_id: int) -> bytes:
         """
@@ -525,24 +510,6 @@ class VehicleTransferDocumentService:
         doc = DocxTemplate(buffer)
         doc.render(data)
         return doc
-        # doc = Document(io.BytesIO(template_bytes))
-        
-        # # Replace placeholders in paragraphs
-        # for paragraph in doc.paragraphs:
-        #     for placeholder, value in data.items():
-        #         if f'[E.{placeholder}]' in paragraph.text:
-        #             paragraph.text = paragraph.text.replace(f'[E.{placeholder}]', str(value))
-        
-        # # Replace placeholders in tables
-        # for table in doc.tables:
-        #     for row in table.rows:
-        #         for cell in row.cells:
-        #             for paragraph in cell.paragraphs:
-        #                 for placeholder, value in data.items():
-        #                     if f'[E.{placeholder}]' in paragraph.text:
-        #                         paragraph.text = paragraph.text.replace(f'[E.{placeholder}]', str(value))
-        
-        # return doc
     
     def _create_response(self, doc: Document, filename: str) -> HttpResponse:
         """
