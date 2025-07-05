@@ -344,6 +344,14 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
             'ubigeo_plantilla',
             'fechaconstitu',
             'idsedereg',
+            'razonsocial',
+            'domfiscal',
+            'idsedereg',
+            'numpartida',
+            'telempresa',
+            'actmunicipal',
+            'contacempresa',
+            'fechaconstitu',
         ]
 
     # def create(self, validated_data):
@@ -376,7 +384,14 @@ class CreateClienteSerializer(serializers.ModelSerializer):
     """
 
     idcliente = serializers.CharField(read_only=True)
-
+                #   razonsocial: razonSocial,
+                #     domfiscal: domFiscal,
+                #     idsedereg: selectedSedeRegistral ? parseInt(selectedSedeRegistral.id) : 0,
+                #     numpartida: numeroPartida,
+                #     telempresa: teleEmpresa,
+                #     actmunicipal: ciiu,
+                #     contacempresa: contacEmpresa,
+                #     fechaconstitu: fechaConstitucion,
     class Meta:
         model = models.Cliente
         fields = [
@@ -405,7 +420,15 @@ class CreateClienteSerializer(serializers.ModelSerializer):
             'profocupa',
             'dirfer',
             'idubigeo',
-            'cumpclie'
+            'cumpclie',
+            'razonsocial',
+            'domfiscal',
+            'idsedereg',
+            'numpartida',
+            'telempresa',
+            'actmunicipal',
+            'contacempresa',
+            'fechaconstitu',
         ]
 
     def create(self, validated_data):
