@@ -171,7 +171,7 @@ class Kardex(models.Model):
     idnotario = models.IntegerField()
     numminuta = models.CharField(max_length=100)
     numescritura = models.CharField(max_length=100, blank=True, null=True)
-    fechaescritura = models.CharField(max_length=10)
+    fechaescritura = models.CharField(max_length=10, blank=True, null=True)
     insertos = models.CharField(max_length=6000, blank=True, null=True)
     direc_contacto = models.CharField(max_length=3000, blank=True, null=True)
     txa_minuta = models.CharField(max_length=30, blank=True, null=True)

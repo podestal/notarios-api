@@ -66,6 +66,12 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             'idnotario',
             'numescritura',
             'fktemplate',
+            'papelini',
+            'papelfin',
+            'folioini',
+            'foliofin',
+            'fechaescritura',
+            'responsable',
         ]
 
 
@@ -110,6 +116,8 @@ class KardexSerializer(serializers.ModelSerializer):
             'fktemplate',
             'papelini',
             'papelfin',
+            'responsable',
+            'referencia',
         ]
 
     def get_usuario(self, obj):
@@ -121,15 +129,6 @@ class KardexSerializer(serializers.ModelSerializer):
                 f"{usuario.apepat} {usuario.apemat}"
             )
         return ''
-
-    # def get_contratantes(self, obj):
-    #     contratantes_map = self.context.get('contratantes_map', {})
-    #     contratante = contratantes_map.get(obj.kardex)
-    #     if contratante:
-    #         return (
-    #             f"{contratante}"
-    #         )
-    #     return ''
 
     def get_cliente(self, obj):
         contratantes_map = self.context.get('contratantes_map', {})
