@@ -108,6 +108,8 @@ class KardexSerializer(serializers.ModelSerializer):
             'pagado',
             'visita',
             'fktemplate',
+            'papelini',
+            'papelfin',
         ]
 
     def get_usuario(self, obj):
