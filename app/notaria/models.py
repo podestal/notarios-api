@@ -583,6 +583,24 @@ class Detallevehicular(models.Model):
         managed = False
         db_table = 'detallevehicular'
 
+
+class Detallemediopago(models.Model):
+    detmp = models.AutoField(primary_key=True)
+    itemmp = models.CharField(max_length=6, blank=True, null=True)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    tipacto = models.CharField(max_length=10, blank=True, null=True)
+    codmepag = models.IntegerField(blank=True, null=True)
+    fpago = models.CharField(max_length=10, blank=True, null=True)
+    idbancos = models.IntegerField(blank=True, null=True)
+    importemp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    idmon = models.CharField(max_length=10, blank=True, null=True)
+    foperacion = models.CharField(max_length=12, blank=True, null=True)
+    documentos = models.CharField(max_length=500, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'detallemediopago'
+
 class TplTemplate(models.Model):
     pktemplate = models.AutoField(db_column='pkTemplate', primary_key=True)  # Field name made lowercase.
     nametemplate = models.CharField(db_column='nameTemplate', max_length=250, blank=True, null=True)  # Field name made lowercase.

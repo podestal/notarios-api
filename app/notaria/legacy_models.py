@@ -8,24 +8,19 @@
 from django.db import models
 
 
-class Documentogenerados(models.Model):
-    observacion = models.TextField(blank=True, null=True)
-    fecha = models.DateTimeField(blank=True, null=True)
-    usuario = models.IntegerField(blank=True, null=True)
-    ip = models.CharField(max_length=20, blank=True, null=True)
-    pc = models.CharField(max_length=50, blank=True, null=True)
-    tipogeneracion = models.CharField(max_length=30, blank=True, null=True)
-    kardex = models.CharField(max_length=15, blank=True, null=True)
-    cliente = models.CharField(max_length=255, blank=True, null=True)
-    tipo_docu = models.IntegerField(blank=True, null=True)
-    num_docu = models.CharField(max_length=15, blank=True, null=True)
-    fecha_partest = models.CharField(max_length=15, blank=True, null=True)
-    flag = models.CharField(max_length=5, blank=True, null=True)
-    hora = models.CharField(max_length=20, blank=True, null=True)
-    estado = models.IntegerField(blank=True, null=True)
-    extension = models.CharField(max_length=10, blank=True, null=True)
-    otrotipo = models.CharField(db_column='otroTipo', max_length=150, blank=True, null=True)  # Field name made lowercase.
+class Detallemediopago(models.Model):
+    detmp = models.AutoField(primary_key=True)
+    itemmp = models.CharField(max_length=6, blank=True, null=True)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    tipacto = models.CharField(max_length=10, blank=True, null=True)
+    codmepag = models.IntegerField(blank=True, null=True)
+    fpago = models.CharField(max_length=10, blank=True, null=True)
+    idbancos = models.IntegerField(blank=True, null=True)
+    importemp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    idmon = models.CharField(max_length=10, blank=True, null=True)
+    foperacion = models.CharField(max_length=12, blank=True, null=True)
+    documentos = models.CharField(max_length=500, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'documentogenerados'
+        db_table = 'detallemediopago'

@@ -580,6 +580,17 @@ class DetallevehicularSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class DetallemediopagoSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Detallemediopago model.
+    This serializer is used to validate and serialize the Detallemediopago data.
+    """
+
+    class Meta:
+        model = models.Detallemediopago
+        fields = '__all__'
+
+
 class TemplateSerializer(serializers.ModelSerializer):
     """
     Serializer for the TplTemplate model.
