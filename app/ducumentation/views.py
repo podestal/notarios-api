@@ -3,7 +3,7 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from . import models, serializers
-from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades
+from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
 from django.http import HttpResponse
@@ -175,47 +175,95 @@ class VehicleTransferDocumentService:
         # Contractors data
         contractors_data = self._get_contractors_data(num_kardex)
         
+        # Escrituración data 
+        # escrituracion_data = self._get_escrituracion_data(num_kardex)
+
         # Merge all data
         final_data = {}
         final_data.update(document_data)
         final_data.update(vehicle_data)
         final_data.update(payment_data)
         final_data.update(contractors_data)
+        # final_data.update(escrituracion_data)
         
         return final_data
     
     def _get_document_data(self, num_kardex: str, anio_kardex: str) -> Dict[str, str]:
         """
-        Get document basic information
+        Get document basic information from the database, matching the PHP logic.
         """
-        numero_escritura = "001"
-        fecha_escritura = datetime.now()
+
+        kardex = Kardex.objects.filter(kardex=num_kardex).first()
+        if not kardex:
+            # Fallbacks if not found
+            numero_escritura = ''
+            fecha_escritura = ''
+            usuario = ''
+            usuario_dni = ''
+            folioini = ''
+            foliofin = ''
+            papelini = ''
+            papelfin = ''
+
+        else:
+            numero_escritura = kardex.numescritura or ''
+            fecha_escritura = kardex.fechaescritura or ''
+            usuario = kardex.responsable_new or ''
+            folioini = kardex.folioini or ''
+            foliofin = kardex.foliofin or ''
+            papelini = kardex.papelini or ''
+            papelfin = kardex.papelfin or ''
+            # Get user DNI
+            usuario_dni = ''
+            if kardex.idusuario:
+                usuario_obj = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
+                usuario_dni = usuario_obj.dni if usuario_obj else ''
         
         return {
             'K': num_kardex,
-            'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})",
+            'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '[E.NRO_ESC]',
             'NUM_REG': '1',
-            'FEC_LET': self.letras.date_to_letters(fecha_escritura),
-            'F_IMPRESION': self.letras.date_to_letters(fecha_escritura),
-            'USUARIO': 'JUAN PÉREZ GARCÍA',
-            'USUARIO_DNI': '12345678',
-            'NRO_MIN': '12345678',
+            'FEC_LET': '',
+            'F_IMPRESION': '',
+            'USUARIO': usuario,
+            'USUARIO_DNI': usuario_dni,
+            'NRO_MIN': usuario_dni,
             'COMPROBANTE': 'sin',
             'O_S': num_kardex,
             'ORDEN_SERVICIO': num_kardex,
-            'FECHA_ACT': self.letras.date_to_letters(fecha_escritura),
-            'FECHA_MAX': self.letras.date_to_letters(fecha_escritura),
+            'FECHA_ACT': fecha_escritura,
+            'FECHA_MAX': '',
+            'FI': folioini,
+            'FF': foliofin,
+            'S_IN': papelini,
+            'S_FN': papelfin,
         }
     
+    # def _get_escrituracion_data(self, num_kardex: str) -> Dict[str, str]:
+    #     """
+    #     Get escrituración (folios, papeles) data from kardex.
+    #     """
+
+    #     kardex = Kardex.objects.filter(kardex=num_kardex).first()
+    #     return {
+    #         'FI': getattr(kardex, 'folioini', '') or '[E.FI]',
+    #         'FF': getattr(kardex, 'foliofin', '') or '[E.FF]',
+    #         'S_IN': getattr(kardex, 'papelini', '') or '[E.S_IN]',
+    #         'S_FN': getattr(kardex, 'papelfin', '') or '[E.S_FN]',
+    #     }
+    
     def _get_vehicle_data(self, kardex) -> Dict[str, str]:
-        """
-        Get vehicle information
-        """
-
-        vehicle = Detallevehicular.objects.filter(
-            kardex=kardex
-        ).first()
-
+        vehicle = Detallevehicular.objects.filter(kardex=kardex).first()
+        sede = ''
+        num_zona = ''
+        zona_registral = ''
+        if vehicle and vehicle.idsedereg:
+            from notaria.models import Sedesregistrales
+            sede_obj = Sedesregistrales.objects.filter(idsedereg=vehicle.idsedereg).first()
+            if sede_obj:
+                sede = sede_obj.dessede or ''
+                num_zona = sede_obj.num_zona or ''
+                zona_registral = sede_obj.dessede or ''
         return {
             'PLACA': vehicle.numplaca if vehicle else '',
             'CLASE': vehicle.clase if vehicle else '',
@@ -228,14 +276,44 @@ class VehicleTransferDocumentService:
             'NRO_SERIE': vehicle.numserie if vehicle else '',
             'FEC_INS': vehicle.fecinsc if vehicle else '',
             'FECHA_INSCRIPCION': vehicle.fecinsc if vehicle else '',
-            'ZONA_REGISTRAL': vehicle.idsedereg if vehicle else '',
-            'NUM_ZONA_REG': vehicle.idsedereg if vehicle else '',
-            'SEDE': '',
+            'ZONA_REGISTRAL': zona_registral,
+            'NUM_ZONA_REG': num_zona,
+            'SEDE': sede,
             'INSTRUIDO': 'INSTRUIDO',
             'COMBUSTIBLE': vehicle.combustible if vehicle else '',
             'NRO_TARJETA': '',
             'NRO_CILINDROS': vehicle.numcil if vehicle else '',
         }
+
+    # def _get_vehicle_data(self, kardex) -> Dict[str, str]:
+    #     """
+    #     Get vehicle information
+    #     """
+
+    #     vehicle = Detallevehicular.objects.filter(
+    #         kardex=kardex
+    #     ).first()
+
+    #     return {
+    #         'PLACA': vehicle.numplaca if vehicle else '',
+    #         'CLASE': vehicle.clase if vehicle else '',
+    #         'MARCA': vehicle.marca if vehicle else '',
+    #         'MODELO': vehicle.modelo if vehicle else '',
+    #         'AÑO_FABRICACION': vehicle.anofab if vehicle else '',
+    #         'CARROCERIA': vehicle.carroceria if vehicle else '',
+    #         'COLOR': vehicle.color if vehicle else '',
+    #         'NRO_MOTOR': vehicle.motor if vehicle else '',
+    #         'NRO_SERIE': vehicle.numserie if vehicle else '',
+    #         'FEC_INS': vehicle.fecinsc if vehicle else '',
+    #         'FECHA_INSCRIPCION': vehicle.fecinsc if vehicle else '',
+    #         'ZONA_REGISTRAL': vehicle.idsedereg if vehicle else '',
+    #         'NUM_ZONA_REG': vehicle.idsedereg if vehicle else '',
+    #         'SEDE': '',
+    #         'INSTRUIDO': 'INSTRUIDO',
+    #         'COMBUSTIBLE': vehicle.combustible if vehicle else '',
+    #         'NRO_TARJETA': '',
+    #         'NRO_CILINDROS': vehicle.numcil if vehicle else '',
+    #     }
     
     def _get_payment_data(self, kardex) -> Dict[str, str]:
         """
@@ -289,13 +367,12 @@ class VehicleTransferDocumentService:
             'USO': '',
         }
 
-
     def _get_contractors_data(self, kardex) -> Dict[str, str]:
         """
-        Get contractors (transferor and acquirer) information, with dynamic articles/grammar.
-        Faithfully replicates the PHP logic for APODERADO, REPRESENTANTE, and all other roles.
+        Get contractors (transferor and acquirer) information, including both natural and legal persons.
+        Robustly handles missing nacionalidad and fills all placeholders for both types.
+        Handles EN REPRESENTACION DE for both persona natural and juridica.
         """
-        # All possible roles as per PHP
         TRANSFEROR_ROLES = {
             "VENDEDOR", "DONANTE", "PODERDANTE", "OTORGANTE", "REPRESENTANTE", "ANTICIPANTE",
             "ADJUDICANTE", "USUFRUCTUANTE", "TRANSFERENTE", "TITULAR", "MUTUANTE", "PROPIETARIO",
@@ -312,7 +389,6 @@ class VehicleTransferDocumentService:
         id_to_contratante = {c.idcontratante: c for c in contratantes}
         contratantes_list = []
 
-        # Build a list of all contratantes with their data and resolved condition string
         for contratante in contratantes:
             condiciones = contratante.condicion.split('/')
             condiciones_list = []
@@ -322,54 +398,81 @@ class VehicleTransferDocumentService:
                     condicion_str = Actocondicion.objects.get(idcondicion=condicion_int).condicion
                     condiciones_list.append(condicion_str)
             cliente2 = Cliente2.objects.get(idcontratante=contratante.idcontratante)
-            nacionalidad = Nacionalidades.objects.get(idnacionalidad=cliente2.nacionalidad)
+            # Robust nacionalidad handling
+            if cliente2.tipper == 'J':
+                nacionalidad = 'EMPRESA'
+                sexo = ''
+                ocupacion = ''
+                estado_civil = ''
+                direccion = cliente2.domfiscal or ''
+            else:
+                nacionalidad_obj = Nacionalidades.objects.filter(idnacionalidad=cliente2.nacionalidad).first()
+                nacionalidad = nacionalidad_obj.descripcion if nacionalidad_obj else ''
+                sexo = cliente2.sexo or ''
+                ocupacion = re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else ''
+                estado_civil = self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), sexo) if cliente2.idestcivil in CIVIL_STATUS else ''
+                direccion = cliente2.direccion or ''
             contratante_obj = {
                 'idcontratante': contratante.idcontratante,
-                'sexo': cliente2.sexo,
+                'sexo': sexo,
                 'condiciones': (', ').join(condiciones_list),
                 'condicion_str': condiciones_list[0] if condiciones_list else '',
-                'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}',
-                'nacionalidad': self.get_nationality_by_gender(nacionalidad.descripcion, cliente2.sexo),
+                'nombres': f'{cliente2.prinom} {cliente2.segnom} {cliente2.apepat} {cliente2.apemat}' if cliente2.tipper == 'N' else cliente2.razonsocial or '',
+                'nacionalidad': self.get_nationality_by_gender(nacionalidad, sexo) if cliente2.tipper == 'N' else nacionalidad,
                 'tipoDocumento': TIPO_DOCUMENTO[cliente2.idtipdoc]['destipdoc'] if cliente2.idtipdoc in TIPO_DOCUMENTO else '',
-                'numeroDocumento': cliente2.numdoc,
-                'ocupacion': re.split(r'[/,;]', cliente2.detaprofesion)[0].strip() if cliente2.detaprofesion else '',
-                'estadoCivil': self.get_civil_status_by_gender(CIVIL_STATUS[cliente2.idestcivil]['label'].upper(), cliente2.sexo) if cliente2.idestcivil in CIVIL_STATUS else '',
-                'direccion': cliente2.direccion if cliente2.direccion else '',
+                'numeroDocumento': cliente2.numdoc or '',
+                'ocupacion': ocupacion,
+                'estadoCivil': estado_civil,
+                'direccion': direccion,
                 'idcontratanterp': getattr(contratante, 'idcontratanterp', None),
+                'tipper': cliente2.tipper,  # 'N' for natural, 'J' for juridica
+                'razonsocial': cliente2.razonsocial or '',
+                'domfiscal': cliente2.domfiscal or '',
+                'numpartida': cliente2.numpartida or '',
+                'idubigeo': cliente2.idubigeo or '',
+                'numdoc_empresa': cliente2.numdoc if cliente2.tipper == 'J' else '',
             }
             contratantes_list.append(contratante_obj)
 
-        # --- TRANSFERORS LOGIC (faithful to PHP) ---
+        naturals = [c for c in contratantes_list if c['tipper'] == 'N']
+        companies = [c for c in contratantes_list if c['tipper'] == 'J']
+
         transferors = []
-        for c in contratantes_list:
-            # If APODERADO or REPRESENTANTE, show as transferor, with representation
+        transferor_companies = []
+        for c in naturals:
             if c['condicion_str'] in REPRESENTATIVE_ROLES and c.get('idcontratanterp'):
                 principal_contratante = id_to_contratante.get(c['idcontratanterp'])
                 if principal_contratante:
                     principal_cliente = Cliente2.objects.get(idcontratante=principal_contratante.idcontratante)
-                    principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
+                    if principal_cliente.tipper == 'J':
+                        principal_name = principal_cliente.razonsocial or ''
+                    else:
+                        principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
                     c = c.copy()
-                    # Only append the principal's name, not the phrase
                     c['nombres'] = f"{c['nombres'].strip()}, EN REPRESENTACION DE {principal_name.strip()}"
                 transferors.append(c)
-            # If transferor role, only show if not represented by a representative
             elif c['condicion_str'] in TRANSFEROR_ROLES:
                 represented = any(
                     a['condicion_str'] in REPRESENTATIVE_ROLES and a.get('idcontratanterp') == c.get('idcontratante')
-                    for a in contratantes_list
+                    for a in naturals
                 )
                 if not represented:
                     transferors.append(c)
+        for c in companies:
+            if c['condicion_str'] in TRANSFEROR_ROLES:
+                transferor_companies.append(c)
 
-        # --- ACQUIRERS LOGIC (faithful to PHP) ---
         acquirers = []
-        for c in contratantes_list:
+        acquirer_companies = []
+        for c in naturals:
             if c['condicion_str'] in REPRESENTATIVE_ROLES and c.get('idcontratanterp'):
                 principal_contratante = id_to_contratante.get(c['idcontratanterp'])
                 if principal_contratante:
                     principal_cliente = Cliente2.objects.get(idcontratante=principal_contratante.idcontratante)
-                    principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
-                    # Only add if principal is an acquirer role
+                    if principal_cliente.tipper == 'J':
+                        principal_name = principal_cliente.razonsocial or ''
+                    else:
+                        principal_name = f'{principal_cliente.prinom} {principal_cliente.segnom} {principal_cliente.apepat} {principal_cliente.apemat}'
                     principal_condiciones = principal_contratante.condicion.split('/')
                     principal_condicion_str = Actocondicion.objects.get(idcondicion=principal_condiciones[0].split('.')[0]).condicion if principal_condiciones and principal_condiciones[0] else ''
                     if principal_condicion_str in ACQUIRER_ROLES:
@@ -379,14 +482,16 @@ class VehicleTransferDocumentService:
             elif c['condicion_str'] in ACQUIRER_ROLES:
                 represented = any(
                     a['condicion_str'] in REPRESENTATIVE_ROLES and a.get('idcontratanterp') == c.get('idcontratante')
-                    for a in contratantes_list
+                    for a in naturals
                 )
                 if not represented:
                     acquirers.append(c)
+        for c in companies:
+            if c['condicion_str'] in ACQUIRER_ROLES:
+                acquirer_companies.append(c)
 
         contractors_data = {}
 
-        # --- MULTIPLE TRANSFERORS ---
         for idx, t in enumerate(transferors, 1):
             contractors_data[f'P_NOM_{idx}'] = t['nombres'] + ', '
             contractors_data[f'P_NACIONALIDAD_{idx}'] = t['nacionalidad'] + ', '
@@ -400,7 +505,6 @@ class VehicleTransferDocumentService:
             contractors_data[f'P_FIRMAN_{idx}'] = t['nombres'] + ', '
             contractors_data[f'P_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
 
-        # --- MULTIPLE ACQUIRERS ---
         for idx, c in enumerate(acquirers, 1):
             contractors_data[f'C_NOM_{idx}'] = c['nombres'] + ', '
             contractors_data[f'C_NACIONALIDAD_{idx}'] = c['nacionalidad'] + ', '
@@ -414,7 +518,18 @@ class VehicleTransferDocumentService:
             contractors_data[f'C_FIRMAN_{idx}'] = c['nombres'] + ', '
             contractors_data[f'C_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
 
-        # --- Optionally, pad up to 10 for template compatibility ---
+        for idx, t in enumerate(transferor_companies, 1):
+            contractors_data[f'NOMBRE_EMPRESA_{idx}'] = t['razonsocial']
+            contractors_data[f'INS_EMPRESA_{idx}'] = f'INSCRITA EN LA PARTIDA ELECTRONICA N° {t["numpartida"]}'
+            contractors_data[f'RUC_{idx}'] = t['numdoc_empresa']
+            contractors_data[f'DOMICILIO_EMPRESA_{idx}'] = f'CON DOMICILIO EN {t["domfiscal"]}'
+
+        for idx, c in enumerate(acquirer_companies, 1):
+            contractors_data[f'NOMBRE_EMPRESA_{idx+len(transferor_companies)}'] = c['razonsocial']
+            contractors_data[f'INS_EMPRESA_{idx+len(transferor_companies)}'] = f'INSCRITA EN LA PARTIDA ELECTRONICA N° {c["numpartida"]}'
+            contractors_data[f'RUC_{idx+len(transferor_companies)}'] = c['numdoc_empresa']
+            contractors_data[f'DOMICILIO_EMPRESA_{idx+len(transferor_companies)}'] = f'CON DOMICILIO EN {c["domfiscal"]}'
+
         for idx in range(len(transferors) + 1, 11):
             contractors_data[f'P_NOM_{idx}'] = f'[E.P_NOM_{idx}]'
             contractors_data[f'P_NACIONALIDAD_{idx}'] = f'[E.P_NACIONALIDAD_{idx}]'
@@ -440,6 +555,12 @@ class VehicleTransferDocumentService:
             contractors_data[f'SEXO_C_{idx}'] = f'[E.SEXO_C_{idx}]'
             contractors_data[f'C_FIRMAN_{idx}'] = f'[E.C_FIRMAN_{idx}]'
             contractors_data[f'C_IMPRIME_{idx}'] = f'[E.C_IMPRIME_{idx}]'
+
+        for idx in range(len(transferor_companies) + len(acquirer_companies) + 1, 6):
+            contractors_data[f'NOMBRE_EMPRESA_{idx}'] = f'[E.NOMBRE_EMPRESA_{idx}]'
+            contractors_data[f'INS_EMPRESA_{idx}'] = f'[E.INS_EMPRESA_{idx}]'
+            contractors_data[f'RUC_{idx}'] = f'[E.RUC_{idx}]'
+            contractors_data[f'DOMICILIO_EMPRESA_{idx}'] = f'[E.DOMICILIO_EMPRESA_{idx}]'
 
         if transferors:
             contractors_data['P_NOM'] = contractors_data['P_NOM_1']
@@ -467,11 +588,11 @@ class VehicleTransferDocumentService:
             contractors_data['C_FIRMAN'] = contractors_data['C_FIRMAN_1']
             contractors_data['C_IMPRIME'] = contractors_data['C_IMPRIME_1']
 
-        # --- Articles/grammar ---
         contractors_data.update(self.get_articles_and_grammar(transferors, 'P'))
         contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
 
         return contractors_data
+
 
     def get_identification_phrase(self, gender, doc_type, doc_number):
         if gender == 'F':
