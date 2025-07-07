@@ -1345,6 +1345,25 @@ class DetallemediopagoViewSet(ModelViewSet):
         serializer = serializers.DetallemediopagoSerializer(detalle_mediopago, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def by_patrimonial(self, request):
+        """
+        Get Detallemediopago records by Patrimonial itemmp.
+        """
+        itemmp = request.query_params.get('itemmp')
+        if not itemmp:
+            return Response(
+                {"error": "itemmp parameter is required."},
+                status=400
+            )
+        
+        detalle_mediopago = models.Detallemediopago.objects.filter(itemmp=itemmp)
+        if not detalle_mediopago.exists():
+            return Response([], status=200)
+
+        serializer = serializers.DetallemediopagoSerializer(detalle_mediopago, many=True)
+        return Response(serializer.data)
+
 
 class TemplateViewSet(ModelViewSet):
     """

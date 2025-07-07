@@ -555,13 +555,14 @@ class PatrimonialSerializer(serializers.ModelSerializer):
     """
 
     moneda = serializers.SerializerMethodField()
+    medios_pago_sum = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Patrimonial
         fields = ['itemmp', 'kardex', 'idtipoacto', 'nminuta', 'idmon',
                   'tipocambio', 'importetrans', 'exhibiomp', 'presgistral',
                   'nregistral', 'idsedereg', 'fpago', 'idoppago', 'ofondos',
-                  'item', 'des_idoppago', 'moneda']
+                  'item', 'des_idoppago', 'moneda', 'medios_pago_sum']
         
     def get_moneda(self, obj):
         """
@@ -569,6 +570,13 @@ class PatrimonialSerializer(serializers.ModelSerializer):
         """
         moneda_des = MONEDAS[obj.idmon]['desmon']
         return moneda_des
+    
+    def get_medios_pago_sum(self, obj):
+        """
+        Returns the sum of medios de pago for the Patrimonial instance.
+        """
+        medios_pago = models.Detallemediopago.objects.filter(itemmp=obj.itemmp)
+        return sum(medio.importemp for medio in medios_pago)
 
     
 class DetallevehicularSerializer(serializers.ModelSerializer):
