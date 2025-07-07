@@ -52,26 +52,56 @@ class VehicleTransferDocumentService:
         """
         Remove all [E.SOMETHING] placeholders that were not filled,
         and also remove the phrase 'EN REPRESENTACION DE  Y…………………………….'
+        This version preserves all formatting/colors.
         """
         import re
         placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
-        # This regex matches: EN REPRESENTACION DE [spaces] Y [any number of dots, unicode ellipsis, or similar]
         representation_pattern = re.compile(
             r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
         )
 
+        def clean_runs(runs):
+            # Remove placeholders in runs, preserving formatting
+            for run in runs:
+                # Remove unfilled placeholders
+                run.text = placeholder_pattern.sub('', run.text)
+                # Remove unwanted phrase
+                run.text = representation_pattern.sub('', run.text)
+
+        # Clean paragraphs
         for paragraph in doc.paragraphs:
-            # Remove unfilled placeholders
-            paragraph.text = placeholder_pattern.sub('', paragraph.text)
-            # Remove the unwanted phrase if the placeholder is empty
-            paragraph.text = representation_pattern.sub('', paragraph.text)
+            clean_runs(paragraph.runs)
+        # Clean tables
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
-                        paragraph.text = placeholder_pattern.sub('', paragraph.text)
-                        paragraph.text = representation_pattern.sub('', paragraph.text)
-                        paragraph.text = self.clean_text(paragraph.text)
+                        clean_runs(paragraph.runs)
+
+    # def remove_unfilled_placeholders(self, doc):
+    #     """
+    #     Remove all [E.SOMETHING] placeholders that were not filled,
+    #     and also remove the phrase 'EN REPRESENTACION DE  Y…………………………….'
+    #     """
+    #     import re
+    #     placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
+    #     # This regex matches: EN REPRESENTACION DE [spaces] Y [any number of dots, unicode ellipsis, or similar]
+    #     representation_pattern = re.compile(
+    #         r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
+    #     )
+
+    #     for paragraph in doc.paragraphs:
+    #         # Remove unfilled placeholders
+    #         paragraph.text = placeholder_pattern.sub('', paragraph.text)
+    #         # Remove the unwanted phrase if the placeholder is empty
+    #         paragraph.text = representation_pattern.sub('', paragraph.text)
+    #     for table in doc.tables:
+    #         for row in table.rows:
+    #             for cell in row.cells:
+    #                 for paragraph in cell.paragraphs:
+    #                     paragraph.text = placeholder_pattern.sub('', paragraph.text)
+    #                     paragraph.text = representation_pattern.sub('', paragraph.text)
+    #                     paragraph.text = self.clean_text(paragraph.text)
 
     def clean_text(self, text):
         # Remove duplicate commas, semicolons, and spaces
