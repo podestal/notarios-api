@@ -1220,6 +1220,29 @@ class PatrimonialViewSet(ModelViewSet):
                 )
 
         return super().update(request, *args, **kwargs)
+
+    # remove patrimonial and also remove medio de pago
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete a Patrimonial record and its related Detallemediopago and DetalleVehicular records.
+        """
+        instance = self.get_object()
+        kardex = instance.kardex
+        idtipoacto = instance.idtipoacto
+
+        # Remove related Detallemediopago records
+        models.Detallemediopago.objects.filter(itemmp=instance.itemmp).delete()
+
+        # Remove related DetalleVehicular records
+        models.Detallevehicular.objects.filter(
+            kardex=kardex,
+            idtipacto=idtipoacto
+        ).delete()
+
+        # Remove the Patrimonial record
+        instance.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
         
 
     @transaction.atomic
