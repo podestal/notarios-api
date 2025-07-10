@@ -21,6 +21,7 @@ from typing import Dict, Any
 from botocore.config import Config
 from datetime import datetime
 from docxtpl import DocxTemplate
+from docxcompose.properties import CustomProperties
 
 import re
 
@@ -42,7 +43,7 @@ class VehicleTransferDocumentService:
             document_data = self.get_document_data(num_kardex)
             doc = self._process_document(template, document_data)
             self.remove_unfilled_placeholders(doc)
-            return self._create_response(doc, f"__PROY__{num_kardex}.docx")
+            return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex)
         except FileNotFoundError as e:
             return HttpResponse(str(e), status=404)
         except Exception as e:
@@ -662,10 +663,15 @@ class VehicleTransferDocumentService:
         doc.render(data)
         return doc
     
-    def _create_response(self, doc: Document, filename: str) -> HttpResponse:
+    def _create_response(self, doc: Document, filename: str, kardex: str) -> HttpResponse:
         """
         Create HTTP response with the document
         """
+        # Add the custom property
+        custom_props = CustomProperties(doc)
+        custom_props['documentoGeneradoId'] = kardex
+
+        # Save to buffer
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
@@ -673,10 +679,21 @@ class VehicleTransferDocumentService:
             buffer.read(),
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
-        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['Content-Disposition'] = f'inline; filename=\"{filename}\"'
         response['Content-Length'] = str(buffer.getbuffer().nbytes)
         response['Access-Control-Allow-Origin'] = '*'
         return response
+        # buffer = io.BytesIO()
+        # doc.save(buffer)
+        # buffer.seek(0)
+        # response = HttpResponse(
+        #     buffer.read(),
+        #     content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        # )
+        # response['Content-Disposition'] = f'inline; filename="{filename}"'
+        # response['Content-Length'] = str(buffer.getbuffer().nbytes)
+        # response['Access-Control-Allow-Origin'] = '*'
+        # return response
         # buffer = io.BytesIO()
         # doc.save(buffer)
         # buffer.seek(0)
