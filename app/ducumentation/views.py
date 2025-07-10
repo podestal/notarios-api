@@ -23,6 +23,8 @@ from botocore.config import Config
 from datetime import datetime
 from docxtpl import DocxTemplate
 from docxcompose.properties import CustomProperties
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 import re
 
@@ -848,7 +850,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         
         service = VehicleTransferDocumentService()
         return service.generate_vehicle_transfer_document(template_id, kardex, action)
-
+    @method_decorator(csrf_exempt, name='dispatch')
     @action(detail=False, methods=['post'], url_path='upload')
     def upload(self, request):
         file = request.FILES.get('file')
