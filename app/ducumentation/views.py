@@ -855,6 +855,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
 @csrf_exempt
 def upload_document_to_r2(request):
+    print("UPLOAD VIEW CALLED")
     if request.method == 'POST':
         file = request.FILES.get('file')
         if not file:
