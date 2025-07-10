@@ -850,8 +850,9 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         
         service = VehicleTransferDocumentService()
         return service.generate_vehicle_transfer_document(template_id, kardex, action)
-    @method_decorator(csrf_exempt, name='dispatch')
+
     @action(detail=False, methods=['post'], url_path='upload')
+    @csrf_exempt
     def upload(self, request):
         file = request.FILES.get('file')
         if not file:
