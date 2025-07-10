@@ -23,8 +23,8 @@ from botocore.config import Config
 from datetime import datetime
 from docxtpl import DocxTemplate
 from docxcompose.properties import CustomProperties
-from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
 
 import re
 
@@ -851,14 +851,15 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         service = VehicleTransferDocumentService()
         return service.generate_vehicle_transfer_document(template_id, kardex, action)
 
-    @action(detail=False, methods=['post'], url_path='upload')
-    @csrf_exempt
-    def upload(self, request):
+
+
+@csrf_exempt
+def upload_document_to_r2(request):
+    if request.method == 'POST':
         file = request.FILES.get('file')
         if not file:
-            return Response({'error': 'Missing file'}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({'error': 'Missing file'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use the uploaded file's name as the R2 object key
         object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{file.name}"
 
         s3 = boto3.client(
@@ -876,7 +877,8 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 os.environ.get('CLOUDFLARE_R2_BUCKET'),
                 object_key
             )
-            return Response({'status': 'success'}, status=status.HTTP_200_OK)
+            return JsonResponse({'status': 'success'}, status=status.HTTP_200_OK)
         except Exception as e:
             print(f"Error uploading to R2: {e}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return JsonResponse({'error': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
