@@ -2,6 +2,7 @@ from django.shortcuts import render
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import status
 from . import models, serializers
 from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
@@ -847,3 +848,32 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         
         service = VehicleTransferDocumentService()
         return service.generate_vehicle_transfer_document(template_id, kardex, action)
+
+    @action(detail=False, methods=['post'], url_path='upload')
+    def upload(self, request):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'Missing file'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Use the uploaded file's name as the R2 object key
+        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{file.name}"
+
+        s3 = boto3.client(
+            's3',
+            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+
+        try:
+            s3.upload_fileobj(
+                file,
+                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                object_key
+            )
+            return Response({'status': 'success'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(f"Error uploading to R2: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
