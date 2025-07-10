@@ -113,31 +113,6 @@ class VehicleTransferDocumentService:
                     for paragraph in cell.paragraphs:
                         clean_runs(paragraph.runs)
 
-    # def remove_unfilled_placeholders(self, doc):
-    #     """
-    #     Remove all [E.SOMETHING] placeholders that were not filled,
-    #     and also remove the phrase 'EN REPRESENTACION DE  Y…………………………….'
-    #     """
-    #     import re
-    #     placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
-    #     # This regex matches: EN REPRESENTACION DE [spaces] Y [any number of dots, unicode ellipsis, or similar]
-    #     representation_pattern = re.compile(
-    #         r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
-    #     )
-
-    #     for paragraph in doc.paragraphs:
-    #         # Remove unfilled placeholders
-    #         paragraph.text = placeholder_pattern.sub('', paragraph.text)
-    #         # Remove the unwanted phrase if the placeholder is empty
-    #         paragraph.text = representation_pattern.sub('', paragraph.text)
-    #     for table in doc.tables:
-    #         for row in table.rows:
-    #             for cell in row.cells:
-    #                 for paragraph in cell.paragraphs:
-    #                     paragraph.text = placeholder_pattern.sub('', paragraph.text)
-    #                     paragraph.text = representation_pattern.sub('', paragraph.text)
-    #                     paragraph.text = self.clean_text(paragraph.text)
-
     def clean_text(self, text):
         # Remove duplicate commas, semicolons, and spaces
         text = re.sub(r'[;,]{2,}', lambda m: m.group(0)[0], text)  # Replace multiple , or ; with one
@@ -319,36 +294,6 @@ class VehicleTransferDocumentService:
             'NRO_TARJETA': '',
             'NRO_CILINDROS': vehicle.numcil if vehicle else '',
         }
-
-    # def _get_vehicle_data(self, kardex) -> Dict[str, str]:
-    #     """
-    #     Get vehicle information
-    #     """
-
-    #     vehicle = Detallevehicular.objects.filter(
-    #         kardex=kardex
-    #     ).first()
-
-    #     return {
-    #         'PLACA': vehicle.numplaca if vehicle else '',
-    #         'CLASE': vehicle.clase if vehicle else '',
-    #         'MARCA': vehicle.marca if vehicle else '',
-    #         'MODELO': vehicle.modelo if vehicle else '',
-    #         'AÑO_FABRICACION': vehicle.anofab if vehicle else '',
-    #         'CARROCERIA': vehicle.carroceria if vehicle else '',
-    #         'COLOR': vehicle.color if vehicle else '',
-    #         'NRO_MOTOR': vehicle.motor if vehicle else '',
-    #         'NRO_SERIE': vehicle.numserie if vehicle else '',
-    #         'FEC_INS': vehicle.fecinsc if vehicle else '',
-    #         'FECHA_INSCRIPCION': vehicle.fecinsc if vehicle else '',
-    #         'ZONA_REGISTRAL': vehicle.idsedereg if vehicle else '',
-    #         'NUM_ZONA_REG': vehicle.idsedereg if vehicle else '',
-    #         'SEDE': '',
-    #         'INSTRUIDO': 'INSTRUIDO',
-    #         'COMBUSTIBLE': vehicle.combustible if vehicle else '',
-    #         'NRO_TARJETA': '',
-    #         'NRO_CILINDROS': vehicle.numcil if vehicle else '',
-    #     }
     
     def _get_payment_data(self, kardex) -> Dict[str, str]:
         """
@@ -881,4 +826,3 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         
         service = VehicleTransferDocumentService()
         return service.generate_vehicle_transfer_document(template_id, kardex, action)
-
