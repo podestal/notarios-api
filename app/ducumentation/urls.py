@@ -13,4 +13,4 @@ router.register('documentos', views.DocumentosGeneradosViewSet)
 
 urlpatterns = [
     path('upload-docx/', views.upload_document_to_r2, name='upload_document_to_r2'),
-] 
+] + router.urls
