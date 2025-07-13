@@ -137,7 +137,7 @@ class Kardex(models.Model):
     kardexconexo = models.CharField(max_length=8)
     fechaingreso = models.CharField(max_length=10)
     horaingreso = models.CharField(max_length=10)
-    referencia = models.CharField(max_length=3000)
+    referencia = models.CharField(max_length=3000, blank=True, null=True)
     codactos = models.CharField(max_length=50)
     contrato = models.CharField(max_length=3000)
     idusuario = models.IntegerField()

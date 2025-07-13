@@ -25,8 +25,99 @@ from docxtpl import DocxTemplate
 from docxcompose.properties import CustomProperties
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+from docx.shared import RGBColor, Pt
 
 import re
+
+
+class NumberToLetterConverter:
+    """
+    Utility class to convert numbers to letters (Spanish)
+    """
+    
+    def __init__(self):
+        self.unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE']
+        self.decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA']
+        self.especiales = {
+            11: 'ONCE', 12: 'DOCE', 13: 'TRECE', 14: 'CATORCE', 15: 'QUINCE',
+            16: 'DIECISÉIS', 17: 'DIECISIETE', 18: 'DIECIOCHO', 19: 'DIECINUEVE'
+        }
+        self.meses = [
+            'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+            'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
+        ]
+    
+    def number_to_letters(self, number: str) -> str:
+        """
+        Convert number to letters in Spanish
+        """
+        try:
+            num = int(number)
+            if num == 0:
+                return 'CERO'
+            return self._convert_number_to_letters(num)
+        except:
+            return number
+    
+    def _convert_number_to_letters(self, num: int) -> str:
+        """
+        Internal method to convert number to letters
+        """
+        if num < 10:
+            return self.unidades[num]
+        elif num < 20:
+            return self.especiales.get(num, '')
+        elif num < 100:
+            decena = num // 10
+            unidad = num % 10
+            if unidad == 0:
+                return self.decenas[decena]
+            else:
+                return f"{self.decenas[decena]} Y {self.unidades[unidad]}"
+        elif num < 1000:
+            centena = num // 100
+            resto = num % 100
+            if resto == 0:
+                return f"{self.unidades[centena]}CIENTOS"
+            else:
+                return f"{self.unidades[centena]}CIENTOS {self._convert_number_to_letters(resto)}"
+        elif num < 1000000:
+            miles = num // 1000
+            resto = num % 1000
+            if miles == 1:
+                return f"MIL {self._convert_number_to_letters(resto)}"
+            else:
+                return f"{self._convert_number_to_letters(miles)} MIL {self._convert_number_to_letters(resto)}"
+        elif num < 1000000000:
+            millones = num // 1000000
+            resto = num % 1000000
+            if millones == 1:
+                return f"UN MILLÓN {self._convert_number_to_letters(resto)}"
+            else:
+                return f"{self._convert_number_to_letters(millones)} MILLONES {self._convert_number_to_letters(resto)}"
+        else:
+            return str(num)  # Simplified for demo
+    
+    def date_to_letters(self, date: datetime) -> str:
+        """
+        Convert date to letters in Spanish
+        """
+        dia = date.day
+        mes = self.meses[date.month - 1]
+        anio = date.year
+        
+        return f"{self.number_to_letters(str(dia))} DE {mes} DEL {self.number_to_letters(str(anio))}"
+    
+    def money_to_letters(self, currency: str, amount: Decimal) -> str:
+        """
+        Convert money amount to letters
+        """
+        if currency == "PEN":
+            return f"{self.number_to_letters(str(int(amount)))} SOLES CON {self.number_to_letters(str(int((amount % 1) * 100)))} CÉNTIMOS"
+        elif currency == "USD":
+            return f"{self.number_to_letters(str(int(amount)))} DÓLARES AMERICANOS CON {self.number_to_letters(str(int((amount % 1) * 100)))} CENTAVOS"
+        else:
+            return f"{self.number_to_letters(str(int(amount)))} {currency}"
 
 @csrf_exempt
 def upload_document_to_r2(request):
@@ -59,6 +150,436 @@ def upload_document_to_r2(request):
             return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return JsonResponse({'error': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+@csrf_exempt
+def update_document_in_r2(request):
+    """
+    Smart update endpoint that preserves manual edits - automatically finds file in R2
+    """
+    print("SMART UPDATE DOCUMENT VIEW CALLED")
+    if request.method == 'POST':
+        # Get parameters
+        template_id = request.POST.get('template_id')
+        kardex = request.POST.get('kardex')
+        
+        if not all([template_id, kardex]):
+            return JsonResponse({
+                'error': 'Missing required parameters: template_id, kardex'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            template_id = int(template_id)
+        except ValueError:
+            return JsonResponse({'error': 'Invalid template_id format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Automatically find and update the document
+            result = _smart_update_with_auto_discovery(template_id, kardex)
+            return JsonResponse(result)
+        except Exception as e:
+            print(f"Error in smart update: {e}")
+            return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return JsonResponse({'error': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+def _smart_update_with_auto_discovery(template_id: int, kardex: str) -> dict:
+    """
+    ALWAYS preserve manual edits - automatically finds document in R2 based on kardex
+    """
+    try:
+        print(f"DEBUG: Starting smart update for kardex: {kardex}")
+        
+        # Step 1: Auto-discover the document filename in R2
+        s3 = boto3.client(
+            's3',
+            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+
+        # Auto-generate the filename based on kardex pattern
+        filename = f"__PROY__{kardex}.docx"
+        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{filename}"
+        
+        print(f"DEBUG: Looking for document in R2: {object_key}")
+        
+        try:
+            # Download current document
+            response = s3.get_object(
+                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                Key=object_key
+            )
+            current_doc_content = response['Body'].read()
+            print(f"DEBUG: Successfully downloaded current document from R2 ({len(current_doc_content)} bytes)")
+            
+            # Step 2: Generate new document with updated data
+            print(f"DEBUG: Generating new document with template_id: {template_id}")
+            service = VehicleTransferDocumentService()
+            new_doc_response = service.generate_vehicle_transfer_document(template_id, kardex, 'update')
+            
+            if new_doc_response.status_code != 200:
+                print(f"DEBUG: Failed to generate updated document: {new_doc_response.status_code}")
+                return {'error': 'Failed to generate updated document'}
+            
+            print(f"DEBUG: Successfully generated new document ({len(new_doc_response.content)} bytes)")
+            
+            # Step 3: ALWAYS merge documents to preserve manual edits
+            print(f"DEBUG: Merging documents to preserve manual edits")
+            merged_doc = _merge_documents_smart(current_doc_content, new_doc_response.content, kardex)
+            print(f"DEBUG: Successfully merged documents ({len(merged_doc)} bytes)")
+            
+            # Step 4: Upload merged document back to R2
+            from io import BytesIO
+            file_obj = BytesIO(merged_doc)
+            
+            print(f"DEBUG: Uploading merged document back to R2: {object_key}")
+            s3.upload_fileobj(
+                file_obj,
+                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                object_key
+            )
+            print(f"DEBUG: Successfully uploaded merged document to R2")
+            
+            return {
+                'status': 'success',
+                'message': 'Document updated successfully while preserving ALL manual edits',
+                'filename': filename,
+                'kardex': kardex,
+                'update_type': 'manual_edits_preserved',
+                'debug_info': {
+                    'original_size': len(current_doc_content),
+                    'new_size': len(new_doc_response.content),
+                    'merged_size': len(merged_doc),
+                    'r2_path': object_key
+                }
+            }
+            
+        except s3.exceptions.NoSuchKey:
+            print(f"DEBUG: Document not found in R2: {filename}")
+            return {'error': f'Document not found in R2: {filename}'}
+        except Exception as e:
+            print(f"DEBUG: Error downloading document: {e}")
+            return {'error': f'Failed to download document: {str(e)}'}
+        
+    except Exception as e:
+        print(f"DEBUG: Error preserving manual edits: {e}")
+        return {'error': f'Failed to preserve manual edits: {str(e)}'}
+
+
+def _merge_documents_smart(current_doc_content: bytes, new_doc_content: bytes, kardex: str) -> bytes:
+    """
+    ALWAYS preserve manual edits - never fall back to losing manual edits
+    """
+    try:
+        from io import BytesIO
+        from docx import Document
+        
+        # Load both documents
+        current_doc = Document(BytesIO(current_doc_content))
+        new_doc = Document(BytesIO(new_doc_content))
+        
+        # Get current data to identify what should be updated
+        service = VehicleTransferDocumentService()
+        current_data = service.get_document_data(kardex)
+        
+        # Define which fields are DB-driven and should be updated
+        db_driven_fields = {
+            'PLACA', 'MARCA', 'MODELO', 'AÑO_FABRICACION', 'COLOR',
+            'NRO_MOTOR', 'NRO_SERIE', 'MONTO', 'MON_VEHI', 'MONEDA_C',
+            'P_NOM_1', 'P_NACIONALIDAD_1', 'P_DOC_1', 'P_OCUPACION_1',
+            'C_NOM_1', 'C_NACIONALIDAD_1', 'C_DOC_1', 'C_OCUPACION_1',
+            'NRO_ESC', 'USUARIO', 'USUARIO_DNI', 'FECHA_ACT'
+        }
+        
+        # Instead of trying to merge, we'll use the new document as a template
+        # and only update the specific fields that have changed
+        updated_doc = _smart_update_specific_fields(current_doc, new_doc, current_data, db_driven_fields)
+        
+        # Save the updated document
+        buffer = BytesIO()
+        updated_doc.save(buffer)
+        buffer.seek(0)
+        return buffer.read()
+        
+    except Exception as e:
+        print(f"Error merging documents: {e}")
+        # NEVER fall back to losing manual edits - return current document unchanged
+        return current_doc_content
+
+
+def _smart_update_specific_fields(current_doc, new_doc, data: dict, db_fields: set):
+    """
+    Smart update that only changes specific fields while preserving all formatting and structure
+    """
+    import re
+    
+    # Create a mapping of field names to their values
+    field_mapping = {}
+    for field in db_fields:
+        if field in data:
+            field_mapping[field] = str(data[field])
+    
+    # Debug: Print what fields we're working with
+    print(f"DEBUG: Processing fields: {field_mapping}")
+    
+    # Debug: Show all paragraphs in current document
+    print(f"DEBUG: Current document has {len(current_doc.paragraphs)} paragraphs")
+    for i, paragraph in enumerate(current_doc.paragraphs):
+        if paragraph.text.strip():
+            print(f"DEBUG: Paragraph {i}: '{paragraph.text[:200]}...'")
+    
+    # Debug: Show all tables in current document
+    print(f"DEBUG: Current document has {len(current_doc.tables)} tables")
+    for i, table in enumerate(current_doc.tables):
+        print(f"DEBUG: Table {i} has {len(table.rows)} rows")
+        for j, row in enumerate(table.rows):
+            for k, cell in enumerate(row.cells):
+                for l, paragraph in enumerate(cell.paragraphs):
+                    if paragraph.text.strip():
+                        print(f"DEBUG: Table {i}, Row {j}, Cell {k}, Paragraph {l}: '{paragraph.text[:200]}...'")
+    
+    # Update paragraphs
+    for i, paragraph in enumerate(current_doc.paragraphs):
+        if i < len(new_doc.paragraphs):
+            print(f"DEBUG: Processing paragraph {i}")
+            _smart_update_paragraph(paragraph, new_doc.paragraphs[i], field_mapping)
+    
+    # Update tables
+    for table_idx, table in enumerate(current_doc.tables):
+        if table_idx < len(new_doc.tables):
+            print(f"DEBUG: Processing table {table_idx}")
+            _smart_update_table(table, new_doc.tables[table_idx], field_mapping)
+    
+    return current_doc
+
+
+def _smart_update_paragraph(current_paragraph, new_paragraph, field_mapping):
+    """
+    Smart update paragraph content while preserving formatting
+    Uses the template (new_paragraph) to find where placeholders should be
+    and updates the current document accordingly
+    """
+    # Get the text content from both paragraphs
+    current_text = current_paragraph.text
+    template_text = new_paragraph.text
+    
+    # Find placeholders in the template and map them to field values
+    _update_based_on_template_placeholders(current_paragraph, template_text, field_mapping)
+
+
+def _update_based_on_template_placeholders(paragraph, template_text, field_mapping):
+    """
+    Update paragraph based on placeholders found in the template
+    Preserves all formatting by working with individual runs
+    """
+    import re
+    
+    print(f"DEBUG: Current paragraph text: '{paragraph.text}'")
+    print(f"DEBUG: Template text: '{template_text}'")
+    
+    # Define the placeholders we want to keep and their corresponding field names
+    placeholder_mapping = {
+        '{{NRO_ESC}}': 'NRO_ESC',
+        '{{FI}}': 'FI',
+        '{{FF}}': 'FF',
+        '{{S_IN}}': 'S_IN',
+        '{{S_FN}}': 'S_FN',
+        '{{FECHA_ACT}}': 'FECHA_ACT'
+    }
+    
+    # Process each placeholder we want to keep
+    for placeholder, field_name in placeholder_mapping.items():
+        if field_name in field_mapping and field_mapping[field_name] and field_mapping[field_name].strip():
+            value = field_mapping[field_name]
+            print(f"DEBUG: Processing {field_name} with value: '{value}'")
+            
+            # Look for the placeholder in individual runs to preserve formatting
+            _update_placeholder_in_runs(paragraph, placeholder, value)
+    
+    # Also check for hidden placeholders in runs and make them visible for replacement
+    _update_hidden_placeholders_in_runs(paragraph, field_mapping)
+
+
+def _update_placeholder_in_runs(paragraph, placeholder, value):
+    """
+    Update placeholder in paragraph runs while preserving all formatting
+    """
+    print(f"DEBUG: Looking for placeholder '{placeholder}' in paragraph runs")
+    
+    # Check if placeholder exists in any run
+    placeholder_found = False
+    for run in paragraph.runs:
+        if placeholder in run.text:
+            placeholder_found = True
+            print(f"DEBUG: Found '{placeholder}' in run: '{run.text}'")
+            # Replace the placeholder while preserving the run's formatting
+            run.text = run.text.replace(placeholder, value)
+            # Ensure the new value is visible (black color)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Black color
+            print(f"DEBUG: Updated run to: '{run.text}' with black color")
+            break
+    
+    # If placeholder not found in runs, check if it spans multiple runs
+    if not placeholder_found:
+        print(f"DEBUG: Placeholder '{placeholder}' not found in individual runs, checking if it spans multiple runs")
+        paragraph_text = paragraph.text
+        if placeholder in paragraph_text:
+            print(f"DEBUG: Found '{placeholder}' spanning multiple runs in paragraph: '{paragraph_text[:100]}...'")
+            # This is more complex - we need to handle placeholders that span multiple runs
+            _update_placeholder_spanning_runs(paragraph, placeholder, value)
+        else:
+            # If no placeholder found, look for blank fields
+            field_name = placeholder.strip('{}')
+            _update_blank_field(paragraph, field_name, value)
+
+
+def _update_placeholder_spanning_runs(paragraph, placeholder, value):
+    """
+    Handle placeholders that span multiple runs by carefully reconstructing the paragraph
+    """
+    print(f"DEBUG: Updating placeholder '{placeholder}' that spans multiple runs")
+    
+    # Get the original paragraph text and find the placeholder position
+    original_text = paragraph.text
+    placeholder_start = original_text.find(placeholder)
+    
+    if placeholder_start == -1:
+        print(f"DEBUG: Placeholder '{placeholder}' not found in paragraph text")
+        return
+    
+    placeholder_end = placeholder_start + len(placeholder)
+    
+    # Split the text around the placeholder
+    before_placeholder = original_text[:placeholder_start]
+    after_placeholder = original_text[placeholder_end:]
+    
+    print(f"DEBUG: Before placeholder: '{before_placeholder}'")
+    print(f"DEBUG: After placeholder: '{after_placeholder}'")
+    
+    # Clear the paragraph and rebuild it with proper formatting
+    paragraph.clear()
+    
+    # Add the text before the placeholder
+    if before_placeholder:
+        run = paragraph.add_run(before_placeholder)
+        # Apply default formatting (you can customize this)
+        run.font.name = 'Calibri'
+        run.font.size = Pt(11)
+    
+    # Add the new value with appropriate formatting
+    value_run = paragraph.add_run(value)
+    value_run.font.name = 'Calibri'
+    value_run.font.size = Pt(11)
+    value_run.font.bold = True  # Make the updated value bold to distinguish it
+    value_run.font.color.rgb = RGBColor(0, 0, 0)  # Ensure it's black and visible
+    
+    # Add the text after the placeholder
+    if after_placeholder:
+        run = paragraph.add_run(after_placeholder)
+        # Apply default formatting
+        run.font.name = 'Calibri'
+        run.font.size = Pt(11)
+    
+    print(f"DEBUG: Rebuilt paragraph: '{paragraph.text}'")
+
+
+def _update_hidden_placeholders_in_runs(paragraph, field_mapping):
+    """
+    Find and update hidden placeholders in paragraph runs
+    Preserves formatting while making hidden placeholders visible
+    """
+    import re
+    
+    # Common placeholder patterns
+    placeholder_patterns = {
+        '{{NRO_ESC}}': 'NRO_ESC',
+        '{{FI}}': 'FI',
+        '{{FF}}': 'FF',
+        '{{S_IN}}': 'S_IN',
+        '{{S_FN}}': 'S_FN',
+        '{{FECHA_ACT}}': 'FECHA_ACT'
+    }
+    
+    for run in paragraph.runs:
+        for placeholder, field_name in placeholder_patterns.items():
+            if field_name in field_mapping and field_mapping[field_name] and field_mapping[field_name].strip():
+                value = field_mapping[field_name]
+                if placeholder in run.text:
+                    print(f"DEBUG: Found hidden placeholder {field_name} in run: '{run.text}'")
+                    # Make the run visible again and replace the placeholder
+                    run.font.color.rgb = RGBColor(0, 0, 0)  # Black color
+                    # Preserve the run's formatting while replacing the text
+                    run.text = run.text.replace(placeholder, value)
+                    print(f"DEBUG: Updated hidden placeholder to: '{run.text}' with black color")
+                    break
+
+
+def _update_blank_field(paragraph, field_name, value):
+    """
+    Update blank fields when placeholders are not found
+    Preserves formatting by working with runs
+    """
+    print(f"DEBUG: Looking for blank field {field_name} in paragraph: '{paragraph.text}'")
+    
+    # Define field labels to look for
+    field_labels = {
+        'NRO_ESC': 'ACTA NUMERO:',
+        'FI': 'FI:',
+        'FF': 'FF:',
+        'S_IN': 'S_IN:',
+        'S_FN': 'S_FN:',
+        'FECHA_ACT': 'FECHA:'
+    }
+    
+    if field_name in field_labels:
+        label = field_labels[field_name]
+        if label in paragraph.text:
+            start_pos = paragraph.text.find(label)
+            after_label = paragraph.text[start_pos + len(label):]
+            if not after_label.strip() or after_label.strip() in ['', ' ', '\t', '\n']:
+                print(f"DEBUG: Found blank {field_name} field")
+                
+                # Find the run that contains the label and add the value after it
+                for run in paragraph.runs:
+                    if label in run.text:
+                        # Split the run text to add the value after the label
+                        label_pos = run.text.find(label)
+                        before_label = run.text[:label_pos]
+                        after_label_text = run.text[label_pos + len(label):]
+                        
+                        # Update the run to include the value
+                        run.text = f"{before_label}{label} {value}{after_label_text}"
+                        # Ensure the new value is visible (black color)
+                        run.font.color.rgb = RGBColor(0, 0, 0)  # Black color
+                        print(f"DEBUG: Updated run to: '{run.text[:100]}...' with black color")
+                        break
+
+
+def _smart_update_table(current_table, new_table, field_mapping):
+    """
+    Smart update table content while preserving formatting
+    """
+    # Update each cell in the table
+    for row_idx, row in enumerate(current_table.rows):
+        if row_idx < len(new_table.rows):
+            for cell_idx, cell in enumerate(row.cells):
+                if cell_idx < len(new_table.rows[row_idx].cells):
+                    new_cell = new_table.rows[row_idx].cells[cell_idx]
+                    print(f"DEBUG: Processing table cell {row_idx},{cell_idx}")
+                    for paragraph_idx, paragraph in enumerate(cell.paragraphs):
+                        if paragraph.text.strip():  # Only update non-empty paragraphs
+                            print(f"DEBUG: Table cell {row_idx},{cell_idx} paragraph {paragraph_idx}: '{paragraph.text[:100]}...'")
+                            _smart_update_paragraph(paragraph, new_cell.paragraphs[paragraph_idx] if paragraph_idx < len(new_cell.paragraphs) else paragraph, field_mapping)
+                        else:
+                            # Also check for placeholders in empty paragraphs
+                            print(f"DEBUG: Table cell {row_idx},{cell_idx} paragraph {paragraph_idx} is empty, checking for placeholders")
+                            _update_based_on_template_placeholders(paragraph, new_cell.paragraphs[paragraph_idx].text if paragraph_idx < len(new_cell.paragraphs) else "", field_mapping)
+
+
+
+
 
 class VehicleTransferDocumentService:
     """
@@ -85,21 +606,50 @@ class VehicleTransferDocumentService:
 
     def remove_unfilled_placeholders(self, doc):
         """
-        Remove all [E.SOMETHING] placeholders that were not filled,
-        and also remove the phrase 'EN REPRESENTACION DE  Y…………………………….'
-        This version preserves all formatting/colors.
+        Remove all [E.SOMETHING] placeholders and hide {{SOMETHING}} placeholders from user.
+        Keep and hide: {{NRO_ESC}}, {{FI}}, {{FF}}, {{S_IN}}, {{S_FN}}, {{FECHA_ACT}}
+        Remove all others: [E.P_NOM_2], [E.C_NOM_2], etc.
         """
         import re
         placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
+        curly_placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
         representation_pattern = re.compile(
             r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
         )
 
+        # List of placeholders to keep and hide
+        keep_placeholders = ['{{NRO_ESC}}', '{{FI}}', '{{FF}}', '{{S_IN}}', '{{S_FN}}', '{{FECHA_ACT}}']
+
         def clean_runs(runs):
-            # Remove placeholders in runs, preserving formatting
+            # Remove [E.SOMETHING] placeholders and hide {{SOMETHING}} placeholders
             for run in runs:
-                # Remove unfilled placeholders
+                # Remove all [E.SOMETHING] placeholders
                 run.text = placeholder_pattern.sub('', run.text)
+                
+                # Hide {{SOMETHING}} placeholders by making them white
+                # BUT only if they are actually placeholders (not real values)
+                if curly_placeholder_pattern.search(run.text):
+                    # Check if this is actually a placeholder or a real value
+                    should_hide = True
+                    for placeholder in keep_placeholders:
+                        if placeholder in run.text:
+                            # If it's a placeholder we want to keep, check if it has a real value
+                            # Real values would not be exactly the placeholder text
+                            if run.text.strip() == placeholder:
+                                # This is still a placeholder, hide it
+                                run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                                print(f"DEBUG: Hiding curly placeholder in run: '{run.text}'")
+                            else:
+                                # This has a real value, don't hide it
+                                should_hide = False
+                                print(f"DEBUG: Keeping visible value in run: '{run.text}'")
+                            break
+                    
+                    # For other curly placeholders not in keep_placeholders, hide them
+                    if should_hide and not any(placeholder in run.text for placeholder in keep_placeholders):
+                        run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                        print(f"DEBUG: Hiding other curly placeholder in run: '{run.text}'")
+                
                 # Remove unwanted phrase
                 run.text = representation_pattern.sub('', run.text)
 
@@ -112,7 +662,7 @@ class VehicleTransferDocumentService:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         clean_runs(paragraph.runs)
-
+    
     def clean_text(self, text):
         # Remove duplicate commas, semicolons, and spaces
         text = re.sub(r'[;,]{2,}', lambda m: m.group(0)[0], text)  # Replace multiple , or ; with one
@@ -231,7 +781,7 @@ class VehicleTransferDocumentService:
         
         return {
             'K': num_kardex,
-            'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '[E.NRO_ESC]',
+            'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '{{NRO_ESC}}',
             'NUM_REG': '1',
             'FEC_LET': '',
             'F_IMPRESION': '',
@@ -688,94 +1238,8 @@ class VehicleTransferDocumentService:
         # return response
 
 
-class NumberToLetterConverter:
-    """
-    Utility class to convert numbers to letters (Spanish)
-    """
-    
-    def __init__(self):
-        self.unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE']
-        self.decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA']
-        self.especiales = {
-            11: 'ONCE', 12: 'DOCE', 13: 'TRECE', 14: 'CATORCE', 15: 'QUINCE',
-            16: 'DIECISÉIS', 17: 'DIECISIETE', 18: 'DIECIOCHO', 19: 'DIECINUEVE'
-        }
-        self.meses = [
-            'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
-            'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
-        ]
-    
-    def number_to_letters(self, number: str) -> str:
-        """
-        Convert number to letters in Spanish
-        """
-        try:
-            num = int(number)
-            if num == 0:
-                return 'CERO'
-            return self._convert_number_to_letters(num)
-        except:
-            return number
-    
-    def _convert_number_to_letters(self, num: int) -> str:
-        """
-        Internal method to convert number to letters
-        """
-        if num < 10:
-            return self.unidades[num]
-        elif num < 20:
-            return self.especiales.get(num, '')
-        elif num < 100:
-            decena = num // 10
-            unidad = num % 10
-            if unidad == 0:
-                return self.decenas[decena]
-            else:
-                return f"{self.decenas[decena]} Y {self.unidades[unidad]}"
-        elif num < 1000:
-            centena = num // 100
-            resto = num % 100
-            if resto == 0:
-                return f"{self.unidades[centena]}CIENTOS"
-            else:
-                return f"{self.unidades[centena]}CIENTOS {self._convert_number_to_letters(resto)}"
-        elif num < 1000000:
-            miles = num // 1000
-            resto = num % 1000
-            if miles == 1:
-                return f"MIL {self._convert_number_to_letters(resto)}"
-            else:
-                return f"{self._convert_number_to_letters(miles)} MIL {self._convert_number_to_letters(resto)}"
-        elif num < 1000000000:
-            millones = num // 1000000
-            resto = num % 1000000
-            if millones == 1:
-                return f"UN MILLÓN {self._convert_number_to_letters(resto)}"
-            else:
-                return f"{self._convert_number_to_letters(millones)} MILLONES {self._convert_number_to_letters(resto)}"
-        else:
-            return str(num)  # Simplified for demo
-    
-    def date_to_letters(self, date: datetime) -> str:
-        """
-        Convert date to letters in Spanish
-        """
-        dia = date.day
-        mes = self.meses[date.month - 1]
-        anio = date.year
-        
-        return f"{self.number_to_letters(str(dia))} DE {mes} DEL {self.number_to_letters(str(anio))}"
-    
-    def money_to_letters(self, currency: str, amount: Decimal) -> str:
-        """
-        Convert money amount to letters
-        """
-        if currency == "PEN":
-            return f"{self.number_to_letters(str(int(amount)))} SOLES CON {self.number_to_letters(str(int((amount % 1) * 100)))} CÉNTIMOS"
-        elif currency == "USD":
-            return f"{self.number_to_letters(str(int(amount)))} DÓLARES AMERICANOS CON {self.number_to_letters(str(int((amount % 1) * 100)))} CENTAVOS"
-        else:
-            return f"{self.number_to_letters(str(int(amount)))} {currency}"
+
+
 
 
 class DocumentosGeneradosViewSet(ModelViewSet):
@@ -826,3 +1290,6 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         
         service = VehicleTransferDocumentService()
         return service.generate_vehicle_transfer_document(template_id, kardex, action)
+
+
+
