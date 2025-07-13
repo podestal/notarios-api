@@ -599,11 +599,56 @@ class VehicleTransferDocumentService:
             document_data = self.get_document_data(num_kardex)
             doc = self._process_document(template, document_data)
             self.remove_unfilled_placeholders(doc)
+            
+            # Save the document to R2 before returning it
+            upload_success = self.create_documento_in_r2(doc, num_kardex)
+            if not upload_success:
+                print(f"WARNING: Failed to upload document to R2 for kardex: {num_kardex}")
+            
             return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex)
         except FileNotFoundError as e:
             return HttpResponse(str(e), status=404)
         except Exception as e:
             return HttpResponse(f"Error generating document: {str(e)}", status=500)
+
+    def create_documento_in_r2(self, doc, kardex):
+        """
+        Create a new document in R2 storage
+        """
+        try:
+            # Save the document to a bytes buffer
+            from io import BytesIO
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            doc_content = buffer.read()
+            
+            # Define the object key for R2
+            object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/__PROY__{kardex}.docx"
+            
+            # Upload to R2
+            s3 = boto3.client(
+                's3',
+                endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+                aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+                aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+                config=Config(signature_version='s3v4'),
+                region_name='auto',
+            )
+            
+            s3.upload_fileobj(
+                BytesIO(doc_content),
+                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                object_key
+            )
+            
+            print(f"DEBUG: Document uploaded to R2: {object_key}")
+            return True
+            
+        except Exception as e:
+            print(f"ERROR: Failed to upload document to R2: {e}")
+            return False
+
 
     def remove_unfilled_placeholders(self, doc):
         """
@@ -1294,6 +1339,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 kardex=kardex,
                 usuario=user.idusuario,
                 fecha=todayTimeDate)
+        
             try:
                 template_id = int(template_id)
             except ValueError:
@@ -1301,7 +1347,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             
             service = VehicleTransferDocumentService()
             return service.generate_vehicle_transfer_document(template_id, kardex, action)
-
+        
         return HttpResponse({"error": "Documentogenerados already exists."}, status=400)
 
 
