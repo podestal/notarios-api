@@ -1350,5 +1350,71 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         
         return HttpResponse({"error": "Documentogenerados already exists."}, status=400)
 
+    @action(detail=False, methods=['get'], url_path='open-document')
+    def open_document(self, request):
+        """
+        Will look for the document in the r2 storage, and if it exists, it will return the document
+        If it doesn't exist, it will generate the document from the template, db save it in the r2 storage, and return the document
+        """
+        template_id = request.query_params.get("template_id")
+        kardex = request.query_params.get("kardex", "ACT401-2025")
+        action = request.query_params.get("action", "generate")
 
+        user = request.user
 
+        if not user:
+            return HttpResponse({"error": "User not authenticated."}, status=401)
+
+        if not template_id:
+            return HttpResponse({"error": "Missing template_id parameter."}, status=400)
+
+        if not kardex:
+            return HttpResponse({"error": "Missing kardex parameter."}, status=400)
+
+        try:
+            template_id = int(template_id)
+        except ValueError:
+            return HttpResponse({"error": "Invalid template_id format."}, status=400)
+
+        # Define the object key for R2
+        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/__PROY__{kardex}.docx"
+        
+        # Check if document exists in R2
+        s3 = boto3.client(
+            's3',
+            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+
+        try:
+            # Try to get the document from R2
+            print(f"DEBUG: Checking if document exists in R2: {object_key}")
+            s3_response = s3.get_object(
+                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                Key=object_key
+            )
+            
+            # Document exists, return it
+            print(f"DEBUG: Document found in R2, returning existing document")
+            doc_content = s3_response['Body'].read()
+            
+            response = HttpResponse(
+                doc_content,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'inline; filename="__PROY__{kardex}.docx"'
+            response['Content-Length'] = str(len(doc_content))
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
+            
+        except Exception as e:
+            # Document doesn't exist in R2, generate it
+            print(f"DEBUG: Document not found in R2: {e}")
+            print(f"DEBUG: Generating new document for kardex: {kardex}")
+            
+            # Generate the document using existing functionality
+            service = VehicleTransferDocumentService()
+            return service.generate_vehicle_transfer_document(template_id, kardex, action)
