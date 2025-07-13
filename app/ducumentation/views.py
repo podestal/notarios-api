@@ -26,6 +26,7 @@ from docxcompose.properties import CustomProperties
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from docx.shared import RGBColor, Pt
+from rest_framework.permissions import IsAuthenticated
 
 import re
 
@@ -1237,11 +1238,6 @@ class VehicleTransferDocumentService:
         
         # return response
 
-
-
-
-
-
 class DocumentosGeneradosViewSet(ModelViewSet):
     """
     ViewSet for the Documentogenerados model.
@@ -1249,6 +1245,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
     queryset = models.Documentogenerados.objects.all()
     serializer_class = serializers.DocumentosGeneradosSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def by_kardex(self, request):
@@ -1276,20 +1273,36 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         template_id = request.query_params.get("template_id")
         kardex = request.query_params.get("kardex", "ACT401-2025")
         action = request.query_params.get("action", "generate")
-        
+
+        user = request.user
+
+        if not user:
+            return HttpResponse({"error": "User not authenticated."}, status=401)
+    
         if not template_id:
             return HttpResponse({"error": "Missing template_id parameter."}, status=400)
 
         if not kardex:
             return HttpResponse({"error": "Missing kardex parameter."}, status=400)
         
-        try:
-            template_id = int(template_id)
-        except ValueError:
-            return HttpResponse({"error": "Invalid template_id format."}, status=400)
+        todayTimeDate = datetime.now().isoformat() + 'Z'
         
-        service = VehicleTransferDocumentService()
-        return service.generate_vehicle_transfer_document(template_id, kardex, action)
+        # create a new instance of Documentogenerados only if it doesn't exist
+        documentogenerados = models.Documentogenerados.objects.filter(kardex=kardex).first()
+        if not documentogenerados:
+            documentogenerados = models.Documentogenerados.objects.create(
+                kardex=kardex,
+                usuario=user.idusuario,
+                fecha=todayTimeDate)
+            try:
+                template_id = int(template_id)
+            except ValueError:
+                return HttpResponse({"error": "Invalid template_id format."}, status=400)
+            
+            service = VehicleTransferDocumentService()
+            return service.generate_vehicle_transfer_document(template_id, kardex, action)
+
+        return HttpResponse({"error": "Documentogenerados already exists."}, status=400)
 
 
 
