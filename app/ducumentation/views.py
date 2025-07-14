@@ -590,7 +590,7 @@ class VehicleTransferDocumentService:
     def __init__(self):
         self.letras = NumberToLetterConverter()
     
-    def generate_vehicle_transfer_document(self, template_id: int, num_kardex: str, action: str = 'generate') -> HttpResponse:
+    def generate_vehicle_transfer_document(self, template_id: int, num_kardex: str, action: str = 'generate', mode: str = "download") -> HttpResponse:
         """
         Main method to generate vehicle transfer document
         """
@@ -605,7 +605,7 @@ class VehicleTransferDocumentService:
             if not upload_success:
                 print(f"WARNING: Failed to upload document to R2 for kardex: {num_kardex}")
             
-            return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex)
+            return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex, mode)
         except FileNotFoundError as e:
             return HttpResponse(str(e), status=404)
         except Exception as e:
@@ -1238,7 +1238,7 @@ class VehicleTransferDocumentService:
         doc.render(data)
         return doc
     
-    def _create_response(self, doc: Document, filename: str, kardex: str) -> HttpResponse:
+    def _create_response(self, doc: Document, filename: str, kardex: str, mode: str = "download") -> HttpResponse:
         """
         Create HTTP response with the document
         """
@@ -1250,14 +1250,28 @@ class VehicleTransferDocumentService:
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
-        response = HttpResponse(
-            buffer.read(),
-            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        )
-        response['Content-Disposition'] = f'inline; filename=\"{filename}\"'
-        response['Content-Length'] = str(buffer.getbuffer().nbytes)
-        response['Access-Control-Allow-Origin'] = '*'
-        return response
+        
+        if mode == "open":
+            # Production mode: Return JSON with file info for Word opening
+            response = JsonResponse({
+                'status': 'success',
+                'mode': 'open',
+                'filename': filename,
+                'kardex': kardex,
+                'message': 'Document generated and ready to open in Word'
+            })
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
+        else:
+            # Testing mode: Download the document
+            response = HttpResponse(
+                buffer.read(),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'inline; filename=\"{filename}\"'
+            response['Content-Length'] = str(buffer.getbuffer().nbytes)
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
         # buffer = io.BytesIO()
         # doc.save(buffer)
         # buffer.seek(0)
@@ -1359,6 +1373,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         template_id = request.query_params.get("template_id")
         kardex = request.query_params.get("kardex", "ACT401-2025")
         action = request.query_params.get("action", "generate")
+        mode = request.query_params.get("mode", "download")  # "download" or "open"
 
         user = request.user
 
@@ -1401,14 +1416,27 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             print(f"DEBUG: Document found in R2, returning existing document")
             doc_content = s3_response['Body'].read()
             
-            response = HttpResponse(
-                doc_content,
-                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
-            response['Content-Disposition'] = f'inline; filename="__PROY__{kardex}.docx"'
-            response['Content-Length'] = str(len(doc_content))
-            response['Access-Control-Allow-Origin'] = '*'
-            return response
+            if mode == "open":
+                # Production mode: Return JSON with file info for Word opening
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                # Testing mode: Download the document
+                response = HttpResponse(
+                    doc_content,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                )
+                response['Content-Disposition'] = f'inline; filename="__PROY__{kardex}.docx"'
+                response['Content-Length'] = str(len(doc_content))
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
             
         except Exception as e:
             # Document doesn't exist in R2, generate it
@@ -1417,4 +1445,4 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             
             # Generate the document using existing functionality
             service = VehicleTransferDocumentService()
-            return service.generate_vehicle_transfer_document(template_id, kardex, action)
+            return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
