@@ -1347,13 +1347,16 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         todayTimeDate = datetime.now().isoformat() + 'Z'
         
         # create a new instance of Documentogenerados only if it doesn't exist
+        print(f"DEBUG: kardex: {kardex}")
+        print(f"DEBUG: getting doc: ")
         documentogenerados = models.Documentogenerados.objects.filter(kardex=kardex).first()
+        print(f"DEBUG: documentogenerados: {documentogenerados}")
         if not documentogenerados:
             documentogenerados = models.Documentogenerados.objects.create(
                 kardex=kardex,
                 usuario=user.idusuario,
                 fecha=todayTimeDate)
-        
+            print(f"DEBUG: creating doc: {documentogenerados}")
             try:
                 template_id = int(template_id)
             except ValueError:
