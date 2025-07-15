@@ -1487,7 +1487,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
 @api_view(['GET'])
 # @permission_classes([IsAuthenticated])
-def download_docx(request, kardex, filename):
+def download_docx(request, kardex, kardex2):
     """
     Secure endpoint to stream a docx file from R2 to the user.
     Only authenticated users can access. Returns 404 if not found.

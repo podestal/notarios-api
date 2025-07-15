@@ -1,6 +1,6 @@
 from rest_framework_nested import routers
 from . import views
-from django.urls import path
+from django.urls import path, re_path
 from rest_framework.decorators import api_view
 from rest_framework.permissions import IsAuthenticated
 
@@ -18,5 +18,5 @@ from .views import download_docx
 urlpatterns = [
     path('upload-docx/', views.upload_document_to_r2, name='upload_document_to_r2'),
     path('update-docx/', views.update_document_in_r2, name='update_document_in_r2'),
-    path('download/<str:kardex>/<str:filename>/', download_docx, name='download_docx'),
+    re_path(r'^download/(?P<kardex>[^/]+)/__PROY__(?P<kardex2>[^/]+)\.docx$', download_docx, name='download_docx'),
 ] + router.urls
