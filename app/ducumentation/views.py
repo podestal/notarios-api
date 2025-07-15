@@ -1371,7 +1371,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             service = VehicleTransferDocumentService()
             if mode == "open":
                 # Return the download URL for Windows users - force HTTPS
-                download_url = f"https://{request.get_host()}/docs/download/{kardex}/"
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
@@ -1440,7 +1440,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             
             if mode == "open":
                 # Return the download URL for Windows users - force HTTPS
-                download_url = f"https://{request.get_host()}/docs/download/{kardex}/"
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
@@ -1471,7 +1471,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             service = VehicleTransferDocumentService()
             if mode == "open":
                 # Return the download URL for Windows users - force HTTPS
-                download_url = f"https://{request.get_host()}/docs/download/{kardex}/"
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
