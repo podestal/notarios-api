@@ -1309,7 +1309,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
     queryset = models.Documentogenerados.objects.all()
     serializer_class = serializers.DocumentosGeneradosSerializer
     pagination_class = pagination.KardexPagination
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def by_kardex(self, request):
