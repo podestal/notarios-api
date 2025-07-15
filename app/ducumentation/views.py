@@ -1370,10 +1370,8 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             
             service = VehicleTransferDocumentService()
             if mode == "open":
-                # Return the download URL for Windows users
-                download_url = request.build_absolute_uri(
-                    reverse('download_docx', kwargs={'kardex': kardex})
-                )
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/"
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
@@ -1441,10 +1439,8 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             doc_content = s3_response['Body'].read()
             
             if mode == "open":
-                # Return the download URL for Windows users
-                download_url = request.build_absolute_uri(
-                    reverse('download_docx', kwargs={'kardex': kardex})
-                )
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/"
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
@@ -1474,10 +1470,8 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             # Generate the document using existing functionality
             service = VehicleTransferDocumentService()
             if mode == "open":
-                # Return the download URL for Windows users
-                download_url = request.build_absolute_uri(
-                    reverse('download_docx', kwargs={'kardex': kardex})
-                )
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/"
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
