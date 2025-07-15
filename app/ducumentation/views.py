@@ -27,8 +27,13 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from docx.shared import RGBColor, Pt
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from django.views.decorators.http import require_GET
+from django.utils.decorators import method_decorator
 
 import re
+from django.urls import reverse
 
 
 class NumberToLetterConverter:
@@ -1328,10 +1333,11 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='open-template')
     def open_template(self, request):
-
+        print(f"DEBUG: open_template")
         template_id = request.query_params.get("template_id")
         kardex = request.query_params.get("kardex", "ACT401-2025")
         action = request.query_params.get("action", "generate")
+        mode = request.query_params.get("mode", "download")  # Add mode param for consistency
 
         user = request.user
 
@@ -1363,8 +1369,23 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 return HttpResponse({"error": "Invalid template_id format."}, status=400)
             
             service = VehicleTransferDocumentService()
-            return service.generate_vehicle_transfer_document(template_id, kardex, action)
-        
+            if mode == "open":
+                # Return the download URL for Windows users
+                download_url = request.build_absolute_uri(
+                    reverse('download_docx', kwargs={'kardex': kardex})
+                )
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                return service.generate_vehicle_transfer_document(template_id, kardex, action)
         return HttpResponse({"error": "Documentogenerados already exists."}, status=400)
 
     @action(detail=False, methods=['get'], url_path='open-document')
@@ -1420,12 +1441,16 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             doc_content = s3_response['Body'].read()
             
             if mode == "open":
-                # Production mode: Return JSON with file info for Word opening
+                # Return the download URL for Windows users
+                download_url = request.build_absolute_uri(
+                    reverse('download_docx', kwargs={'kardex': kardex})
+                )
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
                     'filename': f"__PROY__{kardex}.docx",
                     'kardex': kardex,
+                    'url': download_url,
                     'message': 'Document ready to open in Word'
                 })
                 response['Access-Control-Allow-Origin'] = '*'
@@ -1448,4 +1473,55 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             
             # Generate the document using existing functionality
             service = VehicleTransferDocumentService()
-            return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+            if mode == "open":
+                # Return the download URL for Windows users
+                download_url = request.build_absolute_uri(
+                    reverse('download_docx', kwargs={'kardex': kardex})
+                )
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def download_docx(request, kardex):
+    """
+    Secure endpoint to stream a docx file from R2 to the user.
+    Only authenticated users can access. Returns 404 if not found.
+    """
+    import boto3
+    import os
+    from botocore.client import Config
+    from django.http import FileResponse, Http404, HttpResponse
+
+    object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/__PROY__{kardex}.docx"
+    s3 = boto3.client(
+        's3',
+        endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+        aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+        aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+        config=Config(signature_version='s3v4'),
+        region_name='auto',
+    )
+    try:
+        s3_response = s3.get_object(
+            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+            Key=object_key
+        )
+        file_stream = s3_response['Body']
+        response = FileResponse(file_stream, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        response['Content-Disposition'] = f'inline; filename="__PROY__{kardex}.docx"'
+        return response
+    except s3.exceptions.NoSuchKey:
+        raise Http404("Document not found")
+    except Exception as e:
+        return HttpResponse(f"Error: {str(e)}", status=500)
