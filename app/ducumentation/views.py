@@ -1485,6 +1485,22 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             else:
                 return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
 
+# Create S3 client once at module level for better performance
+_s3_client = None
+
+def get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client(
+            's3',
+            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+    return _s3_client
+
 @api_view(['GET'])
 # @permission_classes([IsAuthenticated])
 def download_docx(request, kardex, kardex2):
@@ -1494,19 +1510,16 @@ def download_docx(request, kardex, kardex2):
     """
     import boto3
     import os
+    import time
     from botocore.client import Config
     from django.http import FileResponse, Http404, HttpResponse
+    
+    start_time = time.time()
 
     object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/__PROY__{kardex}.docx"
-    s3 = boto3.client(
-        's3',
-        endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
-        aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
-        aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
-        config=Config(signature_version='s3v4'),
-        region_name='auto',
-    )
+    
     try:
+        s3 = get_s3_client()
         s3_response = s3.get_object(
             Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
             Key=object_key
@@ -1514,6 +1527,14 @@ def download_docx(request, kardex, kardex2):
         file_stream = s3_response['Body']
         response = FileResponse(file_stream, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         response['Content-Disposition'] = f'inline; filename="__PROY__{kardex}.docx"'
+        # Add caching headers for better performance
+        response['Cache-Control'] = 'public, max-age=3600'  # Cache for 1 hour
+        response['ETag'] = f'"{kardex}"'
+        
+        # Log performance metrics
+        elapsed_time = time.time() - start_time
+        print(f"DEBUG: download_docx took {elapsed_time:.2f} seconds for kardex: {kardex}")
+        
         return response
     except s3.exceptions.NoSuchKey:
         raise Http404("Document not found")
