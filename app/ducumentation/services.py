@@ -13,9 +13,29 @@ from .constants import ROLE_LABELS, TIPO_DOCUMENTO, CIVIL_STATUS
 import re
 from datetime import datetime
 from django.http import HttpResponse, JsonResponse
-from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Sedesregistrales
+from notaria.models import TplTemplate, Contratantesxacto, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Sedesregistrales, Ubigeo
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from .utils import NumberToLetterConverter
+import time
+
+# Cached S3 client to avoid recreating on every request
+_s3_client = None
+
+def get_s3_client():
+    """
+    Get a cached S3 client for R2 operations
+    """
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client(
+            's3',
+            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+    return _s3_client
 
 class VehicleTransferDocumentService:
     """
@@ -29,21 +49,52 @@ class VehicleTransferDocumentService:
         """
         Main method to generate vehicle transfer document
         """
+        start_time = time.time()
+        print(f"PERF: Starting vehicle document generation for kardex: {num_kardex}")
+        
         try:
+            # Step 1: Get template from R2
+            template_start = time.time()
             template = self._get_template_from_r2(template_id)
-            document_data = self.get_document_data(num_kardex)
-            doc = self._process_document(template, document_data)
-            self.remove_unfilled_placeholders(doc)
+            template_time = time.time() - template_start
+            print(f"PERF: Template download took {template_time:.2f}s")
             
-            # Save the document to R2 before returning it
+            # Step 2: Get document data
+            data_start = time.time()
+            document_data = self.get_document_data(num_kardex)
+            data_time = time.time() - data_start
+            print(f"PERF: Data retrieval took {data_time:.2f}s")
+            
+            # Step 3: Process document
+            process_start = time.time()
+            doc = self._process_document(template, document_data)
+            process_time = time.time() - process_start
+            print(f"PERF: Document processing took {process_time:.2f}s")
+            
+            # Step 4: Remove placeholders
+            cleanup_start = time.time()
+            self.remove_unfilled_placeholders(doc)
+            cleanup_time = time.time() - cleanup_start
+            print(f"PERF: Placeholder cleanup took {cleanup_time:.2f}s")
+            
+            # Step 5: Upload to R2
+            upload_start = time.time()
             upload_success = self.create_documento_in_r2(doc, num_kardex)
+            upload_time = time.time() - upload_start
+            print(f"PERF: R2 upload took {upload_time:.2f}s")
+            
             if not upload_success:
                 print(f"WARNING: Failed to upload document to R2 for kardex: {num_kardex}")
+            
+            total_time = time.time() - start_time
+            print(f"PERF: Total vehicle document generation took {total_time:.2f}s")
             
             return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex, mode)
         except FileNotFoundError as e:
             return HttpResponse(str(e), status=404)
         except Exception as e:
+            total_time = time.time() - start_time
+            print(f"PERF: Vehicle document generation failed after {total_time:.2f}s")
             return HttpResponse(f"Error generating document: {str(e)}", status=500)
 
     def create_documento_in_r2(self, doc, kardex):
@@ -51,6 +102,8 @@ class VehicleTransferDocumentService:
         Create a new document in R2 storage
         """
         try:
+            print(f"DEBUG: Starting R2 upload for kardex: {kardex}")
+            
             # Save the document to a bytes buffer
             from io import BytesIO
             buffer = BytesIO()
@@ -58,22 +111,38 @@ class VehicleTransferDocumentService:
             buffer.seek(0)
             doc_content = buffer.read()
             
+            print(f"DEBUG: Document size: {len(doc_content)} bytes")
+            
             # Define the object key for R2
             object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+            
+            # Check environment variables
+            endpoint_url = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
+            access_key = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
+            secret_key = os.environ.get('CLOUDFLARE_R2_SECRET_KEY')
+            bucket = os.environ.get('CLOUDFLARE_R2_BUCKET')
+            
+            print(f"DEBUG: R2 Configuration - Endpoint: {endpoint_url}")
+            print(f"DEBUG: R2 Configuration - Access Key: {'SET' if access_key else 'NOT SET'}")
+            print(f"DEBUG: R2 Configuration - Secret Key: {'SET' if secret_key else 'NOT SET'}")
+            print(f"DEBUG: R2 Configuration - Bucket: {bucket}")
             
             # Upload to R2
             s3 = boto3.client(
                 's3',
-                endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
-                aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
-                aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+                endpoint_url=endpoint_url,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
                 config=Config(signature_version='s3v4'),
                 region_name='auto',
             )
             
+            print(f"DEBUG: S3 client created successfully")
+            print(f"DEBUG: Uploading to bucket: {bucket}, key: {object_key}")
+            
             s3.upload_fileobj(
                 BytesIO(doc_content),
-                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                bucket,
                 object_key
             )
             
@@ -82,6 +151,9 @@ class VehicleTransferDocumentService:
             
         except Exception as e:
             print(f"ERROR: Failed to upload document to R2: {e}")
+            print(f"ERROR: Exception type: {type(e).__name__}")
+            import traceback
+            print(f"ERROR: Full traceback: {traceback.format_exc()}")
             return False
 
 
@@ -549,7 +621,7 @@ class VehicleTransferDocumentService:
             contractors_data[f'C_ESTADO_CIVIL_{idx}'] = f'[E.C_ESTADO_CIVIL_{idx}]'
             contractors_data[f'C_DOMICILIO_{idx}'] = f'[E.C_DOMICILIO_{idx}]'
             contractors_data[f'C_IDE_{idx}'] = f'[E.C_IDE_{idx}]'
-            contractors_data[f'SEXO_C_{idx}'] = f'[E.SEXO_C_{idx}]'
+            contractors_data[f'SEXO_C_{idx}'] = f'[E.C_SEXO_{idx}]'
             contractors_data[f'C_FIRMAN_{idx}'] = f'[E.C_FIRMAN_{idx}]'
             contractors_data[f'C_IMPRIME_{idx}'] = f'[E.C_IMPRIME_{idx}]'
 
@@ -707,22 +779,52 @@ class NonContentiousDocumentService:
         """
         Main method to generate non-contentious document
         """
-        print(f"DEBUG: Generating non-contentious document for template_id: {template_id}, num_kardex: {num_kardex}, idtipoacto: {idtipoacto}, action: {action}, mode: {mode}")
+        start_time = time.time()
+        print(f"PERF: Starting non-contentious document generation for kardex: {num_kardex}")
+        
         try:
+            # Step 1: Get template from R2
+            template_start = time.time()
             template = self._get_template_from_r2(template_id)
-            document_data = self.get_document_data(num_kardex, idtipoacto)
-            doc = self._process_document(template, document_data)
-            self.remove_unfilled_placeholders(doc)
+            template_time = time.time() - template_start
+            print(f"PERF: Non-contentious template download took {template_time:.2f}s")
             
-            # Save the document to R2 before returning it
+            # Step 2: Get document data
+            data_start = time.time()
+            document_data = self.get_document_data(num_kardex, idtipoacto)
+            data_time = time.time() - data_start
+            print(f"PERF: Non-contentious data retrieval took {data_time:.2f}s")
+            
+            # Step 3: Process document
+            process_start = time.time()
+            doc = self._process_document(template, document_data)
+            process_time = time.time() - process_start
+            print(f"PERF: Non-contentious document processing took {process_time:.2f}s")
+            
+            # Step 4: Remove placeholders
+            cleanup_start = time.time()
+            self.remove_unfilled_placeholders(doc)
+            cleanup_time = time.time() - cleanup_start
+            print(f"PERF: Non-contentious placeholder cleanup took {cleanup_time:.2f}s")
+            
+            # Step 5: Upload to R2
+            upload_start = time.time()
             upload_success = self.create_documento_in_r2(doc, num_kardex)
+            upload_time = time.time() - upload_start
+            print(f"PERF: Non-contentious R2 upload took {upload_time:.2f}s")
+            
             if not upload_success:
-                print(f"WARNING: Failed to upload document to R2 for kardex: {num_kardex}")
+                print(f"WARNING: Failed to upload non-contentious document to R2 for kardex: {num_kardex}")
+            
+            total_time = time.time() - start_time
+            print(f"PERF: Total non-contentious document generation took {total_time:.2f}s")
             
             return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex, mode)
         except FileNotFoundError as e:
             return HttpResponse(str(e), status=404)
         except Exception as e:
+            total_time = time.time() - start_time
+            print(f"PERF: Non-contentious document generation failed after {total_time:.2f}s")
             return HttpResponse(f"Error generating document: {str(e)}", status=500)
 
     def create_documento_in_r2(self, doc, kardex):
@@ -730,6 +832,8 @@ class NonContentiousDocumentService:
         Create a new document in R2 storage
         """
         try:
+            print(f"DEBUG: Starting R2 upload for non-contentious kardex: {kardex}")
+            
             # Save the document to a bytes buffer
             from io import BytesIO
             buffer = BytesIO()
@@ -737,22 +841,31 @@ class NonContentiousDocumentService:
             buffer.seek(0)
             doc_content = buffer.read()
             
+            print(f"DEBUG: Non-contentious document size: {len(doc_content)} bytes")
+            
             # Define the object key for R2 - simplified path structure
             object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
             
-            # Upload to R2
-            s3 = boto3.client(
-                's3',
-                endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
-                aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
-                aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
-                config=Config(signature_version='s3v4'),
-                region_name='auto',
-            )
+            # Check environment variables
+            endpoint_url = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
+            access_key = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
+            secret_key = os.environ.get('CLOUDFLARE_R2_SECRET_KEY')
+            bucket = os.environ.get('CLOUDFLARE_R2_BUCKET')
+            
+            print(f"DEBUG: R2 Configuration - Endpoint: {endpoint_url}")
+            print(f"DEBUG: R2 Configuration - Access Key: {'SET' if access_key else 'NOT SET'}")
+            print(f"DEBUG: R2 Configuration - Secret Key: {'SET' if secret_key else 'NOT SET'}")
+            print(f"DEBUG: R2 Configuration - Bucket: {bucket}")
+            
+            # Use cached S3 client
+            s3 = get_s3_client()
+            
+            print(f"DEBUG: S3 client created successfully for non-contentious")
+            print(f"DEBUG: Uploading non-contentious document to bucket: {bucket}, key: {object_key}")
             
             s3.upload_fileobj(
                 BytesIO(doc_content),
-                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                bucket,
                 object_key
             )
             
@@ -761,6 +874,9 @@ class NonContentiousDocumentService:
             
         except Exception as e:
             print(f"ERROR: Failed to upload non-contentious document to R2: {e}")
+            print(f"ERROR: Exception type: {type(e).__name__}")
+            import traceback
+            print(f"ERROR: Full traceback: {traceback.format_exc()}")
             return False
 
     def remove_unfilled_placeholders(self, doc):
@@ -827,14 +943,9 @@ class NonContentiousDocumentService:
         Get template from R2 storage for non-contentious documents
         """
         template = TplTemplate.objects.get(pktemplate=template_id)
-        s3 = boto3.client(
-            's3',
-            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
-            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
-            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
-            config=Config(signature_version='s3v4'),
-            region_name='auto',
-        )
+        
+        # Use cached S3 client
+        s3 = get_s3_client()
         
         # Template path in simplified structure
         object_key = f"rodriguez-zea/plantillas/{template.filename}"
@@ -895,9 +1006,7 @@ class NonContentiousDocumentService:
         usuario = kardex.responsable_new or ''
         usuario_dni = ''
         if kardex.idusuario:
-            user = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
-            if user:
-                usuario_dni = user.dni or ''
+            usuario_dni = kardex.idusuario.dni or ''
         
         # Get abogado information
         abogado = ''
@@ -941,19 +1050,32 @@ class NonContentiousDocumentService:
         """
         Get contractors (transferors and acquirers) information for non-contentious documents
         """
-        # Get all contratantes for this kardex
+        # Get all contratantes for this kardex with optimized queries
         contratantes = Contratantesxacto.objects.filter(kardex=num_kardex)
+        
+        # Pre-fetch all related data to avoid N+1 queries
+        contratante_ids = [cxa.idcontratante for cxa in contratantes]
+        clientes = {c.idcontratante: c for c in Cliente2.objects.filter(idcontratante__in=contratante_ids)}
+        condicion_ids = [cxa.idcondicion for cxa in contratantes if cxa.idcondicion]
+        condiciones = {c.idcondicion: c for c in Actocondicion.objects.filter(idcondicion__in=condicion_ids)}
+        
+        # Pre-fetch nationality and ubigeo data
+        nacionalidad_ids = [c.nacionalidad for c in clientes.values() if c.nacionalidad]
+        nacionalidades = {n.idnacionalidad: n for n in Nacionalidades.objects.filter(idnacionalidad__in=nacionalidad_ids)}
+        
+        ubigeo_ids = [c.idubigeo for c in clientes.values() if c.idubigeo]
+        ubigeos = {u.coddis: u for u in Ubigeo.objects.filter(coddis__in=ubigeo_ids)}
         
         transferors = []
         acquirers = []
         companies = []
         
         for cxa in contratantes:
-            cliente = Cliente2.objects.filter(idcontratante=cxa.idcontratante).first()
+            cliente = clientes.get(cxa.idcontratante)
             if not cliente:
                 continue
                 
-            condicion = Actocondicion.objects.filter(idcondicion=cxa.idcondicion).first()
+            condicion = condiciones.get(cxa.idcondicion)
             condicion_str = condicion.condicion if condicion else ''
             
             # Build full name
@@ -974,7 +1096,7 @@ class NonContentiousDocumentService:
                 # Get nationality and civil status
                 nacionalidad = ''
                 if cliente.nacionalidad:
-                    nac_obj = Nacionalidades.objects.filter(idnacionalidad=cliente.nacionalidad).first()
+                    nac_obj = nacionalidades.get(cliente.nacionalidad)
                     if nac_obj:
                         nacionalidad = nac_obj.descripcion or ''
                 
@@ -992,7 +1114,7 @@ class NonContentiousDocumentService:
                 # Get ubigeo
                 direccion = ''
                 if cliente.idubigeo:
-                    ubigeo_obj = Ubigeo.objects.filter(coddis=cliente.idubigeo).first()
+                    ubigeo_obj = ubigeos.get(cliente.idubigeo)
                     if ubigeo_obj:
                         direccion = f"{cliente.direccion or ''} DEL DISTRITO DE {ubigeo_obj.nomdis or ''} PROVINCIA DE {ubigeo_obj.nomprov or ''} Y DEPARTAMENTO DE {ubigeo_obj.nomdpto or ''}"
                 
@@ -1070,7 +1192,7 @@ class NonContentiousDocumentService:
             contractors_data[f'C_ESTADO_CIVIL_{idx}'] = f'[E.C_ESTADO_CIVIL_{idx}]'
             contractors_data[f'C_DOMICILIO_{idx}'] = f'[E.C_DOMICILIO_{idx}]'
             contractors_data[f'C_IDE_{idx}'] = f'[E.C_IDE_{idx}]'
-            contractors_data[f'SEXO_C_{idx}'] = f'[E.SEXO_C_{idx}]'
+            contractors_data[f'SEXO_C_{idx}'] = f'[E.C_SEXO_{idx}]'
 
         for idx in range(len(companies) + 1, 6):
             contractors_data[f'NOMBRE_EMPRESA_{idx}'] = f'[E.NOMBRE_EMPRESA_{idx}]'

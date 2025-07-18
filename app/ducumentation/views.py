@@ -43,11 +43,11 @@ def generate_document_by_tipkar(request):
     Generate document based on tipkar (tipo kardex) from the kardex record
     """
     print("GENERATE DOCUMENT BY TIPKAR VIEW CALLED")
-    # Get parameters
-    template_id = request.data.get('template_id')
-    kardex = request.data.get('kardex')
+    # Get parameters from GET request
+    template_id = request.GET.get('template_id')
+    kardex = request.GET.get('kardex')
     action = 'generate'
-    mode = request.data.get('mode')
+    mode = request.GET.get('mode')
     
     if not all([template_id, kardex]):
         return Response({
@@ -84,7 +84,7 @@ def generate_document_by_tipkar(request):
         elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
             print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
             # For non-contentious, we need idtipoacto from the request or from kardex
-            idtipoacto = request.POST.get('idtipoacto')
+            idtipoacto = request.GET.get('idtipoacto')
             if not idtipoacto:
                 # Try to get from kardex codactos
                 if kardex_obj.codactos:
@@ -721,9 +721,10 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 template_id = int(template_id)
             except ValueError:
                 return HttpResponse({"error": "Invalid template_id format."}, status=400)
-            
+            print(f"DEBUG: template_id: {template_id}")
             # Get the kardex record to determine the tipkar
             kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+            print(f"DEBUG: kardex_obj: {kardex_obj}")
             if not kardex_obj:
                 return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
             
@@ -812,7 +813,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
         # Define the object key for R2
         object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
-        
+        print(f"DEBUG: object_key: {object_key}")
         # Check if document exists in R2
         s3 = boto3.client(
             's3',
@@ -979,3 +980,55 @@ def download_docx(request, kardex, kardex2):
         raise Http404("Document not found")
     except Exception as e:
         return HttpResponse(f"Error: {str(e)}", status=500)
+
+@api_view(['GET'])
+def test_r2_connection(request):
+    """
+    Test R2 connection and configuration
+    """
+    try:
+        # Check environment variables
+        endpoint_url = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
+        access_key = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
+        secret_key = os.environ.get('CLOUDFLARE_R2_SECRET_KEY')
+        bucket = os.environ.get('CLOUDFLARE_R2_BUCKET')
+        
+        config_status = {
+            'endpoint_url': endpoint_url,
+            'access_key_set': bool(access_key),
+            'secret_key_set': bool(secret_key),
+            'bucket': bucket,
+        }
+        
+        # Test S3 client creation
+        s3 = boto3.client(
+            's3',
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+        
+        # Test bucket access
+        try:
+            s3.head_bucket(Bucket=bucket)
+            bucket_access = True
+        except Exception as e:
+            bucket_access = False
+            bucket_error = str(e)
+        
+        return Response({
+            'success': True,
+            'config_status': config_status,
+            's3_client_created': True,
+            'bucket_access': bucket_access,
+            'bucket_error': bucket_error if not bucket_access else None
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e),
+            'config_status': config_status if 'config_status' in locals() else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
