@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from rest_framework.viewsets import ModelViewSet
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework import status
 from . import models, serializers
@@ -34,180 +34,85 @@ from django.utils.decorators import method_decorator
 
 import re
 from django.urls import reverse
+from .utils import NumberToLetterConverter
+from .services import VehicleTransferDocumentService
 
-
-class NumberToLetterConverter:
-    """
-    Utility class to convert numbers to letters (Spanish)
-    """
-    
-    def __init__(self):
-        self.unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE']
-        self.decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA']
-        self.especiales = {
-            11: 'ONCE', 12: 'DOCE', 13: 'TRECE', 14: 'CATORCE', 15: 'QUINCE',
-            16: 'DIECISÉIS', 17: 'DIECISIETE', 18: 'DIECIOCHO', 19: 'DIECINUEVE'
-        }
-        self.meses = [
-            'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
-            'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
-        ]
-    
-    def number_to_letters(self, number: str) -> str:
-        """
-        Convert number to letters in Spanish
-        """
-        try:
-            num = int(number)
-            if num == 0:
-                return 'CERO'
-            return self._convert_number_to_letters(num)
-        except:
-            return number
-    
-    def _convert_number_to_letters(self, num: int) -> str:
-        """
-        Internal method to convert number to letters
-        """
-        if num < 10:
-            return self.unidades[num]
-        elif num < 20:
-            return self.especiales.get(num, '')
-        elif num < 100:
-            decena = num // 10
-            unidad = num % 10
-            if unidad == 0:
-                return self.decenas[decena]
-            else:
-                return f"{self.decenas[decena]} Y {self.unidades[unidad]}"
-        elif num < 1000:
-            centena = num // 100
-            resto = num % 100
-            if resto == 0:
-                return f"{self.unidades[centena]}CIENTOS"
-            else:
-                return f"{self.unidades[centena]}CIENTOS {self._convert_number_to_letters(resto)}"
-        elif num < 1000000:
-            miles = num // 1000
-            resto = num % 1000
-            if miles == 1:
-                return f"MIL {self._convert_number_to_letters(resto)}"
-            else:
-                return f"{self._convert_number_to_letters(miles)} MIL {self._convert_number_to_letters(resto)}"
-        elif num < 1000000000:
-            millones = num // 1000000
-            resto = num % 1000000
-            if millones == 1:
-                return f"UN MILLÓN {self._convert_number_to_letters(resto)}"
-            else:
-                return f"{self._convert_number_to_letters(millones)} MILLONES {self._convert_number_to_letters(resto)}"
-        else:
-            return str(num)  # Simplified for demo
-    
-    def date_to_letters(self, date: datetime) -> str:
-        """
-        Convert date to letters in Spanish
-        """
-        dia = date.day
-        mes = self.meses[date.month - 1]
-        anio = date.year
-        
-        return f"{self.number_to_letters(str(dia))} DE {mes} DEL {self.number_to_letters(str(anio))}"
-    
-    def money_to_letters(self, currency: str, amount: Decimal) -> str:
-        """
-        Convert money amount to letters
-        """
-        if currency == "PEN":
-            return f"{self.number_to_letters(str(int(amount)))} SOLES CON {self.number_to_letters(str(int((amount % 1) * 100)))} CÉNTIMOS"
-        elif currency == "USD":
-            return f"{self.number_to_letters(str(int(amount)))} DÓLARES AMERICANOS CON {self.number_to_letters(str(int((amount % 1) * 100)))} CENTAVOS"
-        else:
-            return f"{self.number_to_letters(str(int(amount)))} {currency}"
-
-
-
-
-@csrf_exempt
+@api_view(['GET'])
 def generate_document_by_tipkar(request):
     """
     Generate document based on tipkar (tipo kardex) from the kardex record
     """
     print("GENERATE DOCUMENT BY TIPKAR VIEW CALLED")
-    if request.method == 'POST':
-        # Get parameters
-        template_id = request.POST.get('template_id')
-        kardex = request.POST.get('kardex')
-        action = request.POST.get('action', 'generate')
-        mode = request.POST.get('mode', 'download')
+    # Get parameters
+    template_id = request.data.get('template_id')
+    kardex = request.data.get('kardex')
+    action = 'generate'
+    mode = request.data.get('mode')
+    
+    if not all([template_id, kardex]):
+        return Response({
+            'success': False,
+            'message': 'Missing required parameters: template_id, kardex'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        template_id = int(template_id)
+    except ValueError:
+        return Response({
+            'success': False,
+            'message': 'Invalid template_id format'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Get the kardex record to determine the tipkar
+        kardex_obj = Kardex.objects.filter(kardex=kardex).first()
         
-        if not all([template_id, kardex]):
-            return JsonResponse({
-                'success': False,
-                'message': 'Missing required parameters: template_id, kardex'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            template_id = int(template_id)
-        except ValueError:
-            return JsonResponse({
-                'success': False,
-                'message': 'Invalid template_id format'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            # Get the kardex record to determine the tipkar
-            from notaria.models import Kardex
-            kardex_obj = Kardex.objects.filter(kardex=kardex).first()
-            
-            if not kardex_obj:
-                return Response({
-                    'success': False,
-                    'message': f'Kardex {kardex} not found'
-                }, status=status.HTTP_404_NOT_FOUND)
-            
-            tipkar = kardex_obj.idtipkar
-            
-            # Route to appropriate service based on tipkar
-            if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
-                print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
-                service = VehicleTransferDocumentService()
-                response = service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
-                return response
-            elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
-                print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
-                # For non-contentious, we need idtipoacto from the request or from kardex
-                idtipoacto = request.POST.get('idtipoacto')
-                if not idtipoacto:
-                    # Try to get from kardex codactos
-                    if kardex_obj.codactos:
-                        idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
-                    else:
-                        return Response({
-                            'success': False,
-                            'message': 'idtipoacto is required for non-contentious documents'
-                        }, status=status.HTTP_400_BAD_REQUEST)
-                
-                service = NonContentiousDocumentService()
-                response = service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
-                return response
-            else:
-                return Response({
-                    'success': False,
-                    'message': f'Document generation not implemented for tipkar {tipkar}'
-                }, status=status.HTTP_501_NOT_IMPLEMENTED)
-                
-        except Exception as e:
-            print(f"Error generating document: {e}")
+        if not kardex_obj:
             return Response({
                 'success': False,
-                'message': 'Internal server error occurred'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    return Response({'success': False, 'message': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+                'message': f'Kardex {kardex} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        tipkar = kardex_obj.idtipkar
+        
+        # Route to appropriate service based on tipkar
+        if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+            print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
+            service = VehicleTransferDocumentService()
+            response = service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+            return response
+        elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
+            print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
+            # For non-contentious, we need idtipoacto from the request or from kardex
+            idtipoacto = request.POST.get('idtipoacto')
+            if not idtipoacto:
+                # Try to get from kardex codactos
+                if kardex_obj.codactos:
+                    idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
+                else:
+                    return Response({
+                        'success': False,
+                        'message': 'idtipoacto is required for non-contentious documents'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            service = NonContentiousDocumentService()
+            response = service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
+            return response
+        else:
+            return Response({
+                'success': False,
+                'message': f'Document generation not implemented for tipkar {tipkar}'
+            }, status=status.HTTP_501_NOT_IMPLEMENTED)
+            
+    except Exception as e:
+        print(f"Error generating document: {e}")
+        return Response({
+            'success': False,
+            'message': 'Internal server error occurred'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
+@api_view(['GET'])
 def update_document_by_tipkar(request):
     """
     Smart update endpoint that preserves manual edits based on tipkar
@@ -219,7 +124,7 @@ def update_document_by_tipkar(request):
         kardex = request.POST.get('kardex')
         
         if not all([template_id, kardex]):
-            return JsonResponse({
+            return Response({
                 'success': False,
                 'message': 'Missing required parameters: template_id, kardex'
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -227,7 +132,7 @@ def update_document_by_tipkar(request):
         try:
             template_id = int(template_id)
         except ValueError:
-            return JsonResponse({
+            return Response({
                 'success': False,
                 'message': 'Invalid template_id format'
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -249,11 +154,14 @@ def update_document_by_tipkar(request):
             if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
                 print(f"DEBUG: Using vehicle update for tipkar {tipkar}")
                 result = _smart_update_with_auto_discovery(template_id, kardex)
-                return JsonResponse(result)
+                return Response(result)
             elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
                 print(f"DEBUG: Using non-contentious update for tipkar {tipkar}")
                 # For non-contentious, we need idtipoacto from the request or from kardex
-                idtipoacto = request.POST.get('idtipoacto')
+                if request.method == 'GET':
+                    idtipoacto = request.GET.get('idtipoacto')
+                else:  # POST
+                    idtipoacto = request.data.get('idtipoacto')
                 if not idtipoacto:
                     # Try to get from kardex codactos
                     if kardex_obj.codactos:
@@ -265,7 +173,7 @@ def update_document_by_tipkar(request):
                         }, status=status.HTTP_400_BAD_REQUEST)
                 
                 result = _smart_update_non_contentious_with_auto_discovery(template_id, kardex, idtipoacto)
-                return JsonResponse(result)
+                return Response(result)
             else:
                 return Response({
                     'success': False,
@@ -278,8 +186,7 @@ def update_document_by_tipkar(request):
                 'success': False,
                 'message': 'Internal server error occurred'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    return Response({'success': False, 'message': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        
 
 
 def _smart_update_non_contentious_with_auto_discovery(template_id: int, kardex: str, idtipoacto: str) -> dict:
@@ -1015,19 +922,6 @@ class VehicleTransferDocumentService:
             'S_FN': papelfin,
         }
     
-    # def _get_escrituracion_data(self, num_kardex: str) -> Dict[str, str]:
-    #     """
-    #     Get escrituración (folios, papeles) data from kardex.
-    #     """
-
-    #     kardex = Kardex.objects.filter(kardex=num_kardex).first()
-    #     return {
-    #         'FI': getattr(kardex, 'folioini', '') or '[E.FI]',
-    #         'FF': getattr(kardex, 'foliofin', '') or '[E.FF]',
-    #         'S_IN': getattr(kardex, 'papelini', '') or '[E.S_IN]',
-    #         'S_FN': getattr(kardex, 'papelfin', '') or '[E.S_FN]',
-    #     }
-    
     def _get_vehicle_data(self, kardex) -> Dict[str, str]:
         vehicle = Detallevehicular.objects.filter(kardex=kardex).first()
         sede = ''
@@ -1442,30 +1336,7 @@ class VehicleTransferDocumentService:
             response['Content-Length'] = str(buffer.getbuffer().nbytes)
             response['Access-Control-Allow-Origin'] = '*'
             return response
-        # buffer = io.BytesIO()
-        # doc.save(buffer)
-        # buffer.seek(0)
-        # response = HttpResponse(
-        #     buffer.read(),
-        #     content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        # )
-        # response['Content-Disposition'] = f'inline; filename="{filename}"'
-        # response['Content-Length'] = str(buffer.getbuffer().nbytes)
-        # response['Access-Control-Allow-Origin'] = '*'
-        # return response
-        # buffer = io.BytesIO()
-        # doc.save(buffer)
-        # buffer.seek(0)
-        
-        # response = HttpResponse(
-        #     buffer.read(),
-        #     content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        # )
-        # response['Content-Disposition'] = f'inline; filename="{filename}"'
-        # response['Content-Length'] = str(buffer.getbuffer().nbytes)
-        # response['Access-Control-Allow-Origin'] = '*'
-        
-        # return response
+
 
 class DocumentosGeneradosViewSet(ModelViewSet):
     """
@@ -1500,7 +1371,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
     def open_template(self, request):
         print(f"DEBUG: open_template")
         template_id = request.query_params.get("template_id")
-        kardex = request.query_params.get("kardex", "ACT401-2025")
+        kardex = request.query_params.get("kardex")
         action = request.query_params.get("action", "generate")
         mode = request.query_params.get("mode", "download")  # Add mode param for consistency
 
@@ -1533,22 +1404,65 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             except ValueError:
                 return HttpResponse({"error": "Invalid template_id format."}, status=400)
             
-            service = VehicleTransferDocumentService()
-            if mode == "open":
-                # Return the download URL for Windows users - force HTTPS
-                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                response = JsonResponse({
-                    'status': 'success',
-                    'mode': 'open',
-                    'filename': f"__PROY__{kardex}.docx",
-                    'kardex': kardex,
-                    'url': download_url,
-                    'message': 'Document ready to open in Word'
-                })
-                response['Access-Control-Allow-Origin'] = '*'
-                return response
+            # Get the kardex record to determine the tipkar
+            kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+            if not kardex_obj:
+                return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
+            
+            tipkar = kardex_obj.idtipkar
+            
+            # Route to appropriate service based on tipkar
+            if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+                print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
+                service = VehicleTransferDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+            elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
+                print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
+                # For non-contentious, we need idtipoacto from the request or from kardex
+                idtipoacto = request.query_params.get('idtipoacto', "013")
+                if not idtipoacto:
+                    # Try to get from kardex codactos
+                    if kardex_obj.codactos:
+                        idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
+                    else:
+                        return HttpResponse({
+                            'error': 'idtipoacto is required for non-contentious documents'
+                        }, status=400)
+                
+                service = NonContentiousDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
             else:
-                return service.generate_vehicle_transfer_document(template_id, kardex, action)
+                return HttpResponse({
+                    'error': f'Document generation not implemented for tipkar {tipkar}'
+                }, status=501)
         return HttpResponse({"error": "Documentogenerados already exists."}, status=400)
 
     @action(detail=False, methods=['get'], url_path='open-document')
@@ -1632,23 +1546,65 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             print(f"DEBUG: Document not found in R2: {e}")
             print(f"DEBUG: Generating new document for kardex: {kardex}")
             
-            # Generate the document using existing functionality
-            service = VehicleTransferDocumentService()
-            if mode == "open":
-                # Return the download URL for Windows users - force HTTPS
-                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                response = JsonResponse({
-                    'status': 'success',
-                    'mode': 'open',
-                    'filename': f"__PROY__{kardex}.docx",
-                    'kardex': kardex,
-                    'url': download_url,
-                    'message': 'Document ready to open in Word'
-                })
-                response['Access-Control-Allow-Origin'] = '*'
-                return response
+            # Get the kardex record to determine the tipkar
+            kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+            if not kardex_obj:
+                return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
+            
+            tipkar = kardex_obj.idtipkar
+            
+            # Route to appropriate service based on tipkar
+            if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+                print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
+                service = VehicleTransferDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+            elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
+                print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
+                # For non-contentious, we need idtipoacto from the request or from kardex
+                idtipoacto = request.query_params.get('idtipoacto')
+                if not idtipoacto:
+                    # Try to get from kardex codactos
+                    if kardex_obj.codactos:
+                        idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
+                    else:
+                        return HttpResponse({
+                            'error': 'idtipoacto is required for non-contentious documents'
+                        }, status=400)
+                
+                service = NonContentiousDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
             else:
-                return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+                return HttpResponse({
+                    'error': f'Document generation not implemented for tipkar {tipkar}'
+                }, status=501)
 
 # Create S3 client once at module level for better performance
 _s3_client = None
@@ -1718,6 +1674,7 @@ class NonContentiousDocumentService:
         """
         Main method to generate non-contentious document
         """
+        print(f"DEBUG: Generating non-contentious document for template_id: {template_id}, num_kardex: {num_kardex}, idtipoacto: {idtipoacto}, action: {action}, mode: {mode}")
         try:
             template = self._get_template_from_r2(template_id)
             document_data = self.get_document_data(num_kardex, idtipoacto)
@@ -1952,20 +1909,18 @@ class NonContentiousDocumentService:
         Get contractors (transferors and acquirers) information for non-contentious documents
         """
         # Get all contratantes for this kardex
-        contratantes = Contratantesxacto.objects.filter(kardex=num_kardex).select_related(
-            'idcontratante', 'idcondicion'
-        )
+        contratantes = Contratantesxacto.objects.filter(kardex=num_kardex)
         
         transferors = []
         acquirers = []
         companies = []
         
         for cxa in contratantes:
-            cliente = Cliente2.objects.filter(idcontratante=cxa.idcontratante.idcontratante).first()
+            cliente = Cliente2.objects.filter(idcontratante=cxa.idcontratante).first()
             if not cliente:
                 continue
                 
-            condicion = Actocondicion.objects.filter(idcondicion=cxa.idcondicion.idcondicion).first()
+            condicion = Actocondicion.objects.filter(idcondicion=cxa.idcondicion).first()
             condicion_str = condicion.condicion if condicion else ''
             
             # Build full name
@@ -1974,8 +1929,7 @@ class NonContentiousDocumentService:
                 companies.append({
                     'nombres': nombres,
                     'condicion_str': condicion_str,
-                    'idcontratante': cxa.idcontratante.idcontratante,
-                    'idcontratanterp': cxa.idcontratanterp,
+                    'idcontratante': cxa.idcontratante,
                     'razonsocial': nombres,
                     'numdoc_empresa': cliente.numdoc or '',
                     'domfiscal': cliente.domfiscal or '',
@@ -1993,18 +1947,14 @@ class NonContentiousDocumentService:
                 
                 estado_civil = ''
                 if cliente.idestcivil:
-                    from notaria.models import Tipoestacivil
-                    ec_obj = Tipoestacivil.objects.filter(idestcivil=cliente.idestcivil).first()
-                    if ec_obj:
-                        estado_civil = ec_obj.desestcivil or ''
+                    from ducumentation.constants import CIVIL_STATUS
+                    estado_civil = CIVIL_STATUS.get(cliente.idestcivil, {}).get('label', '')
                 
                 # Get document type
                 tipo_documento = ''
                 if cliente.idtipdoc:
-                    from notaria.models import Tipodocumento
-                    td_obj = Tipodocumento.objects.filter(idtipdoc=cliente.idtipdoc).first()
-                    if td_obj:
-                        tipo_documento = td_obj.destipdoc or ''
+                    from ducumentation.constants import TIPO_DOCUMENTO
+                    tipo_documento = TIPO_DOCUMENTO.get(cliente.idtipdoc, {}).get('destipdoc', '')
                 
                 # Get ubigeo
                 direccion = ''
@@ -2016,8 +1966,7 @@ class NonContentiousDocumentService:
                 person_data = {
                     'nombres': nombres,
                     'condicion_str': condicion_str,
-                    'idcontratante': cxa.idcontratante.idcontratante,
-                    'idcontratanterp': cxa.idcontratanterp,
+                    'idcontratante': cxa.idcontratante,
                     'nacionalidad': self.get_nationality_by_gender(nacionalidad, cliente.sexo),
                     'tipoDocumento': tipo_documento,
                     'numeroDocumento': cliente.numdoc or '',
@@ -2129,11 +2078,10 @@ class NonContentiousDocumentService:
         
         # Get medio de pago
         medio_pago_obj = None
+        sunat_medio_pago = ''
         if patrimonial.fpago:
-            from notaria.models import FpagoUif
-            medio_pago_obj = FpagoUif.objects.filter(id_fpago=patrimonial.fpago).first()
-        
-        sunat_medio_pago = medio_pago_obj.sunat if medio_pago_obj else ''
+            # For now, use a default value since FpagoUif is not available
+            sunat_medio_pago = "008"  # Default to cash payment
         
         # Payment method logic (similar to PHP switch)
         if sunat_medio_pago == "008":
