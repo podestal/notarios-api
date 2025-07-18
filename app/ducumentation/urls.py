@@ -16,7 +16,7 @@ router.register('documentos', views.DocumentosGeneradosViewSet)
 from .views import download_docx
 
 urlpatterns = [
-    path('upload-docx/', views.upload_document_to_r2, name='upload_document_to_r2'),
-    path('update-docx/', views.update_document_in_r2, name='update_document_in_r2'),
+    path('upload-docx/', views.generate_document_by_tipkar, name='generate_document_by_tipkar'),
+    path('update-docx/', views.update_document_by_tipkar, name='update_document_by_tipkar'),
     re_path(r'^download/(?P<kardex>[^/]+)/__PROY__(?P<kardex2>[^/]+)\.docx$', download_docx, name='download_docx'),
 ] + router.urls

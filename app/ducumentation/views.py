@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from . import models, serializers
-from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios
+from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
 from django.http import HttpResponse
@@ -24,7 +24,7 @@ from datetime import datetime
 from docxtpl import DocxTemplate
 from docxcompose.properties import CustomProperties
 from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
+from rest_framework.response import Response
 from docx.shared import RGBColor, Pt
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
@@ -125,16 +125,171 @@ class NumberToLetterConverter:
         else:
             return f"{self.number_to_letters(str(int(amount)))} {currency}"
 
+
+
+
 @csrf_exempt
-def upload_document_to_r2(request):
-    print("UPLOAD VIEW CALLED")
+def generate_document_by_tipkar(request):
+    """
+    Generate document based on tipkar (tipo kardex) from the kardex record
+    """
+    print("GENERATE DOCUMENT BY TIPKAR VIEW CALLED")
     if request.method == 'POST':
-        file = request.FILES.get('file')
-        if not file:
-            return JsonResponse({'error': 'Missing file'}, status=status.HTTP_400_BAD_REQUEST)
+        # Get parameters
+        template_id = request.POST.get('template_id')
+        kardex = request.POST.get('kardex')
+        action = request.POST.get('action', 'generate')
+        mode = request.POST.get('mode', 'download')
+        
+        if not all([template_id, kardex]):
+            return JsonResponse({
+                'success': False,
+                'message': 'Missing required parameters: template_id, kardex'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{file.name}"
+        try:
+            template_id = int(template_id)
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'message': 'Invalid template_id format'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            # Get the kardex record to determine the tipkar
+            from notaria.models import Kardex
+            kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+            
+            if not kardex_obj:
+                return Response({
+                    'success': False,
+                    'message': f'Kardex {kardex} not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            tipkar = kardex_obj.idtipkar
+            
+            # Route to appropriate service based on tipkar
+            if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+                print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
+                service = VehicleTransferDocumentService()
+                response = service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+                return response
+            elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
+                print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
+                # For non-contentious, we need idtipoacto from the request or from kardex
+                idtipoacto = request.POST.get('idtipoacto')
+                if not idtipoacto:
+                    # Try to get from kardex codactos
+                    if kardex_obj.codactos:
+                        idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
+                    else:
+                        return Response({
+                            'success': False,
+                            'message': 'idtipoacto is required for non-contentious documents'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                
+                service = NonContentiousDocumentService()
+                response = service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
+                return response
+            else:
+                return Response({
+                    'success': False,
+                    'message': f'Document generation not implemented for tipkar {tipkar}'
+                }, status=status.HTTP_501_NOT_IMPLEMENTED)
+                
+        except Exception as e:
+            print(f"Error generating document: {e}")
+            return Response({
+                'success': False,
+                'message': 'Internal server error occurred'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return Response({'success': False, 'message': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@csrf_exempt
+def update_document_by_tipkar(request):
+    """
+    Smart update endpoint that preserves manual edits based on tipkar
+    """
+    print("SMART UPDATE DOCUMENT BY TIPKAR VIEW CALLED")
+    if request.method == 'POST':
+        # Get parameters
+        template_id = request.POST.get('template_id')
+        kardex = request.POST.get('kardex')
+        
+        if not all([template_id, kardex]):
+            return JsonResponse({
+                'success': False,
+                'message': 'Missing required parameters: template_id, kardex'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            template_id = int(template_id)
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'message': 'Invalid template_id format'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Get the kardex record to determine the tipkar
+            from notaria.models import Kardex
+            kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+            
+            if not kardex_obj:
+                return Response({
+                    'success': False,
+                    'message': f'Kardex {kardex} not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            tipkar = kardex_obj.idtipkar
+            
+            # Route to appropriate update function based on tipkar
+            if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+                print(f"DEBUG: Using vehicle update for tipkar {tipkar}")
+                result = _smart_update_with_auto_discovery(template_id, kardex)
+                return JsonResponse(result)
+            elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
+                print(f"DEBUG: Using non-contentious update for tipkar {tipkar}")
+                # For non-contentious, we need idtipoacto from the request or from kardex
+                idtipoacto = request.POST.get('idtipoacto')
+                if not idtipoacto:
+                    # Try to get from kardex codactos
+                    if kardex_obj.codactos:
+                        idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
+                    else:
+                        return Response({
+                            'success': False,
+                            'message': 'idtipoacto is required for non-contentious documents'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                
+                result = _smart_update_non_contentious_with_auto_discovery(template_id, kardex, idtipoacto)
+                return JsonResponse(result)
+            else:
+                return Response({
+                    'success': False,
+                    'message': f'Document update not implemented for tipkar {tipkar}'
+                }, status=status.HTTP_501_NOT_IMPLEMENTED)
+                
+        except Exception as e:
+            print(f"Error in smart update: {e}")
+            return Response({
+                'success': False,
+                'message': 'Internal server error occurred'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return Response({'success': False, 'message': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+def _smart_update_non_contentious_with_auto_discovery(template_id: int, kardex: str, idtipoacto: str) -> dict:
+    """
+    ALWAYS preserve manual edits - automatically finds non-contentious document in R2 based on kardex
+    """
+    try:
+        print(f"DEBUG: Starting smart update for non-contentious kardex: {kardex}")
+        
+        # Step 1: Auto-discover the document filename in R2
         s3 = boto3.client(
             's3',
             endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
@@ -144,48 +299,58 @@ def upload_document_to_r2(request):
             region_name='auto',
         )
 
+        # Auto-generate the filename based on kardex pattern
+        filename = f"__PROY__{kardex}.docx"
+        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS Y ESCRITURAS DE PROCEDIMIENTOS NO CONTENCIOSOS/{filename}"
+        
+        print(f"DEBUG: Looking for non-contentious document in R2: {object_key}")
+        
         try:
+            # Download current document
+            response = s3.get_object(
+                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                Key=object_key
+            )
+            current_doc_content = response['Body'].read()
+            print(f"DEBUG: Successfully downloaded current non-contentious document from R2 ({len(current_doc_content)} bytes)")
+            
+            # Step 2: Generate new document with updated data
+            print(f"DEBUG: Generating new non-contentious document with template_id: {template_id}")
+            service = NonContentiousDocumentService()
+            new_doc_response = service.generate_non_contentious_document(template_id, kardex, idtipoacto, 'update')
+            
+            if new_doc_response.status_code != 200:
+                print(f"DEBUG: Failed to generate updated non-contentious document: {new_doc_response.status_code}")
+                return {'error': 'Failed to generate updated non-contentious document'}
+            
+            print(f"DEBUG: Successfully generated new non-contentious document ({len(new_doc_response.content)} bytes)")
+            
+            # Step 3: ALWAYS merge documents to preserve manual edits
+            print(f"DEBUG: Merging non-contentious documents to preserve manual edits")
+            merged_doc = _merge_documents_smart(current_doc_content, new_doc_response.content, kardex)
+            print(f"DEBUG: Successfully merged non-contentious documents ({len(merged_doc)} bytes)")
+            
+            # Step 4: Upload merged document back to R2
+            from io import BytesIO
+            file_obj = BytesIO(merged_doc)
+            
+            print(f"DEBUG: Uploading merged non-contentious document back to R2: {object_key}")
             s3.upload_fileobj(
-                file,
+                file_obj,
                 os.environ.get('CLOUDFLARE_R2_BUCKET'),
                 object_key
             )
-            return JsonResponse({'status': 'success'}, status=status.HTTP_200_OK)
+            
+            print(f"DEBUG: Successfully uploaded merged non-contentious document to R2")
+            return {'status': 'success', 'message': f'Non-contentious document updated successfully for kardex: {kardex}'}
+            
         except Exception as e:
-            print(f"Error uploading to R2: {e}")
-            return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    return JsonResponse({'error': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-@csrf_exempt
-def update_document_in_r2(request):
-    """
-    Smart update endpoint that preserves manual edits - automatically finds file in R2
-    """
-    print("SMART UPDATE DOCUMENT VIEW CALLED")
-    if request.method == 'POST':
-        # Get parameters
-        template_id = request.POST.get('template_id')
-        kardex = request.POST.get('kardex')
+            print(f"DEBUG: Error downloading non-contentious document: {e}")
+            return {'error': f'Failed to download non-contentious document: {str(e)}'}
         
-        if not all([template_id, kardex]):
-            return JsonResponse({
-                'error': 'Missing required parameters: template_id, kardex'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            template_id = int(template_id)
-        except ValueError:
-            return JsonResponse({'error': 'Invalid template_id format'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            # Automatically find and update the document
-            result = _smart_update_with_auto_discovery(template_id, kardex)
-            return JsonResponse(result)
-        except Exception as e:
-            print(f"Error in smart update: {e}")
-            return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    return JsonResponse({'error': 'Invalid method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    except Exception as e:
+        print(f"DEBUG: Error preserving manual edits for non-contentious: {e}")
+        return {'error': f'Failed to preserve manual edits for non-contentious: {str(e)}'}
 
 
 def _smart_update_with_auto_discovery(template_id: int, kardex: str) -> dict:
@@ -1540,3 +1705,621 @@ def download_docx(request, kardex, kardex2):
         raise Http404("Document not found")
     except Exception as e:
         return HttpResponse(f"Error: {str(e)}", status=500)
+
+class NonContentiousDocumentService:
+    """
+    Django service to generate non-contentious documents based on the PHP logic
+    """
+    
+    def __init__(self):
+        self.letras = NumberToLetterConverter()
+    
+    def generate_non_contentious_document(self, template_id: int, num_kardex: str, idtipoacto: str, action: str = 'generate', mode: str = "download") -> HttpResponse:
+        """
+        Main method to generate non-contentious document
+        """
+        try:
+            template = self._get_template_from_r2(template_id)
+            document_data = self.get_document_data(num_kardex, idtipoacto)
+            doc = self._process_document(template, document_data)
+            self.remove_unfilled_placeholders(doc)
+            
+            # Save the document to R2 before returning it
+            upload_success = self.create_documento_in_r2(doc, num_kardex)
+            if not upload_success:
+                print(f"WARNING: Failed to upload document to R2 for kardex: {num_kardex}")
+            
+            return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex, mode)
+        except FileNotFoundError as e:
+            return HttpResponse(str(e), status=404)
+        except Exception as e:
+            return HttpResponse(f"Error generating document: {str(e)}", status=500)
+
+    def create_documento_in_r2(self, doc, kardex):
+        """
+        Create a new document in R2 storage
+        """
+        try:
+            # Save the document to a bytes buffer
+            from io import BytesIO
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            doc_content = buffer.read()
+            
+            # Define the object key for R2 - different path for non-contentious
+            object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS Y ESCRITURAS DE PROCEDIMIENTOS NO CONTENCIOSOS/__PROY__{kardex}.docx"
+            
+            # Upload to R2
+            s3 = boto3.client(
+                's3',
+                endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+                aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+                aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+                config=Config(signature_version='s3v4'),
+                region_name='auto',
+            )
+            
+            s3.upload_fileobj(
+                BytesIO(doc_content),
+                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                object_key
+            )
+            
+            print(f"DEBUG: Non-contentious document uploaded to R2: {object_key}")
+            return True
+            
+        except Exception as e:
+            print(f"ERROR: Failed to upload non-contentious document to R2: {e}")
+            return False
+
+    def remove_unfilled_placeholders(self, doc):
+        """
+        Remove all [E.SOMETHING] placeholders and hide {{SOMETHING}} placeholders from user.
+        Keep and hide: {{NRO_ESC}}, {{FI}}, {{FF}}, {{S_IN}}, {{S_FN}}, {{FECHA_ACT}}
+        Remove all others: [E.P_NOM_2], [E.C_NOM_2], etc.
+        """
+        import re
+        placeholder_pattern = re.compile(r'\[E\.[A-Z0-9_]+\]')
+        curly_placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
+        representation_pattern = re.compile(
+            r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
+        )
+
+        # List of placeholders to keep and hide
+        keep_placeholders = ['{{NRO_ESC}}', '{{FI}}', '{{FF}}', '{{S_IN}}', '{{S_FN}}', '{{FECHA_ACT}}']
+
+        def clean_runs(runs):
+            # Remove [E.SOMETHING] placeholders and hide {{SOMETHING}} placeholders
+            for run in runs:
+                # Remove all [E.SOMETHING] placeholders
+                run.text = placeholder_pattern.sub('', run.text)
+                
+                # Hide {{SOMETHING}} placeholders by making them white
+                # BUT only if they are actually placeholders (not real values)
+                if curly_placeholder_pattern.search(run.text):
+                    # Check if this is actually a placeholder or a real value
+                    should_hide = True
+                    for placeholder in keep_placeholders:
+                        if placeholder in run.text:
+                            # If it's a placeholder we want to keep, check if it has a real value
+                            # Real values would not be exactly the placeholder text
+                            if run.text.strip() == placeholder:
+                                # This is still a placeholder, hide it
+                                run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                                print(f"DEBUG: Hiding curly placeholder in run: '{run.text}'")
+                            else:
+                                # This has a real value, don't hide it
+                                should_hide = False
+                                print(f"DEBUG: Keeping visible value in run: '{run.text}'")
+                            break
+                    
+                    # For other curly placeholders not in keep_placeholders, hide them
+                    if should_hide and not any(placeholder in run.text for placeholder in keep_placeholders):
+                        run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                        print(f"DEBUG: Hiding other curly placeholder in run: '{run.text}'")
+                
+                # Remove unwanted phrase
+                run.text = representation_pattern.sub('', run.text)
+
+        # Clean paragraphs
+        for paragraph in doc.paragraphs:
+            clean_runs(paragraph.runs)
+        # Clean tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        clean_runs(paragraph.runs)
+
+    def _get_template_from_r2(self, template_id: int) -> bytes:
+        """
+        Get template from R2 storage for non-contentious documents
+        """
+        template = TplTemplate.objects.get(pktemplate=template_id)
+        s3 = boto3.client(
+            's3',
+            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+        
+        # Different path for non-contentious templates
+        object_key = f"rodriguez-zea/PROTOCOLARES/ACTAS Y ESCRITURAS DE PROCEDIMIENTOS NO CONTENCIOSOS/{template.filename}"
+        
+        try:
+            s3_response = s3.get_object(
+                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), 
+                Key=object_key
+            )
+            return s3_response['Body'].read()
+        except Exception as e:
+            print(f"Error getting template from R2: {e}")
+            raise FileNotFoundError(f"Template not found: {template.filename}")
+
+    def get_document_data(self, num_kardex: str, idtipoacto: str) -> Dict[str, Any]:
+        """
+        Get all document data for non-contentious documents
+        """
+        try:
+            # Get the year from kardex
+            arr_kardex = num_kardex.split('-')
+            anio_kardex = arr_kardex[1] if len(arr_kardex) > 1 else datetime.now().year
+            
+            # Get main document data
+            document_data = self._get_document_data(num_kardex, anio_kardex)
+            
+            # Get contractors data (transferors and acquirers)
+            contractors_data = self._get_contractors_data(num_kardex, idtipoacto)
+            
+            # Get payment data
+            payment_data = self._get_payment_data(num_kardex)
+            
+            # Get escrituración data
+            escrituracion_data = self._get_escrituracion_data(num_kardex)
+            
+            # Merge all data
+            all_data = {}
+            all_data.update(document_data)
+            all_data.update(contractors_data)
+            all_data.update(payment_data)
+            all_data.update(escrituracion_data)
+            
+            return all_data
+            
+        except Exception as e:
+            print(f"Error getting document data: {e}")
+            raise
+
+    def _get_document_data(self, num_kardex: str, anio_kardex: str) -> Dict[str, str]:
+        """
+        Get basic document information
+        """
+        kardex = Kardex.objects.filter(kardex=num_kardex).first()
+        if not kardex:
+            raise ValueError(f"Kardex {num_kardex} not found")
+        
+        # Get user information
+        usuario = kardex.responsable_new or ''
+        usuario_dni = ''
+        if kardex.idusuario:
+            user = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
+            if user:
+                usuario_dni = user.dni or ''
+        
+        # Get abogado information
+        abogado = ''
+        matricula = ''
+        if kardex.idabogado:
+            from notaria.models import TbAbogado
+            abogado_obj = TbAbogado.objects.filter(idabogado=kardex.idabogado).first()
+            if abogado_obj:
+                abogado = abogado_obj.razonsocial or ''
+                matricula = abogado_obj.matricula or ''
+        
+        numero_escritura = kardex.numescritura or ''
+        fecha_escritura = kardex.fechaescritura or datetime.now()
+        numero_minuta = kardex.numminuta or ''
+        folioini = kardex.folioini or ''
+        foliofin = kardex.foliofin or ''
+        papelini = kardex.papelini or ''
+        papelfin = kardex.papelfin or ''
+        
+        return {
+            'K': num_kardex,
+            'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '{{NRO_ESC}}',
+            'NUM_REG': '1',
+            'FEC_LET': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '',
+            'F_IMPRESION': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F_IMPRESION}}',
+            'USUARIO': usuario,
+            'USUARIO_DNI': usuario_dni,
+            'NRO_MIN': numero_minuta or '{{NRO_MIN}}',
+            'COMPROBANTE': ' ',
+            'O_S': ' ',
+            'ORDEN_SERVICIO': ' ',
+            'F': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F}}',
+            'DESCRIPCION_SELLO': f"{abogado} CAP. {matricula}",
+            'FI': folioini or '{{FI}}',
+            'FF': foliofin or '{{FF}}',
+            'S_IN': papelini or '{{S_IN}}',
+            'S_FN': papelfin or '{{S_FN}}',
+        }
+
+    def _get_contractors_data(self, num_kardex: str, idtipoacto: str) -> Dict[str, str]:
+        """
+        Get contractors (transferors and acquirers) information for non-contentious documents
+        """
+        # Get all contratantes for this kardex
+        contratantes = Contratantesxacto.objects.filter(kardex=num_kardex).select_related(
+            'idcontratante', 'idcondicion'
+        )
+        
+        transferors = []
+        acquirers = []
+        companies = []
+        
+        for cxa in contratantes:
+            cliente = Cliente2.objects.filter(idcontratante=cxa.idcontratante.idcontratante).first()
+            if not cliente:
+                continue
+                
+            condicion = Actocondicion.objects.filter(idcondicion=cxa.idcondicion.idcondicion).first()
+            condicion_str = condicion.condicion if condicion else ''
+            
+            # Build full name
+            if cliente.tipper == 'J':  # Juridica
+                nombres = cliente.razonsocial or ''
+                companies.append({
+                    'nombres': nombres,
+                    'condicion_str': condicion_str,
+                    'idcontratante': cxa.idcontratante.idcontratante,
+                    'idcontratanterp': cxa.idcontratanterp,
+                    'razonsocial': nombres,
+                    'numdoc_empresa': cliente.numdoc or '',
+                    'domfiscal': cliente.domfiscal or '',
+                    'numpartida': cliente.numpartida or '',
+                })
+            else:  # Natural
+                nombres = f"{cliente.prinom or ''} {cliente.segnom or ''} {cliente.apepat or ''} {cliente.apemat or ''}".strip()
+                
+                # Get nationality and civil status
+                nacionalidad = ''
+                if cliente.nacionalidad:
+                    nac_obj = Nacionalidades.objects.filter(idnacionalidad=cliente.nacionalidad).first()
+                    if nac_obj:
+                        nacionalidad = nac_obj.descripcion or ''
+                
+                estado_civil = ''
+                if cliente.idestcivil:
+                    from notaria.models import Tipoestacivil
+                    ec_obj = Tipoestacivil.objects.filter(idestcivil=cliente.idestcivil).first()
+                    if ec_obj:
+                        estado_civil = ec_obj.desestcivil or ''
+                
+                # Get document type
+                tipo_documento = ''
+                if cliente.idtipdoc:
+                    from notaria.models import Tipodocumento
+                    td_obj = Tipodocumento.objects.filter(idtipdoc=cliente.idtipdoc).first()
+                    if td_obj:
+                        tipo_documento = td_obj.destipdoc or ''
+                
+                # Get ubigeo
+                direccion = ''
+                if cliente.idubigeo:
+                    ubigeo_obj = Ubigeo.objects.filter(coddis=cliente.idubigeo).first()
+                    if ubigeo_obj:
+                        direccion = f"{cliente.direccion or ''} DEL DISTRITO DE {ubigeo_obj.nomdis or ''} PROVINCIA DE {ubigeo_obj.nomprov or ''} Y DEPARTAMENTO DE {ubigeo_obj.nomdpto or ''}"
+                
+                person_data = {
+                    'nombres': nombres,
+                    'condicion_str': condicion_str,
+                    'idcontratante': cxa.idcontratante.idcontratante,
+                    'idcontratanterp': cxa.idcontratanterp,
+                    'nacionalidad': self.get_nationality_by_gender(nacionalidad, cliente.sexo),
+                    'tipoDocumento': tipo_documento,
+                    'numeroDocumento': cliente.numdoc or '',
+                    'ocupacion': cliente.profesion_plantilla or '',
+                    'estadoCivil': self.get_civil_status_by_gender(estado_civil, cliente.sexo),
+                    'direccion': direccion,
+                    'sexo': cliente.sexo or 'M',
+                }
+                
+                # Classify as transferor or acquirer
+                if condicion_str in ['VENDEDOR', 'DONANTE', 'PODERDANTE', 'OTORGANTE', 'REPRESENTANTE', 'ANTICIPANTE', 'ADJUDICANTE', 'USUFRUCTUANTE', 'TRANSFERENTE', 'DEUDOR', 'SOLICITANTE/BENEFICIARIO']:
+                    transferors.append(person_data)
+                elif condicion_str in ['COMPRADOR', 'APODERADO', 'ANTICIPADO', 'ADJUDICATARIO', 'DONATARIO', 'USUFRUCTUARIO', 'TESTIGO A RUEGO', 'ADQUIRIENTE', 'ACREEDOR', 'CAUSANTE']:
+                    acquirers.append(person_data)
+        
+        # Build contractors data
+        contractors_data = {}
+        
+        # Add transferors
+        for idx, t in enumerate(transferors, 1):
+            contractors_data[f'P_NOM_{idx}'] = t['nombres'] + ', '
+            contractors_data[f'P_NACIONALIDAD_{idx}'] = t['nacionalidad'] + ', '
+            contractors_data[f'P_TIP_DOC_{idx}'] = t['tipoDocumento']
+            contractors_data[f'P_DOC_{idx}'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+            contractors_data[f'P_OCUPACION_{idx}'] = t['ocupacion']
+            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = t['estadoCivil']
+            contractors_data[f'P_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + t['direccion']
+            contractors_data[f'P_IDE_{idx}'] = ' '
+            contractors_data[f'SEXO_P_{idx}'] = t['sexo']
+        
+        # Add acquirers
+        for idx, c in enumerate(acquirers, 1):
+            contractors_data[f'C_NOM_{idx}'] = c['nombres'] + ', '
+            contractors_data[f'C_NACIONALIDAD_{idx}'] = c['nacionalidad'] + ', '
+            contractors_data[f'C_TIP_DOC_{idx}'] = c['tipoDocumento']
+            contractors_data[f'C_DOC_{idx}'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+            contractors_data[f'C_OCUPACION_{idx}'] = c['ocupacion']
+            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = c['estadoCivil']
+            contractors_data[f'C_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + c['direccion']
+            contractors_data[f'C_IDE_{idx}'] = ' '
+            contractors_data[f'SEXO_C_{idx}'] = c['sexo']
+        
+        # Add companies
+        for idx, comp in enumerate(companies, 1):
+            contractors_data[f'NOMBRE_EMPRESA_{idx}'] = comp['razonsocial']
+            contractors_data[f'INS_EMPRESA_{idx}'] = ' '
+            contractors_data[f'RUC_{idx}'] = f', CON RUC N° {comp["numdoc_empresa"]}, '
+            contractors_data[f'DOMICILIO_EMPRESA_{idx}'] = f'CON DOMICILIO EN {comp["domfiscal"]}'
+        
+        # Fill empty placeholders
+        for idx in range(len(transferors) + 1, 11):
+            contractors_data[f'P_NOM_{idx}'] = f'[E.P_NOM_{idx}]'
+            contractors_data[f'P_NACIONALIDAD_{idx}'] = f'[E.P_NACIONALIDAD_{idx}]'
+            contractors_data[f'P_TIP_DOC_{idx}'] = f'[E.P_TIP_DOC_{idx}]'
+            contractors_data[f'P_DOC_{idx}'] = f'[E.P_DOC_{idx}]'
+            contractors_data[f'P_OCUPACION_{idx}'] = f'[E.P_OCUPACION_{idx}]'
+            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = f'[E.P_ESTADO_CIVIL_{idx}]'
+            contractors_data[f'P_DOMICILIO_{idx}'] = f'[E.P_DOMICILIO_{idx}]'
+            contractors_data[f'P_IDE_{idx}'] = f'[E.P_IDE_{idx}]'
+            contractors_data[f'SEXO_P_{idx}'] = f'[E.SEXO_P_{idx}]'
+
+        for idx in range(len(acquirers) + 1, 11):
+            contractors_data[f'C_NOM_{idx}'] = f'[E.C_NOM_{idx}]'
+            contractors_data[f'C_NACIONALIDAD_{idx}'] = f'[E.C_NACIONALIDAD_{idx}]'
+            contractors_data[f'C_TIP_DOC_{idx}'] = f'[E.C_TIP_DOC_{idx}]'
+            contractors_data[f'C_DOC_{idx}'] = f'[E.C_DOC_{idx}]'
+            contractors_data[f'C_OCUPACION_{idx}'] = f'[E.C_OCUPACION_{idx}]'
+            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = f'[E.C_ESTADO_CIVIL_{idx}]'
+            contractors_data[f'C_DOMICILIO_{idx}'] = f'[E.C_DOMICILIO_{idx}]'
+            contractors_data[f'C_IDE_{idx}'] = f'[E.C_IDE_{idx}]'
+            contractors_data[f'SEXO_C_{idx}'] = f'[E.SEXO_C_{idx}]'
+
+        for idx in range(len(companies) + 1, 6):
+            contractors_data[f'NOMBRE_EMPRESA_{idx}'] = f'[E.NOMBRE_EMPRESA_{idx}]'
+            contractors_data[f'INS_EMPRESA_{idx}'] = f'[E.INS_EMPRESA_{idx}]'
+            contractors_data[f'RUC_{idx}'] = f'[E.RUC_{idx}]'
+            contractors_data[f'DOMICILIO_EMPRESA_{idx}'] = f'[E.DOMICILIO_EMPRESA_{idx}]'
+
+        # Add grammar and articles
+        contractors_data.update(self.get_articles_and_grammar(transferors, 'P'))
+        contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
+
+        return contractors_data
+
+    def _get_payment_data(self, kardex: str) -> Dict[str, str]:
+        """
+        Get payment information for non-contentious documents
+        """
+        patrimonial = Patrimonial.objects.filter(kardex=kardex).first()
+        
+        if not patrimonial:
+            return {
+                'MONTO': '',
+                'MON_VEHI': '',
+                'MONTO_LETRAS': '',
+                'MONEDA_C': '',
+                'SUNAT_MED_PAGO': '',
+                'DES_PRE_VEHI': '',
+                'EXH_MED_PAGO': '',
+                'MED_PAGO': '',
+                'FIN_MED_PAGO': '',
+                'FORMA_PAGO': '',
+            }
+        
+        precio = patrimonial.importetrans or 0
+        moneda = MONEDAS[patrimonial.idmon]['desmon'] if patrimonial else '' 
+        simbolo_moneda = MONEDAS[patrimonial.idmon]['simbolo'] if patrimonial else ''
+        forma_pago = FORMAS_PAGO[patrimonial.fpago]['descripcion'] if patrimonial else ''
+        
+        # Get medio de pago
+        medio_pago_obj = None
+        if patrimonial.fpago:
+            from notaria.models import FpagoUif
+            medio_pago_obj = FpagoUif.objects.filter(id_fpago=patrimonial.fpago).first()
+        
+        sunat_medio_pago = medio_pago_obj.sunat if medio_pago_obj else ''
+        
+        # Payment method logic (similar to PHP switch)
+        if sunat_medio_pago == "008":
+            medio_pago = f'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            fin_medio_pago = 'EN DINERO EN EFECTIVO'
+            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
+        elif sunat_medio_pago == "009":
+            medio_pago = f'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            fin_medio_pago = 'EN DINERO EN EFECTIVO'
+            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
+        else:
+            # Default case
+            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO CON CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018 EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "CHEQUE -001" '
+            exhibio_medio_pago = 'EN APLICACIÓN DE LA LEY 30730, SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES ME HAN EXHIBIDO EL SIGUIENTE MEDIO DE PAGO: ……… CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018. DOY FE.'
+            fin_medio_pago = 'EN DINERO EN EFECTIVO'
+            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
+        
+        return {
+            'MONTO': precio,
+            'MON_VEHI': moneda,
+            'MONTO_LETRAS': self.letras.money_to_letters(moneda, Decimal(precio)),
+            'MONEDA_C': simbolo_moneda + ' ',
+            'SUNAT_MED_PAGO': sunat_medio_pago,
+            'DES_PRE_VEHI': self.letras.money_to_letters(moneda, Decimal(precio)),
+            'EXH_MED_PAGO': exhibio_medio_pago,
+            'MED_PAGO': medio_pago,
+            'FIN_MED_PAGO': fin_medio_pago,
+            'FORMA_PAGO': forma_pago,
+            'C_INICIO_MP': '',
+            'TIPO_PAGO_E': '',
+            'TIPO_PAGO_C': '',
+            'MONTO_MP': '',
+            'CONSTANCIA': '',
+            'DETALLE_MP': '',
+            'FORMA_PAGO_S': '',
+            'MONEDA_C_MP': '',
+            'MEDIO_PAGO_C': '',
+            'MP_MEDIO_PAGO': '',
+            'MP_COMPLETO': '',
+            'USO': '',
+        }
+
+    def _get_escrituracion_data(self, num_kardex: str) -> Dict[str, str]:
+        """
+        Get escrituración (folios, papeles) data from kardex.
+        """
+        kardex = Kardex.objects.filter(kardex=num_kardex).first()
+        if not kardex:
+            return {
+                'FI': '{{FI}}',
+                'FF': '{{FF}}',
+                'S_IN': '{{S_IN}}',
+                'S_FN': '{{S_FN}}',
+            }
+        
+        folioini = kardex.folioini or ''
+        foliofin = kardex.foliofin or ''
+        papelini = kardex.papelini or ''
+        papelfin = kardex.papelfin or ''
+        
+        return {
+            'FI': folioini if folioini else '{{FI}}',
+            'FF': foliofin if foliofin else '{{FF}}',
+            'S_IN': papelini if papelini else '{{S_IN}}',
+            'S_FN': papelfin if papelfin else '{{S_FN}}',
+        }
+
+    def get_identification_phrase(self, gender, doc_type, doc_number):
+        if gender == 'F':
+            return f'IDENTIFICADA CON {doc_type} N° {doc_number}, '
+        else:
+            return f'IDENTIFICADO CON {doc_type} N° {doc_number}, '
+
+    def get_civil_status_by_gender(self, civil_status, gender):
+        if not civil_status:
+            return ''
+        if gender == 'F':
+            return civil_status[:-1] + 'A, ' if civil_status.endswith('O') else civil_status + ', '
+        else:
+            return civil_status + ', '
+
+    def get_nationality_by_gender(self, nationality, gender):
+        if not nationality:
+            return ''
+        if gender == 'F':
+            return nationality[:-1] + 'A, ' if nationality.endswith('O') else nationality + ', '
+        else:
+            return nationality[:-1] + 'O, ' if nationality.endswith('A') else nationality + ', '
+
+    def get_articles_and_grammar(self, people, role_prefix):
+        """
+        Generate articles and grammar based on number of people and gender
+        """
+        if not people:
+            return {}
+        
+        data = {}
+        
+        if len(people) == 1:
+            # Singular
+            person = people[0]
+            if person['sexo'] == 'F':
+                data[f'EL_{role_prefix}'] = 'LA'
+                data[f'CALIDAD_{role_prefix}'] = person['condicion_str']
+                data[f'INICIO_{role_prefix}'] = ' SEÑORA'
+                data[f'ES_{role_prefix}'] = ''
+                data[f'S_{role_prefix}'] = ''
+                data[f'ES_SON_{role_prefix}'] = 'ES'
+                data[f'Y_CON_{role_prefix}'] = ''
+                data[f'N_{role_prefix}'] = ''
+                data[f'Y_{role_prefix}'] = ''
+                data[f'L_{role_prefix}'] = ''
+                data[f'O_A_{role_prefix}'] = 'O'
+                data[f'O_ERON_{role_prefix}'] = ''
+                data[f'{role_prefix}_FIRMA'] = 'FIRMA EN'
+                data[f'{role_prefix}_AMBOS'] = ''
+            else:
+                data[f'EL_{role_prefix}'] = 'EL'
+                data[f'CALIDAD_{role_prefix}'] = person['condicion_str']
+                data[f'INICIO_{role_prefix}'] = ' SEÑOR'
+                data[f'ES_{role_prefix}'] = ''
+                data[f'S_{role_prefix}'] = ''
+                data[f'ES_SON_{role_prefix}'] = 'ES'
+                data[f'Y_CON_{role_prefix}'] = ''
+                data[f'N_{role_prefix}'] = ''
+                data[f'Y_{role_prefix}'] = ''
+                data[f'L_{role_prefix}'] = ''
+                data[f'O_A_{role_prefix}'] = 'O'
+                data[f'O_ERON_{role_prefix}'] = ''
+                data[f'{role_prefix}_FIRMA'] = 'FIRMA EN'
+                data[f'{role_prefix}_AMBOS'] = ''
+        else:
+            # Plural
+            data[f'EL_{role_prefix}'] = 'LOS'
+            data[f'CALIDAD_{role_prefix}'] = people[0]['condicion_str'] + 'S'
+            data[f'INICIO_{role_prefix}'] = ' SEÑORES'
+            data[f'ES_{role_prefix}'] = 'ES'
+            data[f'S_{role_prefix}'] = 'S'
+            data[f'ES_SON_{role_prefix}'] = 'SON'
+            data[f'Y_CON_{role_prefix}'] = 'Y'
+            data[f'N_{role_prefix}'] = 'N'
+            data[f'Y_{role_prefix}'] = 'Y'
+            data[f'L_{role_prefix}'] = 'L'
+            data[f'O_A_{role_prefix}'] = 'OS'
+            data[f'O_ERON_{role_prefix}'] = 'ERON'
+            data[f'{role_prefix}_FIRMA'] = 'FIRMAN EN'
+            data[f'{role_prefix}_AMBOS'] = ' AMBOS '
+        
+        return data
+
+    def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
+        """
+        Process the document template with the provided data
+        """
+        doc = Document(io.BytesIO(template_bytes))
+        
+        # Replace placeholders in the document
+        for paragraph in doc.paragraphs:
+            for key, value in data.items():
+                if f'{{{{{key}}}}}' in paragraph.text:
+                    paragraph.text = paragraph.text.replace(f'{{{{{key}}}}}', str(value))
+        
+        # Also process tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for key, value in data.items():
+                            if f'{{{{{key}}}}}' in paragraph.text:
+                                paragraph.text = paragraph.text.replace(f'{{{{{key}}}}}', str(value))
+        
+        return doc
+
+    def _create_response(self, doc: Document, filename: str, kardex: str, mode: str = "download") -> HttpResponse:
+        """
+        Create HTTP response for the generated document
+        """
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        
+        if mode == "download":
+            response = HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        else:
+            return HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
