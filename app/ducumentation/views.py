@@ -301,7 +301,7 @@ def _smart_update_non_contentious_with_auto_discovery(template_id: int, kardex: 
 
         # Auto-generate the filename based on kardex pattern
         filename = f"__PROY__{kardex}.docx"
-        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS Y ESCRITURAS DE PROCEDIMIENTOS NO CONTENCIOSOS/{filename}"
+        object_key = f"rodriguez-zea/documentos/{filename}"
         
         print(f"DEBUG: Looking for non-contentious document in R2: {object_key}")
         
@@ -372,7 +372,7 @@ def _smart_update_with_auto_discovery(template_id: int, kardex: str) -> dict:
 
         # Auto-generate the filename based on kardex pattern
         filename = f"__PROY__{kardex}.docx"
-        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{filename}"
+        object_key = f"rodriguez-zea/documentos/{filename}"
         
         print(f"DEBUG: Looking for document in R2: {object_key}")
         
@@ -794,7 +794,7 @@ class VehicleTransferDocumentService:
             doc_content = buffer.read()
             
             # Define the object key for R2
-            object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/__PROY__{kardex}.docx"
+            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
             
             # Upload to R2
             s3 = boto3.client(
@@ -917,8 +917,8 @@ class VehicleTransferDocumentService:
             region_name='auto',
         )
         
-        # Dummy template path - replace with actual logic
-        object_key = f"rodriguez-zea/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/{template.filename}"
+        # Template path in simplified structure
+        object_key = f"rodriguez-zea/plantillas/{template.filename}"
         
         try:
             s3_response = s3.get_object(
@@ -1579,7 +1579,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             return HttpResponse({"error": "Invalid template_id format."}, status=400)
 
         # Define the object key for R2
-        object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/__PROY__{kardex}.docx"
+        object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
         
         # Check if document exists in R2
         s3 = boto3.client(
@@ -1681,7 +1681,7 @@ def download_docx(request, kardex, kardex2):
     
     start_time = time.time()
 
-    object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS DE TRANSFERENCIA DE BIENES MUEBLES REGISTRABLES/__PROY__{kardex}.docx"
+    object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
     
     try:
         s3 = get_s3_client()
@@ -1747,8 +1747,8 @@ class NonContentiousDocumentService:
             buffer.seek(0)
             doc_content = buffer.read()
             
-            # Define the object key for R2 - different path for non-contentious
-            object_key = f"rodriguez-zea/documentos/PROTOCOLARES/ACTAS Y ESCRITURAS DE PROCEDIMIENTOS NO CONTENCIOSOS/__PROY__{kardex}.docx"
+            # Define the object key for R2 - simplified path structure
+            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
             
             # Upload to R2
             s3 = boto3.client(
@@ -1846,8 +1846,8 @@ class NonContentiousDocumentService:
             region_name='auto',
         )
         
-        # Different path for non-contentious templates
-        object_key = f"rodriguez-zea/PROTOCOLARES/ACTAS Y ESCRITURAS DE PROCEDIMIENTOS NO CONTENCIOSOS/{template.filename}"
+        # Template path in simplified structure
+        object_key = f"rodriguez-zea/plantillas/{template.filename}"
         
         try:
             s3_response = s3.get_object(
