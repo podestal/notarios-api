@@ -1,13 +1,42 @@
 # sisgen_service/services/document_search_service.py
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 import logging
 from django.db import connection
-from ..utils.exceptions import DocumentSearchException
+from ..utils.exceptions import DocumentSearchException, ValidationException
 from ..utils.validators import SearchFiltersValidator
+from ..utils.constants import ESTADO_SISGEN_MAPPING, ERROR_MESSAGES, SUCCESS_MESSAGES
 
 logger = logging.getLogger(__name__)
 
 class DocumentSearchService:
+    # def __init__(self):
+    #     self.logger = logger
+    #     self.validator = SearchFiltersValidator()
+    
+    # def search_documents(self, filters: Dict) -> Tuple[List[Dict], int, List[str]]:
+    #     """
+    #     Search for notarial documents
+    #     Returns: (data, total_count, errors)
+    #     """
+    #     try:
+    #         # Validate filters
+    #         validated_filters = self.validator.validate(filters)
+            
+    #         # Build and execute query
+    #         documents = self._execute_search_query(validated_filters)
+            
+    #         # Process results
+    #         processed_data = self._process_documents(documents, validated_filters)
+            
+    #         return processed_data, len(processed_data), []
+            
+    #     except DocumentSearchException as e:
+    #         self.logger.error(f"Document search error: {str(e)}")
+    #         return [], 0, [str(e)]
+    #     except Exception as e:
+    #         self.logger.error(f"Unexpected error in document search: {str(e)}")
+    #         return [], 0, [f"Internal server error: {str(e)}"]
+
     def __init__(self):
         self.logger = logger
         self.validator = SearchFiltersValidator()
@@ -27,14 +56,18 @@ class DocumentSearchService:
             # Process results
             processed_data = self._process_documents(documents, validated_filters)
             
+            self.logger.info(f"Found {len(processed_data)} documents")
             return processed_data, len(processed_data), []
             
+        except ValidationException as e:
+            self.logger.error(f"Validation error: {str(e)}")
+            return [], 0, [str(e)]
         except DocumentSearchException as e:
             self.logger.error(f"Document search error: {str(e)}")
             return [], 0, [str(e)]
         except Exception as e:
             self.logger.error(f"Unexpected error in document search: {str(e)}")
-            return [], 0, [f"Internal server error: {str(e)}"]
+            return [], 0, [ERROR_MESSAGES['DATABASE_ERROR'].format(error=str(e))]
     
     def _execute_search_query(self, filters: Dict) -> List[Dict]:
         """Execute raw SQL query with proper parameterization"""
@@ -189,10 +222,4 @@ class DocumentSearchService:
     
     def _get_estado_display(self, estado: int) -> str:
         """Get display text for estado_sisgen"""
-        estados = {
-            0: 'No Enviado',
-            1: 'Enviado',
-            2: 'Enviado(Observado)',
-            3: 'No Enviado(Fallido)'
-        }
-        return estados.get(estado, 'Desconocido')
+        return ESTADO_SISGEN_MAPPING.get(estado, 'Desconocido')

@@ -1,3 +1,7 @@
+"""
+This module contains the exceptions for the sisgen service.
+"""
+
 class DocumentSearchException(Exception):
     """Custom exception for document search errors"""
     pass
