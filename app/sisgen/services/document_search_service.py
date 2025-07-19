@@ -1,42 +1,17 @@
-# sisgen_service/services/document_search_service.py
+"""
+This module contains the document search service for the sisgen service.
+"""
+
 from typing import Dict, List, Tuple
 import logging
 from django.db import connection
 from ..utils.exceptions import DocumentSearchException, ValidationException
 from ..utils.validators import SearchFiltersValidator
-from ..utils.constants import ESTADO_SISGEN_MAPPING, ERROR_MESSAGES, SUCCESS_MESSAGES
+from ..utils.constants import ESTADO_SISGEN_MAPPING, ERROR_MESSAGES
 
 logger = logging.getLogger(__name__)
 
 class DocumentSearchService:
-    # def __init__(self):
-    #     self.logger = logger
-    #     self.validator = SearchFiltersValidator()
-    
-    # def search_documents(self, filters: Dict) -> Tuple[List[Dict], int, List[str]]:
-    #     """
-    #     Search for notarial documents
-    #     Returns: (data, total_count, errors)
-    #     """
-    #     try:
-    #         # Validate filters
-    #         validated_filters = self.validator.validate(filters)
-            
-    #         # Build and execute query
-    #         documents = self._execute_search_query(validated_filters)
-            
-    #         # Process results
-    #         processed_data = self._process_documents(documents, validated_filters)
-            
-    #         return processed_data, len(processed_data), []
-            
-    #     except DocumentSearchException as e:
-    #         self.logger.error(f"Document search error: {str(e)}")
-    #         return [], 0, [str(e)]
-    #     except Exception as e:
-    #         self.logger.error(f"Unexpected error in document search: {str(e)}")
-    #         return [], 0, [f"Internal server error: {str(e)}"]
-
     def __init__(self):
         self.logger = logger
         self.validator = SearchFiltersValidator()
@@ -68,18 +43,23 @@ class DocumentSearchService:
         except Exception as e:
             self.logger.error(f"Unexpected error in document search: {str(e)}")
             return [], 0, [ERROR_MESSAGES['DATABASE_ERROR'].format(error=str(e))]
-    
+
     def _execute_search_query(self, filters: Dict) -> List[Dict]:
         """Execute raw SQL query with proper parameterization"""
         query, params = self._build_sql_query(filters)
         
-        with connection.cursor() as cursor:
-            cursor.execute(query, params)
-            columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(query, params)
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Database query error: {str(e)}")
+            raise DocumentSearchException(f"Database query failed: {str(e)}")
     
     def _build_sql_query(self, filters: Dict) -> Tuple[str, List]:
         """Build parameterized SQL query"""
+        # Base query with proper date handling
         base_query = """
             SELECT k.idkardex, k.kardex, k.numescritura, k.fechaescritura,
                    IF(ta.cod_ancert IS NULL,'',ta.cod_ancert) AS cod_ancert,
@@ -94,9 +74,9 @@ class DocumentSearchService:
         params = []
         conditions = []
         
-        # Date range
+        # Date range - use proper date formatting
         if filters.get('fechaDesde') and filters.get('fechaHasta'):
-            conditions.append("STR_TO_DATE(k.fechaescritura,'%Y-%m-%d') BETWEEN %s AND %s")
+            conditions.append("DATE(k.fechaescritura) BETWEEN %s AND %s")
             params.extend([filters['fechaDesde'], filters['fechaHasta']])
         
         # Instrument type
@@ -134,6 +114,9 @@ class DocumentSearchService:
         
         base_query += " ORDER BY CAST(k.numescritura AS UNSIGNED)"
         
+        self.logger.debug(f"SQL Query: {base_query}")
+        self.logger.debug(f"SQL Params: {params}")
+        
         return base_query, params
     
     def _process_documents(self, documents: List[Dict], filters: Dict) -> List[Dict]:
@@ -152,17 +135,9 @@ class DocumentSearchService:
     
     def _format_single_document(self, doc: Dict) -> Dict:
         """Format a single document"""
-        # Format date
+        # Format date safely
         fecha_escritura = doc['fechaescritura']
-        if isinstance(fecha_escritura, str):
-            try:
-                from datetime import datetime
-                fecha_obj = datetime.strptime(fecha_escritura, '%Y-%m-%d')
-                fecha_formatted = fecha_obj.strftime('%d/%m/%Y')
-            except:
-                fecha_formatted = fecha_escritura
-        else:
-            fecha_formatted = fecha_escritura.strftime('%d/%m/%Y')
+        fecha_formatted = self._format_date_safely(fecha_escritura)
         
         # Get estado display
         estado_display = self._get_estado_display(doc['estado_sisgen'])
@@ -174,16 +149,52 @@ class DocumentSearchService:
             'fechaescritura': fecha_formatted,
             'estado_sisgen': estado_display,
             'idtipkar': doc['idtipkar'],
-            'fechaingreso': doc['fechaingreso'].isoformat() if doc['fechaingreso'] else None,
+            'fechaingreso': self._format_datetime_safely(doc['fechaingreso']),
             'codactos': doc['codactos'],
             'contrato': doc['contrato'],
             'folioini': doc['folioini'],
             'foliofin': doc['foliofin'],
-            'fechaconclusion': doc['fechaconclusion'].isoformat() if doc['fechaconclusion'] else None,
+            'fechaconclusion': self._format_date_safely(doc['fechaconclusion']),
             'cod_ancert': doc['cod_ancert'] or '',
             'actouif': doc['actouif'] or '',
             'actosunat': doc['actosunat'] or ''
         }
+    
+    def _format_date_safely(self, date_value) -> str:
+        """Safely format date values"""
+        if date_value is None:
+            return ''
+        
+        try:
+            if isinstance(date_value, str):
+                # Try to parse the date string
+                from datetime import datetime
+                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+                    try:
+                        date_obj = datetime.strptime(date_value, fmt)
+                        return date_obj.strftime('%d/%m/%Y')
+                    except ValueError:
+                        continue
+                return date_value
+            elif hasattr(date_value, 'strftime'):
+                return date_value.strftime('%d/%m/%Y')
+            else:
+                return str(date_value)
+        except Exception:
+            return str(date_value)
+    
+    def _format_datetime_safely(self, datetime_value) -> str:
+        """Safely format datetime values"""
+        if datetime_value is None:
+            return ''
+        
+        try:
+            if hasattr(datetime_value, 'isoformat'):
+                return datetime_value.isoformat()
+            else:
+                return str(datetime_value)
+        except Exception:
+            return str(datetime_value)
     
     def _handle_all_documents_case(self, documents: List[Dict]) -> List[Dict]:
         """Handle special case for estado = 5"""
