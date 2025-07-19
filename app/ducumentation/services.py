@@ -303,53 +303,57 @@ class VehicleTransferDocumentService:
     
     def _get_document_data(self, num_kardex: str, anio_kardex: str) -> Dict[str, str]:
         """
-        Get document basic information from the database, matching the PHP logic.
+        Get basic document information
         """
-
         kardex = Kardex.objects.filter(kardex=num_kardex).first()
         if not kardex:
-            # Fallbacks if not found
-            numero_escritura = ''
-            fecha_escritura = ''
-            usuario = ''
-            usuario_dni = ''
-            folioini = ''
-            foliofin = ''
-            papelini = ''
-            papelfin = ''
-
-        else:
-            numero_escritura = kardex.numescritura or ''
-            fecha_escritura = kardex.fechaescritura or ''
-            usuario = kardex.responsable_new or ''
-            folioini = kardex.folioini or ''
-            foliofin = kardex.foliofin or ''
-            papelini = kardex.papelini or ''
-            papelfin = kardex.papelfin or ''
-            # Get user DNI
-            usuario_dni = ''
-            if kardex.idusuario:
-                usuario_obj = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
-                usuario_dni = usuario_obj.dni if usuario_obj else ''
+            raise ValueError(f"Kardex {num_kardex} not found")
+        
+        # Get user information
+        usuario = kardex.responsable_new or ''
+        usuario_dni = ''
+        if kardex.idusuario:
+            # idusuario is an integer ID, not a user object
+            user = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
+            if user:
+                usuario_dni = user.dni or ''
+        
+        # Get abogado information
+        abogado = ''
+        matricula = ''
+        if kardex.idabogado:
+            from notaria.models import TbAbogado
+            abogado_obj = TbAbogado.objects.filter(idabogado=kardex.idabogado).first()
+            if abogado_obj:
+                abogado = abogado_obj.razonsocial or ''
+                matricula = abogado_obj.matricula or ''
+        
+        numero_escritura = kardex.numescritura or ''
+        fecha_escritura = kardex.fechaescritura or datetime.now()
+        numero_minuta = kardex.numminuta or ''
+        folioini = kardex.folioini or ''
+        foliofin = kardex.foliofin or ''
+        papelini = kardex.papelini or ''
+        papelfin = kardex.papelfin or ''
         
         return {
             'K': num_kardex,
             'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '{{NRO_ESC}}',
             'NUM_REG': '1',
-            'FEC_LET': '',
-            'F_IMPRESION': '',
+            'FEC_LET': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '',
+            'F_IMPRESION': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F_IMPRESION}}',
             'USUARIO': usuario,
             'USUARIO_DNI': usuario_dni,
-            'NRO_MIN': usuario_dni,
-            'COMPROBANTE': 'sin',
-            'O_S': num_kardex,
-            'ORDEN_SERVICIO': num_kardex,
-            'FECHA_ACT': fecha_escritura,
-            'FECHA_MAX': '',
-            'FI': folioini,
-            'FF': foliofin,
-            'S_IN': papelini,
-            'S_FN': papelfin,
+            'NRO_MIN': numero_minuta or '{{NRO_MIN}}',
+            'COMPROBANTE': ' ',
+            'O_S': ' ',
+            'ORDEN_SERVICIO': ' ',
+            'F': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F}}',
+            'DESCRIPCION_SELLO': f"{abogado} CAP. {matricula}",
+            'FI': folioini or '{{FI}}',
+            'FF': foliofin or '{{FF}}',
+            'S_IN': papelini or '{{S_IN}}',
+            'S_FN': papelfin or '{{S_FN}}',
         }
     
     def _get_vehicle_data(self, kardex) -> Dict[str, str]:
@@ -571,9 +575,19 @@ class VehicleTransferDocumentService:
             contractors_data[f'P_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + t['direccion']
             contractors_data[f'P_IDE_{idx}'] = ' '
             contractors_data[f'SEXO_P_{idx}'] = t['sexo']
-            contractors_data[f'P_FIRMAN_{idx}'] = t['nombres'] + ', '
-            contractors_data[f'P_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
-
+            
+            # Add unnumbered versions for first person (like PHP legacy code)
+            if idx == 1:
+                contractors_data['P_NOM'] = t['nombres'] + ', '
+                contractors_data['P_NACIONALIDAD'] = t['nacionalidad'] + ', '
+                contractors_data['P_TIP_DOC'] = t['tipoDocumento']
+                contractors_data['P_DOC'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+                contractors_data['P_OCUPACION'] = t['ocupacion']
+                contractors_data['P_ESTADO_CIVIL'] = t['estadoCivil']
+                contractors_data['P_DOMICILIO'] = 'CON DOMICILIO EN ' + t['direccion']
+                contractors_data['P_IDE'] = ' '
+                contractors_data['SEXO_P'] = t['sexo']
+        
         for idx, c in enumerate(acquirers, 1):
             contractors_data[f'C_NOM_{idx}'] = c['nombres'] + ', '
             contractors_data[f'C_NACIONALIDAD_{idx}'] = c['nacionalidad'] + ', '
@@ -584,8 +598,18 @@ class VehicleTransferDocumentService:
             contractors_data[f'C_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + c['direccion']
             contractors_data[f'C_IDE_{idx}'] = ' '
             contractors_data[f'SEXO_C_{idx}'] = c['sexo']
-            contractors_data[f'C_FIRMAN_{idx}'] = c['nombres'] + ', '
-            contractors_data[f'C_IMPRIME_{idx}'] = f' FIRMA EN: {self.letras.date_to_letters(datetime.now())}'
+            
+            # Add unnumbered versions for first person (like PHP legacy code)
+            if idx == 1:
+                contractors_data['C_NOM'] = c['nombres'] + ', '
+                contractors_data['C_NACIONALIDAD'] = c['nacionalidad'] + ', '
+                contractors_data['C_TIP_DOC'] = c['tipoDocumento']
+                contractors_data['C_DOC'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+                contractors_data['C_OCUPACION'] = c['ocupacion']
+                contractors_data['C_ESTADO_CIVIL'] = c['estadoCivil']
+                contractors_data['C_DOMICILIO'] = 'CON DOMICILIO EN ' + c['direccion']
+                contractors_data['C_IDE'] = ' '
+                contractors_data['SEXO_C'] = c['sexo']
 
         for idx, t in enumerate(transferor_companies, 1):
             contractors_data[f'NOMBRE_EMPRESA_{idx}'] = t['razonsocial']
@@ -988,6 +1012,20 @@ class NonContentiousDocumentService:
             all_data.update(payment_data)
             all_data.update(escrituracion_data)
             
+            # Debug: Print some key placeholders
+            print(f"DEBUG: Generated data for kardex {num_kardex}:")
+            print(f"DEBUG: C_NOM_1: {all_data.get('C_NOM_1', 'NOT FOUND')}")
+            print(f"DEBUG: P_NOM_1: {all_data.get('P_NOM_1', 'NOT FOUND')}")
+            print(f"DEBUG: C_NOM: {all_data.get('C_NOM', 'NOT FOUND')}")
+            print(f"DEBUG: P_NOM: {all_data.get('P_NOM', 'NOT FOUND')}")
+            print(f"DEBUG: C_DOMICILIO: {all_data.get('C_DOMICILIO', 'NOT FOUND')}")
+            print(f"DEBUG: P_DOMICILIO: {all_data.get('P_DOMICILIO', 'NOT FOUND')}")
+            print(f"DEBUG: C_IDE: {all_data.get('C_IDE', 'NOT FOUND')}")
+            print(f"DEBUG: P_IDE: {all_data.get('P_IDE', 'NOT FOUND')}")
+            print(f"DEBUG: All C_ keys: {[k for k in all_data.keys() if k.startswith('C_')]}")
+            print(f"DEBUG: All P_ keys: {[k for k in all_data.keys() if k.startswith('P_')]}")
+            print(f"DEBUG: Total placeholders: {len(all_data)}")
+            
             return all_data
             
         except Exception as e:
@@ -1006,7 +1044,10 @@ class NonContentiousDocumentService:
         usuario = kardex.responsable_new or ''
         usuario_dni = ''
         if kardex.idusuario:
-            usuario_dni = kardex.idusuario.dni or ''
+            # idusuario is an integer ID, not a user object
+            user = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
+            if user:
+                usuario_dni = user.dni or ''
         
         # Get abogado information
         abogado = ''
@@ -1118,6 +1159,10 @@ class NonContentiousDocumentService:
                     if ubigeo_obj:
                         direccion = f"{cliente.direccion or ''} DEL DISTRITO DE {ubigeo_obj.nomdis or ''} PROVINCIA DE {ubigeo_obj.nomprov or ''} Y DEPARTAMENTO DE {ubigeo_obj.nomdpto or ''}"
                 
+                # If no ubigeo or empty address, use a default
+                if not direccion.strip():
+                    direccion = "DIRECCIÓN NO ESPECIFICADA"
+                
                 person_data = {
                     'nombres': nombres,
                     'condicion_str': condicion_str,
@@ -1142,27 +1187,51 @@ class NonContentiousDocumentService:
         
         # Add transferors
         for idx, t in enumerate(transferors, 1):
-            contractors_data[f'P_NOM_{idx}'] = t['nombres'] + ', '
-            contractors_data[f'P_NACIONALIDAD_{idx}'] = t['nacionalidad'] + ', '
+            contractors_data[f'P_NOM_{idx}'] = self.clean_commas(t['nombres'] + ', ')
+            contractors_data[f'P_NACIONALIDAD_{idx}'] = self.clean_commas(t['nacionalidad'] + ', ')
             contractors_data[f'P_TIP_DOC_{idx}'] = t['tipoDocumento']
             contractors_data[f'P_DOC_{idx}'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
             contractors_data[f'P_OCUPACION_{idx}'] = t['ocupacion']
-            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = t['estadoCivil']
+            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = self.clean_commas(t['estadoCivil'] + ', ')
             contractors_data[f'P_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + t['direccion']
-            contractors_data[f'P_IDE_{idx}'] = ' '
+            contractors_data[f'P_IDE_{idx}'] = t['numeroDocumento'] or ' '
             contractors_data[f'SEXO_P_{idx}'] = t['sexo']
+            
+            # Add unnumbered versions for first person (like PHP legacy code)
+            if idx == 1:
+                contractors_data['P_NOM'] = self.clean_commas(t['nombres'] + ', ')
+                contractors_data['P_NACIONALIDAD'] = self.clean_commas(t['nacionalidad'] + ', ')
+                contractors_data['P_TIP_DOC'] = t['tipoDocumento']
+                contractors_data['P_DOC'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+                contractors_data['P_OCUPACION'] = t['ocupacion']
+                contractors_data['P_ESTADO_CIVIL'] = self.clean_commas(t['estadoCivil'] + ', ')
+                contractors_data['P_DOMICILIO'] = 'CON DOMICILIO EN ' + t['direccion']
+                contractors_data['P_IDE'] = t['numeroDocumento'] or ' '
+                contractors_data['SEXO_P'] = t['sexo']
         
         # Add acquirers
         for idx, c in enumerate(acquirers, 1):
-            contractors_data[f'C_NOM_{idx}'] = c['nombres'] + ', '
-            contractors_data[f'C_NACIONALIDAD_{idx}'] = c['nacionalidad'] + ', '
+            contractors_data[f'C_NOM_{idx}'] = self.clean_commas(c['nombres'] + ', ')
+            contractors_data[f'C_NACIONALIDAD_{idx}'] = self.clean_commas(c['nacionalidad'] + ', ')
             contractors_data[f'C_TIP_DOC_{idx}'] = c['tipoDocumento']
             contractors_data[f'C_DOC_{idx}'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
             contractors_data[f'C_OCUPACION_{idx}'] = c['ocupacion']
-            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = c['estadoCivil']
+            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = self.clean_commas(c['estadoCivil'] + ', ')
             contractors_data[f'C_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + c['direccion']
-            contractors_data[f'C_IDE_{idx}'] = ' '
+            contractors_data[f'C_IDE_{idx}'] = c['numeroDocumento'] or ' '
             contractors_data[f'SEXO_C_{idx}'] = c['sexo']
+            
+            # Add unnumbered versions for first person (like PHP legacy code)
+            if idx == 1:
+                contractors_data['C_NOM'] = self.clean_commas(c['nombres'] + ', ')
+                contractors_data['C_NACIONALIDAD'] = self.clean_commas(c['nacionalidad'] + ', ')
+                contractors_data['C_TIP_DOC'] = c['tipoDocumento']
+                contractors_data['C_DOC'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+                contractors_data['C_OCUPACION'] = c['ocupacion']
+                contractors_data['C_ESTADO_CIVIL'] = self.clean_commas(c['estadoCivil'] + ', ')
+                contractors_data['C_DOMICILIO'] = 'CON DOMICILIO EN ' + c['direccion']
+                contractors_data['C_IDE'] = c['numeroDocumento'] or ' '
+                contractors_data['SEXO_C'] = c['sexo']
         
         # Add companies
         for idx, comp in enumerate(companies, 1):
@@ -1199,6 +1268,37 @@ class NonContentiousDocumentService:
             contractors_data[f'INS_EMPRESA_{idx}'] = f'[E.INS_EMPRESA_{idx}]'
             contractors_data[f'RUC_{idx}'] = f'[E.RUC_{idx}]'
             contractors_data[f'DOMICILIO_EMPRESA_{idx}'] = f'[E.DOMICILIO_EMPRESA_{idx}]'
+        
+        # Add unnumbered empty placeholders if no data exists
+        if len(transferors) == 0:
+            contractors_data['P_NOM'] = '[E.P_NOM]'
+            contractors_data['P_NACIONALIDAD'] = '[E.P_NACIONALIDAD]'
+            contractors_data['P_TIP_DOC'] = '[E.P_TIP_DOC]'
+            contractors_data['P_DOC'] = '[E.P_DOC]'
+            contractors_data['P_OCUPACION'] = '[E.P_OCUPACION]'
+            contractors_data['P_ESTADO_CIVIL'] = '[E.P_ESTADO_CIVIL]'
+            contractors_data['P_DOMICILIO'] = '[E.P_DOMICILIO]'
+            contractors_data['P_IDE'] = '[E.P_IDE]'
+            contractors_data['SEXO_P'] = '[E.SEXO_P]'
+        
+        if len(acquirers) == 0:
+            contractors_data['C_NOM'] = '[E.C_NOM]'
+            contractors_data['C_NACIONALIDAD'] = '[E.C_NACIONALIDAD]'
+            contractors_data['C_TIP_DOC'] = '[E.C_TIP_DOC]'
+            contractors_data['C_DOC'] = '[E.C_DOC]'
+            contractors_data['C_OCUPACION'] = '[E.C_OCUPACION]'
+            contractors_data['C_ESTADO_CIVIL'] = '[E.C_ESTADO_CIVIL]'
+            contractors_data['C_DOMICILIO'] = '[E.C_DOMICILIO]'
+            contractors_data['C_IDE'] = '[E.C_IDE]'
+            contractors_data['SEXO_C'] = '[E.SEXO_C]'
+        
+        # Always ensure C_NOM exists (for the TERCERO section)
+        if 'C_NOM' not in contractors_data:
+            # Use the first acquirer's name or a default
+            if acquirers:
+                contractors_data['C_NOM'] = self.clean_commas(acquirers[0]['nombres'] + ', ')
+            else:
+                contractors_data['C_NOM'] = '[E.C_NOM]'
 
         # Add grammar and articles
         contractors_data.update(self.get_articles_and_grammar(transferors, 'P'))
@@ -1395,22 +1495,95 @@ class NonContentiousDocumentService:
         """
         doc = Document(io.BytesIO(template_bytes))
         
-        # Replace placeholders in the document
+        # Replace placeholders in paragraphs
         for paragraph in doc.paragraphs:
-            for key, value in data.items():
-                if f'{{{{{key}}}}}' in paragraph.text:
-                    paragraph.text = paragraph.text.replace(f'{{{{{key}}}}}', str(value))
+            self._replace_placeholders_in_paragraph(paragraph, data)
         
-        # Also process tables
+        # Replace placeholders in tables
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
-                        for key, value in data.items():
-                            if f'{{{{{key}}}}}' in paragraph.text:
-                                paragraph.text = paragraph.text.replace(f'{{{{{key}}}}}', str(value))
+                        self._replace_placeholders_in_paragraph(paragraph, data)
         
         return doc
+    
+    def _replace_placeholders_in_paragraph(self, paragraph, data: Dict[str, str]):
+        """
+        Replace placeholders in a paragraph, handling cases where placeholders span multiple runs
+        """
+        # Get the full text of the paragraph
+        full_text = paragraph.text
+        modified_text = full_text
+        
+        # Replace all placeholders in the text
+        for key, value in data.items():
+            placeholder = f'{{{{{key}}}}}'
+            if placeholder in modified_text:
+                modified_text = modified_text.replace(placeholder, str(value))
+        
+        # If the text changed, rebuild the paragraph with proper coloring
+        if modified_text != full_text:
+            # Clear all runs
+            paragraph.clear()
+            
+            # Split the text by all possible placeholders to identify what was replaced
+            import re
+            placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
+            
+            # Find all placeholders in the original text
+            original_placeholders = placeholder_pattern.findall(full_text)
+            
+            # Build the new text with coloring
+            current_pos = 0
+            for match in placeholder_pattern.finditer(full_text):
+                placeholder = match.group()
+                start_pos = match.start()
+                end_pos = match.end()
+                
+                # Add text before this placeholder
+                if start_pos > current_pos:
+                    text_before = full_text[current_pos:start_pos]
+                    if text_before:
+                        paragraph.add_run(text_before)
+                
+                # Find the replacement value
+                replacement = None
+                for key, value in data.items():
+                    if f'{{{{{key}}}}}' == placeholder:
+                        replacement = value
+                        break
+                
+                if replacement:
+                    # Add replacement in red
+                    red_run = paragraph.add_run(str(replacement))
+                    red_run.font.color.rgb = RGBColor(255, 0, 0)  # Red color
+                else:
+                    # Keep original placeholder if no replacement found
+                    paragraph.add_run(placeholder)
+                
+                current_pos = end_pos
+            
+            # Add remaining text after the last placeholder
+            if current_pos < len(full_text):
+                remaining_text = full_text[current_pos:]
+                if remaining_text:
+                    paragraph.add_run(remaining_text)
+        else:
+            # If no changes in full text, try replacing in individual runs
+            for run in paragraph.runs:
+                run_text = run.text
+                modified_run_text = run_text
+                
+                for key, value in data.items():
+                    placeholder = f'{{{{{key}}}}}'
+                    if placeholder in modified_run_text:
+                        modified_run_text = modified_run_text.replace(placeholder, str(value))
+                
+                if modified_run_text != run_text:
+                    run.text = modified_run_text
+                    # Color the entire run red since we can't easily identify just the replacement
+                    run.font.color.rgb = RGBColor(255, 0, 0)  # Red color
 
     def _create_response(self, doc: Document, filename: str, kardex: str, mode: str = "download") -> HttpResponse:
         """
@@ -1426,3 +1599,241 @@ class NonContentiousDocumentService:
             return response
         else:
             return HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document') 
+
+    def clean_commas(self, text: str) -> str:
+        """
+        Clean up repeated commas and normalize comma usage
+        """
+        import re
+        # Remove multiple consecutive commas
+        text = re.sub(r',{2,}', ',', text)
+        # Remove comma followed by space and comma
+        text = re.sub(r',\s*,', ',', text)
+        # Remove leading/trailing commas
+        text = re.sub(r'^,+|,+$', '', text)
+        # Remove comma before period
+        text = re.sub(r',\s*\.', '.', text)
+        # Remove comma before semicolon
+        text = re.sub(r',\s*;', ';', text)
+        # Normalize spaces around commas
+        text = re.sub(r'\s*,\s*', ', ', text)
+        return text.strip()
+
+    def _get_contractors_data(self, num_kardex: str, idtipoacto: str) -> Dict[str, str]:
+        """
+        Get contractors (transferors and acquirers) information for non-contentious documents
+        """
+        # Get all contratantes for this kardex with optimized queries
+        contratantes = Contratantesxacto.objects.filter(kardex=num_kardex)
+        
+        # Pre-fetch all related data to avoid N+1 queries
+        contratante_ids = [cxa.idcontratante for cxa in contratantes]
+        clientes = {c.idcontratante: c for c in Cliente2.objects.filter(idcontratante__in=contratante_ids)}
+        condicion_ids = [cxa.idcondicion for cxa in contratantes if cxa.idcondicion]
+        condiciones = {c.idcondicion: c for c in Actocondicion.objects.filter(idcondicion__in=condicion_ids)}
+        
+        # Pre-fetch nationality and ubigeo data
+        nacionalidad_ids = [c.nacionalidad for c in clientes.values() if c.nacionalidad]
+        nacionalidades = {n.idnacionalidad: n for n in Nacionalidades.objects.filter(idnacionalidad__in=nacionalidad_ids)}
+        
+        ubigeo_ids = [c.idubigeo for c in clientes.values() if c.idubigeo]
+        ubigeos = {u.coddis: u for u in Ubigeo.objects.filter(coddis__in=ubigeo_ids)}
+        
+        transferors = []
+        acquirers = []
+        companies = []
+        
+        for cxa in contratantes:
+            cliente = clientes.get(cxa.idcontratante)
+            if not cliente:
+                continue
+                
+            condicion = condiciones.get(cxa.idcondicion)
+            condicion_str = condicion.condicion if condicion else ''
+            
+            # Build full name
+            if cliente.tipper == 'J':  # Juridica
+                nombres = cliente.razonsocial or ''
+                companies.append({
+                    'nombres': nombres,
+                    'condicion_str': condicion_str,
+                    'idcontratante': cxa.idcontratante,
+                    'razonsocial': nombres,
+                    'numdoc_empresa': cliente.numdoc or '',
+                    'domfiscal': cliente.domfiscal or '',
+                    'numpartida': cliente.numpartida or '',
+                })
+            else:  # Natural
+                nombres = f"{cliente.prinom or ''} {cliente.segnom or ''} {cliente.apepat or ''} {cliente.apemat or ''}".strip()
+                
+                # Get nationality and civil status
+                nacionalidad = ''
+                if cliente.nacionalidad:
+                    nac_obj = nacionalidades.get(cliente.nacionalidad)
+                    if nac_obj:
+                        nacionalidad = nac_obj.descripcion or ''
+                
+                estado_civil = ''
+                if cliente.idestcivil:
+                    from ducumentation.constants import CIVIL_STATUS
+                    estado_civil = CIVIL_STATUS.get(cliente.idestcivil, {}).get('label', '')
+                
+                # Get document type
+                tipo_documento = ''
+                if cliente.idtipdoc:
+                    from ducumentation.constants import TIPO_DOCUMENTO
+                    tipo_documento = TIPO_DOCUMENTO.get(cliente.idtipdoc, {}).get('destipdoc', '')
+                
+                # Get ubigeo
+                direccion = ''
+                if cliente.idubigeo:
+                    ubigeo_obj = ubigeos.get(cliente.idubigeo)
+                    if ubigeo_obj:
+                        direccion = f"{cliente.direccion or ''} DEL DISTRITO DE {ubigeo_obj.nomdis or ''} PROVINCIA DE {ubigeo_obj.nomprov or ''} Y DEPARTAMENTO DE {ubigeo_obj.nomdpto or ''}"
+                
+                # If no ubigeo or empty address, use a default
+                if not direccion.strip():
+                    direccion = "DIRECCIÓN NO ESPECIFICADA"
+                
+                person_data = {
+                    'nombres': nombres,
+                    'condicion_str': condicion_str,
+                    'idcontratante': cxa.idcontratante,
+                    'nacionalidad': self.get_nationality_by_gender(nacionalidad, cliente.sexo),
+                    'tipoDocumento': tipo_documento,
+                    'numeroDocumento': cliente.numdoc or '',
+                    'ocupacion': cliente.profesion_plantilla or '',
+                    'estadoCivil': self.get_civil_status_by_gender(estado_civil, cliente.sexo),
+                    'direccion': direccion,
+                    'sexo': cliente.sexo or 'M',
+                }
+                
+                # Classify as transferor or acquirer
+                if condicion_str in ['VENDEDOR', 'DONANTE', 'PODERDANTE', 'OTORGANTE', 'REPRESENTANTE', 'ANTICIPANTE', 'ADJUDICANTE', 'USUFRUCTUANTE', 'TRANSFERENTE', 'DEUDOR', 'SOLICITANTE/BENEFICIARIO']:
+                    transferors.append(person_data)
+                elif condicion_str in ['COMPRADOR', 'APODERADO', 'ANTICIPADO', 'ADJUDICATARIO', 'DONATARIO', 'USUFRUCTUARIO', 'TESTIGO A RUEGO', 'ADQUIRIENTE', 'ACREEDOR', 'CAUSANTE']:
+                    acquirers.append(person_data)
+        
+        # Build contractors data
+        contractors_data = {}
+        
+        # Add transferors
+        for idx, t in enumerate(transferors, 1):
+            contractors_data[f'P_NOM_{idx}'] = self.clean_commas(t['nombres'] + ', ')
+            contractors_data[f'P_NACIONALIDAD_{idx}'] = self.clean_commas(t['nacionalidad'] + ', ')
+            contractors_data[f'P_TIP_DOC_{idx}'] = t['tipoDocumento']
+            contractors_data[f'P_DOC_{idx}'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+            contractors_data[f'P_OCUPACION_{idx}'] = t['ocupacion']
+            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = self.clean_commas(t['estadoCivil'] + ', ')
+            contractors_data[f'P_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + t['direccion']
+            contractors_data[f'P_IDE_{idx}'] = t['numeroDocumento'] or ' '
+            contractors_data[f'SEXO_P_{idx}'] = t['sexo']
+            
+            # Add unnumbered versions for first person (like PHP legacy code)
+            if idx == 1:
+                contractors_data['P_NOM'] = self.clean_commas(t['nombres'] + ', ')
+                contractors_data['P_NACIONALIDAD'] = self.clean_commas(t['nacionalidad'] + ', ')
+                contractors_data['P_TIP_DOC'] = t['tipoDocumento']
+                contractors_data['P_DOC'] = self.get_identification_phrase(t['sexo'], t['tipoDocumento'], t['numeroDocumento'])
+                contractors_data['P_OCUPACION'] = t['ocupacion']
+                contractors_data['P_ESTADO_CIVIL'] = self.clean_commas(t['estadoCivil'] + ', ')
+                contractors_data['P_DOMICILIO'] = 'CON DOMICILIO EN ' + t['direccion']
+                contractors_data['P_IDE'] = t['numeroDocumento'] or ' '
+                contractors_data['SEXO_P'] = t['sexo']
+        
+        # Add acquirers
+        for idx, c in enumerate(acquirers, 1):
+            contractors_data[f'C_NOM_{idx}'] = self.clean_commas(c['nombres'] + ', ')
+            contractors_data[f'C_NACIONALIDAD_{idx}'] = self.clean_commas(c['nacionalidad'] + ', ')
+            contractors_data[f'C_TIP_DOC_{idx}'] = c['tipoDocumento']
+            contractors_data[f'C_DOC_{idx}'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+            contractors_data[f'C_OCUPACION_{idx}'] = c['ocupacion']
+            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = self.clean_commas(c['estadoCivil'] + ', ')
+            contractors_data[f'C_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + c['direccion']
+            contractors_data[f'C_IDE_{idx}'] = c['numeroDocumento'] or ' '
+            contractors_data[f'SEXO_C_{idx}'] = c['sexo']
+            
+            # Add unnumbered versions for first person (like PHP legacy code)
+            if idx == 1:
+                contractors_data['C_NOM'] = self.clean_commas(c['nombres'] + ', ')
+                contractors_data['C_NACIONALIDAD'] = self.clean_commas(c['nacionalidad'] + ', ')
+                contractors_data['C_TIP_DOC'] = c['tipoDocumento']
+                contractors_data['C_DOC'] = self.get_identification_phrase(c['sexo'], c['tipoDocumento'], c['numeroDocumento'])
+                contractors_data['C_OCUPACION'] = c['ocupacion']
+                contractors_data['C_ESTADO_CIVIL'] = self.clean_commas(c['estadoCivil'] + ', ')
+                contractors_data['C_DOMICILIO'] = 'CON DOMICILIO EN ' + c['direccion']
+                contractors_data['C_IDE'] = c['numeroDocumento'] or ' '
+                contractors_data['SEXO_C'] = c['sexo']
+        
+        # Add companies
+        for idx, comp in enumerate(companies, 1):
+            contractors_data[f'NOMBRE_EMPRESA_{idx}'] = comp['razonsocial']
+            contractors_data[f'INS_EMPRESA_{idx}'] = ' '
+            contractors_data[f'RUC_{idx}'] = f', CON RUC N° {comp["numdoc_empresa"]}, '
+            contractors_data[f'DOMICILIO_EMPRESA_{idx}'] = f'CON DOMICILIO EN {comp["domfiscal"]}'
+        
+        # Fill empty placeholders
+        for idx in range(len(transferors) + 1, 11):
+            contractors_data[f'P_NOM_{idx}'] = f'[E.P_NOM_{idx}]'
+            contractors_data[f'P_NACIONALIDAD_{idx}'] = f'[E.P_NACIONALIDAD_{idx}]'
+            contractors_data[f'P_TIP_DOC_{idx}'] = f'[E.P_TIP_DOC_{idx}]'
+            contractors_data[f'P_DOC_{idx}'] = f'[E.P_DOC_{idx}]'
+            contractors_data[f'P_OCUPACION_{idx}'] = f'[E.P_OCUPACION_{idx}]'
+            contractors_data[f'P_ESTADO_CIVIL_{idx}'] = f'[E.P_ESTADO_CIVIL_{idx}]'
+            contractors_data[f'P_DOMICILIO_{idx}'] = f'[E.P_DOMICILIO_{idx}]'
+            contractors_data[f'P_IDE_{idx}'] = f'[E.P_IDE_{idx}]'
+            contractors_data[f'SEXO_P_{idx}'] = f'[E.SEXO_P_{idx}]'
+
+        for idx in range(len(acquirers) + 1, 11):
+            contractors_data[f'C_NOM_{idx}'] = f'[E.C_NOM_{idx}]'
+            contractors_data[f'C_NACIONALIDAD_{idx}'] = f'[E.C_NACIONALIDAD_{idx}]'
+            contractors_data[f'C_TIP_DOC_{idx}'] = f'[E.C_TIP_DOC_{idx}]'
+            contractors_data[f'C_DOC_{idx}'] = f'[E.C_DOC_{idx}]'
+            contractors_data[f'C_OCUPACION_{idx}'] = f'[E.C_OCUPACION_{idx}]'
+            contractors_data[f'C_ESTADO_CIVIL_{idx}'] = f'[E.C_ESTADO_CIVIL_{idx}]'
+            contractors_data[f'C_DOMICILIO_{idx}'] = f'[E.C_DOMICILIO_{idx}]'
+            contractors_data[f'C_IDE_{idx}'] = f'[E.C_IDE_{idx}]'
+            contractors_data[f'SEXO_C_{idx}'] = f'[E.C_SEXO_{idx}]'
+
+        for idx in range(len(companies) + 1, 6):
+            contractors_data[f'NOMBRE_EMPRESA_{idx}'] = f'[E.NOMBRE_EMPRESA_{idx}]'
+            contractors_data[f'INS_EMPRESA_{idx}'] = f'[E.INS_EMPRESA_{idx}]'
+            contractors_data[f'RUC_{idx}'] = f'[E.RUC_{idx}]'
+            contractors_data[f'DOMICILIO_EMPRESA_{idx}'] = f'[E.DOMICILIO_EMPRESA_{idx}]'
+        
+        # Add unnumbered empty placeholders if no data exists
+        if len(transferors) == 0:
+            contractors_data['P_NOM'] = '[E.P_NOM]'
+            contractors_data['P_NACIONALIDAD'] = '[E.P_NACIONALIDAD]'
+            contractors_data['P_TIP_DOC'] = '[E.P_TIP_DOC]'
+            contractors_data['P_DOC'] = '[E.P_DOC]'
+            contractors_data['P_OCUPACION'] = '[E.P_OCUPACION]'
+            contractors_data['P_ESTADO_CIVIL'] = '[E.P_ESTADO_CIVIL]'
+            contractors_data['P_DOMICILIO'] = '[E.P_DOMICILIO]'
+            contractors_data['P_IDE'] = '[E.P_IDE]'
+            contractors_data['SEXO_P'] = '[E.SEXO_P]'
+        
+        if len(acquirers) == 0:
+            contractors_data['C_NOM'] = '[E.C_NOM]'
+            contractors_data['C_NACIONALIDAD'] = '[E.C_NACIONALIDAD]'
+            contractors_data['C_TIP_DOC'] = '[E.C_TIP_DOC]'
+            contractors_data['C_DOC'] = '[E.C_DOC]'
+            contractors_data['C_OCUPACION'] = '[E.C_OCUPACION]'
+            contractors_data['C_ESTADO_CIVIL'] = '[E.C_ESTADO_CIVIL]'
+            contractors_data['C_DOMICILIO'] = '[E.C_DOMICILIO]'
+            contractors_data['C_IDE'] = '[E.C_IDE]'
+            contractors_data['SEXO_C'] = '[E.SEXO_C]'
+        
+        # Always ensure C_NOM exists (for the TERCERO section)
+        if 'C_NOM' not in contractors_data:
+            # Use the first acquirer's name or a default
+            if acquirers:
+                contractors_data['C_NOM'] = self.clean_commas(acquirers[0]['nombres'] + ', ')
+            else:
+                contractors_data['C_NOM'] = '[E.C_NOM]'
+
+        # Add grammar and articles
+        contractors_data.update(self.get_articles_and_grammar(transferors, 'P'))
+        contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
+
+        return contractors_data
