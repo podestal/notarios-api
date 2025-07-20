@@ -588,6 +588,15 @@ class DetallevehicularSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class DetallebienesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Detallebienes model.
+    """
+    class Meta:
+        model = models.Detallebienes
+        fields = '__all__'
+
+
 class DetallemediopagoSerializer(serializers.ModelSerializer):
     """
     Serializer for the Detallemediopago model.

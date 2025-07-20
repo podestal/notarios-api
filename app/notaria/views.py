@@ -1341,6 +1341,34 @@ class DetalleVehicularViewSet(ModelViewSet):
         return Response(serializer.data)
 
 
+class DetallebienesViewSet(ModelViewSet):
+    """
+    ViewSet for the Detallebienes model.
+    """
+    queryset = models.Detallebienes.objects.all()
+    serializer_class = serializers.DetallebienesSerializer
+    pagination_class = pagination.KardexPagination
+
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        """
+        Get Detallebienes records by Kardex.
+        """
+        kardex = request.query_params.get('kardex')
+        if not kardex:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+        
+        detalle_bienes = models.Detallebienes.objects.filter(kardex=kardex)
+        if not detalle_bienes.exists():
+            return Response([], status=200)
+
+        serializer = serializers.DetallebienesSerializer(detalle_bienes, many=True)
+        return Response(serializer.data)
+
+
 class DetallemediopagoViewSet(ModelViewSet):
     """
     ViewSet for the Detallemediopago model.

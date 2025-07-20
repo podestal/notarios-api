@@ -584,6 +584,27 @@ class Detallevehicular(models.Model):
         db_table = 'detallevehicular'
 
 
+class Detallebienes(models.Model):
+    detbien = models.AutoField(primary_key=True)
+    itemmp = models.CharField(max_length=6)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    idtipacto = models.CharField(max_length=10, blank=True, null=True)
+    tipob = models.CharField(max_length=100)
+    idtipbien = models.IntegerField()
+    coddis = models.CharField(max_length=6)
+    fechaconst = models.CharField(max_length=12)
+    oespecific = models.CharField(max_length=200)
+    smaquiequipo = models.CharField(max_length=200)
+    tpsm = models.CharField(max_length=3)
+    npsm = models.CharField(max_length=200)
+    pregistral = models.CharField(max_length=50, blank=True, null=True)
+    idsedereg = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'detallebienes'
+
+
 class Detallemediopago(models.Model):
     detmp = models.AutoField(primary_key=True)
     itemmp = models.CharField(max_length=6, blank=True, null=True)
