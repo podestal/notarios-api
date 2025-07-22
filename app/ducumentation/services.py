@@ -17,6 +17,7 @@ from notaria.models import TplTemplate, Contratantesxacto, Detallevehicular, Pat
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from .utils import NumberToLetterConverter
 import time
+from django.db import connection
 
 # Cached S3 client to avoid recreating on every request
 _s3_client = None
@@ -614,7 +615,7 @@ class VehicleTransferDocumentService:
                 contractors_data['C_OCUPACION'] = c['ocupacion']
                 contractors_data['C_ESTADO_CIVIL'] = c['estadoCivil']
                 contractors_data['C_DOMICILIO'] = 'CON DOMICILIO EN ' + c['direccion']
-                contractors_data['C_IDE'] = ' '
+                contractors_data['C_IDE'] = c['numeroDocumento'] or ' '
                 contractors_data['SEXO_C'] = c['sexo']
                 contractors_data['C_FIRMAN'] = 'FIRMA EN'
                 contractors_data['C_IMPRIME'] = 'IMPRIME'
@@ -1774,57 +1775,42 @@ class NonContentiousDocumentService:
 
 class TestamentoDocumentService:
     """
-    Django service to generate testamento documents based on the VehicleTransferDocumentService pattern
+    Django service to generate testamento documents by replicating the legacy PHP logic.
     """
     
     def __init__(self):
         self.letras = NumberToLetterConverter()
-    
+
     def generate_testamento_document(self, template_id: int, num_kardex: str, idtipoacto: str, action: str = 'generate', mode: str = "download") -> HttpResponse:
         """
-        Main method to generate testamento document
+        Main method to generate testamento document.
         """
-        start_time = time.time()
-        print(f"PERF: Starting testamento document generation for kardex: {num_kardex}")
-        
         try:
-            # Step 1: Get template from R2
-            template_start = time.time()
-            template = self._get_template_from_r2(template_id)
-            template_time = time.time() - template_start
-            print(f"PERF: Testamento template download took {template_time:.2f}s")
+            # Step 1: Fetch all data using a raw SQL query mirroring the legacy script
+            raw_data = self._fetch_all_data_raw(num_kardex)
+            if not raw_data:
+                raise ValueError(f"No data found for kardex {num_kardex}")
+
+            # Step 2: Get template from R2
+            template_bytes = self._get_template_from_r2(template_id)
             
-            # Step 2: Get document data
-            data_start = time.time()
-            document_data = self.get_document_data(num_kardex, idtipoacto)
-            data_time = time.time() - data_start
-            print(f"PERF: Testamento data retrieval took {data_time:.2f}s")
+            # Step 3: Process data into the required format for the template
+            document_data = self._get_document_data(raw_data)
+            contractors_data = self._get_contractors_data(raw_data)
             
-            # Step 3: Process document using DocxTemplate like VehicleTransferDocumentService
-            process_start = time.time()
-            doc = self._process_document(template, document_data)
-            process_time = time.time() - process_start
-            print(f"PERF: Testamento document processing took {process_time:.2f}s")
+            # Combine all data sources
+            final_data = {**document_data, **contractors_data}
             
-            # Step 4: Remove placeholders
-            cleanup_start = time.time()
+            # Step 4: Process the docx template
+            doc = self._process_document(template_bytes, final_data)
+            
+            # Step 5: Remove placeholders
             self.remove_unfilled_placeholders(doc)
-            cleanup_time = time.time() - cleanup_start
-            print(f"PERF: Testamento placeholder cleanup took {cleanup_time:.2f}s")
             
-            # Step 5: Upload to R2
-            upload_start = time.time()
-            upload_success = self.create_documento_in_r2(doc, num_kardex)
-            upload_time = time.time() - upload_start
-            print(f"PERF: Testamento R2 upload took {upload_time:.2f}s")
+            # Step 6: Upload to R2 (optional, can be disabled if not needed)
+            self.create_documento_in_r2(doc, num_kardex)
             
-            if not upload_success:
-                print(f"WARNING: Failed to upload testamento document to R2 for kardex: {num_kardex}")
-            
-            total_time = time.time() - start_time
-            print(f"PERF: Total testamento document generation took {total_time:.2f}s")
-            
-            # Step 6: Create response
+            # Step 7: Create and return the HTTP response
             filename = f"testamento_{num_kardex}.docx"
             return self._create_response(doc, filename, num_kardex, mode)
             
@@ -1832,216 +1818,205 @@ class TestamentoDocumentService:
             print(f"ERROR: Failed to generate testamento document: {str(e)}")
             import traceback
             traceback.print_exc()
-            return JsonResponse({
-                'error': f'Failed to generate testamento document: {str(e)}'
-            }, status=500)
+            return JsonResponse({'error': f'Failed to generate testamento document: {str(e)}'}, status=500)
 
-    def get_document_data(self, num_kardex: str, idtipoacto: str) -> Dict[str, str]:
+    def _fetch_all_data_raw(self, num_kardex: str) -> dict:
         """
-        Get all document data for testamento
+        Executes a raw SQL query to fetch all data in a single row, mimicking the PHP script.
         """
-        # Extract year from kardex (similar to VehicleTransferDocumentService)
-        arr_kardex = num_kardex.split('-')
-        anio_kardex = arr_kardex[1] if len(arr_kardex) > 1 else "2024"
-        
-        # Document metadata
-        document_data = self._get_document_data(num_kardex, anio_kardex)
-        
-        # Contractors data
-        contractors_data = self._get_contractors_data(num_kardex)
-        
-        # Payment data (if needed)
-        payment_data = self._get_payment_data(num_kardex)
-        
-        # Combine all data
-        document_data = {
-            **document_data,
-            **contractors_data,
-            **payment_data,
-        }
-        
-        print(f"DEBUG: Testamento document data keys: {sorted(document_data.keys())}")
-        return document_data
+        query = """
+           SELECT
+                k.idkardex as id_kardex,
+                k.kardex,
+                k.numescritura as numero_escritura,
+                k.fechaescritura as fecha_escritura,
+                k.txa_minuta as registro_escritura,
+                CURRENT_DATE() as fecha_generado,
+                k.fechaconclusion as fecha_conclusion,
+                k.numminuta as numero_minuta,
+                k.kardexconexo as kardex_conexo,
+                k.folioini as folio_inicial,
+                k.foliofin as folio_final,
+                k.papelini as papel_inicial,
+                k.papelfin as papel_final,
+                k.fechaingreso as fecha_ingreso,
+                k.responsable_new as usuario,
+                abo.razonsocial as abogado,
+                abo.matricula as matricula,
+                usu.dni as dni_usuario,
+                GROUP_CONCAT(ac.condicion SEPARATOR '|') as condiciones,
+                GROUP_CONCAT(
+                    TRIM(CONCAT_WS(' ', c2.prinom, c2.segnom, c2.apepat, c2.apemat))
+                    SEPARATOR '|'
+                ) as nombres,
+                GROUP_CONCAT(IFNULL(n.descripcion, '') SEPARATOR '|') as nacionalidades,
+                GROUP_CONCAT(IFNULL(td.destipdoc, '') SEPARATOR '|') as tipos_documento,
+                GROUP_CONCAT(IFNULL(c2.numdoc, '') SEPARATOR '|') as numeros_documento,
+                GROUP_CONCAT(IFNULL(c2.profesion_plantilla, '') SEPARATOR '|') as ocupaciones,
+                GROUP_CONCAT(IFNULL(tec.desestcivil, '') SEPARATOR '|') as estados_civil,
+                GROUP_CONCAT(c2.sexo SEPARATOR '|') as sexos,
+                GROUP_CONCAT(IFNULL(c2.direccion, '') SEPARATOR '|') as direcciones,
+                GROUP_CONCAT(IFNULL(u.nomdis, '') SEPARATOR '|') as distritos,
+                GROUP_CONCAT(IFNULL(u.nomprov, '') SEPARATOR '|') as provincias,
+                GROUP_CONCAT(IFNULL(u.nomdpto, '') SEPARATOR '|') as departamentos
+            FROM kardex k
+            LEFT JOIN contratantesxacto cxa ON k.kardex = cxa.kardex
+            LEFT JOIN cliente2 c2 ON cxa.idcontratante = c2.idcontratante
+            LEFT JOIN actocondicion ac ON cxa.idcondicion = ac.idcondicion
+            LEFT JOIN usuarios usu ON k.idusuario = usu.idusuario
+            LEFT JOIN tb_abogado abo ON k.idabogado = abo.idabogado
+            LEFT JOIN nacionalidades n ON c2.nacionalidad = n.idnacionalidad
+            LEFT JOIN tipodocumento td ON c2.idtipdoc = td.idtipdoc
+            LEFT JOIN tipoestacivil tec ON c2.idestcivil = tec.idestcivil
+            LEFT JOIN ubigeo u ON c2.idubigeo = u.coddis
+            WHERE k.kardex = %s AND c2.tipper = 'N'
+            GROUP BY k.idkardex
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query, [num_kardex])
+            desc = cursor.description
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return dict(zip([col[0] for col in desc], row))
 
-    def _get_document_data(self, num_kardex: str, anio_kardex: str) -> Dict[str, str]:
+    def _get_document_data(self, raw_data: dict) -> Dict[str, str]:
         """
-        Get basic document information - SAME AS VehicleTransferDocumentService
+        Get basic document information from the raw query data.
         """
-        kardex = Kardex.objects.filter(kardex=num_kardex).first()
-        if not kardex:
-            raise ValueError(f"Kardex {num_kardex} not found")
-        
-        # Get user information
-        usuario = kardex.responsable_new or ''
-        usuario_dni = ''
-        if kardex.idusuario:
-            user = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
-            if user:
-                usuario_dni = user.dni or ''
-        
-        # Get abogado information
-        abogado = ''
-        matricula = ''
-        if kardex.idabogado:
-            from notaria.models import TbAbogado
-            abogado_obj = TbAbogado.objects.filter(idabogado=kardex.idabogado).first()
-            if abogado_obj:
-                abogado = abogado_obj.razonsocial or ''
-                matricula = abogado_obj.matricula or ''
-        
-        numero_escritura = kardex.numescritura or ''
-        fecha_escritura = kardex.fechaescritura or datetime.now()
-        numero_minuta = kardex.numminuta or ''
-        folioini = kardex.folioini or ''
-        foliofin = kardex.foliofin or ''
-        papelini = kardex.papelini or ''
-        papelfin = kardex.papelfin or ''
+        numero_escritura = raw_data.get('numero_escritura') or ''
+        fecha_escritura = raw_data.get('fecha_escritura')
         
         return {
-            'K': num_kardex,
+            'K': raw_data.get('kardex', ''),
             'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '{{NRO_ESC}}',
-            'NUM_REG': '1',
-            'FEC_LET': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '',
-            'F_IMPRESION': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F_IMPRESION}}',
-            'USUARIO': usuario,
-            'USUARIO_DNI': usuario_dni,
-            'NRO_MIN': numero_minuta or '{{NRO_MIN}}',
-            'COMPROBANTE': ' ',
-            'O_S': ' ',
-            'ORDEN_SERVICIO': ' ',
             'F': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F}}',
-            'DESCRIPCION_SELLO': f"{abogado} CAP. {matricula}",
-            'FI': folioini or '{{FI}}',
-            'FF': foliofin or '{{FF}}',
-            'S_IN': papelini or '{{S_IN}}',
-            'S_FN': papelfin or '{{S_FN}}',
-            'FECHA_ACT': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{FECHA_ACT}}',
+            'FI': raw_data.get('folio_inicial') or '{{FI}}',
+            'FF': raw_data.get('folio_final') or '{{FF}}',
+            'S_IN': raw_data.get('papel_inicial') or '{{S_IN}}',
+            'S_FN': raw_data.get('papel_final') or '{{S_FN}}',
         }
 
-    def _get_contractors_data(self, num_kardex: str) -> dict:
+    def _get_contractors_data(self, raw_data: dict) -> dict:
         """
-        Get contractors data for Testamento, based on PHP logic and template structure.
+        Process the GROUP_CONCAT fields from the raw query to build contractor data.
         """
-        # Correctly fetch related objects to prevent ORM errors and N+1 queries.
-        contratantes_qs = Contratantes.objects.filter(kardex=num_kardex).order_by('idcontratante')
-        
-        contratante_ids = contratantes_qs.values_list('idcontratante', flat=True)
-        
-        clientes_qs = Cliente2.objects.filter(idcontratante__in=contratante_ids)
-        
-        # Manually pre-fetch related data
-        nacionalidad_ids = [c.nacionalidad for c in clientes_qs if c.nacionalidad]
-        tipodoc_ids = [c.idtipdoc for c in clientes_qs if c.idtipdoc]
-        estadocivil_ids = [c.idestcivil for c in clientes_qs if c.idestcivil]
-        ubigeo_ids = [c.idubigeo for c in clientes_qs if c.idubigeo]
-        
-        from notaria.models import Nacionalidades, Tipodocumento, Tipoestacivil, Ubigeo
-        nacionalidades_map = {n.idnacionalidad: n for n in Nacionalidades.objects.filter(idnacionalidad__in=nacionalidad_ids)}
-        tiposdoc_map = {t.idtipdoc: t for t in Tipodocumento.objects.filter(idtipdoc__in=tipodoc_ids)}
-        estadoscivil_map = {e.idestcivil: e for e in Tipoestacivil.objects.filter(idestcivil__in=estadocivil_ids)}
-        ubigeos_map = {u.coddis: u for u in Ubigeo.objects.filter(coddis__in=ubigeo_ids)}
-
-        clientes_map = {c.idcontratante: c for c in clientes_qs}
-
-        testadores = []
-        testigos = []
-        
-        for contratante_x_acto in contratantes_qs:
-            cliente = clientes_map.get(contratante_x_acto.idcontratante)
-            if not cliente:
-                continue
-
-            # Add 'condicion' to the cliente object so it can be accessed directly
-            cliente.condicion = contratante_x_acto.condicion
-
-            if cliente.condicion and cliente.condicion.upper() in ["OTORGANTE", "TESTADOR"]:
-                testadores.append(cliente)
-            elif cliente.condicion and cliente.condicion.upper() in ["TESTIGO", "TESTIGO A RUEGO"]:
-                testigos.append(cliente)
-
         data = {}
+
+        def split_if_not_none(value, separator='|'):
+            return value.split(separator) if value else []
+
+        # Extract data from the raw query result
+        condiciones = split_if_not_none(raw_data.get('condiciones'))
+        nombres = split_if_not_none(raw_data.get('nombres'))
+        nacionalidades = split_if_not_none(raw_data.get('nacionalidades'))
+        tipos_documento = split_if_not_none(raw_data.get('tipos_documento'))
+        numeros_documento = split_if_not_none(raw_data.get('numeros_documento'))
+        ocupaciones = split_if_not_none(raw_data.get('ocupaciones'))
+        estados_civil = split_if_not_none(raw_data.get('estados_civil'))
+        sexos = split_if_not_none(raw_data.get('sexos'))
+        direcciones = split_if_not_none(raw_data.get('direcciones'))
+        distritos = split_if_not_none(raw_data.get('distritos'))
+        provincias = split_if_not_none(raw_data.get('provincias'))
+        departamentos = split_if_not_none(raw_data.get('departamentos'))
+
+        # Create a list of participant dictionaries
+        participants = []
+        for i, cond in enumerate(condiciones):
+            participants.append({
+                'condicion': cond,
+                'nombre_completo': nombres[i] if i < len(nombres) else '',
+                'nacionalidad': nacionalidades[i] if i < len(nacionalidades) else '',
+                'tipo_doc': tipos_documento[i] if i < len(tipos_documento) else '',
+                'num_doc': numeros_documento[i] if i < len(numeros_documento) else '',
+                'profesion': ocupaciones[i] if i < len(ocupaciones) else '',
+                'estado_civil': estados_civil[i] if i < len(estados_civil) else '',
+                'sexo': sexos[i] if i < len(sexos) else 'M',
+                'direccion': direcciones[i] if i < len(direcciones) else '',
+                'distrito': distritos[i] if i < len(distritos) else '',
+                'provincia': provincias[i] if i < len(provincias) else '',
+                'departamento': departamentos[i] if i < len(departamentos) else '',
+            })
+            
+        testadores = [p for p in participants if p['condicion'].upper() in ["OTORGANTE", "TESTADOR"]]
+        testigos = [p for p in participants if p['condicion'].upper() in ["TESTIGO", "TESTIGO A RUEGO"]]
 
         # Process Testadores (P)
         if testadores:
             data.update(self.get_articles_and_grammar(testadores, "P"))
             person = testadores[0]
-            
-            nacionalidad_obj = nacionalidades_map.get(person.nacionalidad)
-            tipo_doc_obj = tiposdoc_map.get(person.idtipdoc)
-            estado_civil_obj = estadoscivil_map.get(person.idestcivil)
-            ubigeo_obj = ubigeos_map.get(person.idubigeo)
 
-            data['P_NOM'] = f"{person.nombre_completo}, " if person.nombre_completo else ""
-            data['P_NACIONALIDAD'] = f"{self.get_nationality_by_gender(nacionalidad_obj.nombre if nacionalidad_obj else '', person.sexo)}, "
-            data['P_DOC'] = f"{self.get_identification_phrase(person.sexo, tipo_doc_obj.nombre_corto if tipo_doc_obj else '', person.num_doc)}, "
-            data['P_OCUPACION'] = person.profesion_plantilla if hasattr(person, 'profesion_plantilla') and person.profesion_plantilla else ''
-            data['P_ESTADO_CIVIL'] = self.get_civil_status_by_gender(estado_civil_obj.nombre if estado_civil_obj else '', person.sexo)
+            p_nom = person.get('nombre_completo', '')
+            p_nac = self.get_nationality_by_gender(person.get('nacionalidad', ''), person.get('sexo'))
+            p_doc = self.get_identification_phrase(person.get('sexo'), person.get('tipo_doc'), person.get('num_doc'))
+            p_ocup = person.get('profesion', '')
+            p_est_civ = self.get_civil_status_by_gender(person.get('estado_civil', ''), person.get('sexo'))
+
+            data['P_NOM'] = f"{p_nom}, " if p_nom else ""
+            data['P_NACIONALIDAD'] = f"{p_nac}, " if p_nac else ""
+            data['P_DOC'] = f"{p_doc}, " if p_doc else ""
+            data['P_OCUPACION'] = p_ocup
+            data['P_ESTADO_CIVIL'] = f"{p_est_civ}, " if p_est_civ else ""
             
             domicilio = ""
-            if person.direccion:
-                domicilio = f', con domicilio en {person.direccion}'
-                if ubigeo_obj:
-                    domicilio += f' del distrito de {ubigeo_obj.nomdis} provincia de {ubigeo_obj.nomprov} y departamento de {ubigeo_obj.nomdpto}'
+            if person.get('direccion'):
+                domicilio = f", con domicilio en {person.get('direccion')}"
+                if person.get('distrito'):
+                    domicilio += f" del distrito de {person.get('distrito')} provincia de {person.get('provincia')} y departamento de {person.get('departamento')}"
             data['P_DOMICILIO'] = domicilio
-
             data['P_DOC_LETRAS'] = ''
             data['P_IDE'] = ''
-        else:
-            keys = ['P_NOM', 'P_NACIONALIDAD', 'P_DOC', 'P_OCUPACION', 'P_ESTADO_CIVIL', 'P_DOMICILIO', 'P_DOC_LETRAS', 'P_IDE', 'EL_P', 'INICIO_P', 'OR_P']
-            for key in keys:
-                data[key] = ''
-
+        
         # Process Testigos (C)
         if testigos:
             data.update(self.get_articles_and_grammar(testigos, "C"))
             for i, person in enumerate(testigos):
                 if i >= 2: break
-                
-                nacionalidad_obj = nacionalidades_map.get(person.nacionalidad)
-                tipo_doc_obj = tiposdoc_map.get(person.idtipdoc)
-                estado_civil_obj = estadoscivil_map.get(person.idestcivil)
-                ubigeo_obj = ubigeos_map.get(person.idubigeo)
-
                 suffix = '' if i == 0 else '_2'
-                
-                data[f'C_NOM{suffix}'] = f"{person.nombre_completo}, " if person.nombre_completo else ""
-                data[f'C_NACIONALIDAD{suffix}'] = f"{self.get_nationality_by_gender(nacionalidad_obj.nombre if nacionalidad_obj else '', person.sexo)}, "
-                data[f'C_DOC{suffix}'] = f"{self.get_identification_phrase(person.sexo, tipo_doc_obj.nombre_corto if tipo_doc_obj else '', person.num_doc)}, "
-                data[f'C_OCUPACION{suffix}'] = person.profesion_plantilla if hasattr(person, 'profesion_plantilla') and person.profesion_plantilla else ''
-                data[f'C_ESTADO_CIVIL{suffix}'] = self.get_civil_status_by_gender(estado_civil_obj.nombre if estado_civil_obj else '', person.sexo)
+
+                c_nom = person.get('nombre_completo', '')
+                c_nac = self.get_nationality_by_gender(person.get('nacionalidad', ''), person.get('sexo'))
+                c_doc = self.get_identification_phrase(person.get('sexo'), person.get('tipo_doc'), person.get('num_doc'))
+                c_ocup = person.get('profesion', '')
+                c_est_civ = self.get_civil_status_by_gender(person.get('estado_civil', ''), person.get('sexo'))
+
+                data[f'C_NOM{suffix}'] = f"{c_nom}, " if c_nom else ""
+                data[f'C_NACIONALIDAD{suffix}'] = f"{c_nac}, " if c_nac else ""
+                data[f'C_DOC{suffix}'] = f"{c_doc}, " if c_doc else ""
+                data[f'C_OCUPACION{suffix}'] = c_ocup
+                data[f'C_ESTADO_CIVIL{suffix}'] = f"{c_est_civ}, " if c_est_civ else ""
                 
                 domicilio = ""
-                if person.direccion:
-                    domicilio = f', con domicilio en {person.direccion}'
-                    if ubigeo_obj:
-                        domicilio += f' del distrito de {ubigeo_obj.nomdis} provincia de {ubigeo_obj.nomprov} y departamento de {ubigeo_obj.nomdpto}'
+                if person.get('direccion'):
+                    domicilio = f", con domicilio en {person.get('direccion')}"
+                    if person.get('distrito'):
+                        domicilio += f" del distrito de {person.get('distrito')} provincia de {person.get('provincia')} y departamento de {person.get('departamento')}"
                 data[f'C_DOMICILIO{suffix}'] = domicilio
-
                 data[f'C_DOC_LETRAS{suffix}'] = ''
                 data[f'C_IDE{suffix}'] = ''
 
-        # Clean up unused witness placeholders
-        num_testigos = len(testigos)
+        # Clean up unused placeholders and set connectives
+        self._cleanup_placeholders(data, len(testadores), len(testigos))
+        return data
+
+    def _cleanup_placeholders(self, data, num_testadores, num_testigos):
+        """Fills unused placeholders with empty strings."""
+        if num_testadores == 0:
+            for key in ['P_NOM', 'P_NACIONALIDAD', 'P_DOC', 'P_OCUPACION', 'P_ESTADO_CIVIL', 'P_DOMICILIO', 'P_DOC_LETRAS', 'P_IDE', 'EL_P', 'INICIO_P', 'OR_P']:
+                data[key] = ''
         if num_testigos < 2:
-            keys = ['NOM_2', 'NACIONALIDAD_2', 'DOC_2', 'OCUPACION_2', 'ESTADO_CIVIL_2', 'DOMICILIO_2', 'DOC_LETRAS_2', 'IDE_2']
-            for key in keys:
-                data[f'C_{key}'] = ''
-        
+            for key in ['C_NOM_2', 'C_NACIONALIDAD_2', 'C_DOC_2', 'C_OCUPACION_2', 'C_ESTADO_CIVIL_2', 'C_DOMICILIO_2', 'C_DOC_LETRAS_2', 'C_IDE_2']:
+                data[key] = ''
         if num_testigos < 1:
-            keys = ['NOM', 'NACIONALIDAD', 'DOC', 'OCUPACION', 'ESTADO_CIVIL', 'DOMICILIO', 'DOC_LETRAS', 'IDE', 'EL_C', 'INICIO_C', 'AMBOS']
-            for key in keys:
-                data[f'C_{key}'] = ''
-        
-        # Connectives for witnesses
+            for key in ['C_NOM', 'C_NACIONALIDAD', 'C_DOC', 'C_OCUPACION', 'C_ESTADO_CIVIL', 'C_DOMICILIO', 'C_DOC_LETRAS', 'C_IDE', 'EL_C', 'INICIO_C', 'C_AMBOS']:
+                data[key] = ''
         if num_testigos > 1:
             data['Y_C'] = 'y'
             data['Y_CON_C'] = 'y'
         else:
             data['Y_C'] = ''
             data['Y_CON_C'] = ''
-
-        return data
-
+    
     def _get_payment_data(self, num_kardex: str) -> Dict[str, str]:
         # This service does not seem to have payment data according to the PHP legacy code
         return {}
@@ -2205,10 +2180,15 @@ class TestamentoDocumentService:
         if not nationality:
             return ''
         nationality = nationality.strip().upper()
+        if nationality.endswith('A') or nationality.endswith('O'):
+            base_nationality = nationality[:-1]
+        else:
+            base_nationality = nationality
+
         if gender == 'F':
-            if nationality.endswith('O'):
-                return nationality[:-1] + 'A'
-        return nationality
+            return base_nationality + 'A'
+        else: # Assumes Male if not Female
+            return base_nationality + 'O'
 
     def get_articles_and_grammar(self, people, role_prefix):
         count = len(people)
@@ -2225,7 +2205,8 @@ class TestamentoDocumentService:
             return data
 
         first_person = people[0]
-        all_female = all(p.sexo == 'F' for p in people)
+        # The 'people' list now contains dicts, not objects
+        all_female = all(p['sexo'] == 'F' for p in people)
 
         if count > 1:
             data[f'EL_{role_prefix}'] = 'LAS' if all_female else 'LOS'
@@ -2235,9 +2216,9 @@ class TestamentoDocumentService:
             if role_prefix == 'C':
                 data['C_AMBOS'] = 'AMBAS' if all_female else 'AMBOS'
         else:
-            data[f'EL_{role_prefix}'] = 'LA' if first_person.sexo == 'F' else 'EL'
-            data[f'INICIO_{role_prefix}'] = ' SEÑORA' if first_person.sexo == 'F' else ' SEÑOR'
+            data[f'EL_{role_prefix}'] = 'LA' if first_person['sexo'] == 'F' else 'EL'
+            data[f'INICIO_{role_prefix}'] = ' SEÑORA' if first_person['sexo'] == 'F' else ' SEÑOR'
             if role_prefix == 'P':
-                data['OR_P'] = 'ORA' if first_person.sexo == 'F' else 'OR'
+                data['OR_P'] = 'ORA' if first_person['sexo'] == 'F' else 'OR'
         
         return data
