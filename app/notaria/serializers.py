@@ -608,6 +608,15 @@ class DetallemediopagoSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class PrediosSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Predios model.
+    """
+    class Meta:
+        model = models.Predios
+        fields = '__all__'
+
+
 class TemplateSerializer(serializers.ModelSerializer):
     """
     Serializer for the TplTemplate model.

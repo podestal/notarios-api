@@ -1369,6 +1369,34 @@ class DetallebienesViewSet(ModelViewSet):
         return Response(serializer.data)
 
 
+class PrediosViewSet(ModelViewSet):
+    """
+    ViewSet for the Predios model.
+    """
+    queryset = models.Predios.objects.all()
+    serializer_class = serializers.PrediosSerializer
+    pagination_class = pagination.KardexPagination
+
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        """
+        Get Predios records by Kardex.
+        """
+        kardex = request.query_params.get('kardex')
+        if not kardex:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+        
+        predios = models.Predios.objects.filter(kardex=kardex)
+        if not predios.exists():
+            return Response([], status=200)
+
+        serializer = serializers.PrediosSerializer(predios, many=True)
+        return Response(serializer.data)
+
+
 class DetallemediopagoViewSet(ModelViewSet):
     """
     ViewSet for the Detallemediopago model.

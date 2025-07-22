@@ -33,6 +33,7 @@ router.register('representantes', views.RepresentantesViewSet)
 router.register('patrimonial', views.PatrimonialViewSet)
 router.register('detallevehicular', views.DetalleVehicularViewSet)
 router.register('detallebienes', views.DetallebienesViewSet)
+router.register('predios', views.PrediosViewSet)
 router.register('detallemediopago', views.DetallemediopagoViewSet)
 router.register('templates', views.TemplateViewSet)
 

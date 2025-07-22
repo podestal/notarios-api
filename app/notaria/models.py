@@ -622,6 +622,28 @@ class Detallemediopago(models.Model):
         managed = False
         db_table = 'detallemediopago'
 
+
+class Predios(models.Model):
+    id_predio = models.AutoField(primary_key=True)
+    tipo = models.CharField(max_length=20)
+    tipo_zona = models.CharField(max_length=6, blank=True, null=True)
+    zona = models.CharField(max_length=200, blank=True, null=True)
+    denominacion = models.CharField(max_length=200, blank=True, null=True)
+    tipo_via = models.CharField(max_length=60, blank=True, null=True)
+    nombre_via = models.CharField(max_length=60, blank=True, null=True)
+    numero = models.CharField(max_length=10, blank=True, null=True)
+    manzana = models.CharField(max_length=10, blank=True, null=True)
+    lote = models.CharField(max_length=10, blank=True, null=True)
+    kardex = models.CharField(max_length=20, blank=True, null=True)
+    fecha_registro = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'predios'
+        unique_together = (('tipo_zona', 'zona', 'denominacion', 'tipo_via', 'nombre_via', 'numero', 'manzana', 'lote'),)
+
+
+
 class TplTemplate(models.Model):
     pktemplate = models.AutoField(db_column='pkTemplate', primary_key=True)  # Field name made lowercase.
     nametemplate = models.CharField(db_column='nameTemplate', max_length=250, blank=True, null=True)  # Field name made lowercase.
