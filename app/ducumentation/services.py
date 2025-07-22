@@ -1941,26 +1941,29 @@ class TestamentoDocumentService:
         testadores = [p for p in participants if p['condicion'].upper() in ["OTORGANTE", "TESTADOR"]]
         testigos = [p for p in participants if p['condicion'].upper() in ["TESTIGO", "TESTIGO A RUEGO"]]
 
+        print(f"DEBUG: Found {len(testadores)} testadores and {len(testigos)} testigos")
+        print(f"DEBUG: All participants: {[(p['condicion'], p['nombre_completo']) for p in participants]}")
+        
         # Process Testadores (P)
         if testadores:
             data.update(self.get_articles_and_grammar(testadores, "P"))
             person = testadores[0]
-
+            
             p_nom = person.get('nombre_completo', '')
             p_nac = self.get_nationality_by_gender(person.get('nacionalidad', ''), person.get('sexo'))
             p_doc = self.get_identification_phrase(person.get('sexo'), person.get('tipo_doc'), person.get('num_doc'))
             p_ocup = person.get('profesion', '')
             p_est_civ = self.get_civil_status_by_gender(person.get('estado_civil', ''), person.get('sexo'))
 
-            data['P_NOM'] = f"{p_nom}, " if p_nom else ""
+            data['P_NOM'] = f"{p_nom}, "
             data['P_NACIONALIDAD'] = f"{p_nac}, " if p_nac else ""
             data['P_DOC'] = f"{p_doc}, " if p_doc else ""
-            data['P_OCUPACION'] = p_ocup
-            data['P_ESTADO_CIVIL'] = f"{p_est_civ}, " if p_est_civ else ""
-            
+            data['P_OCUPACION'] = f"{p_ocup}" if p_ocup else ""
+            data['P_ESTADO_CIVIL'] = f", QUIEN DECLARA SER {p_est_civ}, " if p_est_civ else ""
+
             domicilio = ""
             if person.get('direccion'):
-                domicilio = f", con domicilio en {person.get('direccion')}"
+                domicilio = f"con domicilio en {person.get('direccion')}"
                 if person.get('distrito'):
                     domicilio += f" del distrito de {person.get('distrito')} provincia de {person.get('provincia')} y departamento de {person.get('departamento')}"
             data['P_DOMICILIO'] = domicilio
@@ -1973,22 +1976,22 @@ class TestamentoDocumentService:
             for i, person in enumerate(testigos):
                 if i >= 2: break
                 suffix = '' if i == 0 else '_2'
-
+                
                 c_nom = person.get('nombre_completo', '')
                 c_nac = self.get_nationality_by_gender(person.get('nacionalidad', ''), person.get('sexo'))
                 c_doc = self.get_identification_phrase(person.get('sexo'), person.get('tipo_doc'), person.get('num_doc'))
                 c_ocup = person.get('profesion', '')
                 c_est_civ = self.get_civil_status_by_gender(person.get('estado_civil', ''), person.get('sexo'))
 
-                data[f'C_NOM{suffix}'] = f"{c_nom}, " if c_nom else ""
+                data[f'C_NOM{suffix}'] = f"{c_nom}, "
                 data[f'C_NACIONALIDAD{suffix}'] = f"{c_nac}, " if c_nac else ""
                 data[f'C_DOC{suffix}'] = f"{c_doc}, " if c_doc else ""
-                data[f'C_OCUPACION{suffix}'] = c_ocup
-                data[f'C_ESTADO_CIVIL{suffix}'] = f"{c_est_civ}, " if c_est_civ else ""
+                data[f'C_OCUPACION{suffix}'] = f"{c_ocup}" if c_ocup else ""
+                data[f'C_ESTADO_CIVIL{suffix}'] = f", QUIEN DECLARA SER {c_est_civ}, " if c_est_civ else ""
                 
                 domicilio = ""
                 if person.get('direccion'):
-                    domicilio = f", con domicilio en {person.get('direccion')}"
+                    domicilio = f"con domicilio en {person.get('direccion')}"
                     if person.get('distrito'):
                         domicilio += f" del distrito de {person.get('distrito')} provincia de {person.get('provincia')} y departamento de {person.get('departamento')}"
                 data[f'C_DOMICILIO{suffix}'] = domicilio
@@ -2180,15 +2183,19 @@ class TestamentoDocumentService:
         if not nationality:
             return ''
         nationality = nationality.strip().upper()
-        if nationality.endswith('A') or nationality.endswith('O'):
-            base_nationality = nationality[:-1]
-        else:
-            base_nationality = nationality
-
+        
         if gender == 'F':
-            return base_nationality + 'A'
-        else: # Assumes Male if not Female
-            return base_nationality + 'O'
+            if nationality.endswith('O'):
+                return nationality[:-1] + 'A'
+            elif not nationality.endswith('A'):
+                 return nationality + 'A'
+        else: # Male
+            if nationality.endswith('A'):
+                return nationality[:-1] + 'O'
+            elif not nationality.endswith('O') and nationality:
+                return nationality + 'O'
+        
+        return nationality
 
     def get_articles_and_grammar(self, people, role_prefix):
         count = len(people)
