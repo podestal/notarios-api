@@ -35,7 +35,7 @@ from django.utils.decorators import method_decorator
 import re
 from django.urls import reverse
 from .utils import NumberToLetterConverter
-from .services import VehicleTransferDocumentService, NonContentiousDocumentService
+from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -729,6 +729,25 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
             
             tipkar = kardex_obj.idtipkar
+
+            if tipkar == 5:
+                print(f"DEBUG: Using TestamentDocumentService for tipkar {tipkar}")
+                service = TestamentoDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_testamento_document(template_id, kardex, action, mode)
             
             # Route to appropriate service based on tipkar
             if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
@@ -873,6 +892,27 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             tipkar = kardex_obj.idtipkar
             
             # Route to appropriate service based on tipkar
+
+            if tipkar == 5:
+                print(f"DEBUG: Using TestamentDocumentService for tipkar {tipkar}")
+                service = TestamentoDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_testamento_document(template_id, kardex, action, mode)
+            
+
             if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
                 print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
                 service = VehicleTransferDocumentService()

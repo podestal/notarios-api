@@ -1837,3 +1837,299 @@ class NonContentiousDocumentService:
         contractors_data.update(self.get_articles_and_grammar(acquirers, 'C'))
 
         return contractors_data
+
+class TestamentoDocumentService:
+    """
+    Django service to generate testamento (will) documents.
+    """
+
+    def __init__(self):
+        self.letras = NumberToLetterConverter()
+
+    def generate_testamento_document(self, template_id: int, num_kardex: str, action: str = 'generate', mode: str = "download") -> HttpResponse:
+        """
+        Main method to generate testamento document
+        """
+        try:
+            # 1. Get template from R2
+            template_bytes = self._get_template_from_r2(template_id)
+
+            # 2. Get document data
+            document_data = self.get_document_data(num_kardex)
+
+            # 3. Process document
+            doc = self._process_document(template_bytes, document_data)
+
+            # 4. Remove unfilled placeholders
+            self.remove_unfilled_placeholders(doc)
+
+            # 5. Upload to R2
+            self.create_documento_in_r2(doc, num_kardex)
+
+            # 6. Return response
+            return self._create_response(doc, f"__PROY__{num_kardex}.docx", num_kardex, mode)
+        except FileNotFoundError as e:
+            return HttpResponse(str(e), status=404)
+        except Exception as e:
+            return HttpResponse(f"Error generating document: {str(e)}", status=500)
+
+    def _get_template_from_r2(self, template_id: int) -> bytes:
+        template = TplTemplate.objects.get(pktemplate=template_id)
+        s3 = get_s3_client()
+        object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        s3_response = s3.get_object(
+            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+            Key=object_key
+        )
+        return s3_response['Body'].read()
+
+    def get_document_data(self, num_kardex: str) -> Dict[str, Any]:
+        """
+        Gather all data needed for the testamento document.
+        You may want to adjust this to match your testamento requirements.
+        """
+        # Example: Use the same logic as vehicle transfer, but adjust as needed
+        arr_kardex = num_kardex.split('-')
+        anio_kardex = arr_kardex[1] if len(arr_kardex) > 1 else str(datetime.now().year)
+
+        # 1. Main document data
+        document_data = self._get_document_data(num_kardex, anio_kardex)
+
+        # 2. Contractors (testators, heirs, etc.)
+        contractors_data = self._get_contractors_data(num_kardex)
+
+        # 3. Payment data (if needed)
+        payment_data = self._get_payment_data(num_kardex)
+
+        # 4. Any other data specific to testamentos
+
+        # Merge all data
+        final_data = {}
+        final_data.update(document_data)
+        final_data.update(contractors_data)
+        final_data.update(payment_data)
+        return final_data
+
+    def _get_document_data(self, num_kardex: str, anio_kardex: str) -> Dict[str, str]:
+        kardex = Kardex.objects.filter(kardex=num_kardex).first()
+        if not kardex:
+            raise ValueError(f"Kardex {num_kardex} not found")
+        usuario = kardex.responsable_new or ''
+        usuario_dni = ''
+        if kardex.idusuario:
+            user = Usuarios.objects.filter(idusuario=kardex.idusuario).first()
+            if user:
+                usuario_dni = user.dni or ''
+        numero_escritura = kardex.numescritura or ''
+        fecha_escritura = kardex.fechaescritura or datetime.now()
+        numero_minuta = kardex.numminuta or ''
+        folioini = kardex.folioini or ''
+        foliofin = kardex.foliofin or ''
+        papelini = kardex.papelini or ''
+        papelfin = kardex.papelfin or ''
+        return {
+            'K': num_kardex,
+            'NRO_ESC': f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '{{NRO_ESC}}',
+            'NUM_REG': '1',
+            'FEC_LET': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '',
+            'F_IMPRESION': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F_IMPRESION}}',
+            'USUARIO': usuario,
+            'USUARIO_DNI': usuario_dni,
+            'NRO_MIN': numero_minuta or '{{NRO_MIN}}',
+            'COMPROBANTE': ' ',
+            'O_S': ' ',
+            'ORDEN_SERVICIO': ' ',
+            'F': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F}}',
+            'FI': folioini or '{{FI}}',
+            'FF': foliofin or '{{FF}}',
+            'S_IN': papelini or '{{S_IN}}',
+            'S_FN': papelfin or '{{S_FN}}',
+        }
+
+    def _get_contractors_data(self, num_kardex: str) -> dict:
+        """
+        Returns a dict with all placeholders for testamento participants:
+        - Testador(a/es/as)
+        - Heredero(a/es/as)
+        - Apoderado(a/os/as)
+        - Representante(s)
+        Fills up to 10 for each role, with gender/plural handling.
+        """
+        from notaria.models import Contratantesxacto, Cliente2, Actocondicion, Nacionalidades, Ubigeo
+
+        # Fetch all contratantes for this kardex
+        contratantes = Contratantesxacto.objects.filter(kardex=num_kardex)
+        contratante_ids = [cxa.idcontratante for cxa in contratantes]
+        clientes = {c.idcontratante: c for c in Cliente2.objects.filter(idcontratante__in=contratante_ids)}
+        condiciones = {c.idcondicion: c for c in Actocondicion.objects.filter(idcondicion__in=[cxa.idcondicion for cxa in contratantes])}
+        nacionalidades = {n.idnacionalidad: n for n in Nacionalidades.objects.all()}
+        ubigeos = {u.coddis: u for u in Ubigeo.objects.all()}
+
+        # Classify by role
+        TESTADOR_ROLES = {'TESTADOR', 'TESTADORA'}
+        HEREDERO_ROLES = {'HEREDERO', 'HEREDERA'}
+        APODERADO_ROLES = {'APODERADO', 'APODERADA'}
+        REPRESENTANTE_ROLES = {'REPRESENTANTE'}
+
+        testadores, herederos, apoderados, representantes = [], [], [], []
+
+        for cxa in contratantes:
+            cliente = clientes.get(cxa.idcontratante)
+            if not cliente:
+                continue
+            condicion = condiciones.get(cxa.idcondicion)
+            role = (condicion.condicion or '').upper() if condicion else ''
+            sexo = cliente.sexo or 'M'
+            nombres = cliente.razonsocial if cliente.tipper == 'J' else f"{cliente.prinom or ''} {cliente.segnom or ''} {cliente.apepat or ''} {cliente.apemat or ''}".strip()
+            nacionalidad = ''
+            if cliente.nacionalidad:
+                nac_obj = nacionalidades.get(cliente.nacionalidad)
+                nacionalidad = nac_obj.descripcion if nac_obj else ''
+            tipo_doc = cliente.idtipdoc or ''
+            num_doc = cliente.numdoc or ''
+            ocupacion = cliente.profesion_plantilla or ''
+            estado_civil = cliente.idestcivil or ''
+            direccion = cliente.direccion or cliente.domfiscal or ''
+            if cliente.idubigeo:
+                ubigeo = ubigeos.get(cliente.idubigeo)
+                if ubigeo:
+                    direccion = f"{direccion} DEL DISTRITO DE {ubigeo.nomdis or ''} PROVINCIA DE {ubigeo.nomprov or ''} Y DEPARTAMENTO DE {ubigeo.nomdpto or ''}"
+
+            person = {
+                'nombres': nombres,
+                'sexo': sexo,
+                'nacionalidad': nacionalidad,
+                'tipo_doc': tipo_doc,
+                'num_doc': num_doc,
+                'ocupacion': ocupacion,
+                'estado_civil': estado_civil,
+                'direccion': direccion,
+            }
+
+            if role in TESTADOR_ROLES:
+                testadores.append(person)
+            elif role in HEREDERO_ROLES:
+                herederos.append(person)
+            elif role in APODERADO_ROLES:
+                apoderados.append(person)
+            elif role in REPRESENTANTE_ROLES:
+                representantes.append(person)
+
+        # Helper to fill up to 10 placeholders per role
+        def fill_role(role_prefix, people):
+            data = {}
+            for idx in range(1, 11):
+                if idx <= len(people):
+                    p = people[idx-1]
+                    data[f'{role_prefix}_NOM_{idx}'] = p['nombres'] + ', '
+                    data[f'{role_prefix}_NACIONALIDAD_{idx}'] = p['nacionalidad'] + ', '
+                    data[f'{role_prefix}_TIP_DOC_{idx}'] = p['tipo_doc']
+                    data[f'{role_prefix}_DOC_{idx}'] = (
+                        f"IDENTIFICADA CON {p['tipo_doc']} N° {p['num_doc']}, " if p['sexo'] == 'F'
+                        else f"IDENTIFICADO CON {p['tipo_doc']} N° {p['num_doc']}, "
+                    )
+                    data[f'{role_prefix}_OCUPACION_{idx}'] = p['ocupacion']
+                    data[f'{role_prefix}_ESTADO_CIVIL_{idx}'] = p['estado_civil']
+                    data[f'{role_prefix}_DOMICILIO_{idx}'] = 'CON DOMICILIO EN ' + p['direccion']
+                    data[f'SEXO_{role_prefix}_{idx}'] = p['sexo']
+                else:
+                    # Empty placeholder
+                    data[f'{role_prefix}_NOM_{idx}'] = f'{{{{{role_prefix}_NOM_{idx}}}}}'
+                    data[f'{role_prefix}_NACIONALIDAD_{idx}'] = f'{{{{{role_prefix}_NACIONALIDAD_{idx}}}}}'
+                    data[f'{role_prefix}_TIP_DOC_{idx}'] = f'{{{{{role_prefix}_TIP_DOC_{idx}}}}}'
+                    data[f'{role_prefix}_DOC_{idx}'] = f'{{{{{role_prefix}_DOC_{idx}}}}}'
+                    data[f'{role_prefix}_OCUPACION_{idx}'] = f'{{{{{role_prefix}_OCUPACION_{idx}}}}}'
+                    data[f'{role_prefix}_ESTADO_CIVIL_{idx}'] = f'{{{{{role_prefix}_ESTADO_CIVIL_{idx}}}}}'
+                    data[f'{role_prefix}_DOMICILIO_{idx}'] = f'{{{{{role_prefix}_DOMICILIO_{idx}}}}}'
+                    data[f'SEXO_{role_prefix}_{idx}'] = f'{{{{SEXO_{role_prefix}_{idx}}}}}'
+            # Also fill unnumbered for first person
+            if people:
+                p = people[0]
+                data[f'{role_prefix}_NOM'] = p['nombres'] + ', '
+                data[f'{role_prefix}_NACIONALIDAD'] = p['nacionalidad'] + ', '
+                data[f'{role_prefix}_TIP_DOC'] = p['tipo_doc']
+                data[f'{role_prefix}_DOC'] = (
+                    f"IDENTIFICADA CON {p['tipo_doc']} N° {p['num_doc']}, " if p['sexo'] == 'F'
+                    else f"IDENTIFICADO CON {p['tipo_doc']} N° {p['num_doc']}, "
+                )
+                data[f'{role_prefix}_OCUPACION'] = p['ocupacion']
+                data[f'{role_prefix}_ESTADO_CIVIL'] = p['estado_civil']
+                data[f'{role_prefix}_DOMICILIO'] = 'CON DOMICILIO EN ' + p['direccion']
+                data[f'SEXO_{role_prefix}'] = p['sexo']
+            else:
+                data[f'{role_prefix}_NOM'] = f'{{{{{role_prefix}_NOM}}}}'
+                data[f'{role_prefix}_NACIONALIDAD'] = f'{{{{{role_prefix}_NACIONALIDAD}}}}'
+                data[f'{role_prefix}_TIP_DOC'] = f'{{{{{role_prefix}_TIP_DOC}}}}'
+                data[f'{role_prefix}_DOC'] = f'{{{{{role_prefix}_DOC}}}}'
+                data[f'{role_prefix}_OCUPACION'] = f'{{{{{role_prefix}_OCUPACION}}}}'
+                data[f'{role_prefix}_ESTADO_CIVIL'] = f'{{{{{role_prefix}_ESTADO_CIVIL}}}}'
+                data[f'{role_prefix}_DOMICILIO'] = f'{{{{{role_prefix}_DOMICILIO}}}}'
+                data[f'SEXO_{role_prefix}'] = f'{{{{SEXO_{role_prefix}}}}}'
+            return data
+
+        # Build the context dict
+        context = {}
+        context.update(fill_role('T', testadores))      # T_ for Testador
+        context.update(fill_role('H', herederos))       # H_ for Heredero
+        context.update(fill_role('A', apoderados))      # A_ for Apoderado
+        context.update(fill_role('R', representantes))  # R_ for Representante
+
+        # You can add more roles as needed
+
+        return context
+
+    def _get_payment_data(self, num_kardex: str) -> Dict[str, str]:
+        """
+        If payment data is needed for testamentos, implement here.
+        Otherwise, return an empty dict.
+        """
+        return {}
+
+    def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> DocxTemplate:
+        buffer = io.BytesIO(template_bytes)
+        doc = DocxTemplate(buffer)
+        doc.render(data)
+        return doc
+
+    def remove_unfilled_placeholders(self, doc):
+        """
+        Remove all unused {{SOMETHING}} placeholders by making them white (invisible).
+        """
+        import re
+        curly_placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
+        for paragraph in doc.docx.paragraphs:
+            for run in paragraph.runs:
+                if curly_placeholder_pattern.search(run.text):
+                    run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+
+    def create_documento_in_r2(self, doc, kardex):
+        """
+        Upload the generated document to R2.
+        """
+        from io import BytesIO
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+        s3 = get_s3_client()
+        s3.upload_fileobj(
+            buffer,
+            os.environ.get('CLOUDFLARE_R2_BUCKET'),
+            object_key
+        )
+
+    def _create_response(self, doc, filename: str, kardex: str, mode: str = "download") -> HttpResponse:
+        """
+        Return the generated document as an HTTP response.
+        """
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        response = HttpResponse(
+            buffer.read(),
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['Content-Length'] = str(buffer.getbuffer().nbytes)
+        response['Access-Control-Allow-Origin'] = '*'
+        return response
