@@ -6,6 +6,27 @@ They are used to define the fields and relationships between the tables.
 They are also used to define the database constraints and indexes.
 '''
 
+class Tipodocumento(models.Model):
+    idtipdoc = models.AutoField(primary_key=True)
+    codtipdoc = models.CharField(max_length=3)
+    destipdoc = models.CharField(max_length=50)
+    td_abrev = models.CharField(max_length=10, blank=True, null=True)
+    sunat = models.IntegerField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tipodocumento'
+
+
+class Tipoestacivil(models.Model):
+    idestcivil = models.AutoField(primary_key=True)
+    codestcivil = models.CharField(max_length=2)
+    desestcivil = models.CharField(max_length=50)
+
+    class Meta:
+        managed = False
+        db_table = 'tipoestacivil'
+
 
 class Usuarios(models.Model):
     """

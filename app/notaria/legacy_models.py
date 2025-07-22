@@ -8,21 +8,11 @@
 from django.db import models
 
 
-class Predios(models.Model):
-    id_predio = models.AutoField(primary_key=True)
-    tipo = models.CharField(max_length=20)
-    tipo_zona = models.CharField(max_length=6, blank=True, null=True)
-    zona = models.CharField(max_length=200, blank=True, null=True)
-    denominacion = models.CharField(max_length=200, blank=True, null=True)
-    tipo_via = models.CharField(max_length=60, blank=True, null=True)
-    nombre_via = models.CharField(max_length=60, blank=True, null=True)
-    numero = models.CharField(max_length=10, blank=True, null=True)
-    manzana = models.CharField(max_length=10, blank=True, null=True)
-    lote = models.CharField(max_length=10, blank=True, null=True)
-    kardex = models.CharField(max_length=20, blank=True, null=True)
-    fecha_registro = models.DateTimeField(blank=True, null=True)
+class Tipoestacivil(models.Model):
+    idestcivil = models.AutoField(primary_key=True)
+    codestcivil = models.CharField(max_length=2)
+    desestcivil = models.CharField(max_length=50)
 
     class Meta:
         managed = False
-        db_table = 'predios'
-        unique_together = (('tipo_zona', 'zona', 'denominacion', 'tipo_via', 'nombre_via', 'numero', 'manzana', 'lote'),)
+        db_table = 'tipoestacivil'
