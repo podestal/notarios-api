@@ -1476,6 +1476,6 @@ class LegalizacionViewSet(ModelViewSet):
     """
     ViewSet for the Legalizacion model.
     """
-    queryset = models.Legalizacion.objects.all()
+    queryset = models.Legalizacion.objects.all().order_by('-idlegalizacion')
     serializer_class = serializers.LegalizacionSerializer
     pagination_class = pagination.KardexPagination
