@@ -2444,25 +2444,25 @@ class GarantiasMobiliariasDocumentService:
         """
         Get vehicle data - mirrors get_data_vehiculos PHP function
         """
-        sede = raw_data.get('sede', '')
+        sede = raw_data.get('sede') or ''
         sede_parts = sede.split('-') if sede else ['', '']
         sede_name = sede_parts[1].strip() if len(sede_parts) > 1 else ''
         
         return {
-            'PLACA': (raw_data.get('placa') or '').upper(),
-            'CLASE': (raw_data.get('clase') or '').upper(),
-            'MARCA': (raw_data.get('marca') or '').upper(),
-            'MODELO': (raw_data.get('modelo') or '').upper(),
-            'AÑO_FABRICACION': (raw_data.get('anio') or '').upper(),
-            'CARROCERIA': (raw_data.get('carroceria') or '').upper(),
-            'COLOR': (raw_data.get('color') or '').upper(),
-            'NRO_MOTOR': (raw_data.get('motor') or '').upper(),
-            'NRO_SERIE': (raw_data.get('serie') or '').upper(),
-            'FEC_INS': (raw_data.get('fecha_inscripcion') or '').upper(),
-            'FECHA_INSCRIPCION': (raw_data.get('fecha_inscripcion') or '').upper(),
-            'ZONA_REGISTRAL': sede.upper(),
-            'NUM_ZONA_REG': (raw_data.get('numero_zona') or '').upper(),
-            'SEDE': sede_name.upper(),
+            'PLACA': str(raw_data.get('placa') or '').upper(),
+            'CLASE': str(raw_data.get('clase') or '').upper(),
+            'MARCA': str(raw_data.get('marca') or '').upper(),
+            'MODELO': str(raw_data.get('modelo') or '').upper(),
+            'AÑO_FABRICACION': str(raw_data.get('anio') or '').upper(),
+            'CARROCERIA': str(raw_data.get('carroceria') or '').upper(),
+            'COLOR': str(raw_data.get('color') or '').upper(),
+            'NRO_MOTOR': str(raw_data.get('motor') or '').upper(),
+            'NRO_SERIE': str(raw_data.get('serie') or '').upper(),
+            'FEC_INS': str(raw_data.get('fecha_inscripcion') or '').upper(),
+            'FECHA_INSCRIPCION': str(raw_data.get('fecha_inscripcion') or '').upper(),
+            'ZONA_REGISTRAL': str(sede).upper(),
+            'NUM_ZONA_REG': str(raw_data.get('numero_zona') or '').upper(),
+            'SEDE': str(sede_name).upper(),
             'INSTRUIDO': ' ',
             'COMBUSTIBLE': ' ',
             'NRO_TARJETA': ' ',
