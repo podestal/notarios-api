@@ -2229,3 +2229,680 @@ class TestamentoDocumentService:
                 data['OR_P'] = 'ORA' if first_person['sexo'] == 'F' else 'OR'
         
         return data
+
+
+class GarantiasMobiliariasDocumentService:
+    """
+    Django service to generate garantias mobiliarias documents based on the PHP legacy script
+    """
+    
+    def __init__(self):
+        self.letras = NumberToLetterConverter()
+    
+    def generate_garantias_mobiliarias_document(self, template_id: int, num_kardex: str, idtipoacto: str, action: str = 'generate', mode: str = "download") -> HttpResponse:
+        """
+        Main method to generate garantias mobiliarias document
+        """
+        try:
+            # Step 1: Fetch all data using raw SQL query mirroring the PHP script
+            raw_data = self._consulta_transferencia(num_kardex, idtipoacto, template_id)
+            if not raw_data:
+                raise ValueError(f"No data found for kardex {num_kardex}")
+
+            # Step 2: Get template from R2
+            template_bytes = self._get_template_from_r2(template_id)
+            
+            # Step 3: Process data into the required format for the template
+            document_data = self._get_data_documento(raw_data)
+            vehiculos_data = self._get_data_vehiculos(raw_data)
+            pagos_data = self._get_data_pagos(raw_data)
+            contratantes_data = self._get_data_contratantes(raw_data)
+            escrituracion_data = self._get_data_escrituracion(raw_data)
+            
+            # Step 4: Process contratantes data and add empty placeholders
+            contratantes_processed = self._process_contratantes_data(contratantes_data)
+            articulos_contratantes = self._get_articulos_contratantes(contratantes_data)
+            
+            # Step 5: Combine all data sources
+            final_data = {}
+            final_data.update(document_data)
+            final_data.update(vehiculos_data)
+            final_data.update(pagos_data)
+            final_data.update(contratantes_processed)
+            final_data.update(articulos_contratantes)
+            final_data.update(escrituracion_data)
+            
+            # Step 6: Process the docx template
+            doc = self._process_document(template_bytes, final_data)
+            
+            # Step 7: Remove placeholders
+            self.remove_unfilled_placeholders(doc)
+            
+            # Step 8: Upload to R2 (optional)
+            self.create_documento_in_r2(doc, num_kardex)
+            
+            # Step 9: Create and return the HTTP response
+            filename = f"garantias_mobiliarias_{num_kardex}.docx"
+            return self._create_response(doc, filename, num_kardex, mode)
+            
+        except Exception as e:
+            print(f"ERROR: Failed to generate garantias mobiliarias document: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({'error': f'Failed to generate garantias mobiliarias document: {str(e)}'}, status=500)
+
+    def _consulta_transferencia(self, num_kardex: str, idtipoacto: str, template_id: int) -> dict:
+        """
+        Raw SQL query that mirrors the PHP consulta_transferencia function
+        """
+        query = """
+            SELECT k.idkardex as id_kardex,
+                k.kardex,
+                k.numescritura as numero_escritura,
+                k.fechaescritura as fecha_escritura,
+                k.txa_minuta as registro_escritura,
+                CURRENT_DATE() as fecha_generado,
+                k.fechaconclusion as fecha_conclusion,
+                k.numminuta as numero_minuta,
+                k.kardexconexo as kardex_conexo,
+                k.folioini as folio_inicial, 
+                k.foliofin as folio_final, 
+                k.papelini as papel_inicial, 
+                k.papelfin as papel_final,
+                (SELECT desacto FROM tiposdeacto WHERE idtipoacto=%s) as acto,
+                (SELECT fileName FROM tpl_template WHERE pkTemplate=%s) as plantilla,
+                (SELECT urlTemplate FROM tpl_template WHERE pkTemplate=%s) as url_plantilla,
+                k.fechaingreso as fecha_ingreso,
+                k.responsable_new as usuario,
+                abo.razonsocial as abogado,
+                abo.matricula as matricula,
+                usu.dni as dni_usuario,
+                GROUP_CONCAT(cxa.idcontratante) as id_contratante,
+                GROUP_CONCAT(TRIM(CONCAT(IFNULL(c2.prinom, ''), ' ', IFNULL(c2.segnom, ''), ' ',IFNULL(c2.apepat, ''), ' ',IFNULL(c2.apemat, ''),
+            IFNULL(c2.razonsocial, '')))) AS nombres,
+                GROUP_CONCAT(cxa.uif) as uif,
+                GROUP_CONCAT(ac.condicion) as condicion,
+                GROUP_CONCAT(IF(n.descripcion IS NULL OR n.descripcion='','EMPRESA',n.descripcion)) as nacionalidad,
+                GROUP_CONCAT(td.destipdoc) as tipo_documento,
+                GROUP_CONCAT(c2.numdoc) AS numero_documento,
+                GROUP_CONCAT(UPPER(c2.profesion_plantilla)) AS ocupacion,
+                GROUP_CONCAT(IF(tec.desestcivil IS NULL OR tec.desestcivil='','EMPRESA',tec.desestcivil)) as estado_civil,
+                GROUP_CONCAT(IF(c2.tipper='N',c2.direccion,c2.domfiscal)) as direccion,
+                GROUP_CONCAT(IFNULL(u.codpto, '')) as codigo_departamento,
+                GROUP_CONCAT(IFNULL(u.coddis, '')) as codigo_distrito,
+                GROUP_CONCAT(IFNULL(u.codprov, '')) as codigo_provincia,
+                GROUP_CONCAT(IFNULL(IF(SUBSTRING_INDEX(c2.ubigeo_plantilla, '/', -1)='',u.nomdis,SUBSTRING_INDEX(c2.ubigeo_plantilla, '/', -1)),(IFNULL(u.nomdis, '')))) AS distrito,
+                GROUP_CONCAT(IFNULL(u.nomprov, '')) as provincia,
+                GROUP_CONCAT(IFNULL(u.nomdpto, '')) as departamento,
+                GROUP_CONCAT(c2.sexo) AS sexo,
+                GROUP_CONCAT(c2.tipper) as tipo_persona,
+                GROUP_CONCAT(IF(cn.firma = '0', 'NO', 'SI')) AS firma,
+                GROUP_CONCAT(cn.firma) as n_firma,
+                GROUP_CONCAT(cn.tiporepresentacion) AS tipo_representacion,
+                dv.numplaca AS placa, 
+                dv.marca AS marca, 
+                dv.clase AS clase,
+                dv.anofab AS anio,
+                dv.numserie AS serie, 
+                dv.color AS color,
+                dv.motor AS motor, 
+                dv.modelo AS modelo, 
+                dv.carroceria AS carroceria,
+                dv.pregistral as partida,
+                dv.fecinsc AS fecha_inscripcion,
+                dv.combustible AS combustible,
+                UPPER(sr.dessede) AS sede,
+                UPPER(sr.num_zona) AS numero_zona,
+                pat.importetrans AS precio , 
+                pat.idmon AS moneda,
+                pat.exhibiomp, 
+                pat.idoppago, 
+                uif.descripcion AS medio_pago, 
+                mon.simbolo as simbolo_moneda,
+                mon.desmon as descripcion_moneda,
+                mp.desmpagos as descripcion_medio_pago,
+                mp.sunat as sunat_medio_pago,
+                GROUP_CONCAT(cnr.idcontratanterp) as id_empresa,
+                GROUP_CONCAT(TRIM(CONCAT(IFNULL(cr2.prinom, ''), ' ', IFNULL(cr2.segnom, ''), ' ',IFNULL(cr2.apepat, ''), ' ',IFNULL(cr2.apemat, ''),
+            IFNULL(cr2.razonsocial, '')))) AS nombre_empresa,
+                GROUP_CONCAT(cr2.tipper) as tipo_persona_empresa,
+                GROUP_CONCAT(acr.condicion) as condicion_empresa,
+                GROUP_CONCAT(tdr.destipdoc) as tipo_documento_empresa,
+                GROUP_CONCAT(cr2.numdoc) AS numero_documento_empresa,
+                GROUP_CONCAT(cr2.domfiscal) as domicilio_empresa,
+                GROUP_CONCAT(ur.nomdis) as distrito_empresa,
+                GROUP_CONCAT(ur.nomprov) as provincia_empresa,
+                GROUP_CONCAT(ur.nomdpto) as departamento_empresa
+            FROM kardex as k
+            LEFT JOIN tb_abogado as abo on abo.idabogado=k.idabogado
+            LEFT JOIN usuarios as usu on usu.idusuario=k.idusuario
+            LEFT JOIN contratantesxacto as cxa on cxa.kardex=k.kardex
+            LEFT JOIN actocondicion as ac ON cxa.idcondicion=ac.idcondicion
+            LEFT JOIN contratantes cn ON cxa.idcontratante = cn.idcontratante
+            LEFT JOIN cliente2 as c2 on c2.idcontratante=cxa.idcontratante
+            LEFT JOIN nacionalidades as n on n.idnacionalidad=c2.nacionalidad
+            LEFT JOIN tipodocumento as td ON td.idtipdoc = c2.idtipdoc
+            LEFT OUTER JOIN tipoestacivil as tec ON tec.idestcivil = c2.idestcivil
+            LEFT OUTER JOIN ubigeo as u ON u.coddis = c2.idubigeo
+            LEFT JOIN detallevehicular as dv ON dv.kardex=k.kardex
+            LEFT JOIN sedesregistrales as sr ON sr.idsedereg=dv.idsedereg
+            LEFT JOIN patrimonial as pat ON pat.kardex=k.kardex
+            LEFT JOIN fpago_uif as uif ON uif.id_fpago = pat.fpago
+            LEFT JOIN monedas as mon ON mon.idmon = pat.idmon
+            LEFT JOIN detallemediopago as dmp ON pat.kardex = dmp.kardex
+            LEFT JOIN mediospago as mp ON dmp.codmepag = mp.codmepag
+            LEFT JOIN contratantes as cnr ON cxa.idcontratante = cnr.idcontratante
+            LEFT JOIN contratantesxacto as cxar on cxar.idcontratante=cnr.idcontratanterp
+            LEFT JOIN actocondicion as acr ON acr.idcondicion=cxar.idcondicion
+            LEFT JOIN cliente2 as cr2 on cr2.idcontratante=cnr.idcontratanterp
+            left JOIN nacionalidades as nr on nr.idnacionalidad=cr2.nacionalidad
+            LEFT JOIN tipodocumento as tdr ON tdr.idtipdoc = cr2.idtipdoc
+            LEFT OUTER JOIN tipoestacivil as tecr ON tecr.idestcivil = cr2.idestcivil
+            LEFT OUTER JOIN ubigeo as ur ON ur.coddis = cr2.idubigeo
+            WHERE k.kardex=%s and (c2.tipper='N')
+            GROUP BY k.idkardex
+        """
+        
+        with connection.cursor() as cursor:
+            cursor.execute(query, [idtipoacto, template_id, template_id, num_kardex])
+            desc = cursor.description
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return dict(zip([col[0] for col in desc], row))
+
+    def _get_data_documento(self, raw_data: dict) -> Dict[str, str]:
+        """
+        Get basic document information - mirrors get_data_documento PHP function
+        """
+        numero_escritura = raw_data.get('numero_escritura') or ''
+        fecha_escritura = raw_data.get('fecha_escritura')
+        numero_minuta = raw_data.get('numero_minuta') or ''
+        
+        numero_acta = f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})" if numero_escritura else '{{NRO_ESC}}'
+        fecha_impresion = self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F_IMPRESION}}'
+        fecha_acta = self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '{{F}}'
+        numero_minuta_formatted = numero_minuta if numero_minuta else '{{NRO_MIN}}'
+        
+        return {
+            'NRO_ESC': numero_acta,
+            'K': raw_data.get('kardex', ''),
+            'NUM_REG': '1',
+            'FEC_LET': self.letras.date_to_letters(fecha_escritura) if fecha_escritura else '',
+            'F_IMPRESION': fecha_impresion,
+            'USUARIO': raw_data.get('usuario', ''),
+            'USUARIO_DNI': raw_data.get('dni_usuario', ''),
+            'NRO_MIN': numero_minuta_formatted,
+            'COMPROBANTE': ' ',
+            'O_S': raw_data.get('kardex', ''),  # ORDEN DE SERVICIO
+            'ORDEN_SERVICIO': ' ',
+            'F': fecha_acta,
+            'DESCRIPCION_SELLO': f"{raw_data.get('abogado', '')} CAP. {raw_data.get('matricula', '')}",
+        }
+
+    def _get_data_vehiculos(self, raw_data: dict) -> Dict[str, str]:
+        """
+        Get vehicle data - mirrors get_data_vehiculos PHP function
+        """
+        sede = raw_data.get('sede', '')
+        sede_parts = sede.split('-') if sede else ['', '']
+        sede_name = sede_parts[1].strip() if len(sede_parts) > 1 else ''
+        
+        return {
+            'PLACA': (raw_data.get('placa') or '').upper(),
+            'CLASE': (raw_data.get('clase') or '').upper(),
+            'MARCA': (raw_data.get('marca') or '').upper(),
+            'MODELO': (raw_data.get('modelo') or '').upper(),
+            'AÑO_FABRICACION': (raw_data.get('anio') or '').upper(),
+            'CARROCERIA': (raw_data.get('carroceria') or '').upper(),
+            'COLOR': (raw_data.get('color') or '').upper(),
+            'NRO_MOTOR': (raw_data.get('motor') or '').upper(),
+            'NRO_SERIE': (raw_data.get('serie') or '').upper(),
+            'FEC_INS': (raw_data.get('fecha_inscripcion') or '').upper(),
+            'FECHA_INSCRIPCION': (raw_data.get('fecha_inscripcion') or '').upper(),
+            'ZONA_REGISTRAL': sede.upper(),
+            'NUM_ZONA_REG': (raw_data.get('numero_zona') or '').upper(),
+            'SEDE': sede_name.upper(),
+            'INSTRUIDO': ' ',
+            'COMBUSTIBLE': ' ',
+            'NRO_TARJETA': ' ',
+        }
+
+    def _get_data_pagos(self, raw_data: dict) -> Dict[str, str]:
+        """
+        Get payment data - mirrors get_data_pagos PHP function
+        """
+        sunat_medio_pago = raw_data.get('sunat_medio_pago', '008')
+        precio = raw_data.get('precio', 0)
+        moneda = raw_data.get('moneda', 1)
+        simbolo_moneda = raw_data.get('simbolo_moneda', '')
+        
+        # Payment method logic matching PHP switch statement
+        if sunat_medio_pago == '008':
+            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            fin_medio_pago = 'EN DINERO EN EFECTIVO'
+            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
+        elif sunat_medio_pago == '009':
+            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            fin_medio_pago = 'EN DINERO EN EFECTIVO'
+            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
+        else:
+            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO CON CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018 EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "CHEQUE -001" '
+            exhibio_medio_pago = 'EN APLICACIÓN DE LA LEY 30730, SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES ME HAN EXHIBIDO EL SIGUIENTE MEDIO DE PAGO: ……… CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018. DOY FE.'
+            fin_medio_pago = 'EN DINERO EN EFECTIVO'
+            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
+        
+        # Get moneda description from constants
+        descripcion_moneda = MONEDAS.get(moneda, {}).get('desmon', '') if moneda else ''
+        
+        return {
+            'MONTO': str(precio),
+            'MON_VEHI': descripcion_moneda,
+            'MONTO_LETRAS': self.letras.money_to_letters(descripcion_moneda, Decimal(str(precio))),
+            'MONEDA_C': simbolo_moneda + ' ' if simbolo_moneda else '',
+            'SUNAT_MED_PAGO': sunat_medio_pago,
+            'DES_PRE_VEHI': self.letras.money_to_letters(descripcion_moneda, Decimal(str(precio))),
+            'EXH_MED_PAGO': exhibio_medio_pago,
+            'MED_PAGO': medio_pago,
+            'FIN_MED_PAGO': fin_medio_pago,
+            'FORMA_PAGO': forma_pago,
+            'C_INICIO_MP': '',
+            'TIPO_PAGO_E': '',
+            'TIPO_PAGO_C': '',
+            'MONTO_MP': '',
+            'CONSTANCIA': '',
+            'DETALLE_MP': '',
+            'FORMA_PAGO_S': '',
+            'MONEDA_C_MP': '',
+            'MEDIO_PAGO_C': '',
+            'MP_MEDIO_PAGO': '',
+            'MP_COMPLETO': '',
+            'USO': '',
+        }
+
+    def _get_data_contratantes(self, raw_data: dict) -> Dict[str, list]:
+        """
+        Get contractors data - mirrors get_data_contratantes PHP function
+        """
+        def split_if_not_none(value, separator=','):
+            return value.split(separator) if value else []
+
+        # Extract data from raw query result
+        condiciones = split_if_not_none(raw_data.get('condicion'))
+        nombres = split_if_not_none(raw_data.get('nombres'))
+        nacionalidades = split_if_not_none(raw_data.get('nacionalidad'))
+        tipos_documento = split_if_not_none(raw_data.get('tipo_documento'))
+        numeros_documento = split_if_not_none(raw_data.get('numero_documento'))
+        ocupaciones = split_if_not_none(raw_data.get('ocupacion'))
+        estados_civil = split_if_not_none(raw_data.get('estado_civil'))
+        direcciones = split_if_not_none(raw_data.get('direccion'))
+        distritos = split_if_not_none(raw_data.get('distrito'))
+        provincias = split_if_not_none(raw_data.get('provincia'))
+        departamentos = split_if_not_none(raw_data.get('departamento'))
+        sexos = split_if_not_none(raw_data.get('sexo'))
+        
+        # Company data
+        nombres_empresa = split_if_not_none(raw_data.get('nombre_empresa'))
+        numeros_documento_empresa = split_if_not_none(raw_data.get('numero_documento_empresa'))
+        direcciones_empresa = split_if_not_none(raw_data.get('domicilio_empresa'))
+        distritos_empresa = split_if_not_none(raw_data.get('distrito_empresa'))
+        provincias_empresa = split_if_not_none(raw_data.get('provincia_empresa'))
+        departamentos_empresa = split_if_not_none(raw_data.get('departamento_empresa'))
+        condiciones_empresa = split_if_not_none(raw_data.get('condicion_empresa'))
+        
+        transferentes = []
+        adquirientes = []
+        empresas = []
+        
+        contador_vendedor = 1
+        contador_adquiriente = 1
+        contador_empresa = 1
+        
+        # Process each contractor
+        for k, condicion in enumerate(condiciones):
+            if not condicion:
+                continue
+                
+            # TRANSFERENTES (VENDEDOR, PODERDANTE, etc.)
+            if condicion in ['VENDEDOR', 'PODERDANTE', 'OTORGANTE', 'REPRESENTANTE', 'ANTICIPANTE', 'ADJUDICANTE', 'DONANTE', 'USUFRUCTUANTE', 'TRANSFERENTE']:
+                agregado = '' if contador_vendedor == 1 else f'_{contador_vendedor}'
+                
+                sexo = sexos[k] if k < len(sexos) else 'M'
+                nombre = nombres[k] if k < len(nombres) else ''
+                nacionalidad = nacionalidades[k] if k < len(nacionalidades) else ''
+                tipo_doc = tipos_documento[k] if k < len(tipos_documento) else ''
+                num_doc = numeros_documento[k] if k < len(numeros_documento) else ''
+                ocupacion = ocupaciones[k] if k < len(ocupaciones) else ''
+                estado_civil = estados_civil[k] if k < len(estados_civil) else ''
+                direccion = direcciones[k] if k < len(direcciones) else ''
+                distrito = distritos[k] if k < len(distritos) else ''
+                provincia = provincias[k] if k < len(provincias) else ''
+                departamento = departamentos[k] if k < len(departamentos) else ''
+                
+                # Gender-specific formatting
+                if sexo == 'F':
+                    documento_texto = f'IDENTIFICADA CON DNI N° {num_doc}, '
+                    nacionalidad_texto = nacionalidad[:-1] + 'A, ' if nacionalidad.endswith('O') else nacionalidad + ', '
+                    estado_civil_texto = estado_civil[:-1] + 'A, ' if estado_civil.endswith('O') else estado_civil + ', '
+                else:
+                    documento_texto = f'IDENTIFICADO CON DNI N° {num_doc}, '
+                    nacionalidad_texto = nacionalidad[:-1] + 'O, ' if nacionalidad.endswith('A') else nacionalidad + ', '
+                    estado_civil_texto = estado_civil + ', '
+                
+                transferentes.append({
+                    f'P_NOM{agregado}': nombre + ', ',
+                    f'P_NACIONALIDAD{agregado}': nacionalidad_texto,
+                    f'P_TIP_DOC{agregado}': tipo_doc,
+                    f'P_DOC{agregado}': documento_texto,
+                    f'P_DOC_LETRAS{agregado}': documento_texto,
+                    f'P_OCUPACION{agregado}': ocupacion,
+                    f'P_ESTADO_CIVIL{agregado}': estado_civil_texto,
+                    f'P_DOMICILIO{agregado}': f'CON DOMICILIO EN {direccion} DEL DISTRITO DE {distrito} PROVINCIA DE {provincia} Y DEPARTAMENTO DE {departamento}',
+                    f'P_IDE{agregado}': ' ',
+                    f'SEXO_P{agregado}': sexo,
+                })
+                contador_vendedor += 1
+                
+            # ADQUIRIENTES (COMPRADOR, APODERADO, etc.)
+            elif condicion in ['COMPRADOR', 'APODERADO', 'ANTICIPADO', 'ADJUDICATARIO', 'DONATARIO', 'USUFRUCTUARIO', 'TESTIGO A RUEGO', 'ADQUIRIENTE', 'DEUDOR']:
+                agregado = '' if contador_adquiriente == 1 else f'_{contador_adquiriente}'
+                
+                sexo = sexos[k] if k < len(sexos) else 'M'
+                nombre = nombres[k] if k < len(nombres) else ''
+                nacionalidad = nacionalidades[k] if k < len(nacionalidades) else ''
+                tipo_doc = tipos_documento[k] if k < len(tipos_documento) else ''
+                num_doc = numeros_documento[k] if k < len(numeros_documento) else ''
+                ocupacion = ocupaciones[k] if k < len(ocupaciones) else ''
+                estado_civil = estados_civil[k] if k < len(estados_civil) else ''
+                direccion = direcciones[k] if k < len(direcciones) else ''
+                distrito = distritos[k] if k < len(distritos) else ''
+                provincia = provincias[k] if k < len(provincias) else ''
+                departamento = departamentos[k] if k < len(departamentos) else ''
+                
+                # Gender-specific formatting
+                if sexo == 'F':
+                    documento_texto = f'IDENTIFICADA CON DNI N° {num_doc}, '
+                    nacionalidad_texto = nacionalidad[:-1] + 'A, ' if nacionalidad.endswith('O') else nacionalidad + ', '
+                    estado_civil_texto = estado_civil[:-1] + 'A, ' if estado_civil.endswith('O') else estado_civil + ', '
+                else:
+                    documento_texto = f'IDENTIFICADO CON DNI N° {num_doc}, '
+                    nacionalidad_texto = nacionalidad[:-1] + 'O, ' if nacionalidad.endswith('A') else nacionalidad + ', '
+                    estado_civil_texto = estado_civil + ', '
+                
+                adquirientes.append({
+                    f'C_NOM{agregado}': nombre + ', ',
+                    f'C_NACIONALIDAD{agregado}': nacionalidad_texto,
+                    f'C_TIP_DOC{agregado}': tipo_doc,
+                    f'C_DOC{agregado}': documento_texto,
+                    f'C_DOC_LETRAS{agregado}': documento_texto,
+                    f'C_OCUPACION{agregado}': ocupacion,
+                    f'C_ESTADO_CIVIL{agregado}': estado_civil_texto,
+                    f'C_DOMICILIO{agregado}': f'CON DOMICILIO EN {direccion} DEL DISTRITO DE {distrito} PROVINCIA DE {provincia} Y DEPARTAMENTO DE {departamento}',
+                    f'C_IDE{agregado}': ' ',
+                    f'SEXO_C{agregado}': sexo,
+                })
+                contador_adquiriente += 1
+        
+        # Process companies
+        for k, condicion_emp in enumerate(condiciones_empresa):
+            if not condicion_emp:
+                continue
+                
+            nombre_emp = nombres_empresa[k] if k < len(nombres_empresa) else ''
+            num_doc_emp = numeros_documento_empresa[k] if k < len(numeros_documento_empresa) else ''
+            direccion_emp = direcciones_empresa[k] if k < len(direcciones_empresa) else ''
+            distrito_emp = distritos_empresa[k] if k < len(distritos_empresa) else ''
+            provincia_emp = provincias_empresa[k] if k < len(provincias_empresa) else ''
+            departamento_emp = departamentos_empresa[k] if k < len(departamentos_empresa) else ''
+            
+            if condicion_emp == 'EMPRESA EN CONSTITUCION':
+                empresas.append({
+                    'NOMBRE_EMPRESA_2': nombre_emp,
+                    'INS_EMPRESA_2': ' ',
+                    'RUC_2': f', CON RUC N° {num_doc_emp}, ',
+                    'DOMICILIO_EMPRESA_2': f'CON DOMICILIO EN {direccion_emp} DEL DISTRITO DE {distrito_emp} PROVINCIA DE {provincia_emp} Y DEPARTAMENTO DE {departamento_emp}',
+                })
+            else:
+                empresas.append({
+                    f'NOMBRE_EMPRESA_{contador_empresa}': nombre_emp,
+                    f'INS_EMPRESA_{contador_empresa}': ' ',
+                    f'RUC_{contador_empresa}': f', CON RUC N° {num_doc_emp}, ',
+                    f'DOMICILIO_EMPRESA_{contador_empresa}': f'CON DOMICILIO EN {direccion_emp} DEL DISTRITO DE {distrito_emp} PROVINCIA DE {provincia_emp} Y DEPARTAMENTO DE {departamento_emp}',
+                    f'CONDICION_EMPRESA_{contador_empresa}': condicion_emp
+                })
+                contador_empresa += 1
+        
+        return {
+            'transferentes': transferentes,
+            'adquirientes': adquirientes,
+            'empresas': empresas
+        }
+
+    def _process_contratantes_data(self, contratantes_data: Dict[str, list]) -> Dict[str, str]:
+        """
+        Process contractors data and add empty placeholders - mirrors PHP processing
+        """
+        final_data = {}
+        
+        # Add transferentes data
+        for transferente in contratantes_data['transferentes']:
+            final_data.update(transferente)
+        
+        # Add adquirientes data
+        for adquiriente in contratantes_data['adquirientes']:
+            final_data.update(adquiriente)
+        
+        # Add empresas data
+        for empresa in contratantes_data['empresas']:
+            final_data.update(empresa)
+        
+        # Add empty placeholders for transferentes (P)
+        total_transferentes = len(contratantes_data['transferentes'])
+        for i in range(total_transferentes + 1, 11):
+            final_data.update({
+                f'P_NOM_{i}': '{{P_NOM_' + str(i) + '}}',
+                f'P_NACIONALIDAD_{i}': '{{P_NACIONALIDAD_' + str(i) + '}}',
+                f'P_TIP_DOC_{i}': '{{P_TIP_DOC_' + str(i) + '}}',
+                f'P_DOC_{i}': '{{P_DOC_' + str(i) + '}}',
+                f'P_DOC_LETRAS_{i}': '{{P_DOC_LETRAS_' + str(i) + '}}',
+                f'P_OCUPACION_{i}': '{{P_OCUPACION_' + str(i) + '}}',
+                f'P_ESTADO_CIVIL_{i}': '{{P_ESTADO_CIVIL_' + str(i) + '}}',
+                f'P_DOMICILIO_{i}': '{{P_DOMICILIO_' + str(i) + '}}',
+                f'P_IDE_{i}': '{{P_IDE_' + str(i) + '}}',
+                f'P_FIRMA_{i}': '{{P_FIRMA_' + str(i) + '}}',
+                f'P_AMBOS_{i}': '{{P_AMBOS_' + str(i) + '}}',
+                f'SEXO_P_{i}': '{{SEXO_P_' + str(i) + '}}',
+            })
+        
+        # Add empty placeholders for adquirientes (C)
+        total_adquirientes = len(contratantes_data['adquirientes'])
+        for i in range(total_adquirientes + 1, 11):
+            final_data.update({
+                f'C_NOM_{i}': '{{C_NOM_' + str(i) + '}}',
+                f'C_NACIONALIDAD_{i}': '{{C_NACIONALIDAD_' + str(i) + '}}',
+                f'C_TIP_DOC_{i}': '{{C_TIP_DOC_' + str(i) + '}}',
+                f'C_DOC_{i}': '{{C_DOC_' + str(i) + '}}',
+                f'C_DOC_LETRAS_{i}': '{{C_DOC_LETRAS_' + str(i) + '}}',
+                f'C_OCUPACION_{i}': '{{C_OCUPACION_' + str(i) + '}}',
+                f'C_ESTADO_CIVIL_{i}': '{{C_ESTADO_CIVIL_' + str(i) + '}}',
+                f'C_DOMICILIO_{i}': '{{C_DOMICILIO_' + str(i) + '}}',
+                f'C_IDE_{i}': '{{C_IDE_' + str(i) + '}}',
+                f'C_FIRMA_{i}': '{{C_FIRMA_' + str(i) + '}}',
+                f'C_AMBOS_{i}': '{{C_AMBOS_' + str(i) + '}}',
+                f'SEXO_C_{i}': '{{SEXO_C_' + str(i) + '}}',
+            })
+        
+        # Add empty placeholders for empresas
+        total_empresas = len(contratantes_data['empresas'])
+        for i in range(total_empresas + 1, 6):
+            final_data.update({
+                f'NOMBRE_EMPRESA_{i}': '{{NOMBRE_EMPRESA_' + str(i) + '}}',
+                f'INS_EMPRESA_{i}': '{{INS_EMPRESA_' + str(i) + '}}',
+                f'RUC_{i}': '{{RUC_' + str(i) + '}}',
+                f'DOMICILIO_EMPRESA_{i}': '{{DOMICILIO_EMPRESA_' + str(i) + '}}',
+            })
+        
+        return final_data
+
+    def _get_articulos_contratantes(self, contratantes_data: Dict[str, list]) -> Dict[str, str]:
+        """
+        Get grammatical articles for contractors - mirrors PHP articulosContratantes logic
+        """
+        return {
+            'EL_P': 'EL ',  # Will be determined by actual data processing
+            'EL_C': 'EL ',  # Will be determined by actual data processing
+            'CALIDAD_P': '',  # Will be determined by actual data processing
+            'CALIDAD_C': '',  # Will be determined by actual data processing
+            'Y_P': ' y ',
+            'AMBOS': ' AMBOS ',
+            'S_P': '  ',
+            'ES_P': '  ',
+            'INICIO_C': ' SEÑOR',
+            'ES_C': '',
+            'S_C': '',
+            'ES_SON_C': 'ES',
+            'Y_CON_C': '',
+            'N_C': '',
+            'Y_C': '',
+            'L_C': '',
+            'O_A_C': 'O',
+            'O_ERON_C': '',
+            'C_FIRMA': 'FIRMA EN',
+            'C_AMBOS': '',
+            'INICIO_P': ' SEÑOR',
+            'ES_P': '',
+            'S_P': '',
+            'ES_SON_P': 'ES',
+            'Y_CON_P': '',
+            'N_P': '',
+            'Y_P': '',
+            'L_P': '',
+            'O_A_P': 'O',
+            'O_ERON_P': '',
+            'P_FIRMA': 'FIRMA EN',
+            'P_AMBOS': '',
+        }
+
+    def _get_data_escrituracion(self, raw_data: dict) -> Dict[str, str]:
+        """
+        Get escrituracion data - mirrors get_data_escrituracion PHP function
+        """
+        folio_inicial = raw_data.get('folio_inicial') or '{{FI}}'
+        folio_final = raw_data.get('folio_final') or '{{FF}}'
+        papel_inicial = raw_data.get('papel_inicial') or '{{S_IN}}'
+        papel_final = raw_data.get('papel_final') or '{{S_FN}}'
+        
+        return {
+            'FI': folio_inicial,
+            'FF': folio_final,
+            'S_IN': papel_inicial,
+            'S_FN': papel_final,
+        }
+
+    def _get_template_from_r2(self, template_id: int) -> bytes:
+        """
+        Get template from R2 storage - same as other services
+        """
+        template = TplTemplate.objects.get(pktemplate=template_id)
+        s3 = get_s3_client()
+        
+        object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        
+        try:
+            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
+            return response['Body'].read()
+        except Exception as e:
+            print(f"Error downloading template from R2: {e}")
+            raise
+
+    def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
+        """
+        Process the document template with data - same as other services
+        """
+        buffer = io.BytesIO(template_bytes)
+        doc = DocxTemplate(buffer)
+        doc.render(data)
+        return doc
+
+    def remove_unfilled_placeholders(self, doc):
+        """
+        Remove unfilled {{SOMETHING}} placeholders - adapted for garantias mobiliarias
+        """
+        import re
+        curly_placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
+
+        def clean_runs(runs):
+            for run in runs:
+                # Hide {{SOMETHING}} placeholders by making them white
+                if curly_placeholder_pattern.search(run.text):
+                    run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+
+        # Clean paragraphs
+        for paragraph in doc.paragraphs:
+            clean_runs(paragraph.runs)
+        # Clean tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        clean_runs(paragraph.runs)
+
+    def create_documento_in_r2(self, doc, kardex):
+        """
+        Upload the generated document to R2 - same as other services
+        """
+        try:
+            from io import BytesIO
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+            s3 = get_s3_client()
+            s3.upload_fileobj(
+                buffer,
+                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                object_key
+            )
+            return True
+        except Exception as e:
+            print(f"Error uploading garantias mobiliarias document to R2: {e}")
+            return False
+
+    def _create_response(self, doc, filename: str, kardex: str, mode: str = "download") -> HttpResponse:
+        """
+        Create HTTP response with the document - same as other services
+        """
+        from docxcompose.properties import CustomProperties
+        
+        # Add the custom property
+        custom_props = CustomProperties(doc)
+        custom_props['documentoGeneradoId'] = kardex
+
+        # Save to buffer
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        
+        if mode == "open":
+            # Production mode: Return JSON with file info for Word opening
+            response = JsonResponse({
+                'status': 'success',
+                'mode': 'open',
+                'filename': filename,
+                'kardex': kardex,
+                'message': 'Document generated and ready to open in Word'
+            })
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
+        else:
+            # Testing mode: Download the document
+            response = HttpResponse(
+                buffer.read(),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'inline; filename="{filename}"'
+            response['Content-Length'] = str(buffer.getbuffer().nbytes)
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
