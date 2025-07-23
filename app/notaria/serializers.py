@@ -626,3 +626,12 @@ class TemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.TplTemplate
         fields = '__all__'
+
+
+class LegalizacionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Legalizacion model.
+    """
+    class Meta:
+        model = models.Legalizacion
+        fields = '__all__'

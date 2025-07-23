@@ -8,11 +8,13 @@
 from django.db import models
 
 
-class Tipoestacivil(models.Model):
-    idestcivil = models.AutoField(primary_key=True)
-    codestcivil = models.CharField(max_length=2)
-    desestcivil = models.CharField(max_length=50)
+class Legalizacion(models.Model):
+    idlegalizacion = models.AutoField(db_column='idLegalizacion', primary_key=True)  # Field name made lowercase.
+    fechaingreso = models.DateField(db_column='fechaIngreso')  # Field name made lowercase.
+    direccioncertificado = models.CharField(db_column='direccionCertificado', max_length=250)  # Field name made lowercase.
+    documento = models.TextField()
+    dni = models.CharField(max_length=11, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'tipoestacivil'
+        db_table = 'legalizacion'

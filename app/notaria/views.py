@@ -1470,3 +1470,12 @@ class TemplateViewSet(ModelViewSet):
 
         serializer = serializers.TemplateSerializer(templates, many=True)
         return Response(serializer.data)
+
+
+class LegalizacionViewSet(ModelViewSet):
+    """
+    ViewSet for the Legalizacion model.
+    """
+    queryset = models.Legalizacion.objects.all()
+    serializer_class = serializers.LegalizacionSerializer
+    pagination_class = pagination.KardexPagination

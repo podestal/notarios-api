@@ -37,4 +37,7 @@ router.register('predios', views.PrediosViewSet)
 router.register('detallemediopago', views.DetallemediopagoViewSet)
 router.register('templates', views.TemplateViewSet)
 
+# EXTRAPROTOCOLARES
+router.register('legalizacion', views.LegalizacionViewSet)
+
 urlpatterns = router.urls
