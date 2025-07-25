@@ -2263,7 +2263,7 @@ class GarantiasMobiliariasDocumentService:
             escrituracion_data = self._get_data_escrituracion(raw_data)
             
             # Step 4: Process contratantes data and add empty placeholders
-            contratantes_processed = self._process_contratantes_data(contratantes_data, raw_data)
+            contratantes_processed = self._process_contratantes_data(contratantes_data)
             articulos_contratantes = self._get_articulos_contratantes(contratantes_data)
             
             # Step 5: Combine all data sources
@@ -2847,16 +2847,17 @@ class GarantiasMobiliariasDocumentService:
 
     def remove_unfilled_placeholders(self, doc):
         """
-        Remove unfilled {{SOMETHING}} placeholders - adapted for garantias mobiliarias
+        Remove all unfilled {{SOMETHING}} placeholders completely.
+        For Garantias Mobiliarias, we remove all unused placeholders.
         """
         import re
         curly_placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
 
         def clean_runs(runs):
             for run in runs:
-                # Hide {{SOMETHING}} placeholders by making them white
+                # Remove all {{SOMETHING}} placeholders completely
                 if curly_placeholder_pattern.search(run.text):
-                    run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                    run.text = curly_placeholder_pattern.sub('', run.text)
 
         # Clean paragraphs
         for paragraph in doc.paragraphs:
