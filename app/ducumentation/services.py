@@ -959,6 +959,10 @@ class NonContentiousDocumentService:
                 
                 # Remove unwanted phrase
                 run.text = representation_pattern.sub('', run.text)
+                
+                # Only fix repeated commas - do NOT remove spaces
+                run.text = re.sub(r',\s*,+', ',', run.text)
+                run.text = re.sub(r',\s*$', '', run.text)
 
         # Clean paragraphs
         for paragraph in doc.paragraphs:
@@ -2472,7 +2476,16 @@ class GarantiasMobiliariasDocumentService:
         Get payment data - mirrors get_data_pagos PHP function
         """
         sunat_medio_pago = raw_data.get('sunat_medio_pago', '008')
-        precio = raw_data.get('precio', 0)
+        precio_raw = raw_data.get('precio', 0)
+        
+        # Handle None or invalid precio values
+        try:
+            precio = float(precio_raw) if precio_raw is not None else 0.0
+            print(f"DEBUG: precio_raw = {precio_raw}, converted to precio = {precio}")
+        except (ValueError, TypeError) as e:
+            print(f"ERROR: Failed to convert precio_raw '{precio_raw}' to float: {e}")
+            precio = 0.0
+            
         moneda = raw_data.get('moneda', 1)
         simbolo_moneda = raw_data.get('simbolo_moneda', '')
         
@@ -2495,14 +2508,21 @@ class GarantiasMobiliariasDocumentService:
         
         # Get moneda description from constants
         descripcion_moneda = MONEDAS.get(moneda, {}).get('desmon', '') if moneda else ''
+
+        # Safe Decimal conversion
+        try:
+            precio_decimal = Decimal(str(precio))
+        except Exception as e:
+            print(f"ERROR: Failed to convert precio {precio} to Decimal: {e}")
+            precio_decimal = Decimal("0.00")
         
         return {
             'MONTO': str(precio),
             'MON_VEHI': descripcion_moneda,
-            'MONTO_LETRAS': self.letras.money_to_letters(descripcion_moneda, Decimal(str(precio))),
+            'MONTO_LETRAS': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
             'MONEDA_C': simbolo_moneda + ' ' if simbolo_moneda else '',
             'SUNAT_MED_PAGO': sunat_medio_pago,
-            'DES_PRE_VEHI': self.letras.money_to_letters(descripcion_moneda, Decimal(str(precio))),
+            'DES_PRE_VEHI': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
             'EXH_MED_PAGO': exhibio_medio_pago,
             'MED_PAGO': medio_pago,
             'FIN_MED_PAGO': fin_medio_pago,
@@ -2997,9 +3017,11 @@ class EscrituraPublicaDocumentService:
             total_time = time.time() - start_time
             print(f"PERF: Escritura publica document generation failed after {total_time:.2f}s")
             print(f"ERROR: Failed to generate escritura publica document: {str(e)}")
+            print(f"ERROR: Exception type: {type(e).__name__}")
+            print(f"ERROR: Exception args: {e.args}")
             import traceback
             traceback.print_exc()
-            return JsonResponse({'error': f'Failed to generate escritura publica document: {str(e)}'}, status=500)
+            return JsonResponse({'error': f'Failed to generate escritura publica document: {type(e).__name__}: {str(e)}'}, status=500)
 
     def _consulta_escritura(self, num_kardex: str, idtipoacto: str, template_id: int) -> dict:
         """
@@ -3201,7 +3223,16 @@ class EscrituraPublicaDocumentService:
         Get payment data - mirrors get_data_pagos PHP function
         """
         sunat_medio_pago = raw_data.get('sunat_medio_pago', '008')
-        precio = raw_data.get('precio', 0)
+        precio_raw = raw_data.get('precio', 0)
+        
+        # Handle None or invalid precio values
+        try:
+            precio = float(precio_raw) if precio_raw is not None else 0.0
+            print(f"DEBUG: precio_raw = {precio_raw}, converted to precio = {precio}")
+        except (ValueError, TypeError) as e:
+            print(f"ERROR: Failed to convert precio_raw '{precio_raw}' to float: {e}")
+            precio = 0.0
+            
         moneda = raw_data.get('moneda', 1)
         simbolo_moneda = raw_data.get('simbolo_moneda', '')
         
@@ -3224,14 +3255,21 @@ class EscrituraPublicaDocumentService:
         
         # Get moneda description from constants
         descripcion_moneda = MONEDAS.get(moneda, {}).get('desmon', '') if moneda else ''
+
+        # Safe Decimal conversion
+        try:
+            precio_decimal = Decimal(str(precio))
+        except Exception as e:
+            print(f"ERROR: Failed to convert precio {precio} to Decimal: {e}")
+            precio_decimal = Decimal("0.00")
         
         return {
             'MONTO': str(precio),
             'MON_VEHI': descripcion_moneda,
-            'MONTO_LETRAS': self.letras.money_to_letters(descripcion_moneda, Decimal(str(precio))),
+            'MONTO_LETRAS': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
             'MONEDA_C': simbolo_moneda + ' ' if simbolo_moneda else '',
             'SUNAT_MED_PAGO': sunat_medio_pago,
-            'DES_PRE_VEHI': self.letras.money_to_letters(descripcion_moneda, Decimal(str(precio))),
+            'DES_PRE_VEHI': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
             'EXH_MED_PAGO': exhibio_medio_pago,
             'MED_PAGO': medio_pago,
             'FIN_MED_PAGO': fin_medio_pago,
@@ -3462,8 +3500,11 @@ class EscrituraPublicaDocumentService:
             if raw_data and raw_data.get('fecha_escritura'):
                 fecha_firma = f" FIRMA EN: {self.letras.date_to_letters(raw_data.get('fecha_escritura'))}"
             
+            # Only clean names that might have comma issues, don't clean all text
+            clean_nombre = transferente['nombres'].strip()
+            
             final_data.update({
-                f'P_NOM{agregado}': self._clean_text_formatting(transferente['nombres']) + (', ' if transferente['nombres'].strip() else ''),
+                f'P_NOM{agregado}': clean_nombre + (', ' if clean_nombre else ''),
                 f'P_NACIONALIDAD{agregado}': nacionalidad_texto,
                 f'P_TIP_DOC{agregado}': transferente['tipoDocumento'],
                 f'P_DOC{agregado}': documento_texto,
@@ -3472,7 +3513,7 @@ class EscrituraPublicaDocumentService:
                 f'P_DOMICILIO{agregado}': domicilio,
                 f'P_IDE{agregado}': ' ',
                 f'SEXO_P{agregado}': transferente['sexo'],
-                f'P_FIRMAN{agregado}': self._clean_text_formatting(transferente['nombres']) + (', ' if transferente['nombres'].strip() else ''),
+                f'P_FIRMAN{agregado}': clean_nombre + (', ' if clean_nombre else ''),
                 f'P_IMPRIME{agregado}': fecha_firma,
                 empresa_keys['nombre']: transferente['nombreEmpresa'],
                 empresa_keys['inscripcion']: f" INSCRITA EN LA PARTIDA ELECTRONICA N° {transferente['numeroPartida']} DE LA OFICINA REGISTRAL {transferente['oficinaRegistral']}",
@@ -3890,37 +3931,28 @@ class EscrituraPublicaDocumentService:
     def _clean_text_formatting(self, text: str) -> str:
         """
         Clean up text formatting issues like repeated commas, extra spaces, etc.
+        Conservative approach to avoid removing necessary spaces.
         """
         if not text:
             return text
             
         import re
         
-        # Remove multiple consecutive commas and spaces
+        # Only fix specific comma issues - be very conservative with spaces
         text = re.sub(r',\s*,+', ',', text)  # Replace multiple commas with single comma
-        text = re.sub(r',{2,}', ',', text)   # Replace multiple commas with single comma
-        text = re.sub(r'\s{2,}', ' ', text)  # Replace multiple spaces with single space
+        text = re.sub(r',{2,}', ',', text)   # Replace multiple consecutive commas
         text = re.sub(r',\s*$', '', text)    # Remove trailing comma
         text = re.sub(r'^\s*,', '', text)    # Remove leading comma
-        text = re.sub(r',\s*,', ',', text)   # Remove comma-space-comma patterns
         
-        # Fix specific spacing issues with location names
+        # Fix only specific known spacing issues without being too aggressive
         text = re.sub(r'PUNO([A-Z])', r'PUNO Y \1', text)  # Fix missing Y connector after PUNO
-        text = re.sub(r'([a-z])([A-Z][A-Z])', r'\1 Y \2', text)  # Add Y between concatenated words
         
-        # Fix missing spaces between concatenated names/words
-        text = re.sub(r'([a-z])([A-Z][a-z])', r'\1 \2', text)  # Add space between camelCase
-        text = re.sub(r'([A-Z])([A-Z][a-z])', r'\1 \2', text)  # Add space between PascalCase
+        # Clean up only excessive spaces (3 or more), keep normal spacing
+        text = re.sub(r'\s{3,}', ' ', text)  # Replace 3+ spaces with single space
         
-        # Clean up extra punctuation
+        # Ensure proper spacing around commas but don't remove other spaces
         text = re.sub(r'\s+,', ',', text)    # Remove space before comma
-        text = re.sub(r',(\w)', r', \1', text)  # Ensure space after comma
-        
-        # Fix specific patterns for better readability
-        text = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', text)  # Split ALLCAPS from Title
-        
-        # Remove multiple spaces again after all replacements
-        text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r',([A-Za-z])', r', \1', text)  # Ensure space after comma before letter
         
         return text.strip()
 
@@ -3960,9 +3992,9 @@ class EscrituraPublicaDocumentService:
                 # Remove unwanted phrase
                 run.text = representation_pattern.sub('', run.text)
                 
-                # Clean up text formatting
-                run.text = self._clean_text_formatting(run.text)
-
+                # FIXED: Only fix repeated commas - do NOT remove spaces
+                run.text = re.sub(r',\s*,+', ',', run.text)  # Fix repeated commas only
+                run.text = re.sub(r',\s*$', '', run.text)    # Remove trailing comma only
         # Clean paragraphs
         for paragraph in doc.paragraphs:
             clean_runs(paragraph.runs)
