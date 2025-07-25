@@ -3453,11 +3453,11 @@ class EscrituraPublicaDocumentService:
             if transferente['sexo'] == 'F':
                 documento_texto = f"IDENTIFICADA CON DNI N° {transferente['numeroDocumento']}, "
                 nacionalidad_texto = transferente['nacionalidad'][:-1] + 'A, ' if transferente['nacionalidad'].endswith('O') else transferente['nacionalidad'] + ', '
-                estado_civil_texto = transferente['estadoCivil'][:-1] + 'A, ' if transferente['estadoCivil'].endswith('O') else transferente['estadoCivil'] + ', '
+                estado_civil_texto = f"QUIEN DECLARA SER {transferente['estadoCivil'][:-1] + 'A' if transferente['estadoCivil'].endswith('O') else transferente['estadoCivil']}, "
             else:
                 documento_texto = f"IDENTIFICADO CON DNI N° {transferente['numeroDocumento']}, "
                 nacionalidad_texto = transferente['nacionalidad'][:-1] + 'O, ' if transferente['nacionalidad'].endswith('A') else transferente['nacionalidad'] + ', '
-                estado_civil_texto = transferente['estadoCivil'] + ', '
+                estado_civil_texto = f"QUIEN DECLARA SER {transferente['estadoCivil']}, "
             
             # Handle domicile logic for married couples
             if contador_vendedor > 1:
@@ -3471,11 +3471,11 @@ class EscrituraPublicaDocumentService:
             # Handle occupation for married couples
             if contador_vendedor == 2:
                 if casados_transferentes:
-                    ocupacion = transferente['ocupacion']
+                    ocupacion = transferente['ocupacion'] + ', '  # Add comma-space for proper concatenation
                 else:
                     ocupacion = transferente['ocupacion'] + ', ' + estado_civil_texto
             else:
-                ocupacion = transferente['ocupacion']
+                ocupacion = transferente['ocupacion'] + ', '  # Add comma-space for proper concatenation
             
             # Company data keys
             if transferente['condicionEmpresa'] in ['EMPRESA EN CONSTITUCION', 'ASOCIACION EN CONSTITUCION']:
@@ -3532,11 +3532,11 @@ class EscrituraPublicaDocumentService:
             if adquiriente['sexo'] == 'F':
                 documento_texto = f"IDENTIFICADA CON DNI N° {adquiriente['numeroDocumento']}, "
                 nacionalidad_texto = adquiriente['nacionalidad'][:-1] + 'A, ' if adquiriente['nacionalidad'].endswith('O') else adquiriente['nacionalidad'] + ', '
-                estado_civil_texto = adquiriente['estadoCivil'][:-1] + 'A, ' if adquiriente['estadoCivil'].endswith('O') else adquiriente['estadoCivil'] + ', '
+                estado_civil_texto = f"QUIEN DECLARA SER {adquiriente['estadoCivil'][:-1] + 'A' if adquiriente['estadoCivil'].endswith('O') else adquiriente['estadoCivil']}, "
             else:
                 documento_texto = f"IDENTIFICADO CON DNI N° {adquiriente['numeroDocumento']}, "
                 nacionalidad_texto = adquiriente['nacionalidad'][:-1] + 'O, ' if adquiriente['nacionalidad'].endswith('A') else adquiriente['nacionalidad'] + ', '
-                estado_civil_texto = adquiriente['estadoCivil'] + ', '
+                estado_civil_texto = f"QUIEN DECLARA SER {adquiriente['estadoCivil']}, "
             
             # Handle domicile logic for married couples
             if contador_adquiriente > 1:
@@ -3550,11 +3550,11 @@ class EscrituraPublicaDocumentService:
             # Handle occupation for married couples
             if contador_adquiriente == 2:
                 if casados_adquirientes:
-                    ocupacion = adquiriente['ocupacion']
+                    ocupacion = adquiriente['ocupacion'] + ', '  # Add comma-space for proper concatenation
                 else:
                     ocupacion = adquiriente['ocupacion'] + ', ' + estado_civil_texto
             else:
-                ocupacion = adquiriente['ocupacion']
+                ocupacion = adquiriente['ocupacion'] + ', '  # Add comma-space for proper concatenation
             
             # Get fecha_escritura for signature date
             fecha_firma = ""
