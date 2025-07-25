@@ -35,7 +35,7 @@ from django.utils.decorators import method_decorator
 import re
 from django.urls import reverse
 from .utils import NumberToLetterConverter
-from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService
+from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -815,6 +815,25 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                     return response
                 else:
                     return service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
+
+            elif tipkar == 1:  # ESCRITURA PUBLICA
+                print(f"DEBUG: Using EscrituraPublicaDocumentService for tipkar {tipkar}")
+                service = EscrituraPublicaDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_escritura_publica_document(template_id, kardex, action, mode)
             else:
                 return HttpResponse({
                     'error': f'Document generation not implemented for tipkar {tipkar}'
@@ -995,6 +1014,24 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                     return response
                 else:
                     return service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
+            elif tipkar == 1:  # ESCRITURA PUBLICA
+                print(f"DEBUG: Using EscrituraPublicaDocumentService for tipkar {tipkar}")
+                service = EscrituraPublicaDocumentService()
+                if mode == "open":
+                    # Return the download URL for Windows users - force HTTPS
+                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                    response = JsonResponse({
+                        'status': 'success',
+                        'mode': 'open',
+                        'filename': f"__PROY__{kardex}.docx",
+                        'kardex': kardex,
+                        'url': download_url,
+                        'message': 'Document ready to open in Word'
+                    })
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
+                else:
+                    return service.generate_escritura_publica_document(template_id, kardex, action, mode)
             else:
                 return HttpResponse({
                     'error': f'Document generation not implemented for tipkar {tipkar}'

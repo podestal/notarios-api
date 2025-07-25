@@ -175,9 +175,8 @@ class VehicleTransferDocumentService:
         keep_placeholders = ['{{NRO_ESC}}', '{{FI}}', '{{FF}}', '{{S_IN}}', '{{S_FN}}', '{{FECHA_ACT}}']
 
         def clean_runs(runs):
-            # Remove [E.SOMETHING] placeholders and hide {{SOMETHING}} placeholders
+            # Remove all [E.SOMETHING] placeholders
             for run in runs:
-                # Remove all [E.SOMETHING] placeholders
                 run.text = placeholder_pattern.sub('', run.text)
                 
                 # Hide {{SOMETHING}} placeholders by making them white
@@ -2260,7 +2259,7 @@ class GarantiasMobiliariasDocumentService:
             escrituracion_data = self._get_data_escrituracion(raw_data)
             
             # Step 4: Process contratantes data and add empty placeholders
-            contratantes_processed = self._process_contratantes_data(contratantes_data)
+            contratantes_processed = self._process_contratantes_data(contratantes_data, raw_data)
             articulos_contratantes = self._get_articulos_contratantes(contratantes_data)
             
             # Step 5: Combine all data sources
@@ -2919,16 +2918,26 @@ class EscrituraPublicaDocumentService:
         """
         Main method to generate escritura publica document
         """
+        start_time = time.time()
+        print(f"PERF: Starting escritura publica document generation for kardex: {num_kardex}")
+        
         try:
             # Step 1: Fetch all data using raw SQL query mirroring the PHP script
+            data_start = time.time()
             raw_data = self._consulta_escritura(num_kardex, idtipoacto, template_id)
             if not raw_data:
                 raise ValueError(f"No data found for kardex {num_kardex}")
+            data_time = time.time() - data_start
+            print(f"PERF: SQL data fetch took {data_time:.2f}s")
 
             # Step 2: Get template from R2
+            template_start = time.time()
             template_bytes = self._get_template_from_r2(template_id)
+            template_time = time.time() - template_start
+            print(f"PERF: Template download took {template_time:.2f}s")
             
             # Step 3: Process data into the required format for the template
+            process_start = time.time()
             document_data = self._get_data_documento(raw_data)
             vehiculos_data = self._get_data_vehiculos(raw_data)
             pagos_data = self._get_data_pagos(raw_data)
@@ -2936,7 +2945,7 @@ class EscrituraPublicaDocumentService:
             escrituracion_data = self._get_data_escrituracion(raw_data)
             
             # Step 4: Process contratantes data and add empty placeholders
-            contratantes_processed = self._process_contratantes_data(contratantes_data)
+            contratantes_processed = self._process_contratantes_data(contratantes_data, raw_data)
             articulos_contratantes = self._get_articulos_contratantes(contratantes_data)
             
             # Step 5: Combine all data sources
@@ -2952,20 +2961,41 @@ class EscrituraPublicaDocumentService:
             if action == 'parte':
                 final_data['NOMBRE_ACTO'] = raw_data.get('plantilla', '')
             
+            process_time = time.time() - process_start
+            print(f"PERF: Data processing took {process_time:.2f}s")
+            
             # Step 6: Process the docx template
+            doc_start = time.time()
             doc = self._process_document(template_bytes, final_data)
+            doc_time = time.time() - doc_start
+            print(f"PERF: Document template processing took {doc_time:.2f}s")
             
             # Step 7: Remove placeholders
+            cleanup_start = time.time()
             self.remove_unfilled_placeholders(doc)
+            cleanup_time = time.time() - cleanup_start
+            print(f"PERF: Placeholder cleanup took {cleanup_time:.2f}s")
             
             # Step 8: Upload to R2 (optional)
-            self.create_documento_in_r2(doc, num_kardex)
+            upload_start = time.time()
+            upload_success = self.create_documento_in_r2(doc, num_kardex)
+            upload_time = time.time() - upload_start
+            print(f"PERF: R2 upload took {upload_time:.2f}s")
+            
+            if not upload_success:
+                print(f"WARNING: Failed to upload escritura publica document to R2 for kardex: {num_kardex}")
             
             # Step 9: Create and return the HTTP response
             filename = f"escritura_publica_{num_kardex}.docx"
+            
+            total_time = time.time() - start_time
+            print(f"PERF: Total escritura publica document generation took {total_time:.2f}s")
+            
             return self._create_response(doc, filename, num_kardex, mode)
             
         except Exception as e:
+            total_time = time.time() - start_time
+            print(f"PERF: Escritura publica document generation failed after {total_time:.2f}s")
             print(f"ERROR: Failed to generate escritura publica document: {str(e)}")
             import traceback
             traceback.print_exc()
@@ -3362,7 +3392,7 @@ class EscrituraPublicaDocumentService:
         else:
             return 'MIXTO'
 
-    def _process_contratantes_data(self, contratantes_data: Dict[str, list]) -> Dict[str, str]:
+    def _process_contratantes_data(self, contratantes_data: Dict[str, list], raw_data: dict = None) -> Dict[str, str]:
         """
         Process contractors data with complex spouse logic and gender handling
         """
@@ -3427,8 +3457,13 @@ class EscrituraPublicaDocumentService:
                     'condicion': 'CONDICION_EMPRESA_1'
                 }
             
+            # Get fecha_escritura for signature date
+            fecha_firma = ""
+            if raw_data and raw_data.get('fecha_escritura'):
+                fecha_firma = f" FIRMA EN: {self.letras.date_to_letters(raw_data.get('fecha_escritura'))}"
+            
             final_data.update({
-                f'P_NOM{agregado}': transferente['nombres'] + ', ',
+                f'P_NOM{agregado}': self._clean_text_formatting(transferente['nombres']) + (', ' if transferente['nombres'].strip() else ''),
                 f'P_NACIONALIDAD{agregado}': nacionalidad_texto,
                 f'P_TIP_DOC{agregado}': transferente['tipoDocumento'],
                 f'P_DOC{agregado}': documento_texto,
@@ -3437,8 +3472,8 @@ class EscrituraPublicaDocumentService:
                 f'P_DOMICILIO{agregado}': domicilio,
                 f'P_IDE{agregado}': ' ',
                 f'SEXO_P{agregado}': transferente['sexo'],
-                f'P_FIRMAN{agregado}': transferente['nombres'] + ', ',
-                f'P_IMPRIME{agregado}': f" FIRMA EN: {self.letras.date_to_letters(raw_data.get('fecha_escritura')) if raw_data.get('fecha_escritura') else ''}",
+                f'P_FIRMAN{agregado}': self._clean_text_formatting(transferente['nombres']) + (', ' if transferente['nombres'].strip() else ''),
+                f'P_IMPRIME{agregado}': fecha_firma,
                 empresa_keys['nombre']: transferente['nombreEmpresa'],
                 empresa_keys['inscripcion']: f" INSCRITA EN LA PARTIDA ELECTRONICA N° {transferente['numeroPartida']} DE LA OFICINA REGISTRAL {transferente['oficinaRegistral']}",
                 empresa_keys['ruc']: f", CON RUC N° {transferente['numeroDocumentoEmpresa']}, ",
@@ -3480,9 +3515,14 @@ class EscrituraPublicaDocumentService:
             else:
                 ocupacion = adquiriente['ocupacion']
             
+            # Get fecha_escritura for signature date
+            fecha_firma = ""
+            if raw_data and raw_data.get('fecha_escritura'):
+                fecha_firma = f" FIRMA EN: {self.letras.date_to_letters(raw_data.get('fecha_escritura'))}"
+            
             final_data.update({
-                f'C_NOM{agregado}': adquiriente['nombres'] + ', ',
-                f'C_FIRMAN{agregado}': adquiriente['nombres'] + ', ',
+                f'C_NOM{agregado}': self._clean_text_formatting(adquiriente['nombres']) + (', ' if adquiriente['nombres'].strip() else ''),
+                f'C_FIRMAN{agregado}': self._clean_text_formatting(adquiriente['nombres']) + (', ' if adquiriente['nombres'].strip() else ''),
                 f'C_NACIONALIDAD{agregado}': nacionalidad_texto,
                 f'C_TIP_DOC{agregado}': adquiriente['tipoDocumento'],
                 f'C_DOC{agregado}': documento_texto,
@@ -3491,7 +3531,7 @@ class EscrituraPublicaDocumentService:
                 f'C_DOMICILIO{agregado}': domicilio,
                 f'C_IDE{agregado}': ' ',
                 f'SEXO_C{agregado}': adquiriente['sexo'],
-                f'C_IMPRIME{agregado}': f" FIRMA EN: {self.letras.date_to_letters(raw_data.get('fecha_escritura')) if raw_data.get('fecha_escritura') else ''}",
+                f'C_IMPRIME{agregado}': fecha_firma,
                 'NOMBRE_EMPRESA_2': adquiriente['nombreEmpresa'],
                 'INS_EMPRESA_2': f" INSCRITA EN LA PARTIDA ELECTRONICA N° {adquiriente['numeroPartida']} DE LA OFICINA REGISTRAL {adquiriente['oficinaRegistral']}",
                 'RUC_2': f", CON RUC N° {adquiriente['numeroDocumentoEmpresa']}, ",
@@ -3527,10 +3567,13 @@ class EscrituraPublicaDocumentService:
         return False
 
     def _add_empty_placeholders(self, final_data: dict, num_transferentes: int, num_adquirientes: int):
-        """Add empty placeholders for unused contractor slots"""
-        # Add empty placeholders for transferentes (P)
+        """Add empty placeholders for unused contractor slots - optimized version"""
+        # Prepare all empty placeholders in a single dictionary
+        empty_placeholders = {}
+        
+        # Add empty placeholders for transferentes (P) - more efficient batch creation
         for i in range(num_transferentes + 1, 11):
-            final_data.update({
+            empty_placeholders.update({
                 f'P_NOM_{i}': '{{P_NOM_' + str(i) + '}}',
                 f'P_NACIONALIDAD_{i}': '{{P_NACIONALIDAD_' + str(i) + '}}',
                 f'P_TIP_DOC_{i}': '{{P_TIP_DOC_' + str(i) + '}}',
@@ -3547,7 +3590,7 @@ class EscrituraPublicaDocumentService:
         
         # Add empty placeholders for adquirientes (C)
         for i in range(num_adquirientes + 1, 11):
-            final_data.update({
+            empty_placeholders.update({
                 f'C_NOM_{i}': '{{C_NOM_' + str(i) + '}}',
                 f'C_NACIONALIDAD_{i}': '{{C_NACIONALIDAD_' + str(i) + '}}',
                 f'C_TIP_DOC_{i}': '{{C_TIP_DOC_' + str(i) + '}}',
@@ -3564,12 +3607,15 @@ class EscrituraPublicaDocumentService:
         
         # Add empty placeholders for empresas
         for i in range(3, 6):
-            final_data.update({
+            empty_placeholders.update({
                 f'NOMBRE_EMPRESA_{i}': '{{NOMBRE_EMPRESA_' + str(i) + '}}',
                 f'INS_EMPRESA_{i}': '{{INS_EMPRESA_' + str(i) + '}}',
                 f'RUC_{i}': '{{RUC_' + str(i) + '}}',
                 f'DOMICILIO_EMPRESA_{i}': '{{DOMICILIO_EMPRESA_' + str(i) + '}}',
             })
+        
+        # Single update operation instead of multiple ones
+        final_data.update(empty_placeholders)
 
     def _get_articulos_contratantes(self, contratantes_data: Dict[str, list]) -> Dict[str, str]:
         """
@@ -3738,16 +3784,40 @@ class EscrituraPublicaDocumentService:
 
     def remove_unfilled_placeholders(self, doc):
         """
-        Remove unfilled {{SOMETHING}} placeholders - adapted for escritura publica
+        Remove all unfilled {{SOMETHING}} placeholders completely, except for escrituracion placeholders which should be hidden.
+        Keep and hide: {{NRO_ESC}}, {{FI}}, {{FF}}, {{S_IN}}, {{S_FN}}, {{FECHA_ACT}}
+        Remove all others: {{P_NOM_3}}, {{C_NOM_4}}, etc.
         """
         import re
         curly_placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
+        representation_pattern = re.compile(
+            r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
+        )
+
+        # List of placeholders to keep and hide (only escrituracion placeholders)
+        keep_placeholders = ['{{NRO_ESC}}', '{{FI}}', '{{FF}}', '{{S_IN}}', '{{S_FN}}', '{{FECHA_ACT}}']
 
         def clean_runs(runs):
             for run in runs:
-                # Hide {{SOMETHING}} placeholders by making them white
+                # Handle {{SOMETHING}} placeholders
                 if curly_placeholder_pattern.search(run.text):
-                    run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                    # Check if this contains placeholders we want to keep and hide
+                    should_hide_not_remove = False
+                    for placeholder in keep_placeholders:
+                        if placeholder in run.text:
+                            # If it's a placeholder we want to keep, check if it has a real value
+                            if run.text.strip() == placeholder:
+                                # This is still a placeholder, hide it with white color
+                                run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                                should_hide_not_remove = True
+                                break
+                    
+                    # For other curly placeholders, remove them completely
+                    if not should_hide_not_remove:
+                        run.text = curly_placeholder_pattern.sub('', run.text)
+                
+                # Remove unwanted phrase
+                run.text = representation_pattern.sub('', run.text)
 
         # Clean paragraphs
         for paragraph in doc.paragraphs:
@@ -3816,3 +3886,89 @@ class EscrituraPublicaDocumentService:
             response['Content-Length'] = str(buffer.getbuffer().nbytes)
             response['Access-Control-Allow-Origin'] = '*'
             return response
+
+    def _clean_text_formatting(self, text: str) -> str:
+        """
+        Clean up text formatting issues like repeated commas, extra spaces, etc.
+        """
+        if not text:
+            return text
+            
+        import re
+        
+        # Remove multiple consecutive commas and spaces
+        text = re.sub(r',\s*,+', ',', text)  # Replace multiple commas with single comma
+        text = re.sub(r',{2,}', ',', text)   # Replace multiple commas with single comma
+        text = re.sub(r'\s{2,}', ' ', text)  # Replace multiple spaces with single space
+        text = re.sub(r',\s*$', '', text)    # Remove trailing comma
+        text = re.sub(r'^\s*,', '', text)    # Remove leading comma
+        text = re.sub(r',\s*,', ',', text)   # Remove comma-space-comma patterns
+        
+        # Fix specific spacing issues with location names
+        text = re.sub(r'PUNO([A-Z])', r'PUNO Y \1', text)  # Fix missing Y connector after PUNO
+        text = re.sub(r'([a-z])([A-Z][A-Z])', r'\1 Y \2', text)  # Add Y between concatenated words
+        
+        # Fix missing spaces between concatenated names/words
+        text = re.sub(r'([a-z])([A-Z][a-z])', r'\1 \2', text)  # Add space between camelCase
+        text = re.sub(r'([A-Z])([A-Z][a-z])', r'\1 \2', text)  # Add space between PascalCase
+        
+        # Clean up extra punctuation
+        text = re.sub(r'\s+,', ',', text)    # Remove space before comma
+        text = re.sub(r',(\w)', r', \1', text)  # Ensure space after comma
+        
+        # Fix specific patterns for better readability
+        text = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', text)  # Split ALLCAPS from Title
+        
+        # Remove multiple spaces again after all replacements
+        text = re.sub(r'\s{2,}', ' ', text)
+        
+        return text.strip()
+
+    def remove_unfilled_placeholders(self, doc):
+        """
+        Remove all unfilled {{SOMETHING}} placeholders completely, except for escrituracion placeholders which should be hidden.
+        Also clean up text formatting issues.
+        """
+        import re
+        curly_placeholder_pattern = re.compile(r'\{\{[A-Z0-9_]+\}\}')
+        representation_pattern = re.compile(
+            r'EN REPRESENTACION DE\s*Y[\s.·…‥⋯⋮⋱⋰⋯—–-]*', re.IGNORECASE
+        )
+
+        # List of placeholders to keep and hide (only escrituracion placeholders)
+        keep_placeholders = ['{{NRO_ESC}}', '{{FI}}', '{{FF}}', '{{S_IN}}', '{{S_FN}}', '{{FECHA_ACT}}']
+
+        def clean_runs(runs):
+            for run in runs:
+                # Handle {{SOMETHING}} placeholders
+                if curly_placeholder_pattern.search(run.text):
+                    # Check if this contains placeholders we want to keep and hide
+                    should_hide_not_remove = False
+                    for placeholder in keep_placeholders:
+                        if placeholder in run.text:
+                            # If it's a placeholder we want to keep, check if it has a real value
+                            if run.text.strip() == placeholder:
+                                # This is still a placeholder, hide it with white color
+                                run.font.color.rgb = RGBColor(255, 255, 255)  # White color
+                                should_hide_not_remove = True
+                                break
+                    
+                    # For other curly placeholders, remove them completely
+                    if not should_hide_not_remove:
+                        run.text = curly_placeholder_pattern.sub('', run.text)
+                
+                # Remove unwanted phrase
+                run.text = representation_pattern.sub('', run.text)
+                
+                # Clean up text formatting
+                run.text = self._clean_text_formatting(run.text)
+
+        # Clean paragraphs
+        for paragraph in doc.paragraphs:
+            clean_runs(paragraph.runs)
+        # Clean tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        clean_runs(paragraph.runs)
