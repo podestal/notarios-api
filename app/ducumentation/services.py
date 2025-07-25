@@ -3468,14 +3468,14 @@ class EscrituraPublicaDocumentService:
                 else:
                     domicilio = f"CON DOMICILIO EN {transferente['direccion']} DEL DISTRITO DE {transferente['distrito']} PROVINCIA DE {transferente['provincia']} Y DEPARTAMENTO DE {transferente['departamento']}"
             
-            # Handle occupation for married couples
+            # Handle occupation for married couples - Match PHP logic
             if contador_vendedor == 2:
                 if casados_transferentes:
                     ocupacion = transferente['ocupacion'] + ', '  # Add comma-space for proper concatenation
                 else:
                     ocupacion = transferente['ocupacion'] + ', ' + estado_civil_texto
             else:
-                ocupacion = transferente['ocupacion'] + ', '  # Add comma-space for proper concatenation
+                ocupacion = transferente['ocupacion'] + ', QUIEN DECLARA SER ' + estado_civil_texto  # PHP: ocupacion + ', QUIEN DECLARA SER ' + estadoCivil
             
             # Company data keys
             if transferente['condicionEmpresa'] in ['EMPRESA EN CONSTITUCION', 'ASOCIACION EN CONSTITUCION']:
