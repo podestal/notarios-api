@@ -1495,3 +1495,13 @@ class LegalizacionViewSet(ModelViewSet):
             self.queryset = self.queryset.filter(fechaingreso__lte=dateTo)
 
         return super().list(request, *args, **kwargs)
+
+class PermiViajeViewSet(ModelViewSet):
+    """
+    ViewSet for the PermiViaje model.
+    """
+    queryset = models.PermiViaje.objects.all()
+    serializer_class = serializers.PermiViajeSerializer
+    pagination_class = pagination.KardexPagination
+
+    # def list(self, request, *args, **kwargs):

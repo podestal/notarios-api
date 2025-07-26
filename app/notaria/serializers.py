@@ -635,3 +635,12 @@ class LegalizacionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Legalizacion
         fields = '__all__'
+
+
+class PermiViajeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the PermiViaje model.
+    """
+    class Meta:
+        model = models.PermiViaje
+        fields = '__all__'
