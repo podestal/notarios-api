@@ -1479,3 +1479,19 @@ class LegalizacionViewSet(ModelViewSet):
     queryset = models.Legalizacion.objects.all().order_by('-idlegalizacion')
     serializer_class = serializers.LegalizacionSerializer
     pagination_class = pagination.KardexPagination
+
+    def list(self, request, *args, **kwargs):
+        dateFrom = request.query_params.get('dateFrom', '')
+        dateTo = request.query_params.get('dateTo', '')
+
+        print('dateFrom', dateFrom)
+        print('dateTo', dateTo)
+
+        if dateFrom and dateTo:
+            self.queryset = self.queryset.filter(fechaingreso__range=(dateFrom, dateTo))
+        elif dateFrom:
+            self.queryset = self.queryset.filter(fechaingreso__gte=dateFrom)
+        elif dateTo:
+            self.queryset = self.queryset.filter(fechaingreso__lte=dateTo)
+
+        return super().list(request, *args, **kwargs)
