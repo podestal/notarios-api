@@ -723,3 +723,23 @@ class PermiViaje(models.Model):
     class Meta:
         managed = False
         db_table = 'permi_viaje'
+
+
+class ViajeContratantes(models.Model):
+    id_viaje = models.IntegerField(blank=True, null=True)
+    id_contratante = models.AutoField(primary_key=True)
+    c_codcontrat = models.CharField(max_length=30, blank=True, null=True)
+    c_descontrat = models.CharField(max_length=2000, blank=True, null=True)
+    c_fircontrat = models.CharField(max_length=20, blank=True, null=True)
+    c_condicontrat = models.CharField(max_length=30, blank=True, null=True)
+    edad = models.CharField(max_length=10, blank=True, null=True)
+    condi_edad = models.CharField(max_length=10, blank=True, null=True)
+    codi_testigo = models.CharField(max_length=2000, blank=True, null=True)
+    tip_incapacidad = models.CharField(max_length=2000, blank=True, null=True)
+    codi_podera = models.CharField(max_length=100, blank=True, null=True)
+    partida_e = models.CharField(max_length=2000, blank=True, null=True)
+    sede_regis = models.CharField(max_length=2000, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'viaje_contratantes'

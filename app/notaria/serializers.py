@@ -644,3 +644,12 @@ class PermiViajeSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PermiViaje
         fields = '__all__'
+
+
+class ViajeContratantesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the ViajeContratantes model.
+    """
+    class Meta:
+        model = models.ViajeContratantes
+        fields = '__all__'

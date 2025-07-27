@@ -1505,3 +1505,11 @@ class PermiViajeViewSet(ModelViewSet):
     pagination_class = pagination.KardexPagination
 
     # def list(self, request, *args, **kwargs):
+
+class ViajeContratantesViewSet(ModelViewSet):
+    """
+    ViewSet for the ViajeContratantes model.
+    """
+    queryset = models.ViajeContratantes.objects.all()
+    serializer_class = serializers.ViajeContratantesSerializer
+    pagination_class = pagination.KardexPagination
