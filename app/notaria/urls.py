@@ -39,7 +39,7 @@ router.register('templates', views.TemplateViewSet)
 
 # EXTRAPROTOCOLARES
 router.register('legalizacion', views.LegalizacionViewSet)
-router.register('permi_viaje', views.PermiViajeViewSet)
+router.register('permi_viaje', views.PermiViajeViewSet, basename='permi_viaje')
 router.register('viaje_contratantes', views.ViajeContratantesViewSet)
 
 urlpatterns = router.urls

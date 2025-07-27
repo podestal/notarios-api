@@ -682,13 +682,13 @@ class PermiViajeSerializer(serializers.ModelSerializer):
         contratantes = contratantes_map.get(obj.id_viaje, [])
         
         if not contratantes:
-            return ""
+            return []
         
-        result = ({
+        result = [{
             'id_contratante': contratante['id_contratante'],
             'c_descontrat': contratante['c_descontrat'],
             'c_condicontrat': contratante['c_condicontrat']
-        } for contratante in contratantes)
+        } for contratante in contratantes]
 
         return result
 

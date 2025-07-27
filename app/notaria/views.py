@@ -1500,7 +1500,7 @@ class PermiViajeViewSet(ModelViewSet):
     """
     ViewSet for the PermiViaje model.
     """
-    queryset = models.PermiViaje.objects.all()
+    queryset = models.PermiViaje.objects.all().order_by('-id_viaje')
     serializer_class = serializers.PermiViajeSerializer
     pagination_class = pagination.KardexPagination
 
