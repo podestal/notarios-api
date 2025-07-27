@@ -641,9 +641,57 @@ class PermiViajeSerializer(serializers.ModelSerializer):
     """
     Serializer for the PermiViaje model.
     """
+
+    contratantes = serializers.SerializerMethodField()
+
     class Meta:
         model = models.PermiViaje
-        fields = '__all__'
+        fields = [
+            'id_viaje',
+            'num_kardex',
+            'asunto',
+            'fec_ingreso',
+            'nom_recep',
+            'hora_recep',
+            'referencia',
+            'nom_comu',
+            'tel_comu',
+            'email_comu',
+            'documento',
+            'num_crono',
+            'fecha_crono',
+            'num_formu',
+            'lugar_formu',
+            'observacion',
+            'swt_est',
+            'partida_e',
+            'sede_regis',
+            'qr',
+            'via',
+            'fecha_desde',
+            'fecha_hasta',
+            'contratantes',
+        ]
+
+    
+    def get_contratantes(self, obj):
+        context = self.context
+        contratantes_map = context.get('contratantes_map', {})
+        
+        # Get contratantes for this specific viaje object
+        contratantes = contratantes_map.get(obj.id_viaje, [])
+        
+        if not contratantes:
+            return ""
+        
+        result = ({
+            'id_contratante': contratante['id_contratante'],
+            'c_descontrat': contratante['c_descontrat'],
+            'c_condicontrat': contratante['c_condicontrat']
+        } for contratante in contratantes)
+
+        return result
+
 
 
 class ViajeContratantesSerializer(serializers.ModelSerializer):
