@@ -693,6 +693,37 @@ class PermiViajeSerializer(serializers.ModelSerializer):
         return result
 
 
+class CreatePermiViajeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a PermiViaje instance.
+    """
+    class Meta:
+        model = models.PermiViaje
+        fields = [
+            'num_kardex',
+            'asunto',
+            'fec_ingreso',
+            'nom_recep',
+            'hora_recep',
+            'referencia',
+            'nom_comu',
+            'tel_comu',
+            'email_comu',
+            'documento',
+            'num_crono',
+            'fecha_crono',
+            'num_formu',
+            'lugar_formu',
+            'observacion',
+            'swt_est',
+            'partida_e',
+            'sede_regis',
+            'qr',
+            'via',
+            'fecha_desde',
+            'fecha_hasta',
+        ]
+
 
 class ViajeContratantesSerializer(serializers.ModelSerializer):
     """
