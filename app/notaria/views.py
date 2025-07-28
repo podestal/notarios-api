@@ -101,7 +101,9 @@ class KardexViewSet(ModelViewSet):
     
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-
+        """
+        Override the update method to handle the update of the tipo de actos.
+        """
         instance = self.get_object()
         data = request.data
         codactos = data.get('codactos', '')
