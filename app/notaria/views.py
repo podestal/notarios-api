@@ -1538,3 +1538,22 @@ class ViajeContratantesViewSet(ModelViewSet):
     queryset = models.ViajeContratantes.objects.all()
     serializer_class = serializers.ViajeContratantesSerializer
     pagination_class = pagination.KardexPagination
+
+    @action(detail=False, methods=['get'])
+    def by_viaje(self, request):
+        """
+        Get ViajeContratantes records by viaje.
+        """
+        id_viaje = request.query_params.get('id_viaje')
+        if not id_viaje:
+            return Response(
+                {"error": "id_viaje parameter is required."},
+                status=400
+            )
+        
+        viaje_contratantes = models.ViajeContratantes.objects.filter(id_viaje=id_viaje)
+        if not viaje_contratantes.exists():
+            return Response([], status=200)
+
+        serializer = serializers.ViajeContratantesSerializer(viaje_contratantes, many=True)
+        return Response(serializer.data)
