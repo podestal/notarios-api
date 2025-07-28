@@ -1372,7 +1372,7 @@ class PermiViajeViewSet(ModelViewSet):
     pagination_class = pagination.KardexPagination
 
     def get_serializer_class(self):
-        if self.request.method == 'POST':
+        if self.request.method in ['POST', 'PUT', 'PATCH']:
             return serializers.CreatePermiViajeSerializer
         return serializers.PermiViajeSerializer
 
