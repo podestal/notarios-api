@@ -701,6 +701,7 @@ class CreatePermiViajeSerializer(serializers.ModelSerializer):
         model = models.PermiViaje
         fields = [
             'num_kardex',
+            'num_formu',
             'asunto',
             'fec_ingreso',
             'nom_recep',
@@ -712,7 +713,6 @@ class CreatePermiViajeSerializer(serializers.ModelSerializer):
             'documento',
             'num_crono',
             'fecha_crono',
-            'num_formu',
             'lugar_formu',
             'observacion',
             'swt_est',

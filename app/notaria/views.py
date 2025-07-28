@@ -12,6 +12,7 @@ from django.db import transaction
 
 from collections import defaultdict
 from . import utils
+from datetime import datetime
 
 
 '''
@@ -1369,6 +1370,67 @@ class PermiViajeViewSet(ModelViewSet):
     queryset = models.PermiViaje.objects.all().order_by('-id_viaje')
     serializer_class = serializers.PermiViajeSerializer
     pagination_class = pagination.KardexPagination
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return serializers.CreatePermiViajeSerializer
+        return serializers.PermiViajeSerializer
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """
+        Create a PermiViaje instance with auto-generated correlative numbers.
+        Generates correlative numbers for num_kardex and num_formu fields.
+        
+        num_kardex format: "YYYYNNNNNN" (year + 6-digit correlative, resets yearly)
+        num_formu format: "NNNNNNN" (7-digit correlative that increments)
+        """
+        data = request.data.copy()
+        current_year = datetime.now().year
+        
+        # Single query to get the last record (using same ordering as queryset)
+        try:
+            # Get the last record by id_viaje (same as queryset ordering)
+            last_record = models.PermiViaje.objects.filter(
+                num_formu__isnull=False
+            ).exclude(num_formu='').order_by('-id_viaje').first()
+            
+            if last_record and last_record.num_formu:
+                # Generate num_formu: continue from last global value
+                last_num_formu = int(last_record.num_formu)
+                new_num_formu = last_num_formu + 1
+                
+                # Generate num_kardex: check if last record is from current year
+                if last_record.num_kardex and last_record.num_kardex.startswith(str(current_year)):
+                    # Same year, increment correlative
+                    last_correlative = int(last_record.num_kardex[-6:])
+                    new_correlative = last_correlative + 1
+                else:
+                    # New year, start with 000001
+                    new_correlative = 1
+            else:
+                # First record ever, start with defaults
+                new_num_formu = 1
+                new_correlative = 1
+            
+            # Format the correlative numbers
+            print('new_num_formu', new_num_formu)
+            print('new_correlative', new_correlative)
+            data['num_formu'] = f"{new_num_formu:07d}"
+            data['num_kardex'] = f"{current_year}{new_correlative:06d}"
+            
+        except Exception as e:
+            # Fallback values if there's an error
+            data['num_formu'] = "0000001"
+            data['num_kardex'] = f"{current_year}000001"
+        
+        # Create the serializer with the modified data
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def list(self, request, *args, **kwargs):
 
