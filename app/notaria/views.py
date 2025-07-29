@@ -1463,10 +1463,11 @@ class ViajeContratantesViewSet(ModelViewSet):
     """
     queryset = models.ViajeContratantes.objects.all()
     serializer_class = serializers.ViajeContratantesSerializer
+    pagination_class = pagination.KardexPagination
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
-            return serializers.CreatePermiViajeSerializer
+            return serializers.ViajeContratantesSerializer
         return serializers.ViajeContratantesSerializer
 
     @action(detail=False, methods=['get'])
