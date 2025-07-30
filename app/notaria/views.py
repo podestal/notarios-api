@@ -1488,3 +1488,12 @@ class ViajeContratantesViewSet(ModelViewSet):
 
         serializer = serializers.ViajeContratantesSerializer(viaje_contratantes, many=True)
         return Response(serializer.data)
+
+
+class IngresoPoderesViewSet(ModelViewSet):
+    """
+    ViewSet for the IngresoPoderes model.
+    """
+    queryset = models.IngresoPoderes.objects.all()
+    serializer_class = serializers.IngresoPoderesSerializer
+    pagination_class = pagination.KardexPagination

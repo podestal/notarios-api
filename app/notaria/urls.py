@@ -41,5 +41,6 @@ router.register('templates', views.TemplateViewSet)
 router.register('legalizacion', views.LegalizacionViewSet)
 router.register('permi_viaje', views.PermiViajeViewSet, basename='permi_viaje')
 router.register('viaje_contratantes', views.ViajeContratantesViewSet)
+router.register('ingreso_poderes', views.IngresoPoderesViewSet, basename='ingreso_poderes')
 
 urlpatterns = router.urls

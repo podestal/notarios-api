@@ -732,3 +732,12 @@ class ViajeContratantesSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.ViajeContratantes
         fields = '__all__'
+
+
+class IngresoPoderesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the IngresoPoderes model.
+    """
+    class Meta:
+        model = models.IngresoPoderes
+        fields = '__all__'

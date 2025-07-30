@@ -743,3 +743,29 @@ class ViajeContratantes(models.Model):
     class Meta:
         managed = False
         db_table = 'viaje_contratantes'
+
+
+class IngresoPoderes(models.Model):
+    id_poder = models.AutoField(primary_key=True)
+    num_kardex = models.CharField(max_length=30, blank=True, null=True)
+    nom_recep = models.CharField(max_length=1000, blank=True, null=True)
+    hora_recep = models.CharField(max_length=20, blank=True, null=True)
+    id_asunto = models.CharField(max_length=10, blank=True, null=True)
+    fec_ingreso = models.CharField(max_length=30, blank=True, null=True)
+    referencia = models.CharField(max_length=1000, blank=True, null=True)
+    nom_comuni = models.CharField(max_length=500, blank=True, null=True)
+    telf_comuni = models.CharField(max_length=500, blank=True, null=True)
+    email_comuni = models.CharField(max_length=500, blank=True, null=True)
+    documento = models.CharField(max_length=50, blank=True, null=True)
+    id_respon = models.CharField(max_length=30, blank=True, null=True)
+    des_respon = models.CharField(max_length=1000, blank=True, null=True)
+    doc_presen = models.CharField(max_length=50, blank=True, null=True)
+    fec_ofre = models.CharField(max_length=30, blank=True, null=True)
+    hora_ofre = models.CharField(max_length=30, blank=True, null=True)
+    num_formu = models.CharField(max_length=30, blank=True, null=True)
+    fec_crono = models.CharField(max_length=30, blank=True, null=True)
+    swt_est = models.CharField(max_length=5, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'ingreso_poderes'
