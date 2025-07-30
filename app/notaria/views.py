@@ -1497,3 +1497,27 @@ class IngresoPoderesViewSet(ModelViewSet):
     queryset = models.IngresoPoderes.objects.all()
     serializer_class = serializers.IngresoPoderesSerializer
     pagination_class = pagination.KardexPagination
+
+    def list(self, request, *args, **kwargs):
+
+        dateFrom = request.query_params.get('dateFrom', '')
+        dateTo = request.query_params.get('dateTo', '')
+        dateType = request.query_params.get('dateType', '')
+
+        if dateType == 'fecha_ingreso':
+            if dateFrom and dateTo:
+                self.queryset = self.queryset.filter(fec_ingreso__range=(dateFrom, dateTo))
+            elif dateFrom:
+                self.queryset = self.queryset.filter(fec_ingreso__gte=dateFrom)
+            elif dateTo:
+                self.queryset = self.queryset.filter(fec_ingreso__lte=dateTo)
+        elif dateType == 'fecha_crono':
+            if dateFrom and dateTo:
+                self.queryset = self.queryset.filter(fec_crono__range=(dateFrom, dateTo))
+            elif dateFrom:
+                self.queryset = self.queryset.filter(fec_crono__gte=dateFrom)
+            elif dateTo:
+                self.queryset = self.queryset.filter(fec_crono__lte=dateTo)
+
+
+        return super().list(request, *args, **kwargs)
