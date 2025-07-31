@@ -1494,7 +1494,7 @@ class IngresoPoderesViewSet(ModelViewSet):
     """
     ViewSet for the IngresoPoderes model.
     """
-    queryset = models.IngresoPoderes.objects.all()
+    queryset = models.IngresoPoderes.objects.all().order_by('-id_poder')
     serializer_class = serializers.IngresoPoderesSerializer
     pagination_class = pagination.KardexPagination
 
