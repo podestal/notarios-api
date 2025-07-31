@@ -8,27 +8,17 @@
 from django.db import models
 
 
-class IngresoPoderes(models.Model):
-    id_poder = models.AutoField()
-    num_kardex = models.CharField(max_length=30, blank=True, null=True)
-    nom_recep = models.CharField(max_length=1000, blank=True, null=True)
-    hora_recep = models.CharField(max_length=20, blank=True, null=True)
-    id_asunto = models.CharField(max_length=10, blank=True, null=True)
-    fec_ingreso = models.CharField(max_length=30, blank=True, null=True)
-    referencia = models.CharField(max_length=1000, blank=True, null=True)
-    nom_comuni = models.CharField(max_length=500, blank=True, null=True)
-    telf_comuni = models.CharField(max_length=500, blank=True, null=True)
-    email_comuni = models.CharField(max_length=500, blank=True, null=True)
-    documento = models.CharField(max_length=50, blank=True, null=True)
-    id_respon = models.CharField(max_length=30, blank=True, null=True)
-    des_respon = models.CharField(max_length=1000, blank=True, null=True)
-    doc_presen = models.CharField(max_length=50, blank=True, null=True)
-    fec_ofre = models.CharField(max_length=30, blank=True, null=True)
-    hora_ofre = models.CharField(max_length=30, blank=True, null=True)
-    num_formu = models.CharField(max_length=30, blank=True, null=True)
-    fec_crono = models.CharField(max_length=30, blank=True, null=True)
-    swt_est = models.CharField(max_length=5, blank=True, null=True)
+class PoderesContratantes(models.Model):
+    id_poder = models.IntegerField(blank=True, null=True)
+    id_contrata = models.AutoField()
+    c_codcontrat = models.CharField(max_length=30, blank=True, null=True)
+    c_descontrat = models.CharField(max_length=200, blank=True, null=True)
+    c_fircontrat = models.CharField(max_length=30, blank=True, null=True)
+    c_condicontrat = models.CharField(max_length=30, blank=True, null=True)
+    codi_asegurado = models.CharField(max_length=30, blank=True, null=True)
+    codi_testigo = models.CharField(max_length=30, blank=True, null=True)
+    tip_incapacidad = models.CharField(max_length=30, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'ingreso_poderes'
+        db_table = 'poderes_contratantes'

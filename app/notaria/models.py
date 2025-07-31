@@ -769,3 +769,19 @@ class IngresoPoderes(models.Model):
     class Meta:
         managed = False
         db_table = 'ingreso_poderes'
+
+
+class PoderesContratantes(models.Model):
+    id_poder = models.IntegerField(blank=True, null=True)
+    id_contrata = models.AutoField(primary_key=True)
+    c_codcontrat = models.CharField(max_length=30, blank=True, null=True)
+    c_descontrat = models.CharField(max_length=200, blank=True, null=True)
+    c_fircontrat = models.CharField(max_length=30, blank=True, null=True)
+    c_condicontrat = models.CharField(max_length=30, blank=True, null=True)
+    codi_asegurado = models.CharField(max_length=30, blank=True, null=True)
+    codi_testigo = models.CharField(max_length=30, blank=True, null=True)
+    tip_incapacidad = models.CharField(max_length=30, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'poderes_contratantes'

@@ -1519,5 +1519,48 @@ class IngresoPoderesViewSet(ModelViewSet):
             elif dateTo:
                 self.queryset = self.queryset.filter(fec_crono__lte=dateTo)
 
+        # page_viajes = self.paginate_queryset(self.queryset)
+
+        # permisos_ids = [permiso.id_poder for permiso in page_viajes]
+        # contratantes_map = {}
+
+        # if permisos_ids:
+        #     pass
+            # contratantes_queryset = models.ViajeContratantes.objects.filter(
+            #     id_viaje__in=viaje_ids
+            # ).values('id_viaje', 'id_contratante', 'c_descontrat', 'c_condicontrat')
+        
+        # Get all contratantes for all viajes in the page
+        # viaje_ids = [viaje.id_viaje for viaje in page_viajes]
+        # contratantes_map = {}
+        
+        # if viaje_ids:
+        #     contratantes_queryset = models.ViajeContratantes.objects.filter(
+        #         id_viaje__in=viaje_ids
+        #     ).values('id_viaje', 'id_contratante', 'c_descontrat', 'c_condicontrat')
+            
+        #     # Group contratantes by id_viaje
+        #     for contratante in contratantes_queryset:
+        #         id_viaje = contratante['id_viaje']
+        #         if id_viaje not in contratantes_map:
+        #             contratantes_map[id_viaje] = []
+        #         contratantes_map[id_viaje].append(contratante)
+            
+        # serializer = serializers.PermiViajeSerializer(page_viajes, context={
+        #     'contratantes_map': contratantes_map
+        # }, many=True)
+        # return self.get_paginated_response(serializer.data)
+
 
         return super().list(request, *args, **kwargs)
+
+
+class PoderesContratantesViewSet(ModelViewSet):
+    """
+    ViewSet for the PoderesContratantes model.
+    """
+    queryset = models.PoderesContratantes.objects.all()
+    serializer_class = serializers.PoderesContratantesSerializer
+    pagination_class = pagination.KardexPagination  
+
+
