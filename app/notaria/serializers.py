@@ -785,6 +785,34 @@ class IngresoPoderesSerializer(serializers.ModelSerializer):
         return result
 
 
+class CreateIngresoPoderesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a IngresoPoderes instance.
+    """
+    class Meta:
+        model = models.IngresoPoderes
+        fields = [
+            'id_poder',
+            'num_kardex',
+            'nom_recep',
+            'hora_recep',
+            'id_asunto',
+            'fec_ingreso',
+            'referencia',
+            'nom_comuni',
+            'telf_comuni',
+            'email_comuni',
+            'documento',
+            'id_respon',
+            'des_respon',
+            'doc_presen',
+            'fec_ofre',
+            'hora_ofre',
+            'num_formu',
+            'fec_crono',
+            'swt_est',
+        ]
+
 class PoderesContratantesSerializer(serializers.ModelSerializer):
     """
     Serializer for the PoderesContratantes model.
