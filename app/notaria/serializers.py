@@ -738,9 +738,51 @@ class IngresoPoderesSerializer(serializers.ModelSerializer):
     """
     Serializer for the IngresoPoderes model.
     """
+
+    contratantes = serializers.SerializerMethodField()
+
     class Meta:
         model = models.IngresoPoderes
-        fields = '__all__'
+        fields = [
+            'id_poder',
+            'num_kardex',
+            'nom_recep',
+            'hora_recep',
+            'id_asunto',
+            'fec_ingreso',
+            'referencia',
+            'nom_comuni',
+            'telf_comuni',
+            'email_comuni',
+            'documento',
+            'id_respon',
+            'des_respon',
+            'doc_presen',
+            'fec_ofre',
+            'hora_ofre',
+            'num_formu',
+            'fec_crono',
+            'swt_est',
+            'contratantes',
+        ]
+
+    def get_contratantes(self, obj):
+        context = self.context
+        contratantes_map = context.get('contratantes_map', {})
+
+        # Get contratantes for this specific poder object
+        contratantes = contratantes_map.get(obj.id_poder, [])
+
+        if not contratantes:
+            return []
+
+        result = [{
+            'id_contrata': contratante['id_contrata'],
+            'c_descontrat': contratante['c_descontrat'],
+            'c_condicontrat': contratante['c_condicontrat']
+        } for contratante in contratantes]
+
+        return result
 
 
 class PoderesContratantesSerializer(serializers.ModelSerializer):
