@@ -1499,7 +1499,7 @@ class IngresoPoderesViewSet(ModelViewSet):
     pagination_class = pagination.KardexPagination
 
     def get_serializer_class(self):
-        if self.request.method == 'POST':
+        if self.request.method in ['POST', 'PUT', 'PATCH']:
             return serializers.CreateIngresoPoderesSerializer
         return serializers.IngresoPoderesSerializer
 
@@ -1608,5 +1608,17 @@ class PoderesContratantesViewSet(ModelViewSet):
     queryset = models.PoderesContratantes.objects.all()
     serializer_class = serializers.PoderesContratantesSerializer
     pagination_class = pagination.KardexPagination  
+
+    @action(detail=False, methods=['get'])
+    def by_poder(self, request):
+        """
+        Get PoderesContratantes records by poder.
+        """
+        id_poder = request.query_params.get('id_poder', None)
+        if id_poder:
+            queryset = models.PoderesContratantes.objects.filter(id_poder=id_poder)
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
