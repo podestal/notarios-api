@@ -820,3 +820,12 @@ class PoderesContratantesSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PoderesContratantes
         fields = '__all__'
+
+
+class IngresoCartasSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the IngresoCartas model.
+    """
+    class Meta:
+        model = models.IngresoCartas
+        fields = '__all__'

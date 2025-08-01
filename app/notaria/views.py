@@ -1653,3 +1653,11 @@ class PoderesContratantesViewSet(ModelViewSet):
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
+class IngresoCartasViewSet(ModelViewSet):
+    """
+    ViewSet for the IngresoCartas model.
+    """
+    queryset = models.IngresoCartas.objects.all().order_by('-id_carta')
+    serializer_class = serializers.IngresoCartasSerializer
+    pagination_class = pagination.KardexPagination
+
