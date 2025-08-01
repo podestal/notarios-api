@@ -1434,12 +1434,43 @@ class PermiViajeViewSet(ModelViewSet):
 
     def list(self, request, *args, **kwargs):
 
+        # FILTERS - Apply filters BEFORE pagination
+        # crono, tipoPermiso, nombreParticipante, numeroControl, dateFrom, dateTo
+        crono = request.query_params.get('crono', None)
+        tipoPermiso = request.query_params.get('tipoPermiso', None)
+        nombreParticipante = request.query_params.get('nombreParticipante', None)
+        numeroControl = request.query_params.get('numeroControl', None)
+        dateFrom = request.query_params.get('dateFrom', None)
+        dateTo = request.query_params.get('dateTo', None)
+
+        # Apply filters to queryset
+        if dateFrom and dateTo:
+            self.queryset = self.queryset.filter(fec_ingreso__range=(dateFrom, dateTo))
+        elif dateFrom:
+            self.queryset = self.queryset.filter(fec_ingreso__gte=dateFrom)
+        elif dateTo:
+            self.queryset = self.queryset.filter(fec_ingreso__lte=dateTo)
+        if crono:
+            self.queryset = self.queryset.filter(num_kardex=crono)
+        if tipoPermiso:
+            self.queryset = self.queryset.filter(asunto=tipoPermiso)
+        if nombreParticipante:
+            # Filter PermiViaje by related ViajeContratantes field
+            self.queryset = self.queryset.filter(
+                id_viaje__in=models.ViajeContratantes.objects.filter(
+                    c_descontrat__icontains=nombreParticipante
+                ).values_list('id_viaje', flat=True)
+            )
+        if numeroControl:
+            self.queryset = self.queryset.filter(num_formu=numeroControl)
+
+        # Now paginate the filtered queryset
         page_viajes = self.paginate_queryset(self.queryset)
-        
+
         # Get all contratantes for all viajes in the page
         viaje_ids = [viaje.id_viaje for viaje in page_viajes]
         contratantes_map = {}
-        
+
         if viaje_ids:
             contratantes_queryset = models.ViajeContratantes.objects.filter(
                 id_viaje__in=viaje_ids
