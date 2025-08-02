@@ -1661,3 +1661,44 @@ class IngresoCartasViewSet(ModelViewSet):
     serializer_class = serializers.IngresoCartasSerializer
     pagination_class = pagination.KardexPagination
 
+    def list(self, request, *args, **kwargs):
+
+        numCarta = request.query_params.get('numCarta', '')
+        remitente = request.query_params.get('remitente', '')
+        destinatario = request.query_params.get('destinatario', '')
+        dateFrom = request.query_params.get('dateFrom', '')
+        dateTo = request.query_params.get('dateTo', '')
+        dateType = request.query_params.get('dateType', '')
+
+        if dateType == 'fecha_ingreso':
+            if dateFrom and dateTo:
+                self.queryset = self.queryset.filter(fec_ingreso__range=(dateFrom, dateTo))
+            elif dateFrom:
+                self.queryset = self.queryset.filter(fec_ingreso__gte=dateFrom)
+            elif dateTo:
+                self.queryset = self.queryset.filter(fec_ingreso__lte=dateTo)
+        elif dateType == 'fec_entrega':
+            if dateFrom and dateTo:
+                self.queryset = self.queryset.filter(fec_entrega__range=(dateFrom, dateTo))
+            elif dateFrom:
+                self.queryset = self.queryset.filter(fec_entrega__gte=dateFrom)
+            elif dateTo:
+                self.queryset = self.queryset.filter(fec_entrega__lte=dateTo)
+
+        if numCarta:
+            self.queryset = self.queryset.filter(num_carta=numCarta)
+        if remitente:
+            # Normalize input: strip whitespace and handle common variations
+            normalized_remitente = remitente.strip()
+            self.queryset = self.queryset.filter(nom_remitente__icontains=normalized_remitente)
+        if destinatario:
+            # Normalize input: strip whitespace and handle common variations
+            normalized_destinatario = destinatario.strip()
+            self.queryset = self.queryset.filter(nom_destinatario__icontains=normalized_destinatario)
+
+        page_cartas = self.paginate_queryset(self.queryset)
+
+        serializer = serializers.IngresoCartasSerializer(page_cartas, many=True)
+        return self.get_paginated_response(serializer.data)
+
+
