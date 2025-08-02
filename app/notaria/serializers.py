@@ -829,3 +829,12 @@ class IngresoCartasSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.IngresoCartas
         fields = '__all__'
+
+
+class LibrosSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Libros model.
+    """
+    class Meta:
+        model = models.Libros
+        fields = '__all__'

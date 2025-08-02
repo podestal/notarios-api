@@ -1744,3 +1744,38 @@ class IngresoCartasViewSet(ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+
+class LibrosViewSet(ModelViewSet):
+    """
+    ViewSet for the Libros model.
+    """
+    queryset = models.Libros.objects.all().order_by('-id')
+    serializer_class = serializers.LibrosSerializer
+    pagination_class = pagination.KardexPagination
+
+    def list(self, request, *args, **kwargs):
+        dateFrom = request.query_params.get('dateFrom', '')
+        dateTo = request.query_params.get('dateTo', '')
+        empresa = request.query_params.get('empresa', '')
+        document = request.query_params.get('document', '')
+        num_libro = request.query_params.get('num_libro', '')
+        year = request.query_params.get('year', '')
+
+        if dateFrom and dateTo:
+            self.queryset = self.queryset.filter(fecing__range=(dateFrom, dateTo))
+        elif dateFrom:
+            self.queryset = self.queryset.filter(fecing__gte=dateFrom)
+        elif dateTo:
+            self.queryset = self.queryset.filter(fecing__lte=dateTo)
+
+        if empresa:
+            self.queryset = self.queryset.filter(empresa=empresa)
+        if document:
+            self.queryset = self.queryset.filter(ruc=document)
+        if num_libro and year:
+            self.queryset = self.queryset.filter(numlibro=num_libro, ano=year)
+
+        page_libros = self.paginate_queryset(self.queryset)
+        serializer = serializers.LibrosSerializer(page_libros, many=True)
+        return self.get_paginated_response(serializer.data)
+
