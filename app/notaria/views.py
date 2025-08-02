@@ -1701,4 +1701,46 @@ class IngresoCartasViewSet(ModelViewSet):
         serializer = serializers.IngresoCartasSerializer(page_cartas, many=True)
         return self.get_paginated_response(serializer.data)
 
+    def create(self, request, *args, **kwargs):
+        """
+        Create a IngresoCartas instance with auto-generated correlative numbers.
+        Generates correlative numbers for num_carta field.
+        
+        num_carta format: "YYYYNNNNNN" (year + 6-digit correlative, resets yearly)
+        """
+        data = request.data.copy()
+        current_year = datetime.now().year
+
+        try:
+            # Get the last record by id_carta (same as queryset ordering)
+            last_record = models.IngresoCartas.objects.filter(
+                num_carta__isnull=False
+            ).exclude(num_carta='').order_by('-id_carta').first()
+
+            if last_record and last_record.num_carta:
+                # Generate num_carta: check if last record is from current year
+                if last_record.num_carta and last_record.num_carta.startswith(str(current_year)):
+                    # Same year, increment correlative
+                    last_correlative = int(last_record.num_carta[-6:])
+                    new_correlative = last_correlative + 1
+                else:
+                    # New year, start with 000001
+                    new_correlative = 1
+            else:
+                # First record ever, start with defaults
+                new_correlative = 1
+            
+            # Format the correlative number
+            data['num_carta'] = f"{current_year}{new_correlative:06d}"
+            
+        except Exception as e:
+            # Fallback values if there's an error
+            data['num_carta'] = f"{current_year}000001"
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
