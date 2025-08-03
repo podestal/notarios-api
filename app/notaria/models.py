@@ -822,30 +822,30 @@ class Libros(models.Model):
     numlibro = models.CharField(max_length=10)
     ano = models.CharField(max_length=4)
     fecing = models.DateField()
-    tipper = models.CharField(max_length=1)
-    apepat = models.CharField(max_length=1000)
-    apemat = models.CharField(max_length=1000)
-    prinom = models.CharField(max_length=1000)
-    segnom = models.CharField(max_length=1000)
-    ruc = models.CharField(max_length=11)
-    domicilio = models.CharField(max_length=2000)
-    coddis = models.CharField(max_length=6)
-    empresa = models.CharField(max_length=5000)
-    domfiscal = models.CharField(max_length=3000)
-    idtiplib = models.IntegerField()
-    descritiplib = models.CharField(max_length=3000)
-    idlegal = models.IntegerField()
-    folio = models.CharField(max_length=20)
-    idtipfol = models.IntegerField()
-    detalle = models.CharField(max_length=3000)
-    idnotario = models.IntegerField()
-    solicitante = models.CharField(max_length=3000)
-    comentario = models.CharField(max_length=3000)
-    feclegal = models.CharField(max_length=12)
-    comentario2 = models.CharField(max_length=3000)
-    dni = models.CharField(max_length=11)
-    idusuario = models.IntegerField()
-    idnlibro = models.IntegerField()
+    tipper = models.CharField(max_length=1, blank=True, null=True)
+    apepat = models.CharField(max_length=1000, blank=True, null=True)
+    apemat = models.CharField(max_length=1000, blank=True, null=True)
+    prinom = models.CharField(max_length=1000, blank=True, null=True)
+    segnom = models.CharField(max_length=1000, blank=True, null=True)
+    ruc = models.CharField(max_length=11, blank=True, null=True)
+    domicilio = models.CharField(max_length=2000, blank=True, null=True)
+    coddis = models.CharField(max_length=6, blank=True, null=True)
+    empresa = models.CharField(max_length=5000, blank=True, null=True)
+    domfiscal = models.CharField(max_length=3000, blank=True, null=True)
+    idtiplib = models.IntegerField(blank=True, null=True)
+    descritiplib = models.CharField(max_length=3000, blank=True, null=True)
+    idlegal = models.IntegerField(blank=True, null=True)
+    folio = models.CharField(max_length=20, blank=True, null=True)
+    idtipfol = models.IntegerField(blank=True, null=True)
+    detalle = models.CharField(max_length=3000, blank=True, null=True)
+    idnotario = models.IntegerField(blank=True, null=True)
+    solicitante = models.CharField(max_length=3000, blank=True, null=True)
+    comentario = models.CharField(max_length=3000, blank=True, null=True)
+    feclegal = models.CharField(max_length=12, blank=True, null=True)
+    comentario2 = models.CharField(max_length=3000, blank=True, null=True)
+    dni = models.CharField(max_length=11, blank=True, null=True)
+    idusuario = models.IntegerField(blank=True, null=True)
+    idnlibro = models.IntegerField(blank=True, null=True)
     codclie = models.CharField(max_length=10, blank=True, null=True)
     flag = models.IntegerField(blank=True, null=True)
     numdoc_plantilla = models.CharField(max_length=11, blank=True, null=True)
@@ -855,3 +855,22 @@ class Libros(models.Model):
         managed = False
         db_table = 'libros'
         unique_together = (('numlibro', 'ano'),)
+
+
+class Nlibro(models.Model):
+    idnlibro = models.AutoField(primary_key=True)
+    desnlibro = models.CharField(max_length=300)
+    numlibro = models.CharField(max_length=3, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'nlibro'
+
+
+class Tipofolio(models.Model):
+    idtipfol = models.IntegerField()
+    destipfol = models.CharField(max_length=50)
+
+    class Meta:
+        managed = False
+        db_table = 'tipofolio'
