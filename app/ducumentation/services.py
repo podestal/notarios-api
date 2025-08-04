@@ -3823,6 +3823,9 @@ class EscrituraPublicaDocumentService:
             # Analyze template for potential issues
             self._analyze_template_content(template_bytes, template.filename)
             
+            # Fix malformed template if needed
+            template_bytes = self._fix_malformed_template(template_bytes)
+            
             return template_bytes
         except Exception as e:
             print(f"Error downloading template from R2: {e}")
@@ -3874,6 +3877,92 @@ class EscrituraPublicaDocumentService:
                             
         except Exception as e:
             print(f"DEBUG: Could not analyze template content: {e}")
+
+    def _fix_malformed_template(self, template_bytes: bytes) -> bytes:
+        """
+        Fix malformed Jinja2 patterns in the template by cleaning up XML tags
+        """
+        try:
+            import zipfile
+            from io import BytesIO
+            import re
+            
+            # Extract the Word document
+            zip_buffer = BytesIO(template_bytes)
+            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+                # Read the main document content
+                if 'word/document.xml' in zip_file.namelist():
+                    doc_content = zip_file.read('word/document.xml').decode('utf-8')
+                    
+                    # Find and fix malformed Jinja2 patterns
+                    # The issue is that Jinja2 placeholders are split across multiple XML runs
+                    # We need to find patterns like: {{</w:t></w:r><w:r...>VARIABLE_NAME</w:t></w:r><w:r...>}}
+                    
+                    # First, let's find all the malformed patterns and extract the variable names
+                    malformed_patterns = re.findall(
+                        r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>([A-Z0-9_]+)</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>\}\}',
+                        doc_content,
+                        re.DOTALL
+                    )
+                    
+                    print(f"DEBUG: Found {len(malformed_patterns)} malformed patterns to fix")
+                    if malformed_patterns:
+                        print(f"DEBUG: Variables to fix: {malformed_patterns[:10]}")  # Show first 10
+                    
+                    # Replace each malformed pattern with clean Jinja2 syntax
+                    fixed_content = doc_content
+                    for variable_name in malformed_patterns:
+                        # Create the malformed pattern for this specific variable
+                        malformed_regex = re.compile(
+                            r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>' + re.escape(variable_name) + r'</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>\}\}',
+                            re.DOTALL
+                        )
+                        # Replace with clean syntax
+                        fixed_content = malformed_regex.sub(f'{{{{{variable_name}}}}}', fixed_content)
+                        print(f"DEBUG: Fixed pattern for variable: {variable_name}")
+                    
+                    # Also fix simpler cases where there might be different XML structures
+                    simple_malformed_patterns = re.findall(
+                        r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>([A-Z0-9_]+)</w:t></w:r>\}\}',
+                        fixed_content,
+                        re.DOTALL
+                    )
+                    
+                    for variable_name in simple_malformed_patterns:
+                        simple_malformed_regex = re.compile(
+                            r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>' + re.escape(variable_name) + r'</w:t></w:r>\}\}',
+                            re.DOTALL
+                        )
+                        fixed_content = simple_malformed_regex.sub(f'{{{{{variable_name}}}}}', fixed_content)
+                    
+                    # Check if we made any changes
+                    if fixed_content != doc_content:
+                        print(f"DEBUG: Fixed malformed Jinja2 patterns in template")
+                        
+                        # Create new zip file with fixed content
+                        new_zip_buffer = BytesIO()
+                        with zipfile.ZipFile(new_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as new_zip:
+                            # Copy all files from original zip
+                            for item in zip_file.infolist():
+                                if item.filename == 'word/document.xml':
+                                    # Use the fixed content
+                                    new_zip.writestr(item, fixed_content)
+                                else:
+                                    # Copy other files as-is
+                                    new_zip.writestr(item, zip_file.read(item.filename))
+                        
+                        new_zip_buffer.seek(0)
+                        return new_zip_buffer.read()
+                    else:
+                        print(f"DEBUG: No malformed patterns found, template is clean")
+                        return template_bytes
+                else:
+                    print(f"DEBUG: Could not find document.xml in template")
+                    return template_bytes
+                    
+        except Exception as e:
+            print(f"DEBUG: Could not fix malformed template: {e}")
+            return template_bytes
 
     def _validate_template_data(self, data: Dict[str, str]):
         """
