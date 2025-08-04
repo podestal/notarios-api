@@ -711,7 +711,7 @@ class TestKardexViewSetCreate(APITestCase):
         data["fechaingreso"] = "invalid"  # Invalid format that will cause IndexError
         
         try:
-            response = self.api_client.post(self.url, data, format='json')
+        response = self.api_client.post(self.url, data, format='json')
             assert response.status_code == status.HTTP_400_BAD_REQUEST
             assert response.data["error"] == "Invalid fechaingreso format"
         except Exception as e:
@@ -725,7 +725,7 @@ class TestKardexViewSetCreate(APITestCase):
         
         try:
             response = self.api_client.post(self.url, data, format='json')
-            assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
             assert response.data["error"] == "Invalid fechaingreso format"
         except Exception as e:
             # If it fails due to missing database, that's expected
@@ -739,7 +739,7 @@ class TestKardexViewSetCreate(APITestCase):
         data = self.valid_data.copy()
         
         try:
-            response = self.api_client.post(self.url, data, format='json')
+        response = self.api_client.post(self.url, data, format='json')
             # Should return a valid response (could be 201, 400, 500 depending on database state)
             assert response.status_code in [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]
         except Exception as e:
@@ -789,11 +789,11 @@ class TestKardexViewSetCreate(APITestCase):
         ]
         
         for date in test_dates:
-            data = self.valid_data.copy()
+        data = self.valid_data.copy()
             data["fechaingreso"] = date
-            
+        
             try:
-                response = self.api_client.post(self.url, data, format='json')
+        response = self.api_client.post(self.url, data, format='json')
                 # Should return validation error for invalid date format
                 assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]
             except Exception as e:
@@ -806,17 +806,17 @@ class TestKardexViewSetCreate(APITestCase):
         invalid_idtipkar_values = [0, 6, 99, -1]
         
         for idtipkar in invalid_idtipkar_values:
-            data = self.valid_data.copy()
+        data = self.valid_data.copy()
             data["idtipkar"] = idtipkar
-            
+        
             try:
-                response = self.api_client.post(self.url, data, format='json')
+        response = self.api_client.post(self.url, data, format='json')
                 # Should return validation error for invalid idtipkar
                 assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]
             except Exception as e:
                 # If it fails due to missing database, that's expected
                 assert "database" in str(e).lower() or "table" in str(e).lower()
-
+        
     # ========== MOCKED DATABASE TESTS ==========
 
     @patch('notaria.models.Kardex.objects')
@@ -883,10 +883,10 @@ class TestKardexViewSetCreate(APITestCase):
         ]
         
         for idtipkar, expected_prefix in test_cases:
-            data = self.valid_data.copy()
+        data = self.valid_data.copy()
             data["idtipkar"] = idtipkar
-            
-            response = self.api_client.post(self.url, data, format='json')
+        
+        response = self.api_client.post(self.url, data, format='json')
             assert response.status_code == status.HTTP_201_CREATED
 
     @patch('notaria.models.Kardex.objects')
@@ -954,7 +954,7 @@ class TestKardexViewSetCreate(APITestCase):
             data["codactos"] = codactos
             
             response = self.api_client.post(self.url, data, format='json')
-            assert response.status_code == status.HTTP_201_CREATED
+        assert response.status_code == status.HTTP_201_CREATED
 
     @patch('notaria.models.Kardex.objects')
     @patch('notaria.models.Tiposdeacto.objects')
@@ -991,26 +991,26 @@ class TestKardexViewSetCreate(APITestCase):
     def test_create_with_malformed_codactos(self, mock_get_serializer, mock_detalle, mock_tipos, mock_kardex):
         """Test creation with malformed codactos (not divisible by 3)."""
         # Mock no existing Kardex
-        mock_kardex.filter.return_value.annotate.return_value.order_by.return_value.first.return_value = None
-        
-        # Mock Tiposdeacto
-        mock_tipo = MagicMock()
-        mock_tipo.actosunat = "SUNAT001"
-        mock_tipo.actouif = "UIF001"
-        mock_tipo.desacto = "Test Acto"
-        mock_tipos.get.return_value = mock_tipo
-        
-        # Mock serializer
-        mock_serializer = MagicMock()
-        mock_serializer.is_valid.return_value = True
+            mock_kardex.filter.return_value.annotate.return_value.order_by.return_value.first.return_value = None
+            
+            # Mock Tiposdeacto
+            mock_tipo = MagicMock()
+            mock_tipo.actosunat = "SUNAT001"
+            mock_tipo.actouif = "UIF001"
+            mock_tipo.desacto = "Test Acto"
+            mock_tipos.get.return_value = mock_tipo
+            
+            # Mock serializer
+            mock_serializer = MagicMock()
+            mock_serializer.is_valid.return_value = True
         mock_serializer.data = {"idkardex": 1, "kardex": "KAR1-2024"}
-        mock_get_serializer.return_value = mock_serializer
-        
-        data = self.valid_data.copy()
+            mock_get_serializer.return_value = mock_serializer
+            
+            data = self.valid_data.copy()
         data["codactos"] = "0012"  # Not divisible by 3
-        
-        response = self.api_client.post(self.url, data, format='json')
-        assert response.status_code == status.HTTP_201_CREATED
+            
+            response = self.api_client.post(self.url, data, format='json')
+            assert response.status_code == status.HTTP_201_CREATED
 
     @patch('notaria.models.Kardex.objects')
     @patch('notaria.models.Tiposdeacto.objects')
@@ -1019,22 +1019,22 @@ class TestKardexViewSetCreate(APITestCase):
     def test_create_with_additional_fields(self, mock_get_serializer, mock_detalle, mock_tipos, mock_kardex):
         """Test creation with additional optional fields."""
         # Mock no existing Kardex
-        mock_kardex.filter.return_value.annotate.return_value.order_by.return_value.first.return_value = None
-        
-        # Mock Tiposdeacto
-        mock_tipo = MagicMock()
-        mock_tipo.actosunat = "SUNAT001"
-        mock_tipo.actouif = "UIF001"
-        mock_tipo.desacto = "Test Acto"
-        mock_tipos.get.return_value = mock_tipo
-        
-        # Mock serializer
-        mock_serializer = MagicMock()
-        mock_serializer.is_valid.return_value = True
+            mock_kardex.filter.return_value.annotate.return_value.order_by.return_value.first.return_value = None
+            
+            # Mock Tiposdeacto
+            mock_tipo = MagicMock()
+            mock_tipo.actosunat = "SUNAT001"
+            mock_tipo.actouif = "UIF001"
+            mock_tipo.desacto = "Test Acto"
+            mock_tipos.get.return_value = mock_tipo
+            
+            # Mock serializer
+            mock_serializer = MagicMock()
+            mock_serializer.is_valid.return_value = True
         mock_serializer.data = {"idkardex": 1, "kardex": "KAR1-2024"}
-        mock_get_serializer.return_value = mock_serializer
-        
-        data = self.valid_data.copy()
+            mock_get_serializer.return_value = mock_serializer
+            
+            data = self.valid_data.copy()
         data.update({
             "observacion": "Test observation",
             "documentos": "Test documents",
@@ -1043,9 +1043,9 @@ class TestKardexViewSetCreate(APITestCase):
             "telecontacto": "987654321",
             "mailcontacto": "test@example.com",
         })
-        
-        response = self.api_client.post(self.url, data, format='json')
-        assert response.status_code == status.HTTP_201_CREATED
+            
+            response = self.api_client.post(self.url, data, format='json')
+            assert response.status_code == status.HTTP_201_CREATED
 
     @patch('notaria.models.Kardex.objects')
     @patch('notaria.models.Tiposdeacto.objects')
@@ -1211,7 +1211,7 @@ class TestKardexViewSetCreate(APITestCase):
         
         response = self.api_client.post(self.url, data, format='json')
         assert response.status_code == status.HTTP_201_CREATED
-
+        
     @patch('notaria.models.Kardex.objects')
     @patch('notaria.models.Tiposdeacto.objects')
     @patch('notaria.models.DetalleActosKardex.objects')
@@ -1278,7 +1278,7 @@ class TestKardexViewSetCreate(APITestCase):
             data["fechaingreso"] = date
             
             response = self.api_client.post(self.url, data, format='json')
-            assert response.status_code == status.HTTP_201_CREATED
+        assert response.status_code == status.HTTP_201_CREATED
 
 
 @pytest.mark.django_db

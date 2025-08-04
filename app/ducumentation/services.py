@@ -3814,6 +3814,8 @@ class EscrituraPublicaDocumentService:
         print(f"DEBUG: Downloading template from R2: {object_key}")
         print(f"DEBUG: Template filename: {template.filename}")
         print(f"DEBUG: Template name: {template.nametemplate}")
+        print(f"DEBUG: Template ID: {template_id}")
+        print(f"DEBUG: Full R2 path: rodriguez-zea/plantillas/{template.filename}")
         
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
@@ -3906,8 +3908,6 @@ class EscrituraPublicaDocumentService:
                     )
                     
                     print(f"DEBUG: Found {len(malformed_patterns)} malformed patterns to fix")
-                    if malformed_patterns:
-                        print(f"DEBUG: Variables to fix: {malformed_patterns[:10]}")  # Show first 10
                     
                     # Replace each malformed pattern with clean Jinja2 syntax
                     fixed_content = doc_content
@@ -3919,7 +3919,6 @@ class EscrituraPublicaDocumentService:
                         )
                         # Replace with clean syntax
                         fixed_content = malformed_regex.sub(f'{{{{{variable_name}}}}}', fixed_content)
-                        print(f"DEBUG: Fixed pattern for variable: {variable_name}")
                     
                     # Also fix simpler cases where there might be different XML structures
                     simple_malformed_patterns = re.findall(
