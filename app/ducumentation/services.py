@@ -2956,7 +2956,7 @@ class EscrituraPublicaDocumentService:
             template_bytes = self._get_template_from_r2(template_id)
             template_time = time.time() - template_start
             print(f"PERF: Template download took {template_time:.2f}s")
-            print(f"DEBUG: Template ID: {template_id}, Template size: {len(template_bytes)} bytes")
+    
             
             # Step 3: Process data into the required format for the template
             process_start = time.time()
@@ -2979,8 +2979,7 @@ class EscrituraPublicaDocumentService:
             final_data.update(articulos_contratantes)
             final_data.update(escrituracion_data)
             
-            # Validate data before template rendering
-            self._validate_template_data(final_data)
+
             
             # Handle special case for 'parte' action
             if action == 'parte':
@@ -3822,12 +3821,6 @@ class EscrituraPublicaDocumentService:
             template_bytes = response['Body'].read()
             print(f"DEBUG: Successfully downloaded template: {len(template_bytes)} bytes")
             
-            # Analyze template for potential issues
-            self._analyze_template_content(template_bytes, template.filename)
-            
-            # Fix malformed template if needed
-            template_bytes = self._fix_malformed_template(template_bytes)
-            
             return template_bytes
         except Exception as e:
             print(f"Error downloading template from R2: {e}")
@@ -3998,45 +3991,10 @@ class EscrituraPublicaDocumentService:
         buffer = io.BytesIO(template_bytes)
         doc = DocxTemplate(buffer)
         
-        # Debug: Print the data being passed to the template
-        print(f"DEBUG: Template data keys: {list(data.keys())}")
-        print(f"DEBUG: Sample data values:")
-        for key, value in list(data.items())[:10]:  # Print first 10 items
-            print(f"  {key}: {repr(value)}")
-        
         try:
             doc.render(data)
         except Exception as e:
             print(f"ERROR: Template rendering failed: {e}")
-            print(f"ERROR: Exception type: {type(e).__name__}")
-            print(f"ERROR: Template data keys: {list(data.keys())}")
-            # Try to identify problematic data
-            for key, value in data.items():
-                if isinstance(value, str) and ('{{' in value or '}}' in value):
-                    print(f"WARNING: Key '{key}' contains template syntax: {repr(value)}")
-            
-            # Try to extract template content to identify the issue
-            try:
-                import zipfile
-                from io import BytesIO
-                
-                # Extract the Word document to examine its content
-                zip_buffer = BytesIO(template_bytes)
-                with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
-                    # Check the main document content
-                    if 'word/document.xml' in zip_file.namelist():
-                        doc_content = zip_file.read('word/document.xml').decode('utf-8')
-                        print(f"DEBUG: Document XML content (first 1000 chars): {doc_content[:1000]}")
-                        
-                        # Look for potential Jinja2 syntax issues
-                        import re
-                        jinja_patterns = re.findall(r'\{\{[^}]*\}\}', doc_content)
-                        print(f"DEBUG: Found {len(jinja_patterns)} Jinja2 patterns in template:")
-                        for i, pattern in enumerate(jinja_patterns[:10]):  # Show first 10
-                            print(f"  {i+1}: {pattern}")
-            except Exception as extract_error:
-                print(f"DEBUG: Could not extract template content: {extract_error}")
-            
             raise
         
         return doc
