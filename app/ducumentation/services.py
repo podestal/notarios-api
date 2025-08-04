@@ -2956,6 +2956,7 @@ class EscrituraPublicaDocumentService:
             template_bytes = self._get_template_from_r2(template_id)
             template_time = time.time() - template_start
             print(f"PERF: Template download took {template_time:.2f}s")
+            print(f"DEBUG: Template ID: {template_id}, Template size: {len(template_bytes)} bytes")
             
             # Step 3: Process data into the required format for the template
             process_start = time.time()
@@ -2977,6 +2978,9 @@ class EscrituraPublicaDocumentService:
             final_data.update(contratantes_processed)
             final_data.update(articulos_contratantes)
             final_data.update(escrituracion_data)
+            
+            # Validate data before template rendering
+            self._validate_template_data(final_data)
             
             # Handle special case for 'parte' action
             if action == 'parte':
@@ -3807,13 +3811,97 @@ class EscrituraPublicaDocumentService:
         s3 = get_s3_client()
         
         object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        print(f"DEBUG: Downloading template from R2: {object_key}")
+        print(f"DEBUG: Template filename: {template.filename}")
+        print(f"DEBUG: Template name: {template.nametemplate}")
         
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return response['Body'].read()
+            template_bytes = response['Body'].read()
+            print(f"DEBUG: Successfully downloaded template: {len(template_bytes)} bytes")
+            
+            # Analyze template for potential issues
+            self._analyze_template_content(template_bytes, template.filename)
+            
+            return template_bytes
         except Exception as e:
             print(f"Error downloading template from R2: {e}")
             raise
+
+    def _analyze_template_content(self, template_bytes: bytes, filename: str):
+        """
+        Analyze the template content for potential Jinja2 syntax issues
+        """
+        try:
+            import zipfile
+            from io import BytesIO
+            
+            # Extract the Word document to examine its content
+            zip_buffer = BytesIO(template_bytes)
+            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+                # Check the main document content
+                if 'word/document.xml' in zip_file.namelist():
+                    doc_content = zip_file.read('word/document.xml').decode('utf-8')
+                    
+                    # Look for potential Jinja2 syntax issues
+                    import re
+                    jinja_patterns = re.findall(r'\{\{[^}]*\}\}', doc_content)
+                    print(f"DEBUG: Found {len(jinja_patterns)} Jinja2 patterns in template '{filename}':")
+                    
+                    problematic_patterns = []
+                    for i, pattern in enumerate(jinja_patterns):
+                        print(f"  {i+1}: {pattern}")
+                        
+                        # Check for common syntax issues
+                        if pattern.count('{{') != pattern.count('}}'):
+                            problematic_patterns.append(f"Unmatched braces: {pattern}")
+                        elif '{{' in pattern and '}}' in pattern and len(pattern.strip('{}').strip()) == 0:
+                            problematic_patterns.append(f"Empty expression: {pattern}")
+                        elif '{{' in pattern and '}}' in pattern and '{{' in pattern[pattern.find('}}')+2:]:
+                            problematic_patterns.append(f"Nested braces: {pattern}")
+                    
+                    if problematic_patterns:
+                        print(f"WARNING: Found {len(problematic_patterns)} potentially problematic patterns:")
+                        for pattern in problematic_patterns:
+                            print(f"  - {pattern}")
+                    
+                    # Look for incomplete expressions
+                    incomplete_patterns = re.findall(r'\{\{[^}]*$', doc_content)
+                    if incomplete_patterns:
+                        print(f"WARNING: Found {len(incomplete_patterns)} incomplete expressions:")
+                        for pattern in incomplete_patterns:
+                            print(f"  - {pattern}")
+                            
+        except Exception as e:
+            print(f"DEBUG: Could not analyze template content: {e}")
+
+    def _validate_template_data(self, data: Dict[str, str]):
+        """
+        Validate template data to ensure it doesn't contain problematic values
+        """
+        problematic_keys = []
+        
+        for key, value in data.items():
+            if value is None:
+                data[key] = ''  # Convert None to empty string
+                continue
+                
+            if isinstance(value, str):
+                # Check for problematic characters or patterns
+                if '{{' in value or '}}' in value:
+                    print(f"WARNING: Key '{key}' contains template syntax: {repr(value)}")
+                    # Clean the value to prevent template injection
+                    cleaned_value = value.replace('{{', '').replace('}}', '')
+                    data[key] = cleaned_value
+                    problematic_keys.append(key)
+                
+                # Check for very long values that might cause issues
+                if len(value) > 1000:
+                    print(f"WARNING: Key '{key}' has very long value ({len(value)} chars)")
+                    problematic_keys.append(key)
+        
+        if problematic_keys:
+            print(f"WARNING: Cleaned {len(problematic_keys)} problematic data keys: {problematic_keys}")
 
     def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
         """
@@ -3821,7 +3909,48 @@ class EscrituraPublicaDocumentService:
         """
         buffer = io.BytesIO(template_bytes)
         doc = DocxTemplate(buffer)
-        doc.render(data)
+        
+        # Debug: Print the data being passed to the template
+        print(f"DEBUG: Template data keys: {list(data.keys())}")
+        print(f"DEBUG: Sample data values:")
+        for key, value in list(data.items())[:10]:  # Print first 10 items
+            print(f"  {key}: {repr(value)}")
+        
+        try:
+            doc.render(data)
+        except Exception as e:
+            print(f"ERROR: Template rendering failed: {e}")
+            print(f"ERROR: Exception type: {type(e).__name__}")
+            print(f"ERROR: Template data keys: {list(data.keys())}")
+            # Try to identify problematic data
+            for key, value in data.items():
+                if isinstance(value, str) and ('{{' in value or '}}' in value):
+                    print(f"WARNING: Key '{key}' contains template syntax: {repr(value)}")
+            
+            # Try to extract template content to identify the issue
+            try:
+                import zipfile
+                from io import BytesIO
+                
+                # Extract the Word document to examine its content
+                zip_buffer = BytesIO(template_bytes)
+                with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+                    # Check the main document content
+                    if 'word/document.xml' in zip_file.namelist():
+                        doc_content = zip_file.read('word/document.xml').decode('utf-8')
+                        print(f"DEBUG: Document XML content (first 1000 chars): {doc_content[:1000]}")
+                        
+                        # Look for potential Jinja2 syntax issues
+                        import re
+                        jinja_patterns = re.findall(r'\{\{[^}]*\}\}', doc_content)
+                        print(f"DEBUG: Found {len(jinja_patterns)} Jinja2 patterns in template:")
+                        for i, pattern in enumerate(jinja_patterns[:10]):  # Show first 10
+                            print(f"  {i+1}: {pattern}")
+            except Exception as extract_error:
+                print(f"DEBUG: Could not extract template content: {extract_error}")
+            
+            raise
+        
         return doc
 
     def remove_unfilled_placeholders(self, doc):
