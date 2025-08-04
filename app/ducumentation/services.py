@@ -3821,6 +3821,9 @@ class EscrituraPublicaDocumentService:
             template_bytes = response['Body'].read()
             print(f"DEBUG: Successfully downloaded template: {len(template_bytes)} bytes")
             
+            # Fix Jinja2 syntax issues
+            template_bytes = self._fix_jinja2_syntax(template_bytes)
+            
             return template_bytes
         except Exception as e:
             print(f"Error downloading template from R2: {e}")
@@ -3954,6 +3957,76 @@ class EscrituraPublicaDocumentService:
                     
         except Exception as e:
             print(f"DEBUG: Could not fix malformed template: {e}")
+            return template_bytes
+
+    def _fix_jinja2_syntax(self, template_bytes: bytes) -> bytes:
+        """
+        Fix common Jinja2 syntax issues in templates
+        """
+        try:
+            import zipfile
+            from io import BytesIO
+            import re
+            
+            # Extract the Word document
+            zip_buffer = BytesIO(template_bytes)
+            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+                # Read the main document content
+                if 'word/document.xml' in zip_file.namelist():
+                    doc_content = zip_file.read('word/document.xml').decode('utf-8')
+                    
+                    # Fix degree symbol issues: º{{VARIABLE}} -> º {{VARIABLE}}
+                    # This fixes the specific issue you encountered
+                    doc_content = re.sub(r'º\s*{{', 'º {{', doc_content)
+                    doc_content = re.sub(r'}}\s*º', '}} º', doc_content)
+                    
+                    # Fix other common issues
+                    # Fix: {{VARIABLE}}º -> {{VARIABLE}} º
+                    doc_content = re.sub(r'}}\s*º', '}} º', doc_content)
+                    
+                    # Fix: º{{VARIABLE}} -> º {{VARIABLE}}
+                    doc_content = re.sub(r'º\s*{{', 'º {{', doc_content)
+                    
+                    # Fix: {{VARIABLE}}° -> {{VARIABLE}} °
+                    doc_content = re.sub(r'}}\s*°', '}} °', doc_content)
+                    
+                    # Fix: °{{VARIABLE}} -> ° {{VARIABLE}}
+                    doc_content = re.sub(r'°\s*{{', '° {{', doc_content)
+                    
+                    # Fix: {{VARIABLE}}* -> {{VARIABLE}} *
+                    doc_content = re.sub(r'}}\s*\*', '}} *', doc_content)
+                    
+                    # Fix: *{{VARIABLE}} -> * {{VARIABLE}}
+                    doc_content = re.sub(r'\*\s*{{', '* {{', doc_content)
+                    
+                    # Check if we made any changes
+                    original_content = zip_file.read('word/document.xml').decode('utf-8')
+                    if doc_content != original_content:
+                        print(f"DEBUG: Fixed Jinja2 syntax issues in template")
+                        
+                        # Create new zip file with fixed content
+                        new_zip_buffer = BytesIO()
+                        with zipfile.ZipFile(new_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as new_zip:
+                            # Copy all files from original zip
+                            for item in zip_file.infolist():
+                                if item.filename == 'word/document.xml':
+                                    # Use the fixed content
+                                    new_zip.writestr(item, doc_content)
+                                else:
+                                    # Copy other files as-is
+                                    new_zip.writestr(item, zip_file.read(item.filename))
+                        
+                        new_zip_buffer.seek(0)
+                        return new_zip_buffer.read()
+                    else:
+                        print(f"DEBUG: No Jinja2 syntax issues found")
+                        return template_bytes
+                else:
+                    print(f"DEBUG: Could not find document.xml in template")
+                    return template_bytes
+                    
+        except Exception as e:
+            print(f"DEBUG: Could not fix Jinja2 syntax: {e}")
             return template_bytes
 
     def _validate_template_data(self, data: Dict[str, str]):
