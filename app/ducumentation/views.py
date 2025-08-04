@@ -36,6 +36,7 @@ import re
 from django.urls import reverse
 from .utils import NumberToLetterConverter
 from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
+from .extraprotocolares.permiso_viajes import PermisoViajeInteriorDocumentService
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -1144,3 +1145,124 @@ def test_r2_connection(request):
             'error': str(e),
             'config_status': config_status if 'config_status' in locals() else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ExtraprotocolaresViewSet(ModelViewSet):
+    """
+    ViewSet for handling all extraprotocolares document types including permiso viajes.
+    This provides a modular approach for the 7+ different permiso viaje types.
+    """
+    # No queryset needed as this is for document generation only
+    serializer_class = serializers.DocumentosGeneradosSerializer  # Reuse existing serializer
+    pagination_class = pagination.KardexPagination
+    # permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='permiso-viaje-interior')
+    def permiso_viaje_interior(self, request):
+        """
+        Generate Permiso Viaje Interior document
+        """
+        print("DEBUG: ExtraprotocolaresViewSet.permiso_viaje_interior called")
+        
+        # Get parameters
+        id_permiviaje = request.query_params.get('id_permiviaje')
+        action = request.query_params.get('action', 'generate')
+        mode = request.query_params.get('mode', 'download')  # download or open
+        
+        user = request.user
+        
+        if not user:
+            return HttpResponse({"error": "User not authenticated."}, status=401)
+        
+        if not id_permiviaje:
+            return HttpResponse({"error": "Missing id_permiviaje parameter."}, status=400)
+        
+        try:
+            id_permiviaje = int(id_permiviaje)
+        except ValueError:
+            return HttpResponse({"error": "Invalid id_permiviaje format."}, status=400)
+        
+        # Get the num_kardex from the PermiViaje model
+        from notaria.models import PermiViaje
+        try:
+            permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
+            num_kardex = permiviaje.num_kardex
+            if not num_kardex:
+                return HttpResponse({"error": f"num_kardex is empty for PermiViaje id {id_permiviaje}"}, status=400)
+        except PermiViaje.DoesNotExist:
+            return HttpResponse({"error": f"PermiViaje with id {id_permiviaje} not found"}, status=404)
+        
+        # Check if document exists in R2 first
+        object_key = f"rodriguez-zea/documentos/__PROY__{num_kardex}.docx"
+        print(f"DEBUG: Checking if permiso viaje interior document exists: {object_key}")
+        
+        try:
+            s3 = get_s3_client()
+            s3_response = s3.get_object(
+                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                Key=object_key
+            )
+            
+            # Document exists, return it
+            print(f"DEBUG: Permiso viaje interior document found in R2, returning existing document")
+            doc_content = s3_response['Body'].read()
+            
+            if mode == "open":
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{num_kardex}/__PROY__{num_kardex}.docx"
+                response = Response({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{num_kardex}.docx",
+                    'id_permiviaje': id_permiviaje,
+                    'num_kardex': num_kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                # Testing mode: Download the document
+                response = HttpResponse(
+                    doc_content,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                )
+                response['Content-Disposition'] = f'inline; filename="__PROY__{num_kardex}.docx"'
+                response['Content-Length'] = str(len(doc_content))
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+                
+        except Exception as e:
+            # Document doesn't exist in R2, generate it
+            print(f"DEBUG: Permiso viaje interior document not found in R2: {e}")
+            print(f"DEBUG: Generating new permiso viaje interior document for id: {id_permiviaje}")
+            
+            service = PermisoViajeInteriorDocumentService()
+            
+            if mode == "open":
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{num_kardex}/__PROY__{num_kardex}.docx"
+                response = Response({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{num_kardex}.docx",
+                    'id_permiviaje': id_permiviaje,
+                    'num_kardex': num_kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                return service.generate_permiso_viaje_interior_document(id_permiviaje, action, mode)
+
+    @action(detail=False, methods=['get'], url_path='permiso-viaje-exterior')
+    def permiso_viaje_exterior(self, request):
+        """
+        Generate Permiso Viaje Exterior document (placeholder for future implementation)
+        """
+        return Response({
+            'status': 'not_implemented',
+            'message': 'Permiso Viaje Exterior not implemented yet'
+        }, status=status.HTTP_501_NOT_IMPLEMENTED)
+

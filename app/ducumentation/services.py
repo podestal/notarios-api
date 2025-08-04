@@ -2945,8 +2945,10 @@ class EscrituraPublicaDocumentService:
         try:
             # Step 1: Fetch all data using raw SQL query mirroring the PHP script
             data_start = time.time()
+            print(f"DEBUG: Querying data for kardex: {num_kardex}, idtipoacto: {idtipoacto}, template_id: {template_id}")
             raw_data = self._consulta_escritura(num_kardex, idtipoacto, template_id)
             if not raw_data:
+                print(f"DEBUG: No data returned from _consulta_escritura for kardex: {num_kardex}")
                 raise ValueError(f"No data found for kardex {num_kardex}")
             data_time = time.time() - data_start
             print(f"PERF: SQL data fetch took {data_time:.2f}s")
@@ -3028,6 +3030,7 @@ class EscrituraPublicaDocumentService:
             return JsonResponse({'error': f'Failed to generate escritura publica document: {type(e).__name__}: {str(e)}'}, status=500)
 
     def _consulta_escritura(self, num_kardex: str, idtipoacto: str, template_id: int) -> dict:
+        print(f"DEBUG: _consulta_escritura called for EscrituraPublicaDocumentService")
         """
         Raw SQL query that mirrors the PHP consulta_escritura function
         """
@@ -3150,11 +3153,14 @@ class EscrituraPublicaDocumentService:
         """
         
         with connection.cursor() as cursor:
+            print(f"DEBUG: Executing SQL query with parameters: idtipoacto={idtipoacto}, template_id={template_id}, num_kardex={num_kardex}")
             cursor.execute(query, [idtipoacto, template_id, template_id, num_kardex])
             desc = cursor.description
             row = cursor.fetchone()
             if not row:
+                print(f"DEBUG: SQL query returned no rows for kardex: {num_kardex}")
                 return None
+            print(f"DEBUG: SQL query returned data for kardex: {num_kardex}")
             return dict(zip([col[0] for col in desc], row))
 
     def _get_data_documento(self, raw_data: dict) -> Dict[str, str]:
@@ -3804,230 +3810,27 @@ class EscrituraPublicaDocumentService:
 
     def _get_template_from_r2(self, template_id: int) -> bytes:
         """
-        Get template from R2 storage - same as other services
+        Get template from R2 storage - simple approach without XML fixing
         """
         template = TplTemplate.objects.get(pktemplate=template_id)
         s3 = get_s3_client()
         
         object_key = f"rodriguez-zea/plantillas/{template.filename}"
-        print(f"DEBUG: Downloading template from R2: {object_key}")
-        print(f"DEBUG: Template filename: {template.filename}")
-        print(f"DEBUG: Template name: {template.nametemplate}")
-        print(f"DEBUG: Template ID: {template_id}")
-        print(f"DEBUG: Full R2 path: rodriguez-zea/plantillas/{template.filename}")
+        print(f"DEBUG: Template file: {template.filename}")
         
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             template_bytes = response['Body'].read()
             print(f"DEBUG: Successfully downloaded template: {len(template_bytes)} bytes")
             
-            # Fix Jinja2 syntax issues
-            template_bytes = self._fix_jinja2_syntax(template_bytes)
-            
             return template_bytes
         except Exception as e:
             print(f"Error downloading template from R2: {e}")
             raise
 
-    def _analyze_template_content(self, template_bytes: bytes, filename: str):
-        """
-        Analyze the template content for potential Jinja2 syntax issues
-        """
-        try:
-            import zipfile
-            from io import BytesIO
-            
-            # Extract the Word document to examine its content
-            zip_buffer = BytesIO(template_bytes)
-            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
-                # Check the main document content
-                if 'word/document.xml' in zip_file.namelist():
-                    doc_content = zip_file.read('word/document.xml').decode('utf-8')
-                    
-                    # Look for potential Jinja2 syntax issues
-                    import re
-                    jinja_patterns = re.findall(r'\{\{[^}]*\}\}', doc_content)
-                    print(f"DEBUG: Found {len(jinja_patterns)} Jinja2 patterns in template '{filename}':")
-                    
-                    problematic_patterns = []
-                    for i, pattern in enumerate(jinja_patterns):
-                        print(f"  {i+1}: {pattern}")
-                        
-                        # Check for common syntax issues
-                        if pattern.count('{{') != pattern.count('}}'):
-                            problematic_patterns.append(f"Unmatched braces: {pattern}")
-                        elif '{{' in pattern and '}}' in pattern and len(pattern.strip('{}').strip()) == 0:
-                            problematic_patterns.append(f"Empty expression: {pattern}")
-                        elif '{{' in pattern and '}}' in pattern and '{{' in pattern[pattern.find('}}')+2:]:
-                            problematic_patterns.append(f"Nested braces: {pattern}")
-                    
-                    if problematic_patterns:
-                        print(f"WARNING: Found {len(problematic_patterns)} potentially problematic patterns:")
-                        for pattern in problematic_patterns:
-                            print(f"  - {pattern}")
-                    
-                    # Look for incomplete expressions
-                    incomplete_patterns = re.findall(r'\{\{[^}]*$', doc_content)
-                    if incomplete_patterns:
-                        print(f"WARNING: Found {len(incomplete_patterns)} incomplete expressions:")
-                        for pattern in incomplete_patterns:
-                            print(f"  - {pattern}")
-                            
-        except Exception as e:
-            print(f"DEBUG: Could not analyze template content: {e}")
 
-    def _fix_malformed_template(self, template_bytes: bytes) -> bytes:
-        """
-        Fix malformed Jinja2 patterns in the template by cleaning up XML tags
-        """
-        try:
-            import zipfile
-            from io import BytesIO
-            import re
-            
-            # Extract the Word document
-            zip_buffer = BytesIO(template_bytes)
-            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
-                # Read the main document content
-                if 'word/document.xml' in zip_file.namelist():
-                    doc_content = zip_file.read('word/document.xml').decode('utf-8')
-                    
-                    # Find and fix malformed Jinja2 patterns
-                    # The issue is that Jinja2 placeholders are split across multiple XML runs
-                    # We need to find patterns like: {{</w:t></w:r><w:r...>VARIABLE_NAME</w:t></w:r><w:r...>}}
-                    
-                    # First, let's find all the malformed patterns and extract the variable names
-                    malformed_patterns = re.findall(
-                        r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>([A-Z0-9_]+)</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>\}\}',
-                        doc_content,
-                        re.DOTALL
-                    )
-                    
-                    print(f"DEBUG: Found {len(malformed_patterns)} malformed patterns to fix")
-                    
-                    # Replace each malformed pattern with clean Jinja2 syntax
-                    fixed_content = doc_content
-                    for variable_name in malformed_patterns:
-                        # Create the malformed pattern for this specific variable
-                        malformed_regex = re.compile(
-                            r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>' + re.escape(variable_name) + r'</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>\}\}',
-                            re.DOTALL
-                        )
-                        # Replace with clean syntax
-                        fixed_content = malformed_regex.sub(f'{{{{{variable_name}}}}}', fixed_content)
-                    
-                    # Also fix simpler cases where there might be different XML structures
-                    simple_malformed_patterns = re.findall(
-                        r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>([A-Z0-9_]+)</w:t></w:r>\}\}',
-                        fixed_content,
-                        re.DOTALL
-                    )
-                    
-                    for variable_name in simple_malformed_patterns:
-                        simple_malformed_regex = re.compile(
-                            r'\{\{</w:t></w:r><w:r[^>]*><w:rPr>[^<]*</w:rPr><w:t>' + re.escape(variable_name) + r'</w:t></w:r>\}\}',
-                            re.DOTALL
-                        )
-                        fixed_content = simple_malformed_regex.sub(f'{{{{{variable_name}}}}}', fixed_content)
-                    
-                    # Check if we made any changes
-                    if fixed_content != doc_content:
-                        print(f"DEBUG: Fixed malformed Jinja2 patterns in template")
-                        
-                        # Create new zip file with fixed content
-                        new_zip_buffer = BytesIO()
-                        with zipfile.ZipFile(new_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as new_zip:
-                            # Copy all files from original zip
-                            for item in zip_file.infolist():
-                                if item.filename == 'word/document.xml':
-                                    # Use the fixed content
-                                    new_zip.writestr(item, fixed_content)
-                                else:
-                                    # Copy other files as-is
-                                    new_zip.writestr(item, zip_file.read(item.filename))
-                        
-                        new_zip_buffer.seek(0)
-                        return new_zip_buffer.read()
-                    else:
-                        print(f"DEBUG: No malformed patterns found, template is clean")
-                        return template_bytes
-                else:
-                    print(f"DEBUG: Could not find document.xml in template")
-                    return template_bytes
-                    
-        except Exception as e:
-            print(f"DEBUG: Could not fix malformed template: {e}")
-            return template_bytes
 
-    def _fix_jinja2_syntax(self, template_bytes: bytes) -> bytes:
-        """
-        Fix common Jinja2 syntax issues in templates
-        """
-        try:
-            import zipfile
-            from io import BytesIO
-            import re
-            
-            # Extract the Word document
-            zip_buffer = BytesIO(template_bytes)
-            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
-                # Read the main document content
-                if 'word/document.xml' in zip_file.namelist():
-                    doc_content = zip_file.read('word/document.xml').decode('utf-8')
-                    
-                    # Fix degree symbol issues: º{{VARIABLE}} -> º {{VARIABLE}}
-                    # This fixes the specific issue you encountered
-                    doc_content = re.sub(r'º\s*{{', 'º {{', doc_content)
-                    doc_content = re.sub(r'}}\s*º', '}} º', doc_content)
-                    
-                    # Fix other common issues
-                    # Fix: {{VARIABLE}}º -> {{VARIABLE}} º
-                    doc_content = re.sub(r'}}\s*º', '}} º', doc_content)
-                    
-                    # Fix: º{{VARIABLE}} -> º {{VARIABLE}}
-                    doc_content = re.sub(r'º\s*{{', 'º {{', doc_content)
-                    
-                    # Fix: {{VARIABLE}}° -> {{VARIABLE}} °
-                    doc_content = re.sub(r'}}\s*°', '}} °', doc_content)
-                    
-                    # Fix: °{{VARIABLE}} -> ° {{VARIABLE}}
-                    doc_content = re.sub(r'°\s*{{', '° {{', doc_content)
-                    
-                    # Fix: {{VARIABLE}}* -> {{VARIABLE}} *
-                    doc_content = re.sub(r'}}\s*\*', '}} *', doc_content)
-                    
-                    # Fix: *{{VARIABLE}} -> * {{VARIABLE}}
-                    doc_content = re.sub(r'\*\s*{{', '* {{', doc_content)
-                    
-                    # Check if we made any changes
-                    original_content = zip_file.read('word/document.xml').decode('utf-8')
-                    if doc_content != original_content:
-                        print(f"DEBUG: Fixed Jinja2 syntax issues in template")
-                        
-                        # Create new zip file with fixed content
-                        new_zip_buffer = BytesIO()
-                        with zipfile.ZipFile(new_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as new_zip:
-                            # Copy all files from original zip
-                            for item in zip_file.infolist():
-                                if item.filename == 'word/document.xml':
-                                    # Use the fixed content
-                                    new_zip.writestr(item, doc_content)
-                                else:
-                                    # Copy other files as-is
-                                    new_zip.writestr(item, zip_file.read(item.filename))
-                        
-                        new_zip_buffer.seek(0)
-                        return new_zip_buffer.read()
-                    else:
-                        print(f"DEBUG: No Jinja2 syntax issues found")
-                        return template_bytes
-                else:
-                    print(f"DEBUG: Could not find document.xml in template")
-                    return template_bytes
-                    
-        except Exception as e:
-            print(f"DEBUG: Could not fix Jinja2 syntax: {e}")
-            return template_bytes
+
 
     def _validate_template_data(self, data: Dict[str, str]):
         """
@@ -4059,16 +3862,28 @@ class EscrituraPublicaDocumentService:
 
     def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
         """
-        Process the document template with data - same as other services
+        Process the document template with data using simple python-docx approach
         """
+        # Create document from template bytes using simple python-docx
         buffer = io.BytesIO(template_bytes)
-        doc = DocxTemplate(buffer)
+        doc = Document(buffer)
         
-        try:
-            doc.render(data)
-        except Exception as e:
-            print(f"ERROR: Template rendering failed: {e}")
-            raise
+        # Replace placeholders in paragraphs
+        for paragraph in doc.paragraphs:
+            for placeholder, value in data.items():
+                placeholder_text = f"{{{{{placeholder}}}}}"
+                if placeholder_text in paragraph.text:
+                    paragraph.text = paragraph.text.replace(placeholder_text, str(value))
+        
+        # Replace placeholders in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for placeholder, value in data.items():
+                            placeholder_text = f"{{{{{placeholder}}}}}"
+                            if placeholder_text in paragraph.text:
+                                paragraph.text = paragraph.text.replace(placeholder_text, str(value))
         
         return doc
 
@@ -4253,3 +4068,5 @@ class EscrituraPublicaDocumentService:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         clean_runs(paragraph.runs)
+
+
