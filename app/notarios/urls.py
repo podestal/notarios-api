@@ -31,6 +31,7 @@ urlpatterns += [
     path('api/', include('notaria.urls')),
     path('docs/', include('ducumentation.urls')),
     path('sisgen/', include('sisgen.urls')),
+    path('viajes/', include('viajes.urls')),
     path('auth/', include('djoser.urls')),
     path('auth/', include('djoser.urls.jwt')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
