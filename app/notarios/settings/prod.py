@@ -17,9 +17,12 @@ DATABASES = {
 MIDDLEWARE += ["whitenoise.middleware.WhiteNoiseMiddleware"]
 
 CORS_ALLOWED_ORIGINS = []
-CORS_ALLOWED_ORIGINS.extend(
-    [url.strip() for url in os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",") if url.strip()]
-)
+cors_origins = [url.strip() for url in os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",") if url.strip()]
+if cors_origins:
+    CORS_ALLOWED_ORIGINS.extend(cors_origins)
+else:
+    # Fallback for testing - allow all origins
+    CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
 
