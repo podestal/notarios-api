@@ -1238,23 +1238,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             print(f"DEBUG: Generating new permiso viaje interior document for id: {id_permiviaje}")
             
             service = PermisoViajeInteriorDocumentService()
-            
-            if mode == "open":
-                # Return the download URL for Windows users - force HTTPS
-                download_url = f"https://{request.get_host()}/docs/download/{num_kardex}/__PROY__{num_kardex}.docx"
-                response = Response({
-                    'status': 'success',
-                    'mode': 'open',
-                    'filename': f"__PROY__{num_kardex}.docx",
-                    'id_permiviaje': id_permiviaje,
-                    'num_kardex': num_kardex,
-                    'url': download_url,
-                    'message': 'Document ready to open in Word'
-                })
-                response['Access-Control-Allow-Origin'] = '*'
-                return response
-            else:
-                return service.generate_permiso_viaje_interior_document(id_permiviaje, action, mode)
+            return service.generate_permiso_viaje_interior_document(id_permiviaje, action, mode)
 
     @action(detail=False, methods=['get'], url_path='permiso-viaje-exterior')
     def permiso_viaje_exterior(self, request):
