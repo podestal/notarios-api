@@ -18,12 +18,12 @@ MIDDLEWARE += ["whitenoise.middleware.WhiteNoiseMiddleware"]
 
 CORS_ALLOWED_ORIGINS = []
 CORS_ALLOWED_ORIGINS.extend(
-    filter(None, os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "").split(","))
+    [url.strip() for url in os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",") if url.strip()]
 )
 
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = []
 CSRF_TRUSTED_ORIGINS.extend(
-    filter(None, os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(","))
+    [url.strip() for url in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if url.strip()]
 )
