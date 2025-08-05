@@ -17,12 +17,19 @@ DATABASES = {
 MIDDLEWARE += ["whitenoise.middleware.WhiteNoiseMiddleware"]
 
 CORS_ALLOWED_ORIGINS = []
-cors_origins = [url.strip() for url in os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",") if url.strip()]
+raw_cors_origins = os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "")
+print(f"DEBUG: Raw CORS origins from env: '{raw_cors_origins}'")
+
+cors_origins = [url.strip() for url in raw_cors_origins.split(",") if url.strip()]
+print(f"DEBUG: Processed CORS origins: {cors_origins}")
+
 if cors_origins:
     CORS_ALLOWED_ORIGINS.extend(cors_origins)
+    print(f"DEBUG: Final CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
 else:
     # Fallback for testing - allow all origins
     CORS_ALLOW_ALL_ORIGINS = True
+    print("DEBUG: No CORS origins found, allowing all origins")
 
 CORS_ALLOW_CREDENTIALS = True
 
