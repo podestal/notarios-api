@@ -24,10 +24,17 @@ class ViajeViewSet(viewsets.ModelViewSet):
         if queryset.exists():
             # If only one result, return it as a single object
             if queryset.count() == 1:
-                serializer = ViajeSerializer(queryset.first())
+                viaje = queryset.first()
+                # Filter participantes for this specific viaje
+                viaje.participantes = Participante.objects.filter(id_viaje=viaje.id_viaje)
+                serializer = ViajeSerializer(viaje)
             else:
                 # If multiple results, use many=True
-                serializer = ViajeSerializer(queryset, many=True)
+                viajes = list(queryset)
+                # Filter participantes for each viaje
+                for viaje in viajes:
+                    viaje.participantes = Participante.objects.filter(id_viaje=viaje.id_viaje)
+                serializer = ViajeSerializer(viajes, many=True)
             return Response(serializer.data)
         else:
             # No results found
