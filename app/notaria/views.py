@@ -1488,6 +1488,50 @@ class PermiViajeViewSet(ModelViewSet):
         }, many=True)
         return self.get_paginated_response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        kardex = request.query_params.get('kardex')
+        if kardex:
+            queryset = self.queryset.filter(num_kardex=kardex).first()
+        else:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+
+        if not queryset:
+            return Response(
+                {"error": "No viaje found for this kardex."},
+                status=404
+            )
+
+        if queryset.asunto == '001':
+            return Response(
+                {"error": "No viaje found for this kardex."},
+                status=404
+            )
+            
+        # Get all contratantes for all viajes in the page
+        viaje_id = queryset.id_viaje
+        contratantes_map = {}
+
+        if viaje_id:
+            contratantes_queryset = models.ViajeContratantes.objects.filter(
+                id_viaje=viaje_id
+            ).values('id_viaje', 'id_contratante', 'c_descontrat', 'c_condicontrat')
+            
+            # Group contratantes by id_viaje
+            for contratante in contratantes_queryset:
+                id_viaje = contratante['id_viaje']
+                if id_viaje not in contratantes_map:
+                    contratantes_map[id_viaje] = []
+                contratantes_map[id_viaje].append(contratante)
+
+        serializer = serializers.PermiViajeSerializer(queryset, context={
+            'contratantes_map': contratantes_map
+        })
+        return Response(serializer.data)
+
 class ViajeContratantesViewSet(ModelViewSet):
     """
     ViewSet for the ViajeContratantes model.
