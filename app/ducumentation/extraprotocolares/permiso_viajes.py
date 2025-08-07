@@ -295,3 +295,205 @@ class PermisoViajeInteriorDocumentService:
             Body=buffer.read()
         )
         buffer.seek(0)  # Reset buffer for the HTTP response 
+
+
+class PermisoViajeExteriorDocumentService:
+    """
+    Django service to generate Permiso Viaje Exterior documents using docxtpl.
+    """
+    
+    def __init__(self):
+        self.letras = NumberToLetterConverter()
+    
+    def generate_permiso_viaje_exterior_document(self, id_permiviaje: int, action: str = 'generate', mode: str = "download") -> HttpResponse:
+        """
+        Main method to generate Permiso Viaje Exterior document.
+        """
+        try:
+            permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
+            num_kardex = permiviaje.num_kardex
+            if not num_kardex:
+                return HttpResponse(f"Error: num_kardex is empty for PermiViaje id {id_permiviaje}", status=400)
+
+            template_bytes = self._get_template_from_r2()
+
+            if template_bytes is None:
+                return HttpResponse(
+                    "Error: Template file 'AUTORIZACION VIAJE MENOR EXTERIOR.docx' not found in R2 path 'rodriguez-zea/plantillas/'. Please ensure the file exists and the path is correct.",
+                    status=404)
+            
+            document_data = self.get_document_data(id_permiviaje)
+            
+            doc = self._process_document(template_bytes, document_data)
+            
+            filename = f"__PROY__{num_kardex}.docx"
+
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            
+            self._save_document_to_r2(buffer, filename)
+            
+            return self._create_response(buffer, filename, id_permiviaje, mode)
+
+        except PermiViaje.DoesNotExist:
+            return HttpResponse(f"Error: PermiViaje with id {id_permiviaje} not found", status=404)
+        except Exception as e:
+            traceback.print_exc()
+            return HttpResponse(f"Error generating document: {e}", status=500)
+
+    def _get_template_from_r2(self) -> bytes:
+        s3 = get_s3_client()
+        object_key = f"rodriguez-zea/plantillas/AUTORIZACION VIAJE MENOR EXTERIOR.docx"
+        try:
+            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
+            return response['Body'].read()
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            else:
+                raise
+        except Exception as e:
+            raise
+
+    def get_document_data(self, id_permiviaje: int) -> Dict[str, Any]:
+        notary_data = self._get_notary_data()
+        viaje_data = self._get_viaje_data(id_permiviaje)
+        user_data = self._get_user_data(viaje_data.get('NOMBRE_RECEPCIONISTA'))
+        participants_data, blocks_data = self._get_participants_data(id_permiviaje)
+        
+        context = {}
+        context.update(notary_data)
+        context.update(viaje_data)
+        context.update(user_data)
+        context.update(participants_data)
+        context.update(blocks_data)
+
+        context['PADRE_MADRE'] = self._determine_padre_madre(blocks_data)
+        
+        licencia_info = self._get_licencia_data(viaje_data.get('FECHA_INGRESO_RAW'))
+        context.update(licencia_info)
+
+        return context
+
+    def _get_licencia_data(self, fecha_ingreso: str) -> Dict[str, str]:
+        # This method can be reused from the other service.
+        service = PermisoViajeInteriorDocumentService()
+        return service._get_licencia_data(fecha_ingreso)
+
+    def _get_notary_data(self) -> Dict[str, str]:
+        # This method can be reused from the other service.
+        service = PermisoViajeInteriorDocumentService()
+        return service._get_notary_data()
+
+    def _get_viaje_data(self, id_permiviaje: int) -> Dict[str, str]:
+        # This method can be reused from the other service.
+        service = PermisoViajeInteriorDocumentService()
+        return service._get_viaje_data(id_permiviaje)
+
+    def _get_user_data(self, usuario_imprime: str = None) -> Dict[str, str]:
+        # This method can be reused from the other service.
+        service = PermisoViajeInteriorDocumentService()
+        return service._get_user_data(usuario_imprime)
+
+    def _get_participants_data(self, id_permiviaje: int) -> tuple[Dict[str, Any], Dict[str, List[Dict[str, Any]]]]:
+        with connection.cursor() as cursor:
+            participants_data = {}
+            blocks_data = {}
+
+            # Base query to fetch participant details
+            base_query = """
+                SELECT 
+                    vc.c_condicontrat AS id_condicion,
+                    CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante,
+                    td.destipdoc AS tipo_documento,
+                    td.td_abrev AS abreviatura,
+                    c.numdoc AS numero_documento,
+                    IF(c.sexo='M', CONCAT(SUBSTRING(n.descripcion, 1, LENGTH(n.descripcion)-1),'O'), CONCAT(SUBSTRING(n.descripcion, 1, LENGTH(n.descripcion)-1),'A')) AS nacionalidad,
+                    CONCAT(' CON DOMICILIO EN ', c.direccion) AS direccion,
+                    IF(u.coddis='' OR ISNULL(u.coddis), '', CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto)) AS ubigeo,
+                    tec.desestcivil AS estado_civil,
+                    IFNULL(p.desprofesion, '') AS profesion,
+                    c.sexo
+                FROM viaje_contratantes vc
+                JOIN cliente c ON c.numdoc = vc.c_codcontrat
+                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
+                JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil
+                LEFT JOIN profesiones p ON p.idprofesion = c.idprofesion
+                LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
+                WHERE vc.id_viaje = %s AND vc.c_condicontrat = %s
+            """
+
+            # Fetch participants by specific roles (padre, madre)
+            for role_code, role_name in [('001', 'padre'), ('004', 'madre')]:
+                cursor.execute(base_query, [id_permiviaje, role_code])
+                columns = [col[0] for col in cursor.description]
+                row = cursor.fetchone()
+                if row:
+                    participant = dict(zip(columns, row))
+                    sex = participant.get('sexo', 'M')
+                    participant.update({
+                        'identificado': 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA',
+                        'senor': 'SEÑOR' if sex == 'M' else 'SEÑORA',
+                        'el': 'EL' if sex == 'M' else 'LA',
+                    })
+                    blocks_data[role_name] = [participant] # Store as a list for block merging
+                else:
+                    blocks_data[role_name] = []
+            
+            # Logic for 'procede' and 'SOLICITANTE' based on number of parents
+            all_contractors = blocks_data.get('padre', []) + blocks_data.get('madre', [])
+            num_contratantes = len(all_contractors)
+            if num_contratantes > 1:
+                participants_data['procede'] = 'Los comparecientes proceden'
+                participants_data['SOLICITANTE'] = 'a los solicitantes'
+            elif num_contratantes == 1:
+                sex = all_contractors[0].get('sexo', 'M')
+                participants_data['procede'] = 'El compareciente procede' if sex == 'M' else 'La compareciente procede'
+                participants_data['SOLICITANTE'] = 'al solicitante' if sex == 'M' else 'a la solicitante'
+            else:
+                participants_data['procede'] = ''
+                participants_data['SOLICITANTE'] = ''
+
+
+            # Fetch minors
+            minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
+            cursor.execute(minors_query, [id_permiviaje])
+            columns = [col[0] for col in cursor.description]
+            minors_list = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            all_female = all(p.get('sexo') == 'F' for p in minors_list)
+            for i, p in enumerate(minors_list):
+                sex = p.get('sexo', 'M')
+                p['y_coma'] = '.' if i == len(minors_list) - 1 else (',' if i == len(minors_list) - 2 else ',')
+
+            blocks_data['m'] = minors_list
+
+            # Logic for pluralization based on minors count
+            if len(minors_list) == 1:
+                sex = minors_list[0].get('sexo', 'M')
+                participants_data.update({'HIJO': 'HIJA' if sex == 'F' else 'HIJO', 'MENOR': 'MENOR', 'AUTORIZA': 'AUTORIZA'})
+            else:
+                participants_data.update({'HIJO': 'HIJAS' if all_female else 'HIJOS', 'MENOR': 'MENORES', 'AUTORIZA': 'AUTORIZAN'})
+
+
+            return participants_data, blocks_data
+
+    def _determine_padre_madre(self, blocks_data: Dict[str, Any]) -> str:
+        # Re-using logic from Interior service
+        service = PermisoViajeInteriorDocumentService()
+        return service._determine_padre_madre(blocks_data)
+
+    def _process_document(self, template_bytes: bytes, data: Dict[str, Any]) -> DocxTemplate:
+        # This method can be reused from the other service.
+        service = PermisoViajeInteriorDocumentService()
+        return service._process_document(template_bytes, data)
+
+    def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
+        # This method can be reused from the other service.
+        service = PermisoViajeInteriorDocumentService()
+        return service._create_response(buffer, filename, id_permiviaje, mode)
+
+    def _save_document_to_r2(self, buffer: io.BytesIO, filename: str):
+        # This method can be reused from the other service.
+        service = PermisoViajeInteriorDocumentService()
+        return service._save_document_to_r2(buffer, filename) 
