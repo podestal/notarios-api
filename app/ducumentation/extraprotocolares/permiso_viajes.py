@@ -64,7 +64,16 @@ class PermisoViajeInteriorDocumentService:
             
             doc = self._process_document(template_bytes, document_data)
             
-            return self._create_response(doc, f"__PROY__{num_kardex}.docx", id_permiviaje, mode)
+            filename = f"__PROY__{num_kardex}.docx"
+
+            # Save the document to an in-memory buffer
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            
+            # Save to R2
+            self._save_document_to_r2(buffer, filename)
+            
+            return self._create_response(buffer, filename, id_permiviaje, mode)
 
         except PermiViaje.DoesNotExist:
             return HttpResponse(f"Error: PermiViaje with id {id_permiviaje} not found", status=404)
@@ -259,9 +268,7 @@ class PermisoViajeInteriorDocumentService:
         doc.render(context)
         return doc
 
-    def _create_response(self, doc: DocxTemplate, filename: str, id_permiviaje: int, mode: str = "download"):
-        buffer = io.BytesIO()
-        doc.save(buffer)
+    def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
         buffer.seek(0)
         
         if mode == "open":
@@ -273,4 +280,18 @@ class PermisoViajeInteriorDocumentService:
             response['Content-Disposition'] = f'inline; filename="{filename}"'
             response['Content-Length'] = str(buffer.getbuffer().nbytes)
             response['Access-Control-Allow-Origin'] = '*'
-            return response 
+            return response
+
+    def _save_document_to_r2(self, buffer: io.BytesIO, filename: str):
+        """
+        Saves the generated document to R2.
+        """
+        s3 = get_s3_client()
+        object_key = f"rodriguez-zea/documentos/{filename}"
+        buffer.seek(0)
+        s3.put_object(
+            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+            Key=object_key,
+            Body=buffer.read()
+        )
+        buffer.seek(0)  # Reset buffer for the HTTP response 
