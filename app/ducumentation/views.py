@@ -1152,10 +1152,15 @@ class ExtraprotocolaresViewSet(ModelViewSet):
     ViewSet for handling all extraprotocolares document types including permiso viajes.
     This provides a modular approach for the 7+ different permiso viaje types.
     """
-    # No queryset needed as this is for document generation only
     serializer_class = serializers.DocumentosGeneradosSerializer  # Reuse existing serializer
     pagination_class = pagination.KardexPagination
     # permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Return empty queryset since this ViewSet is only for document generation
+        """
+        return models.Documentogenerados.objects.none()
 
     @action(detail=False, methods=['get'], url_path='permiso-viaje-interior')
     def permiso_viaje_interior(self, request):
