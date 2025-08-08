@@ -51,9 +51,14 @@ class BasePermisoViajeDocumentService:
                 return HttpResponse(f"Error: num_kardex is empty for PermiViaje id {id_permiviaje}", status=400)
 
             filename = f"__PROY__{num_kardex}.docx"
+            
+            if mode == "open":
+                # For 'open' mode, we only need to generate the URL, not download the file content here.
+                return self._create_response(None, filename, id_permiviaje, mode)
+
+            # For 'download' mode, fetch the document body.
             s3 = get_s3_client()
             object_key = f"rodriguez-zea/documentos/{filename}"
-            
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             buffer = io.BytesIO(response['Body'].read())
             
@@ -167,12 +172,31 @@ class BasePermisoViajeDocumentService:
         return doc
 
     def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
-        buffer.seek(0)
         if mode == "open":
-            response = JsonResponse({'status': 'success', 'mode': 'open', 'filename': filename, 'id_permiviaje': id_permiviaje, 'message': 'Document generated and ready to open in Word'})
-            response['Access-Control-Allow-Origin'] = '*'
-            return response
+            s3 = get_s3_client()
+            object_key = f"rodriguez-zea/documentos/{filename}"
+            try:
+                url = s3.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': os.environ.get('CLOUDFLARE_R2_BUCKET'), 'Key': object_key},
+                    ExpiresIn=3600  # URL expires in 1 hour
+                )
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'url': url,
+                    'filename': filename,
+                    'id_permiviaje': id_permiviaje,
+                    'message': 'Document is ready to be opened.'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            except Exception as e:
+                return HttpResponse(f"Error generating pre-signed URL: {e}", status=500)
         else:
+            if buffer is None:
+                return HttpResponse("Error: Document buffer is missing for download mode.", status=500)
+            buffer.seek(0)
             response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             response['Content-Disposition'] = f'inline; filename="{filename}"'
             response['Content-Length'] = str(buffer.getbuffer().nbytes)
