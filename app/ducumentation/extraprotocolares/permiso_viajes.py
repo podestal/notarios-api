@@ -35,55 +35,47 @@ def get_s3_client():
     return _s3_client
 
 
-class PermisoViajeInteriorDocumentService:
+class BasePermisoViajeDocumentService:
     """
-    Django service to generate Permiso Viaje Interior documents using docxtpl.
+    Base service with common logic for generating Permiso Viaje documents.
     """
-    
     def __init__(self):
         self.letras = NumberToLetterConverter()
-    
-    def generate_permiso_viaje_interior_document(self, id_permiviaje: int, action: str = 'generate', mode: str = "download") -> HttpResponse:
-        """
-        Main method to generate Permiso Viaje Interior document.
-        """
+        self.template_filename = None  # Must be set by child classes
+
+    def retrieve_document(self, id_permiviaje: int, mode: str = "download") -> HttpResponse:
         try:
             permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
             num_kardex = permiviaje.num_kardex
             if not num_kardex:
                 return HttpResponse(f"Error: num_kardex is empty for PermiViaje id {id_permiviaje}", status=400)
 
-            template_bytes = self._get_template_from_r2()
-
-            if template_bytes is None:
-                return HttpResponse(
-                    "Error: Template file 'AUTORIZACION VIAJE MENOR INTERIOR.docx' not found in R2 path 'rodriguez-zea/plantillas/'. Please ensure the file exists and the path is correct.",
-                    status=404)
-            
-            document_data = self.get_document_data(id_permiviaje)
-            
-            doc = self._process_document(template_bytes, document_data)
-            
             filename = f"__PROY__{num_kardex}.docx"
-
-            # Save the document to an in-memory buffer
-            buffer = io.BytesIO()
-            doc.save(buffer)
+            s3 = get_s3_client()
+            object_key = f"rodriguez-zea/documentos/{filename}"
             
-            # Save to R2
-            self._save_document_to_r2(buffer, filename)
+            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
+            buffer = io.BytesIO(response['Body'].read())
             
             return self._create_response(buffer, filename, id_permiviaje, mode)
 
         except PermiViaje.DoesNotExist:
             return HttpResponse(f"Error: PermiViaje with id {id_permiviaje} not found", status=404)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return HttpResponse(f"Error: Document '{filename}' not found in R2.", status=404)
+            else:
+                traceback.print_exc()
+                return HttpResponse(f"Error retrieving document: {e}", status=500)
         except Exception as e:
             traceback.print_exc()
-            return HttpResponse(f"Error generating document: {e}", status=500)
+            return HttpResponse(f"Error retrieving document: {e}", status=500)
 
     def _get_template_from_r2(self) -> bytes:
+        if not self.template_filename:
+            raise ValueError("template_filename must be set in the child service class.")
         s3 = get_s3_client()
-        object_key = f"rodriguez-zea/plantillas/AUTORIZACION VIAJE MENOR INTERIOR.docx"
+        object_key = f"rodriguez-zea/plantillas/{self.template_filename}"
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             return response['Body'].read()
@@ -94,35 +86,6 @@ class PermisoViajeInteriorDocumentService:
                 raise
         except Exception as e:
             raise
-
-    def get_document_data(self, id_permiviaje: int) -> Dict[str, Any]:
-        notary_data = self._get_notary_data()
-        viaje_data = self._get_viaje_data(id_permiviaje)
-        user_data = self._get_user_data(viaje_data.get('NOMBRE_RECEPCIONISTA'))
-        participants_data, blocks_data = self._get_participants_data(id_permiviaje)
-        
-        context = {}
-        context.update(notary_data)
-        context.update(viaje_data)
-        context.update(user_data)
-        context.update(participants_data)
-        context.update(blocks_data)
-
-        context['PADRE_MADRE'] = self._determine_padre_madre(blocks_data)
-        context['VACIO'] = ''
-        context['CONFIG'] = f"{id_permiviaje}_permiviaje/"
-        
-        licencia_info = self._get_licencia_data(viaje_data.get('FECHA_INGRESO_RAW'))
-        context.update(licencia_info)
-        
-        # Pull out standalone values from the first participant for easier access in the template
-        c_list = context.get('c', [])
-        if c_list:
-            first_contractor = c_list[0]
-            context['procede'] = first_contractor.get('procede', '')
-            context['SOLICITANTE'] = first_contractor.get('SOLICITANTE', '')
-
-        return context
 
     def _get_licencia_data(self, fecha_ingreso: str) -> Dict[str, str]:
         if not fecha_ingreso:
@@ -179,6 +142,103 @@ class PermisoViajeInteriorDocumentService:
             row = cursor.fetchone()
             return {'USUARIO': row[0] or '?','USUARIO_DNI': row[1] or '?'} if row else {'USUARIO': '?','USUARIO_DNI': '?'}
 
+    def _process_document(self, template_bytes: bytes, data: Dict[str, Any]) -> DocxTemplate:
+        """
+        Renders the document using docxtpl with Jinja2 syntax.
+        """
+        doc = DocxTemplate(io.BytesIO(template_bytes))
+        
+        # Temporarily disabling RichText to debug file corruption issue.
+        # This will render the document without red color.
+        context = data
+        doc.render(context)
+        return doc
+
+    def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
+        buffer.seek(0)
+        if mode == "open":
+            response = JsonResponse({'status': 'success', 'mode': 'open', 'filename': filename, 'id_permiviaje': id_permiviaje, 'message': 'Document generated and ready to open in Word'})
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
+        else:
+            response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            response['Content-Disposition'] = f'inline; filename="{filename}"'
+            response['Content-Length'] = str(buffer.getbuffer().nbytes)
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
+
+    def _save_document_to_r2(self, buffer: io.BytesIO, filename: str):
+        s3 = get_s3_client()
+        object_key = f"rodriguez-zea/documentos/{filename}"
+        buffer.seek(0)
+        s3.put_object(
+            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+            Key=object_key,
+            Body=buffer.read()
+        )
+        buffer.seek(0)
+
+class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
+    def __init__(self):
+        super().__init__()
+        self.template_filename = "AUTORIZACION VIAJE MENOR INTERIOR.docx"
+
+    def generate_permiso_viaje_interior_document(self, id_permiviaje: int, mode: str = "download") -> HttpResponse:
+        try:
+            permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
+            num_kardex = permiviaje.num_kardex
+            if not num_kardex:
+                return HttpResponse(f"Error: num_kardex is empty for PermiViaje id {id_permiviaje}", status=400)
+
+            template_bytes = self._get_template_from_r2()
+            if template_bytes is None:
+                return HttpResponse(
+                    f"Error: Template file '{self.template_filename}' not found in R2 path 'rodriguez-zea/plantillas/'.",
+                    status=404)
+            
+            document_data = self.get_document_data(id_permiviaje)
+            doc = self._process_document(template_bytes, document_data)
+            filename = f"__PROY__{num_kardex}.docx"
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            self._save_document_to_r2(buffer, filename)
+            
+            return self._create_response(buffer, filename, id_permiviaje, mode)
+
+        except PermiViaje.DoesNotExist:
+            return HttpResponse(f"Error: PermiViaje with id {id_permiviaje} not found", status=404)
+        except Exception as e:
+            traceback.print_exc()
+            return HttpResponse(f"Error generating document: {e}", status=500)
+
+    def get_document_data(self, id_permiviaje: int) -> Dict[str, Any]:
+        notary_data = self._get_notary_data()
+        viaje_data = self._get_viaje_data(id_permiviaje)
+        user_data = self._get_user_data(viaje_data.get('NOMBRE_RECEPCIONISTA'))
+        participants_data, blocks_data = self._get_participants_data(id_permiviaje)
+        
+        context = {}
+        context.update(notary_data)
+        context.update(viaje_data)
+        context.update(user_data)
+        context.update(participants_data)
+        context.update(blocks_data)
+
+        context['PADRE_MADRE'] = self._determine_padre_madre(blocks_data)
+        context['VACIO'] = ''
+        context['CONFIG'] = f"{id_permiviaje}_permiviaje/"
+        
+        licencia_info = self._get_licencia_data(viaje_data.get('FECHA_INGRESO_RAW'))
+        context.update(licencia_info)
+        
+        c_list = context.get('c', [])
+        if c_list:
+            first_contractor = c_list[0]
+            context['procede'] = first_contractor.get('procede', '')
+            context['SOLICITANTE'] = first_contractor.get('SOLICITANTE', '')
+
+        return context
+
     def _get_participants_data(self, id_permiviaje: int) -> tuple[Dict[str, Any], Dict[str, List[Dict[str, Any]]]]:
         with connection.cursor() as cursor:
             participants_data, blocks_data = {}, {}
@@ -198,8 +258,16 @@ class PermisoViajeInteriorDocumentService:
                 if num_contratantes > 1: p.update({'SOLICITANTE': 'a los solicitantes', 'procede': 'Los compareciente proceden'})
                 else: p.update({'SOLICITANTE': 'al solicitante' if sex == 'M' else 'a la solicitante', 'procede': 'El compareciente procede' if sex == 'M' else 'La compareciente procede'})
             blocks_data['c'] = contratantes_list
-            participants_data['procede'] = contratantes_list[0]['procede'] if contratantes_list else 'El compareciente procede'
             
+            max_cols = 3
+            signature_rows = []
+            for i in range(0, len(contratantes_list), max_cols):
+                row = contratantes_list[i:i + max_cols]
+                while len(row) < max_cols:
+                    row.append(None)
+                signature_rows.append(row)
+            blocks_data['signature_rows'] = signature_rows
+
             minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
             cursor.execute(minors_query, [id_permiviaje])
             
@@ -243,72 +311,12 @@ class PermisoViajeInteriorDocumentService:
         if has_female: return 'MADRE'
         return ''
 
-    def _process_document(self, template_bytes: bytes, data: Dict[str, Any]) -> DocxTemplate:
-        """
-        Renders the document using docxtpl with Jinja2 syntax.
-        """
-        doc = DocxTemplate(io.BytesIO(template_bytes))
-        
-        # Create a new context where all string values are converted to red RichText objects.
-        # This is safer than modifying the original data dictionary.
-        context = {}
-        for key, value in data.items():
-            if isinstance(value, list):
-                new_list = []
-                for item in value:
-                    if isinstance(item, dict):
-                        new_item = {k: RichText(str(v) if v is not None else '', color='#FF0000') for k, v in item.items()}
-                        new_list.append(new_item)
-                    else:
-                        new_list.append(RichText(str(item) if item is not None else '', color='#FF0000'))
-                context[key] = new_list
-            else:
-                context[key] = RichText(str(value) if value is not None else '', color='#FF0000')
-
-        doc.render(context)
-        return doc
-
-    def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
-        buffer.seek(0)
-        
-        if mode == "open":
-            response = JsonResponse({'status': 'success', 'mode': 'open', 'filename': filename, 'id_permiviaje': id_permiviaje, 'message': 'Document generated and ready to open in Word'})
-            response['Access-Control-Allow-Origin'] = '*'
-            return response
-        else:
-            response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-            response['Content-Disposition'] = f'inline; filename="{filename}"'
-            response['Content-Length'] = str(buffer.getbuffer().nbytes)
-            response['Access-Control-Allow-Origin'] = '*'
-            return response
-
-    def _save_document_to_r2(self, buffer: io.BytesIO, filename: str):
-        """
-        Saves the generated document to R2.
-        """
-        s3 = get_s3_client()
-        object_key = f"rodriguez-zea/documentos/{filename}"
-        buffer.seek(0)
-        s3.put_object(
-            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
-            Key=object_key,
-            Body=buffer.read()
-        )
-        buffer.seek(0)  # Reset buffer for the HTTP response 
-
-
-class PermisoViajeExteriorDocumentService:
-    """
-    Django service to generate Permiso Viaje Exterior documents using docxtpl.
-    """
-    
+class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
     def __init__(self):
-        self.letras = NumberToLetterConverter()
-    
-    def generate_permiso_viaje_exterior_document(self, id_permiviaje: int, action: str = 'generate', mode: str = "download") -> HttpResponse:
-        """
-        Main method to generate Permiso Viaje Exterior document.
-        """
+        super().__init__()
+        self.template_filename = "AUTORIZACION VIAJE MENOR EXTERIOR.docx"
+
+    def generate_permiso_viaje_exterior_document(self, id_permiviaje: int, mode: str = "download") -> HttpResponse:
         try:
             permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
             num_kardex = permiviaje.num_kardex
@@ -316,21 +324,16 @@ class PermisoViajeExteriorDocumentService:
                 return HttpResponse(f"Error: num_kardex is empty for PermiViaje id {id_permiviaje}", status=400)
 
             template_bytes = self._get_template_from_r2()
-
             if template_bytes is None:
                 return HttpResponse(
-                    "Error: Template file 'AUTORIZACION VIAJE MENOR EXTERIOR.docx' not found in R2 path 'rodriguez-zea/plantillas/'. Please ensure the file exists and the path is correct.",
+                    f"Error: Template file '{self.template_filename}' not found in R2 path 'rodriguez-zea/plantillas/'.",
                     status=404)
             
             document_data = self.get_document_data(id_permiviaje)
-            
             doc = self._process_document(template_bytes, document_data)
-            
             filename = f"__PROY__{num_kardex}.docx"
-
             buffer = io.BytesIO()
             doc.save(buffer)
-            
             self._save_document_to_r2(buffer, filename)
             
             return self._create_response(buffer, filename, id_permiviaje, mode)
@@ -340,20 +343,6 @@ class PermisoViajeExteriorDocumentService:
         except Exception as e:
             traceback.print_exc()
             return HttpResponse(f"Error generating document: {e}", status=500)
-
-    def _get_template_from_r2(self) -> bytes:
-        s3 = get_s3_client()
-        object_key = f"rodriguez-zea/plantillas/AUTORIZACION VIAJE MENOR EXTERIOR.docx"
-        try:
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return response['Body'].read()
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                return None
-            else:
-                raise
-        except Exception as e:
-            raise
 
     def get_document_data(self, id_permiviaje: int) -> Dict[str, Any]:
         notary_data = self._get_notary_data()
@@ -368,39 +357,16 @@ class PermisoViajeExteriorDocumentService:
         context.update(participants_data)
         context.update(blocks_data)
 
-        context['PADRE_MADRE'] = self._determine_padre_madre(blocks_data)
-        
         licencia_info = self._get_licencia_data(viaje_data.get('FECHA_INGRESO_RAW'))
         context.update(licencia_info)
 
         return context
-
-    def _get_licencia_data(self, fecha_ingreso: str) -> Dict[str, str]:
-        # This method can be reused from the other service.
-        service = PermisoViajeInteriorDocumentService()
-        return service._get_licencia_data(fecha_ingreso)
-
-    def _get_notary_data(self) -> Dict[str, str]:
-        # This method can be reused from the other service.
-        service = PermisoViajeInteriorDocumentService()
-        return service._get_notary_data()
-
-    def _get_viaje_data(self, id_permiviaje: int) -> Dict[str, str]:
-        # This method can be reused from the other service.
-        service = PermisoViajeInteriorDocumentService()
-        return service._get_viaje_data(id_permiviaje)
-
-    def _get_user_data(self, usuario_imprime: str = None) -> Dict[str, str]:
-        # This method can be reused from the other service.
-        service = PermisoViajeInteriorDocumentService()
-        return service._get_user_data(usuario_imprime)
 
     def _get_participants_data(self, id_permiviaje: int) -> tuple[Dict[str, Any], Dict[str, List[Dict[str, Any]]]]:
         with connection.cursor() as cursor:
             participants_data = {}
             blocks_data = {}
 
-            # Base query to fetch participant details
             base_query = """
                 SELECT 
                     vc.c_condicontrat AS id_condicion,
@@ -424,12 +390,18 @@ class PermisoViajeExteriorDocumentService:
                 WHERE vc.id_viaje = %s AND vc.c_condicontrat = %s
             """
 
-            # Fetch participants by specific roles (padre, madre)
-            for role_code, role_name in [('001', 'padre'), ('004', 'madre')]:
+            # Fetch all possible contratante conditions from the database, similar to PHP logic
+            cursor.execute("SELECT id_condicion, des_condicion FROM c_condiciones WHERE swt_condicion = 'V' AND id_condicion != '002'")
+            
+            for role_code, role_desc in cursor.fetchall():
+                role_name = role_desc.lower().strip()
                 cursor.execute(base_query, [id_permiviaje, role_code])
-                columns = [col[0] for col in cursor.description]
+                
+                # This logic assumes one person per role (e.g., one father, one mother)
+                # which matches the template structure for Exterior permits.
                 row = cursor.fetchone()
                 if row:
+                    columns = [col[0] for col in cursor.description]
                     participant = dict(zip(columns, row))
                     sex = participant.get('sexo', 'M')
                     participant.update({
@@ -437,11 +409,10 @@ class PermisoViajeExteriorDocumentService:
                         'senor': 'SEÑOR' if sex == 'M' else 'SEÑORA',
                         'el': 'EL' if sex == 'M' else 'LA',
                     })
-                    blocks_data[role_name] = [participant] # Store as a list for block merging
+                    blocks_data[role_name] = [participant] # Store as list for template compatibility
                 else:
                     blocks_data[role_name] = []
-            
-            # Logic for 'procede' and 'SOLICITANTE' based on number of parents
+
             all_contractors = blocks_data.get('padre', []) + blocks_data.get('madre', [])
             num_contratantes = len(all_contractors)
             if num_contratantes > 1:
@@ -455,8 +426,6 @@ class PermisoViajeExteriorDocumentService:
                 participants_data['procede'] = ''
                 participants_data['SOLICITANTE'] = ''
 
-
-            # Fetch minors
             minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
             cursor.execute(minors_query, [id_permiviaje])
             columns = [col[0] for col in cursor.description]
@@ -466,35 +435,12 @@ class PermisoViajeExteriorDocumentService:
                 sex = p.get('sexo', 'M')
                 p['identificado'] = 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA'
                 p['y_coma'] = '.' if i == len(minors_list) - 1 else (' Y' if i == len(minors_list) - 2 else ',')
-
             blocks_data['m'] = minors_list
 
-            # Logic for pluralization based on minors count
             if len(minors_list) == 1:
                 sex = minors_list[0].get('sexo', 'M')
                 participants_data.update({'HIJO': 'HIJA' if sex == 'F' else 'HIJO', 'MENOR': 'MENOR', 'AUTORIZA': 'AUTORIZA'})
             else:
                 participants_data.update({'HIJO': 'HIJAS' if all_female else 'HIJOS', 'MENOR': 'MENORES', 'AUTORIZA': 'AUTORIZAN'})
 
-
-            return participants_data, blocks_data
-
-    def _determine_padre_madre(self, blocks_data: Dict[str, Any]) -> str:
-        # Re-using logic from Interior service
-        service = PermisoViajeInteriorDocumentService()
-        return service._determine_padre_madre(blocks_data)
-
-    def _process_document(self, template_bytes: bytes, data: Dict[str, Any]) -> DocxTemplate:
-        # This method can be reused from the other service.
-        service = PermisoViajeInteriorDocumentService()
-        return service._process_document(template_bytes, data)
-
-    def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
-        # This method can be reused from the other service.
-        service = PermisoViajeInteriorDocumentService()
-        return service._create_response(buffer, filename, id_permiviaje, mode)
-
-    def _save_document_to_r2(self, buffer: io.BytesIO, filename: str):
-        # This method can be reused from the other service.
-        service = PermisoViajeInteriorDocumentService()
-        return service._save_document_to_r2(buffer, filename) 
+            return participants_data, blocks_data 
