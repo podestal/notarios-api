@@ -150,7 +150,19 @@ class BasePermisoViajeDocumentService:
         
         # Temporarily disabling RichText to debug file corruption issue.
         # This will render the document without red color.
-        context = data
+        context = {}
+        for key, value in data.items():
+            if isinstance(value, list):
+                new_list = []
+                for item in value:
+                    if isinstance(item, dict):
+                        new_item = {k: RichText(str(v) if v is not None else '', color='#FF0000') for k, v in item.items()}
+                        new_list.append(new_item)
+                    else:
+                        new_list.append(RichText(str(item) if item is not None else '', color='#FF0000'))
+                context[key] = new_list
+            else:
+                context[key] = RichText(str(value) if value is not None else '', color='#FF0000')
         doc.render(context)
         return doc
 
@@ -359,6 +371,12 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
 
         licencia_info = self._get_licencia_data(viaje_data.get('FECHA_INGRESO_RAW'))
         context.update(licencia_info)
+        
+        # Pull out standalone values from the first participant for easier access in the template
+        c_list = context.get('c', [])
+        if c_list:
+            context['procede'] = c_list[0].get('procede', '')
+            context['SOLICITANTE'] = c_list[0].get('SOLICITANTE', '')
 
         return context
 
@@ -367,7 +385,13 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
             participants_data = {}
             blocks_data = {}
 
-            base_query = """
+            # These are all the roles that can sign the Exterior permit
+            contratante_conditions = "('001', '003', '004', '005', '010')"
+            
+            cursor.execute(f"SELECT COUNT(*) FROM viaje_contratantes WHERE c_condicontrat IN {contratante_conditions} AND id_viaje = %s", [id_permiviaje])
+            num_contratantes = cursor.fetchone()[0]
+
+            base_query = f"""
                 SELECT 
                     vc.c_condicontrat AS id_condicion,
                     CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante,
@@ -387,44 +411,36 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
                 JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil
                 LEFT JOIN profesiones p ON p.idprofesion = c.idprofesion
                 LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
-                WHERE vc.id_viaje = %s AND vc.c_condicontrat = %s
+                WHERE vc.id_viaje = %s AND vc.c_condicontrat IN {contratante_conditions}
             """
-
-            # Fetch all possible contratante conditions from the database, similar to PHP logic
-            cursor.execute("SELECT id_condicion, des_condicion FROM c_condiciones WHERE swt_condicion = 'V' AND id_condicion != '002'")
             
-            for role_code, role_desc in cursor.fetchall():
-                role_name = role_desc.lower().strip()
-                cursor.execute(base_query, [id_permiviaje, role_code])
-                
-                # This logic assumes one person per role (e.g., one father, one mother)
-                # which matches the template structure for Exterior permits.
-                row = cursor.fetchone()
-                if row:
-                    columns = [col[0] for col in cursor.description]
-                    participant = dict(zip(columns, row))
-                    sex = participant.get('sexo', 'M')
-                    participant.update({
-                        'identificado': 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA',
-                        'senor': 'SEÑOR' if sex == 'M' else 'SEÑORA',
-                        'el': 'EL' if sex == 'M' else 'LA',
-                    })
-                    blocks_data[role_name] = [participant] # Store as list for template compatibility
-                else:
-                    blocks_data[role_name] = []
+            cursor.execute(base_query, [id_permiviaje])
+            columns = [col[0] for col in cursor.description]
+            contratantes_list = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-            all_contractors = blocks_data.get('padre', []) + blocks_data.get('madre', [])
-            num_contratantes = len(all_contractors)
-            if num_contratantes > 1:
-                participants_data['procede'] = 'Los comparecientes proceden'
-                participants_data['SOLICITANTE'] = 'a los solicitantes'
-            elif num_contratantes == 1:
-                sex = all_contractors[0].get('sexo', 'M')
-                participants_data['procede'] = 'El compareciente procede' if sex == 'M' else 'La compareciente procede'
-                participants_data['SOLICITANTE'] = 'al solicitante' if sex == 'M' else 'a la solicitante'
-            else:
-                participants_data['procede'] = ''
-                participants_data['SOLICITANTE'] = ''
+            for p in contratantes_list:
+                sex = p.get('sexo', 'M')
+                p.update({
+                    'identificado': 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA',
+                    'senor': 'SEÑOR' if sex == 'M' else 'SEÑORA',
+                    'el': 'EL' if sex == 'M' else 'LA',
+                })
+                if num_contratantes > 1:
+                    p.update({'SOLICITANTE': 'a los solicitantes', 'procede': 'Los comparecientes proceden'})
+                else:
+                    p.update({'SOLICITANTE': 'al solicitante' if sex == 'M' else 'a la solicitante', 'procede': 'El compareciente procede' if sex == 'M' else 'La compareciente procede'})
+            
+            blocks_data['c'] = contratantes_list
+
+            # This will be used for the flexible signature block
+            max_cols = 2 # Exterior template has 2 signatures per row
+            signature_rows = []
+            for i in range(0, len(contratantes_list), max_cols):
+                row = contratantes_list[i:i + max_cols]
+                while len(row) < max_cols:
+                    row.append(None)
+                signature_rows.append(row)
+            blocks_data['signature_rows'] = signature_rows
 
             minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
             cursor.execute(minors_query, [id_permiviaje])
