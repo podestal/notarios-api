@@ -464,7 +464,8 @@ class PermisoViajeExteriorDocumentService:
             all_female = all(p.get('sexo') == 'F' for p in minors_list)
             for i, p in enumerate(minors_list):
                 sex = p.get('sexo', 'M')
-                p['y_coma'] = '.' if i == len(minors_list) - 1 else (',' if i == len(minors_list) - 2 else ',')
+                p['identificado'] = 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA'
+                p['y_coma'] = '.' if i == len(minors_list) - 1 else (' Y' if i == len(minors_list) - 2 else ',')
 
             blocks_data['m'] = minors_list
 
