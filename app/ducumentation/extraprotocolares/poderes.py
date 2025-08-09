@@ -3,13 +3,16 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 import os
 import io
-from typing import Dict, Any, List, Optional
+import logging
+from typing import Dict, Any, List, Optional, Tuple
 from django.http import HttpResponse, JsonResponse
 from django.db import connection
 from docxtpl import DocxTemplate, RichText
 import traceback
 from ..extraprotocolares.permiso_viajes import get_s3_client
 from ..utils import NumberToLetterConverter
+
+logger = logging.getLogger(__name__)
 
 
 class BasePoderDocumentService:
@@ -123,7 +126,7 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
     """
     Poder Fuera de Registro document service.
     Template expected name (in R2): 'PODER FUERA DE REGISTRO BASE.docx'
-    Output filename format: '__PODER__{num_kardex}.docx'
+    Output filename format: '__PROY__{num_kardex}.docx'
     """
     def __init__(self) -> None:
         super().__init__()
@@ -135,7 +138,7 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
             if not poder_data.get('NUM_KARDEX'):
                 return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
 
-            filename = f"__PODER__{poder_data['NUM_KARDEX']}.docx"
+            filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
@@ -206,24 +209,26 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
 
     def _get_participants_data(self, id_poder: int) -> Dict[str, Any]:
         """
-        Build the 'E' structure consumed by the Jinja2 template. We support up to two principals and two witnesses.
+        Build the 'E' structure consumed by the Jinja2 template.
+        This version fetches principals first, then runs a separate query for each principal
+        to find their linked witness, mimicking the imperative style of the legacy PHP.
         """
         E: Dict[str, Any] = {}
         with connection.cursor() as cursor:
-            # Principals (poderdantes): take up to two by appearance order
+            # 1. Fetch up to two principals
             cursor.execute(
                 """
                 SELECT 
-                    UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS nom,
-                    UPPER(n.descripcion) AS nacionalidad,
-                    CASE WHEN c.sexo='F' THEN 'IDENTIFICADA CON' ELSE 'IDENTIFICADO CON' END AS ide,
-                    UPPER(td.td_abrev) AS tipo_doc,
-                    UPPER(c.numdoc) AS numdoc,
-                    UPPER(te.desestcivil) AS estado_civil,
-                    UPPER(COALESCE(c.detaprofesion, '')) AS ocupacion,
+                    UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS p_nom,
+                    UPPER(n.descripcion) AS p_nacionalidad,
+                    CASE WHEN c.sexo='F' THEN 'IDENTIFICADA CON' ELSE 'IDENTIFICADO CON' END AS p_ide,
+                    UPPER(td.td_abrev) AS p_tipo_doc,
+                    UPPER(c.numdoc) AS p_numdoc,
+                    UPPER(te.desestcivil) AS p_estado_civil,
+                    UPPER(COALESCE(c.detaprofesion, '')) AS p_ocupacion,
                     CONCAT('CON DOMICILIO EN ', UPPER(c.direccion), ' ',
-                           UPPER(COALESCE(CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto), ''))) AS domicilio,
-                    c.sexo
+                           UPPER(COALESCE(CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto), ''))) AS p_domicilio,
+                    c.sexo AS p_sexo
                 FROM poderes_contratantes pc
                 JOIN cliente c ON c.numdoc = pc.c_codcontrat
                 JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
@@ -232,60 +237,88 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
                 LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
                 WHERE pc.id_poder = %s AND pc.c_condicontrat IN ('007','011','009')
                 ORDER BY pc.id_poder, pc.c_codcontrat
+                LIMIT 2
                 """,
                 [id_poder],
             )
-            principals = cursor.fetchall() or []
-            for idx, p in enumerate(principals[:2], start=1):
-                suffix = '' if idx == 1 else '_2'
-                E[f'P_NOM{suffix}'] = p[0] or ''
-                E[f'P_NACIONALIDAD{suffix}'] = p[1] or ''
-                E[f'P_IDE{suffix}'] = p[2] or 'IDENTIFICADO CON'
-                E[f'P_DOC{suffix}'] = f"{p[3] or ''} N° {p[4] or ''}"
-                E[f'P_ESTADO_CIVIL{suffix}'] = p[5] or ''
-                E[f'P_OCUPACION{suffix}'] = p[6] or ''
-                E[f'P_DOMICILIO{suffix}'] = p[7] or ''
-                E[f'P_SEXO{suffix}'] = p[8] or 'M'
+            principal_cols = [col[0] for col in cursor.description]
+            principal_rows: List[Dict[str, Any]] = [dict(zip(principal_cols, row)) for row in cursor.fetchall()]
 
-            # Witnesses a ruego (testigos): up to two
-            cursor.execute(
-                """
-                SELECT 
-                    UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS nom,
-                    UPPER(n.descripcion) AS nacionalidad,
-                    CASE WHEN c.sexo='F' THEN 'IDENTIFICADA CON' ELSE 'IDENTIFICADO CON' END AS ide,
-                    UPPER(td.td_abrev) AS tipo_doc,
-                    UPPER(c.numdoc) AS numdoc,
-                    UPPER(te.desestcivil) AS estado_civil,
-                    UPPER(COALESCE(c.detaprofesion, '')) AS ocupacion,
-                    CONCAT('CON DOMICILIO EN ', UPPER(c.direccion), ' ',
-                           UPPER(COALESCE(CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto), ''))) AS domicilio,
-                    c.sexo
-                FROM poderes_contratantes pc
-                JOIN cliente c ON c.numdoc = pc.c_codcontrat
-                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
-                JOIN tipoestacivil te ON te.idestcivil = c.idestcivil
-                LEFT JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
-                LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
-                WHERE pc.id_poder = %s AND pc.c_condicontrat = '008'
-                ORDER BY pc.id_poder, pc.c_codcontrat
-                """,
-                [id_poder],
-            )
-            witnesses = cursor.fetchall() or []
-            for idx, w in enumerate(witnesses[:2], start=1):
+            # 2. For each principal, find their linked witness (if any)
+            for idx, p_row in enumerate(principal_rows, start=1):
                 suffix = '' if idx == 1 else '_2'
-                E[f'T_INTERVIENE{suffix}'] = 'INTERVIENE:'
-                E[f'T_NOM{suffix}'] = w[0] or ''
-                E[f'T_NACIONALIDAD{suffix}'] = w[1] or ''
-                E[f'T_IDE{suffix}'] = w[2] or 'IDENTIFICADO CON'
-                E[f'T_DOC{suffix}'] = f"{w[3] or ''} N° {w[4] or ''}"
-                E[f'T_ESTADO_CIVIL{suffix}'] = w[5] or ''
-                E[f'T_OCUPACION{suffix}'] = w[6] or ''
-                E[f'T_DOMICILIO{suffix}'] = w[7] or ''
-                E[f'T_CALIDAD{suffix}'] = 'QUIEN INTERVIENE EN CALIDAD DE TESTIGO A RUEGO'
 
-            # Apoderado (representative) summary line used in text
+                # Populate principal data
+                nat = (p_row.get('p_nacionalidad') or '')
+                sex = (p_row.get('p_sexo') or 'M')
+                if nat:
+                    if sex == 'M' and nat.endswith('A'): nat = nat[:-1] + 'O'
+                    elif sex == 'F' and nat.endswith('O'): nat = nat[:-1] + 'A'
+
+                E[f'P_NOM{suffix}'] = p_row.get('p_nom') or ''
+                E[f'P_NACIONALIDAD{suffix}'] = nat
+                E[f'P_IDE{suffix}'] = p_row.get('p_ide') or 'IDENTIFICADO CON'
+                E[f'P_DOC{suffix}'] = p_row.get('p_numdoc') or ''
+                E[f'P_TIPO_DOC{suffix}'] = p_row.get('p_tipo_doc') or ''
+                E[f'P_ESTADO_CIVIL{suffix}'] = p_row.get('p_estado_civil') or ''
+                E[f'P_OCUPACION{suffix}'] = p_row.get('p_ocupacion') or ''
+                E[f'P_DOMICILIO{suffix}'] = p_row.get('p_domicilio') or ''
+                E[f'P_SEXO{suffix}'] = sex
+
+                # Find linked witness for this principal
+                principal_doc_num = p_row.get('p_numdoc')
+                if principal_doc_num:
+                    logger.info(f"Searching for witness linked to principal DNI: {principal_doc_num} for id_poder: {id_poder}")
+                    cursor.execute(
+                        """
+                        SELECT
+                            UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS t_nom,
+                            UPPER(n.descripcion) AS t_nacionalidad,
+                            CASE WHEN c.sexo='F' THEN 'IDENTIFICADA CON' ELSE 'IDENTIFICADO CON' END AS t_ide,
+                            UPPER(td.td_abrev) AS t_tipo_doc,
+                            UPPER(c.numdoc) AS t_numdoc,
+                            UPPER(te.desestcivil) AS t_estado_civil,
+                            UPPER(COALESCE(c.detaprofesion, '')) AS t_ocupacion,
+                            CONCAT('CON DOMICILIO EN ', UPPER(c.direccion), ' ',
+                                   UPPER(COALESCE(CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto), ''))) AS t_domicilio,
+                            c.sexo AS t_sexo
+                        FROM poderes_contratantes pc
+                        JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                        JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                        JOIN tipoestacivil te ON te.idestcivil = c.idestcivil
+                        LEFT JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
+                        LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
+                        WHERE pc.id_poder = %s AND pc.codi_testigo = %s AND pc.c_condicontrat = '008'
+                        LIMIT 1
+                        """,
+                        [id_poder, principal_doc_num]
+                    )
+                    witness_cols = [col[0] for col in cursor.description]
+                    w_row = cursor.fetchone()
+
+                    if w_row:
+                        logger.info(f"Found witness data: {w_row}")
+                        witness_data = dict(zip(witness_cols, w_row))
+                        natw = (witness_data.get('t_nacionalidad') or '')
+                        sexw = (witness_data.get('t_sexo') or 'M')
+                        if natw:
+                            if sexw == 'M' and natw.endswith('A'): natw = natw[:-1] + 'O'
+                            elif sexw == 'F' and natw.endswith('O'): natw = natw[:-1] + 'A'
+
+                        E[f'T_INTERVIENE{suffix}'] = 'INTERVIENE:'
+                        E[f'T_NOM{suffix}'] = witness_data.get('t_nom') or ''
+                        E[f'T_NACIONALIDAD{suffix}'] = natw
+                        E[f'T_IDE{suffix}'] = witness_data.get('t_ide') or 'IDENTIFICADO CON'
+                        E[f'T_DOC{suffix}'] = witness_data.get('t_numdoc') or ''
+                        E[f'T_TIPO_DOC{suffix}'] = witness_data.get('t_tipo_doc') or ''
+                        E[f'T_ESTADO_CIVIL{suffix}'] = witness_data.get('t_estado_civil') or ''
+                        E[f'T_OCUPACION{suffix}'] = witness_data.get('t_ocupacion') or ''
+                        E[f'T_DOMICILIO{suffix}'] = witness_data.get('t_domicilio') or ''
+                        E[f'T_CALIDAD{suffix}'] = 'QUIEN INTERVIENE EN CALIDAD DE TESTIGO A RUEGO'
+                    else:
+                        logger.info("No witness found for this principal.")
+
+            # 3. Fetch Apoderado (representative) summary line used in text
             cursor.execute(
                 """
                 SELECT UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS nom,
@@ -321,8 +354,8 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
                 'P_O_ARON': 'aron', 'P_N': 'n', 'P_DEL_LOS': 'de los', 'P_A_LOS': 'a los'
             }
         else:
-            # Use first principal's sex if available
-            sex = E.get('P_SEXO', 'M')
+            # Use first principal's sex if available; fallback by inferring from P_IDE
+            sex = E.get('P_SEXO') or ('F' if str(E.get('P_IDE','')).strip().endswith('A') else 'M')
             if sex == 'F':
                 return {
                     **E,
@@ -369,6 +402,48 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
         # Pronoun helpers also placed at top level for convenience
         for k in ['P_EL', 'P_S', 'P_ES_SON', 'P_ES', 'P_O_ARON', 'P_N', 'P_DEL_LOS', 'P_A_LOS', 'apoderadoPoder']:
             context[k] = E.get(k, '')
+        # Flatten E so template can use top-level placeholders like {{P_NOM}}, {{T_DOC}}, etc.
+        context.update(E)
+        
+        # Compose safe participant lines to avoid dangling commas
+        def join_principal(idx: int) -> str:
+            suf = '' if idx == 1 else '_2'
+            nom = E.get(f'P_NOM{suf}', '')
+            if not nom:
+                return ''
+            parts = [
+                E.get(f'P_NOM{suf}', ''),
+                E.get(f'P_NACIONALIDAD{suf}', ''),
+                f"{E.get(f'P_IDE{suf}', '')} {E.get(f'P_TIPO_DOC{suf}', '')} N° {E.get(f'P_DOC{suf}', '')}".strip(),
+                E.get(f'P_ESTADO_CIVIL{suf}', ''),
+                E.get(f'P_OCUPACION{suf}', ''),
+                E.get(f'P_DOMICILIO{suf}', ''),
+            ]
+            # Filter empties, then join with ', ' and end with period
+            return (', '.join([p for p in parts if p]).replace('  ', ' ') + '.').strip()
+        
+        def join_testigo(idx: int) -> str:
+            suf = '' if idx == 1 else '_2'
+            nom = E.get(f'T_NOM{suf}', '')
+            if not nom:
+                return ''
+            parts = [
+                E.get(f'T_INTERVIENE{suf}', ''),
+                E.get(f'T_NOM{suf}', ''),
+                E.get(f'T_NACIONALIDAD{suf}', ''),
+                f"{E.get(f'T_IDE{suf}', '')} {E.get(f'T_TIPO_DOC{suf}', '')} N° {E.get(f'T_DOC{suf}', '')}".strip(),
+                E.get(f'T_ESTADO_CIVIL{suf}', ''),
+                E.get(f'T_OCUPACION{suf}', ''),
+                E.get(f'T_DOMICILIO{suf}', ''),
+                E.get(f'T_CALIDAD{suf}', ''),
+            ]
+            return (', '.join([p for p in parts if p]).replace('  ', ' ') + '.').strip()
+        
+        context['PRINCIPAL_1_TEXT'] = join_principal(1)
+        context['PRINCIPAL_2_TEXT'] = join_principal(2)
+        context['TESTIGO_1_TEXT'] = join_testigo(1)
+        context['TESTIGO_2_TEXT'] = join_testigo(2)
+        
         return context
 
 

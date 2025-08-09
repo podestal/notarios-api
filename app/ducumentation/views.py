@@ -1194,10 +1194,10 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         id_viaje = request.query_params.get('id_viaje')
         action = request.query_params.get('action', 'generate')
         mode = request.query_params.get('mode', 'download')
-
+        
         if not id_viaje:
             return Response({'status': 'error', 'message': 'id_viaje parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
-
+        
         service = PermisoViajeExteriorDocumentService()
         if action == 'retrieve':
             return service.retrieve_document(id_viaje, mode)
@@ -1217,7 +1217,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
 
         if not id_poder:
             return Response({'status': 'error', 'message': 'id_poder parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
-
+        
         # Build filename from num_kardex
         from notaria.models import IngresoPoderes  # assuming model name; adjust if different
         try:

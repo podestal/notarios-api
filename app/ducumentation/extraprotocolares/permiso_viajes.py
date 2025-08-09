@@ -42,7 +42,7 @@ class BasePermisoViajeDocumentService:
     def __init__(self):
         self.letras = NumberToLetterConverter()
         self.template_filename = None  # Must be set by child classes
-
+    
     def retrieve_document(self, id_permiviaje: int, mode: str = "download") -> HttpResponse:
         try:
             permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
@@ -316,7 +316,7 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
                 p['y_coma'] = '.' if i == len(minors_list) - 1 else (' Y' if i == len(minors_list) - 2 else ',')
             blocks_data['m'] = minors_list
             blocks_data['f'] = contratantes_list
-
+            
             if len(contratantes_list) > 1: participants_data.update({'A_EL_LOS': 'LOS', 'A_S': 'S', 'A_N': 'N'})
             else: participants_data.update({'A_EL_LOS': 'EL', 'A_S': '', 'A_N': ''})
             
@@ -335,7 +335,7 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
                     participant_dict = dict(zip(cols, rows[0]))
                     for k, v in participant_dict.items():
                         participants_data[f"{desc.lower()}_{k.upper()}"] = v
-
+            
             return participants_data, blocks_data
 
     def _determine_padre_madre(self, blocks_data: Dict[str, Any]) -> str:
