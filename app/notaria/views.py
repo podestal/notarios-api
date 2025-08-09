@@ -1491,6 +1491,8 @@ class PermiViajeViewSet(ModelViewSet):
     @action(detail=False, methods=['get'])
     def by_kardex(self, request):
         kardex = request.query_params.get('kardex')
+        nombreParticipante = request.query_params.get('nombreParticipante', None)
+        
         if kardex:
             queryset = self.queryset.filter(num_kardex=kardex).first()
         else:
@@ -1505,10 +1507,12 @@ class PermiViajeViewSet(ModelViewSet):
                 status=404
             )
 
-        if queryset.asunto == '001':
-            return Response(
-                {"error": "No viaje found for this kardex."},
-                status=404
+        if nombreParticipante:
+            # Filter PermiViaje by related ViajeContratantes field
+            self.queryset = self.queryset.filter(
+                id_viaje__in=models.ViajeContratantes.objects.filter(
+                    c_descontrat__icontains=nombreParticipante
+                ).values_list('id_viaje', flat=True)
             )
             
         # Get all contratantes for all viajes in the page

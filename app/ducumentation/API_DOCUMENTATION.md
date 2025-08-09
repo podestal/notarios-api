@@ -49,7 +49,7 @@ The parameters are identical to the "Permiso de Viaje al Interior" endpoint.
 
 ## Usage Examples
 
-Below are `curl` examples demonstrating how to use the API. Replace `YOUR_TOKEN`, `http://your-domain.com`, and `12345` with your actual authentication token, domain, and a valid `id_viaje`.
+Below are `curl` examples demonstrating how to use the API. Replace `YOUR_JWT_TOKEN`, `http://your-domain.com`, and `12345` with your actual JWT token, domain, and a valid `id_viaje`.
 
 ### Scenario 1: Generate a New Document and Download It
 
@@ -57,12 +57,12 @@ This is the default behavior. It creates a new document from the database, saves
 
 ```bash
 # For Interior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-interior/?id_viaje=12345" \
 --output permiso_interior.docx
 
 # For Exterior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-exterior/?id_viaje=12345" \
 --output permiso_exterior.docx
 ```
@@ -74,12 +74,12 @@ This fetches a previously generated (and potentially manually edited) document f
 
 ```bash
 # For Interior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-interior/?id_viaje=12345&action=retrieve" \
 --output permiso_interior_existente.docx
 
 # For Exterior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-exterior/?id_viaje=12345&action=retrieve" \
 --output permiso_exterior_existente.docx
 ```
@@ -91,11 +91,11 @@ This generates a new document and returns a JSON response containing a secure, t
 
 ```bash
 # For Interior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-interior/?id_viaje=12345&mode=open"
 
 # For Exterior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-exterior/?id_viaje=12345&mode=open"
 ```
 **Expected JSON Response:**
@@ -116,11 +116,11 @@ This is ideal for when a user wants to continue editing a document they've previ
 
 ```bash
 # For Interior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-interior/?id_viaje=12345&action=retrieve&mode=open"
 
 # For Exterior
-curl -X GET -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-exterior/?id_viaje=12345&action=retrieve&mode=open"
 ```
 **Expected JSON Response:** The same JSON structure as in Scenario 3, pointing to the existing file in R2. 
