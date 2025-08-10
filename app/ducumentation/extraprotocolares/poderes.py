@@ -510,6 +510,10 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
                     data['fecha_letras_viaext'] = self.letras.date_to_letters(fec_ingreso).upper()
                 else:
                     data['fecha_letras_viaext'] = ''
+                if data.get('NUM_KARDEX') and len(data['NUM_KARDEX']) >= 5:
+                    data['numcrono2'] = f"{data['NUM_KARDEX'][4:]}-{data['NUM_KARDEX'][:4]}"
+                else:
+                    data['numcrono2'] = ''
 
             cursor.execute(
                 """
@@ -588,6 +592,7 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
             if apoderado_row:
                 cols = [col[0] for col in cursor.description]
                 ap_data = dict(zip(cols, apoderado_row))
+                ap_data['domi_apoderado'] = f"{ap_data.get('direccion', '')} {ap_data.get('ubigeo', '')}".strip()
                 E.update({k:v for k,v in ap_data.items()})
 
             # Causante (role '009')
