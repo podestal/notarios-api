@@ -38,6 +38,7 @@ from .utils import NumberToLetterConverter
 from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
 from .extraprotocolares.permiso_viajes import PermisoViajeInteriorDocumentService, PermisoViajeExteriorDocumentService
 from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService, PoderONPDocumentService, PoderEssaludDocumentService
+from notaria.models import IngresoPoderes  
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -1219,13 +1220,13 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return Response({'status': 'error', 'message': 'id_poder parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Build filename from num_kardex
-        from notaria.models import IngresoPoderes  # assuming model name; adjust if different
+
         try:
             rec = IngresoPoderes.objects.get(id_poder=id_poder)
             num_kardex = rec.num_kardex
             if not num_kardex:
                 return Response({'status': 'error', 'message': 'num_kardex is empty for the provided id_poder'}, status=status.HTTP_400_BAD_REQUEST)
-            filename = f"__PODER__{num_kardex}.docx"
+            filename = f"__PROY__{num_kardex}.docx"
         except IngresoPoderes.DoesNotExist:
             return Response({'status': 'error', 'message': f'IngresoPoderes with id_poder {id_poder} not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1237,20 +1238,33 @@ class ExtraprotocolaresViewSet(ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='poder-essalud')
     def poder_essalud(self, request):
+        """
+        Generate or retrieve a Poder Essalud document.
+        - action=generate: Creates a new document, saves it to R2, and returns it.
+        - action=retrieve: Fetches an existing document from R2 and returns it.
+        """
         id_poder = request.data.get('id_poder')
         action = request.data.get('action', 'generate') # generate, retrieve
         mode = request.data.get('mode', 'download') # download, open
-        filename = request.data.get('filename')
 
         if not id_poder:
             return Response({'error': 'id_poder is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            rec = IngresoPoderes.objects.get(id_poder=id_poder)
+            num_kardex = rec.num_kardex
+            if not num_kardex:
+                return Response({'status': 'error', 'message': 'num_kardex is empty for the provided id_poder'}, status=status.HTTP_400_BAD_REQUEST)
+            filename = f"__PROY__{num_kardex}.docx"
+        except IngresoPoderes.DoesNotExist:
+            return Response({'status': 'error', 'message': f'IngresoPoderes with id_poder {id_poder} not found'}, status=status.HTTP_404_NOT_FOUND)
+
         service = PoderEssaludDocumentService()
-        if action == 'generate':
-            return service.generate_poder_essalud_document(id_poder, mode)
-        elif action == 'retrieve':
+        if action == 'retrieve':
             return service.retrieve_document(id_poder, filename, mode)
-        return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return service.generate_poder_essalud_document(id_poder, mode)
+
 
     @action(detail=False, methods=['post'], url_path='poder-onp')
     def poder_onp(self, request):

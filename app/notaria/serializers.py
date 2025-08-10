@@ -813,6 +813,16 @@ class CreateIngresoPoderesSerializer(serializers.ModelSerializer):
             'swt_est',
         ]
 
+
+class PoderesFueraregSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the PoderesFuerareg model.
+    """
+    class Meta:
+        model = models.PoderesFuerareg
+        fields = '__all__'
+
+
 class PoderesContratantesSerializer(serializers.ModelSerializer):
     """
     Serializer for the PoderesContratantes model.

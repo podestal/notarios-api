@@ -1677,6 +1677,15 @@ class IngresoPoderesViewSet(ModelViewSet):
             'contratantes_map': contratantes_map
         }, many=True)
         return self.get_paginated_response(serializer.data)
+
+
+class PoderesFueraregViewSet(ModelViewSet):
+    """
+    ViewSet for the PoderesFuerareg model.
+    """
+    queryset = models.PoderesFuerareg.objects.all().order_by('-id_fuerareg')
+    serializer_class = serializers.PoderesFueraregSerializer
+    pagination_class = pagination.KardexPagination
             
 
 
