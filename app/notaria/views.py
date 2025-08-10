@@ -1686,7 +1686,20 @@ class PoderesFueraregViewSet(ModelViewSet):
     queryset = models.PoderesFuerareg.objects.all().order_by('-id_fuerareg')
     serializer_class = serializers.PoderesFueraregSerializer
     pagination_class = pagination.KardexPagination
-            
+
+    @action(detail=False, methods=['get'])
+    def by_poder(self, request):
+        """
+        Get PoderesFuerareg records by poder.
+        """
+        id_poder = request.query_params.get('id_poder', None)
+        if id_poder:
+            queryset = models.PoderesFuerareg.objects.filter(id_poder=id_poder).first()
+            if not queryset:
+                return Response(status=status.HTTP_200_OK, data={})
+            serializer = self.get_serializer(queryset)
+            return Response(serializer.data)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
 class PoderesContratantesViewSet(ModelViewSet):

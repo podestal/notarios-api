@@ -24,6 +24,9 @@ def enable_db_access_for_all_tests(transactional_db):
         models.Tipodocumento,
         models.Tipoestacivil,
         models.PermisosUsuarios,
+        # Add PoderesFuerareg and IngresoPoderes here for testing this viewset
+        models.PoderesFuerareg,
+        models.IngresoPoderes,
     ]
     
     # Temporarily make models managed
@@ -125,4 +128,33 @@ def sample_cliente(sample_contratante):
         cumpclie='123456789012345',
         idsedereg=1,
         residente='01'
+    )
+
+@pytest.fixture
+def sample_ingreso_poder():
+    """Create a sample IngresoPoderes instance."""
+    return baker.make(
+        models.IngresoPoderes,
+        id_poder=1,
+        num_kardex='2024000001',
+        fec_ingreso='2024-01-01',
+        num_formu='F001',
+        id_asunto='AS01',
+        swt_est='ACT'
+    )
+
+@pytest.fixture
+def sample_poderes_fuerareg(sample_ingreso_poder):
+    """Create a sample PoderesFuerareg instance."""
+    return baker.make(
+        models.PoderesFuerareg,
+        id_poder=sample_ingreso_poder.id_poder,
+        id_fuerareg=1,
+        id_tipo='TIPO1',
+        f_fecha='2024-01-01',
+        f_plazopoder='1 year',
+        f_fecotor='2024-01-01',
+        f_fecvcto='2025-01-01',
+        f_solicita='Test Solicitor',
+        f_observ='Test Observation'
     )
