@@ -823,6 +823,14 @@ class PoderesFueraregSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class PoderesPensionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the PoderesPension model.
+    """
+    class Meta:
+        model = models.PoderesPension
+        fields = '__all__'
+
 class PoderesContratantesSerializer(serializers.ModelSerializer):
     """
     Serializer for the PoderesContratantes model.

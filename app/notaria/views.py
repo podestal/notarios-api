@@ -1701,6 +1701,27 @@ class PoderesFueraregViewSet(ModelViewSet):
             return Response(serializer.data)
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
+class PoderesPensionViewSet(ModelViewSet):
+    """
+    ViewSet for the PoderesPension model.
+    """
+    queryset = models.PoderesPension.objects.all().order_by('-id_pension')
+    serializer_class = serializers.PoderesPensionSerializer
+    pagination_class = pagination.KardexPagination
+
+    @action(detail=False, methods=['get'])
+    def by_poder(self, request):
+        """
+        Get PoderesPension records by poder.
+        """
+        id_poder = request.query_params.get('id_poder', None)
+        if id_poder:
+            queryset = models.PoderesPension.objects.filter(id_poder=id_poder).first()
+            if not queryset:
+                return Response(status=status.HTTP_200_OK, data={})
+            serializer = self.get_serializer(queryset)
+            return Response(serializer.data)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
 
 class PoderesContratantesViewSet(ModelViewSet):
     """

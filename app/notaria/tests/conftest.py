@@ -27,6 +27,8 @@ def enable_db_access_for_all_tests(transactional_db):
         # Add PoderesFuerareg and IngresoPoderes here for testing this viewset
         models.PoderesFuerareg,
         models.IngresoPoderes,
+        # Add PoderesPension for testing this viewset
+        models.PoderesPension,
     ]
     
     # Temporarily make models managed
