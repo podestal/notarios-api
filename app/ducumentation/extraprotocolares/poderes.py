@@ -121,6 +121,15 @@ class BasePoderDocumentService:
         )
         buffer.seek(0)
 
+    def _get_notary_data(self) -> Dict[str, str]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT CONCAT(nombre, ' ', apellido) AS notario, direccion, distrito AS distrito_notario FROM confinotario")
+            notary_data = cursor.fetchone()
+            if notary_data:
+                columns = [col[0] for col in cursor.description]
+                return {k.upper(): v for k, v in dict(zip(columns, notary_data)).items()}
+        return {}
+
 
 class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
     """
@@ -456,4 +465,201 @@ class PoderONPDocumentService(BasePoderDocumentService):
 class PoderEssaludDocumentService(BasePoderDocumentService):
     def __init__(self) -> None:
         super().__init__()
-        self.template_filename = "PODER ESSALUD.docx" 
+        self.template_filename = "PODER ESSALUD.docx"
+
+    def generate_poder_essalud_document(self, id_poder: int, mode: str = "download") -> HttpResponse:
+        try:
+            poder_data = self._get_poder_data(id_poder)
+            if not poder_data.get('NUM_KARDEX'):
+                return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
+
+            filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
+
+            template_bytes = self._get_template_from_r2()
+            if template_bytes is None:
+                return HttpResponse(
+                    f"Error: Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.",
+                    status=404,
+                )
+
+            context = self._build_context(id_poder, poder_data)
+            # Since we are not coloring this document, we use a simpler render method
+            doc = DocxTemplate(io.BytesIO(template_bytes))
+            doc.render(context)
+            
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            self._save_document_to_r2(buffer, filename)
+            return self._create_response(buffer, filename, id_poder, mode)
+        except Exception as e:
+            traceback.print_exc()
+            return HttpResponse(f"Error generating document: {e}", status=500)
+
+    def _get_poder_data(self, id_poder: int) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT num_kardex, fec_ingreso FROM ingreso_poderes WHERE id_poder = %s",
+                [id_poder],
+            )
+            row = cursor.fetchone()
+            if row:
+                data['NUM_KARDEX'] = row[0]
+                fec_ingreso = row[1]
+                if fec_ingreso:
+                    data['fecha_letras_viaext'] = self.letras.date_to_letters(fec_ingreso).upper()
+                else:
+                    data['fecha_letras_viaext'] = ''
+
+            cursor.execute(
+                """
+                SELECT e_fecotor, e_fecvcto, e_montosep, e_montolact, e_montomater, e_plazopoder 
+                FROM poderes_essalud WHERE id_poder = %s
+                """,
+                [id_poder],
+            )
+            row2 = cursor.fetchone()
+            if row2:
+                data['emision'] = self.letras.date_to_letters(row2[0]).upper() if row2[0] else ''
+                data['vigencia_fin'] = row2[1] or ''
+                data['sepelio'] = row2[2] or ''
+                data['lactancia'] = row2[3] or ''
+                data['maternidad'] = row2[4] or ''
+                data['plazo'] = (row2[5] or '').upper()
+        return data
+
+    def _get_participants_data(self, id_poder: int) -> Dict[str, Any]:
+        E: Dict[str, Any] = {}
+        with connection.cursor() as cursor:
+            # Poderdantes (role '007')
+            cursor.execute("""
+                SELECT
+                    UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS nombre,
+                    UPPER(td.destipdoc) AS tipo_doc,
+                    UPPER(c.numdoc) AS num_doc,
+                    UPPER(tec.desestcivil) AS est_civil,
+                    UPPER(n.descripcion) AS nacionalidad,
+                    UPPER(c.direccion) AS direccion,
+                    pc.c_fircontrat AS firma,
+                    IF(u.coddis='070101','DISTRITO DE CALLAO , PROVINCIA CONSTITUCIONAL DEL CALLAO',CONCAT('DISTRITO DE ',u.nomdis, ', PROVINCIA DE ', u.nomprov,', DEPARTAMENTO DE ',u.nomdpto )) AS ubigeo,
+                    IFNULL(prof.desprofesion,'') AS profesion
+                FROM poderes_contratantes pc
+                JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil
+                JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
+                LEFT JOIN profesiones prof ON prof.idprofesion = c.idprofesion
+                LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
+                WHERE pc.c_condicontrat = '007' AND pc.id_poder = %s
+            """, [id_poder])
+            poderdantes = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
+
+            datos_poderdantes = []
+            firmas_poderdantes = []
+            for p in poderdantes:
+                full_desc = (
+                    f"{p['nombre']}, QUIEN MANIFIESTA SER DE NACIONALIDAD {p['nacionalidad']} DE ESTADO CIVIL {p['est_civil']}, "
+                    f"DE OCUPACIÓN {p['profesion']}, DOMICILIAR EN {p['direccion']} {p['ubigeo']}, "
+                    f"SE IDENTIFICA CON {p['tipo_doc']} NUMERO {p['num_doc']}, Y DECLARA QUE PROCEDE POR DERECHO PROPIO."
+                )
+                datos_poderdantes.append({'datos_poderdante': full_desc})
+                if p['firma'] == 'SI':
+                    firmas_poderdantes.append({
+                        'firma_poderdante': f"------------------------------------------\n{p['nombre']}\n{p['tipo_doc']} N°: {p['num_doc']}\n\n"
+                    })
+            E['c'] = datos_poderdantes
+            E['d'] = firmas_poderdantes
+
+            # Apoderado (role '006')
+            cursor.execute("""
+                SELECT
+                    UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS nombre_apoderado,
+                    UPPER(td.destipdoc) AS tip_doc,
+                    UPPER(c.numdoc) AS num_doc,
+                    UPPER(c.direccion) AS direccion,
+                    IF(u.coddis='070101','DISTRITO DE CALLAO , PROVINCIA CONSTITUCIONAL DEL CALLAO',CONCAT('DISTRITO DE ',u.nomdis, ', PROVINCIA DE ', u.nomprov,', DEPARTAMENTO DE ',u.nomdpto )) AS ubigeo
+                FROM poderes_contratantes pc
+                JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
+                WHERE pc.c_condicontrat = '006' AND pc.id_poder = %s
+            """, [id_poder])
+            apoderado_row = cursor.fetchone()
+            if apoderado_row:
+                cols = [col[0] for col in cursor.description]
+                ap_data = dict(zip(cols, apoderado_row))
+                E.update({k:v for k,v in ap_data.items()})
+
+            # Causante (role '009')
+            cursor.execute("""
+                SELECT
+                    UPPER(c.nombre) AS nombre_causante,
+                    UPPER(td.destipdoc) AS tipdoc_causante,
+                    UPPER(c.numdoc) AS numdoc_causante,
+                    UPPER(c.direccion) AS direc_causante,
+                    IF(u.coddis='070101','DISTRITO DE CALLAO , PROVINCIA CONSTITUCIONAL DEL CALLAO',CONCAT('DISTRITO DE ',u.nomdis, ', PROVINCIA DE ', u.nomprov,', DEPARTAMENTO DE ',u.nomdpto ))  AS ubigeo_causante,
+                    pc.codi_asegurado AS codi_asegurado
+                FROM poderes_contratantes pc
+                JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                LEFT JOIN ubigeo u ON c.idubigeo = u.coddis
+                WHERE pc.c_condicontrat = '009' AND pc.id_poder = %s
+            """, [id_poder])
+            causante = cursor.fetchone()
+            if causante:
+                cols = [col[0] for col in cursor.description]
+                ca_data = dict(zip(cols, causante))
+                E['desc_causante'] = (
+                    f"DE QUIEN EN VIDA FUE: {ca_data['nombre_causante']} IDENTIFICADO CON {ca_data['tipdoc_causante']} NUMERO {ca_data['numdoc_causante']}. "
+                    f"DOMICILIADO EN {ca_data['direc_causante']} {ca_data['ubigeo_causante']} CON CODIGO DE ASEGURADO: {ca_data['codi_asegurado']}"
+                )
+            else:
+                E['desc_causante'] = ''
+
+            # Testigos (role '008')
+            cursor.execute("""
+                SELECT
+                    UPPER(c.nombre) AS nombre_testigo,
+                    UPPER(td.destipdoc) AS tip_doc_testigo,
+                    UPPER(c.numdoc) AS num_doc_testigo,
+                    atestiguados.nombre AS atestiguado,
+                    UPPER(documents_atesti.destipdoc) AS tip_doc_ates,
+                    d.val_item AS des_incapacidad,
+                    pc.c_fircontrat AS firma
+                FROM poderes_contratantes pc
+                INNER JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                INNER JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                INNER JOIN cliente atestiguados ON atestiguados.numdoc = pc.codi_testigo
+                INNER JOIN tipodocumento documents_atesti ON documents_atesti.idtipdoc = atestiguados.idtipdoc
+                INNER JOIN d_tablas d ON d.num_item = pc.tip_incapacidad AND d.tip_item = "poder"
+                WHERE pc.c_condicontrat = '008' AND pc.id_poder = %s
+            """, [id_poder])
+            testigos = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
+            
+            datos_testigos = []
+            firmas_testigos = []
+            for t in testigos:
+                datos_testigos.append({
+                    'datos_testigo': (
+                        f"INTERVIENE {t['nombre_testigo']} IDENTIFICADO CON {t['tip_doc_ates']} NUMERO {t['num_doc_testigo']} "
+                        f"EN CALIDAD DE TESTIGO A RUEGO DE {t['atestiguado']} POR ENCONTRARSE {t['des_incapacidad']}"
+                    )
+                })
+                if t['firma'] == 'SI' and poderdantes:
+                     firmas_testigos.append({
+                        'firma_testigo': (
+                            f"------------------------------------------\n{poderdantes[0]['nombre']}\n{poderdantes[0]['tipo_doc']} N°: {poderdantes[0]['num_doc']}\n\n"
+                            f"------------------------------------------\n{t['nombre_testigo']}\n{t['tip_doc_testigo']} N°: {t['num_doc_testigo']}\n\n"
+                        )
+                    })
+            E['a'] = datos_testigos
+            E['e'] = firmas_testigos
+
+            return E
+
+    def _build_context(self, id_poder: int, poder_data: Dict[str, Any]) -> Dict[str, Any]:
+        context: Dict[str, Any] = {}
+        context.update(poder_data)
+        context.update(self._get_notary_data())
+        context.update(self._get_participants_data(id_poder))
+        return context 

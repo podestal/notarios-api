@@ -37,7 +37,7 @@ from django.urls import reverse
 from .utils import NumberToLetterConverter
 from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
 from .extraprotocolares.permiso_viajes import PermisoViajeInteriorDocumentService, PermisoViajeExteriorDocumentService
-from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService
+from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService, PoderONPDocumentService, PoderEssaludDocumentService
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -1234,4 +1234,26 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return service.retrieve_document(id_poder, filename, mode)
         else:
             return service.generate_poder_fuera_registro_document(id_poder, mode)
+
+    @action(detail=False, methods=['post'], url_path='poder-essalud')
+    def poder_essalud(self, request):
+        id_poder = request.data.get('id_poder')
+        action = request.data.get('action', 'generate') # generate, retrieve
+        mode = request.data.get('mode', 'download') # download, open
+        filename = request.data.get('filename')
+
+        if not id_poder:
+            return Response({'error': 'id_poder is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        service = PoderEssaludDocumentService()
+        if action == 'generate':
+            return service.generate_poder_essalud_document(id_poder, mode)
+        elif action == 'retrieve':
+            return service.retrieve_document(id_poder, filename, mode)
+        return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='poder-onp')
+    def poder_onp(self, request):
+        # Placeholder for ONP implementation
+        return Response({'message': 'Endpoint for Poder ONP not yet implemented.'}, status=status.HTTP_501_NOT_IMPLEMENTED)
 
