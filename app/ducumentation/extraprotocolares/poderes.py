@@ -9,13 +9,13 @@ from django.http import HttpResponse, JsonResponse
 from django.db import connection
 from docxtpl import DocxTemplate, RichText
 import traceback
-from ..extraprotocolares.permiso_viajes import get_s3_client
+from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
 from ..utils import NumberToLetterConverter
 
 logger = logging.getLogger(__name__)
 
 
-class BasePoderDocumentService:
+class BasePoderDocumentService(BaseR2DocumentService):
     """
     Base service with common logic for generating Poder documents.
     - Loads templates from R2 under rodriguez-zea/plantillas/
@@ -29,7 +29,7 @@ class BasePoderDocumentService:
     def retrieve_document(self, id_poder: int, filename: str, mode: str = "download") -> HttpResponse:
         try:
             if not filename:
-                return HttpResponse("Error: filename is required to retrieve document", status=400)
+                return self.json_error(400, "filename is required to retrieve document")
 
             if mode == "open":
                 return self._create_response(None, filename, id_poder, mode)
@@ -42,12 +42,15 @@ class BasePoderDocumentService:
         except ClientError as e:
             code = e.response.get('Error', {}).get('Code')
             if code == 'NoSuchKey':
-                return HttpResponse(f"Error: Document '{filename}' not found in R2.", status=404)
+                return self.json_error(404, f"Document not found in R2. Generate it first.", {
+                    'id_poder': id_poder,
+                    'filename': filename,
+                })
             traceback.print_exc()
-            return HttpResponse(f"Error retrieving document: {e}", status=500)
+            return self.json_error(500, f"Error retrieving document: {e}")
         except Exception as e:
             traceback.print_exc()
-            return HttpResponse(f"Error retrieving document: {e}", status=500)
+            return self.json_error(500, f"Error retrieving document: {e}")
 
     def _get_template_from_r2(self) -> Optional[bytes]:
         if not self.template_filename:
@@ -164,6 +167,13 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
                 return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
 
             filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
+
+            # Prevent regenerating if already exists
+            if self._document_exists_in_r2(filename):
+                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+                    'id_poder': id_poder,
+                    'filename': filename,
+                })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
@@ -491,6 +501,13 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
 
             filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
 
+            # Prevent regenerating if already exists
+            if self._document_exists_in_r2(filename):
+                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+                    'id_poder': id_poder,
+                    'filename': filename,
+                })
+
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
                 return HttpResponse(
@@ -635,6 +652,13 @@ class PoderPensionDocumentService(BasePoderDocumentService):
                 return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
 
             filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
+
+            # Prevent regenerating if already exists
+            if self._document_exists_in_r2(filename):
+                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+                    'id_poder': id_poder,
+                    'filename': filename,
+                })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:

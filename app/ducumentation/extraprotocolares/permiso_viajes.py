@@ -15,27 +15,12 @@ import re
 from docxtpl import DocxTemplate, RichText
 import traceback
 
-_s3_client = None
 
 
-def get_s3_client():
-    """
-    Get a cached S3 client for R2 operations
-    """
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client(
-            's3',
-            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
-            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
-            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
-            config=Config(signature_version='s3v4'),
-            region_name='auto',
-        )
-    return _s3_client
+from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
 
 
-class BasePermisoViajeDocumentService:
+class BasePermisoViajeDocumentService(BaseR2DocumentService):
     """
     Base service with common logic for generating Permiso Viaje documents.
     """
@@ -65,16 +50,19 @@ class BasePermisoViajeDocumentService:
             return self._create_response(buffer, filename, id_permiviaje, mode)
 
         except PermiViaje.DoesNotExist:
-            return HttpResponse(f"Error: PermiViaje with id {id_permiviaje} not found", status=404)
+            return self.json_error(404, f"PermiViaje with id {id_permiviaje} not found", {'id_permiviaje': id_permiviaje})
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchKey':
-                return HttpResponse(f"Error: Document '{filename}' not found in R2.", status=404)
+                return self.json_error(404, "Document not found in R2. Generate it first.", {
+                    'id_permiviaje': id_permiviaje,
+                    'filename': filename,
+                })
             else:
                 traceback.print_exc()
-                return HttpResponse(f"Error retrieving document: {e}", status=500)
+                return self.json_error(500, f"Error retrieving document: {e}")
         except Exception as e:
             traceback.print_exc()
-            return HttpResponse(f"Error retrieving document: {e}", status=500)
+            return self.json_error(500, f"Error retrieving document: {e}")
 
     def _get_template_from_r2(self) -> bytes:
         if not self.template_filename:
@@ -214,6 +202,27 @@ class BasePermisoViajeDocumentService:
         )
         buffer.seek(0)
 
+    def _document_exists_in_r2(self, filename: str) -> bool:
+        s3 = get_s3_client()
+        object_key = f"rodriguez-zea/documentos/{filename}"
+        try:
+            s3.head_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
+            return True
+        except ClientError as e:
+            code = e.response.get('Error', {}).get('Code') if hasattr(e, 'response') else None
+            if code in ('NoSuchKey', '404'):
+                return False
+            # Some R2 providers return numeric strings for 404 on head_object
+            try:
+                status = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
+                if status == 404:
+                    return False
+            except Exception:
+                pass
+            raise
+        except Exception:
+            raise
+
 class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
     def __init__(self):
         super().__init__()
@@ -224,17 +233,21 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
             permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
             num_kardex = permiviaje.num_kardex
             if not num_kardex:
-                return HttpResponse(f"Error: num_kardex is empty for PermiViaje id {id_permiviaje}", status=400)
+                return self.json_error(400, f"num_kardex is empty for PermiViaje id {id_permiviaje}")
+
+            filename = f"__PROY__{num_kardex}.docx"
+            if self._document_exists_in_r2(filename):
+                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+                    'id_permiviaje': id_permiviaje,
+                    'filename': filename,
+                })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
-                return HttpResponse(
-                    f"Error: Template file '{self.template_filename}' not found in R2 path 'rodriguez-zea/plantillas/'.",
-                    status=404)
+                return self.json_error(404, f"Template file '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.")
             
             document_data = self.get_document_data(id_permiviaje)
             doc = self._process_document(template_bytes, document_data)
-            filename = f"__PROY__{num_kardex}.docx"
             buffer = io.BytesIO()
             doc.save(buffer)
             self._save_document_to_r2(buffer, filename)
@@ -242,10 +255,10 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
             return self._create_response(buffer, filename, id_permiviaje, mode)
 
         except PermiViaje.DoesNotExist:
-            return HttpResponse(f"Error: PermiViaje with id {id_permiviaje} not found", status=404)
+            return self.json_error(404, f"PermiViaje with id {id_permiviaje} not found", {'id_permiviaje': id_permiviaje})
         except Exception as e:
             traceback.print_exc()
-            return HttpResponse(f"Error generating document: {e}", status=500)
+            return self.json_error(500, f"Error generating document: {e}")
 
     def get_document_data(self, id_permiviaje: int) -> Dict[str, Any]:
         notary_data = self._get_notary_data()
@@ -357,17 +370,21 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
             permiviaje = PermiViaje.objects.get(id_viaje=id_permiviaje)
             num_kardex = permiviaje.num_kardex
             if not num_kardex:
-                return HttpResponse(f"Error: num_kardex is empty for PermiViaje id {id_permiviaje}", status=400)
+                return self.json_error(400, f"num_kardex is empty for PermiViaje id {id_permiviaje}")
+
+            filename = f"__PROY__{num_kardex}.docx"
+            if self._document_exists_in_r2(filename):
+                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+                    'id_permiviaje': id_permiviaje,
+                    'filename': filename,
+                })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
-                return HttpResponse(
-                    f"Error: Template file '{self.template_filename}' not found in R2 path 'rodriguez-zea/plantillas/'.",
-                    status=404)
+                return self.json_error(404, f"Template file '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.")
             
             document_data = self.get_document_data(id_permiviaje)
             doc = self._process_document(template_bytes, document_data)
-            filename = f"__PROY__{num_kardex}.docx"
             buffer = io.BytesIO()
             doc.save(buffer)
             self._save_document_to_r2(buffer, filename)
@@ -375,10 +392,10 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
             return self._create_response(buffer, filename, id_permiviaje, mode)
 
         except PermiViaje.DoesNotExist:
-            return HttpResponse(f"Error: PermiViaje with id {id_permiviaje} not found", status=404)
+            return self.json_error(404, f"PermiViaje with id {id_permiviaje} not found", {'id_permiviaje': id_permiviaje})
         except Exception as e:
             traceback.print_exc()
-            return HttpResponse(f"Error generating document: {e}", status=500)
+            return self.json_error(500, f"Error generating document: {e}")
 
     def get_document_data(self, id_permiviaje: int) -> Dict[str, Any]:
         notary_data = self._get_notary_data()
