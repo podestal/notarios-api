@@ -1870,3 +1870,36 @@ class LibrosViewSet(ModelViewSet):
         serializer = serializers.LibrosSerializer(page_libros, many=True)
         return self.get_paginated_response(serializer.data)
 
+
+class CertDomiciliarioViewSet(ModelViewSet):
+    """
+    ViewSet for the CertDomiciliario model.
+    """
+    queryset = models.CertDomiciliario.objects.all().order_by('-id_domiciliario')
+    serializer_class = serializers.CertDomiciliarioSerializer
+    pagination_class = pagination.KardexPagination  
+
+    def list(self, request, *args, **kwargs):
+        dateFrom = request.query_params.get('dateFrom', '')
+        dateTo = request.query_params.get('dateTo', '')
+        num_certificado = request.query_params.get('num_certificado', '')
+        nombre_solic = request.query_params.get('nombre_solic', '')
+
+        if dateFrom and dateTo:
+            self.queryset = self.queryset.filter(fec_ingreso__range=(dateFrom, dateTo))
+        elif dateFrom:
+            self.queryset = self.queryset.filter(fec_ingreso__gte=dateFrom)
+        elif dateTo:
+            self.queryset = self.queryset.filter(fec_ingreso__lte=dateTo)
+
+        if num_certificado:
+            
+            self.queryset = self.queryset.filter(num_certificado=num_certificado)
+        if nombre_solic:
+            self.queryset = self.queryset.filter(nombre_solic__icontains=nombre_solic)
+
+        page_cert_domiciliario = self.paginate_queryset(self.queryset)
+        serializer = serializers.CertDomiciliarioSerializer(page_cert_domiciliario, many=True)
+        return self.get_paginated_response(serializer.data)
+        
+
