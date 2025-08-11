@@ -1220,14 +1220,14 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         if not id_poder:
             return Response({'status': 'error', 'message': 'id_poder parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Build filename from num_kardex
-
+        # Build filename using legacy pattern: __PODER__{id_poder}-{anioKardex}.docx
         try:
             rec = IngresoPoderes.objects.get(id_poder=id_poder)
             num_kardex = rec.num_kardex
             if not num_kardex:
                 return Response({'status': 'error', 'message': 'num_kardex is empty for the provided id_poder'}, status=status.HTTP_400_BAD_REQUEST)
-            filename = f"__PROY__{num_kardex}.docx"
+            anio_kardex = (num_kardex or '')[:4]
+            filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
         except IngresoPoderes.DoesNotExist:
             return Response({'status': 'error', 'message': f'IngresoPoderes with id_poder {id_poder} not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1244,9 +1244,9 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         - action=generate: Creates a new document, saves it to R2, and returns it.
         - action=retrieve: Fetches an existing document from R2 and returns it.
         """
-        id_poder = request.data.get('id_poder')
-        action = request.data.get('action', 'generate') # generate, retrieve
-        mode = request.data.get('mode', 'download') # download, open
+        id_poder = request.query_params.get('id_poder')
+        action = request.query_params.get('action', 'generate') # generate, retrieve
+        mode = request.query_params.get('mode', 'download') # download, open
 
         if not id_poder:
             return Response({'error': 'id_poder is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1256,7 +1256,8 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             num_kardex = rec.num_kardex
             if not num_kardex:
                 return Response({'status': 'error', 'message': 'num_kardex is empty for the provided id_poder'}, status=status.HTTP_400_BAD_REQUEST)
-            filename = f"__PROY__{num_kardex}.docx"
+            anio_kardex = (num_kardex or '')[:4]
+            filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
         except IngresoPoderes.DoesNotExist:
             return Response({'status': 'error', 'message': f'IngresoPoderes with id_poder {id_poder} not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1286,7 +1287,8 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             num_kardex = rec.num_kardex
             if not num_kardex:
                 return Response({'status': 'error', 'message': 'num_kardex is empty for the provided id_poder'}, status=status.HTTP_400_BAD_REQUEST)
-            filename = f"__PROY__{num_kardex}.docx"
+            anio_kardex = (num_kardex or '')[:4]
+            filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
         except IngresoPoderes.DoesNotExist:
             return Response({'status': 'error', 'message': f'IngresoPoderes with id_poder {id_poder} not found'}, status=status.HTTP_404_NOT_FOUND)
 

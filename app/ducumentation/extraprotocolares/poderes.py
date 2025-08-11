@@ -31,12 +31,25 @@ class BasePoderDocumentService(BaseR2DocumentService):
             if not filename:
                 return self.json_error(400, "filename is required to retrieve document")
 
-            if mode == "open":
-                return self._create_response(None, filename, id_poder, mode)
-
+            # Use the provided filename only (legacy-specific per endpoint)
             s3 = get_s3_client()
+            bucket = os.environ.get('CLOUDFLARE_R2_BUCKET')
             object_key = f"rodriguez-zea/documentos/{filename}"
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
+            if mode == "open":
+                url = s3.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': bucket, 'Key': object_key},
+                    ExpiresIn=3600,
+                )
+                response = JsonResponse({
+                    'status': 'success', 'mode': 'open', 'url': url,
+                    'filename': filename, 'id_poder': id_poder,
+                    'message': 'Document is ready to be opened.'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+
+            response = s3.get_object(Bucket=bucket, Key=object_key)
             buffer = io.BytesIO(response['Body'].read())
             return self._create_response(buffer, filename, id_poder, mode)
         except ClientError as e:
@@ -166,7 +179,8 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
             if not poder_data.get('NUM_KARDEX'):
                 return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
 
-            filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
+            anio_kardex = poder_data.get('anio_crono', '')
+            filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
 
             # Prevent regenerating if already exists
             if self._document_exists_in_r2(filename):
@@ -499,7 +513,8 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
             if not poder_data.get('NUM_KARDEX'):
                 return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
 
-            filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
+            anio_kardex = (poder_data.get('NUM_KARDEX') or '')[:4]
+            filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
 
             # Prevent regenerating if already exists
             if self._document_exists_in_r2(filename):
@@ -651,7 +666,8 @@ class PoderPensionDocumentService(BasePoderDocumentService):
             if not poder_data.get('NUM_KARDEX'):
                 return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
 
-            filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
+            anio_kardex = (poder_data.get('NUM_KARDEX') or '')[:4]
+            filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
 
             # Prevent regenerating if already exists
             if self._document_exists_in_r2(filename):

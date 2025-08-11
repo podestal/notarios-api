@@ -195,7 +195,7 @@ Parameters:
 | `action`    | String | No       | `generate`  | `generate` to create a new file, `retrieve` to fetch an existing file.       |
 | `mode`      | String | No       | `download`  | `download` to return `.docx` file, `open` to return a temporary pre-signed URL. |
 
-- Output filename: `__PROY__{num_kardex}.docx`
+- Output filename: `__PODER__{id_poder}-{anio_kardex}.docx`
 - Template in R2: `PODER FUERA DE REGISTRO BASE.docx`
 - 409 on duplicate generate; 404 on missing retrieve.
 
@@ -230,7 +230,7 @@ curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 
 Parameters: same as 4.1.
 
-- Output filename: `__PROY__{num_kardex}.docx`
+- Output filename: `__PODER__{id_poder}-{anio_kardex}.docx`
 - Template in R2: `plantilla_poder_essalud.docx`
 - 409 on duplicate generate; 404 on missing retrieve.
 
@@ -258,7 +258,7 @@ curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 
 Parameters: same as 4.1.
 
-- Output filename: `__PROY__{num_kardex}.docx`
+- Output filename: `__PODER__{id_poder}-{anio_kardex}.docx`
 - Template in R2: `COBRO DE PENSION ONP.docx`
 - 409 on duplicate generate; 404 on missing retrieve.
 

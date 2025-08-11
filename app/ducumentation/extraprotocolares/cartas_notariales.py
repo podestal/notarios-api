@@ -29,7 +29,8 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
             if not num_carta:
                 return self.json_error(400, "num_carta is required to retrieve document")
 
-            filename = f"__CARTA__{num_carta}.docx"
+            formatted_num_carta = self._format_num_carta(num_carta)
+            filename = f"__CARTA__{formatted_num_carta}.docx"
 
             if mode == "open":
                 return self._create_response(None, filename, num_carta, mode)
@@ -56,10 +57,11 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
             if not num_carta:
                 return self.json_error(400, "num_carta is required to generate document")
 
-            filename = f"__CARTA__{num_carta}.docx"
+            formatted_num_carta = self._format_num_carta(num_carta)
+            filename = f"__CARTA__{formatted_num_carta}.docx"
             if self._document_exists_in_r2(filename):
                 return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
-                    'num_carta': num_carta,
+                    'num_carta': formatted_num_carta,
                     'filename': filename,
                 })
 
@@ -78,7 +80,7 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
             # Aliases to match template variable names (docxtpl is case-sensitive)
             context['contenido_carta'] = context.get('CONTENIDO_CARTA', '')
             context['fec_ingreso'] = context.get('FECHA_INGRESO_LETRAS', '')
-            context['num_carta'] = context.get('NUM_CARTA', '')
+            context['num_carta'] = context.get('NUM_CARTA_FMT', '')
             # Legacy placeholders from PHP template
             context['USUARIO'] = context.get('USUARIO', '') or ''
             context['USUARIO_DNI'] = context.get('USUARIO_DNI', '') or ''
