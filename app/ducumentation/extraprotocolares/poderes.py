@@ -130,6 +130,22 @@ class BasePoderDocumentService:
                 return {k.upper(): v for k, v in dict(zip(columns, notary_data)).items()}
         return {}
 
+    def _get_user_data(self, usuario_imprime: Optional[str]) -> Dict[str, str]:
+        if not usuario_imprime:
+            return {'usuario': '?', 'dni_usuario': '?'}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT loginusuario, dni FROM usuarios
+                WHERE CONCAT(apepat,' ',prinom) = %s
+                """,
+                [usuario_imprime],
+            )
+            row = cursor.fetchone()
+            if row:
+                return {'usuario': row[0] or '?', 'dni_usuario': row[1] or '?'}
+            return {'usuario': '?', 'dni_usuario': '?'}
+
 
 class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
     """
@@ -603,4 +619,258 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
         context.update(poder_data)
         context.update(self._get_notary_data())
         context.update(self._get_participants_data(id_poder))
+        return context 
+
+
+class PoderPensionDocumentService(BasePoderDocumentService):
+    def __init__(self) -> None:
+        super().__init__()
+        # Template expected in R2 at rodriguez-zea/plantillas/
+        self.template_filename = "COBRO DE PENSION ONP.docx"
+
+    def generate_poder_pension_document(self, id_poder: int, mode: str = "download") -> HttpResponse:
+        try:
+            poder_data = self._get_poder_data(id_poder)
+            if not poder_data.get('NUM_KARDEX'):
+                return HttpResponse(f"Error: num_kardex is empty for id_poder {id_poder}", status=400)
+
+            filename = f"__PROY__{poder_data['NUM_KARDEX']}.docx"
+
+            template_bytes = self._get_template_from_r2()
+            if template_bytes is None:
+                return HttpResponse(
+                    f"Error: Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.",
+                    status=404,
+                )
+
+            context = self._build_context(id_poder, poder_data)
+            doc = DocxTemplate(io.BytesIO(template_bytes))
+            doc.render(context)
+
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            self._save_document_to_r2(buffer, filename)
+            return self._create_response(buffer, filename, id_poder, mode)
+        except Exception as e:
+            traceback.print_exc()
+            return HttpResponse(f"Error generating document: {e}", status=500)
+
+    def _get_poder_data(self, id_poder: int) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
+        with connection.cursor() as cursor:
+            # Basic ingreso data
+            cursor.execute(
+                "SELECT num_kardex, fec_ingreso FROM ingreso_poderes WHERE id_poder = %s",
+                [id_poder],
+            )
+            row = cursor.fetchone()
+            if row:
+                data['NUM_KARDEX'] = row[0]
+                fec_ingreso = row[1]
+                # Build numcrono2 as NN...-YYYY if kardex is valid
+                if data.get('NUM_KARDEX') and len(data['NUM_KARDEX']) >= 5:
+                    data['numcrono2'] = f"{data['NUM_KARDEX'][4:]}-{data['NUM_KARDEX'][:4]}"
+                else:
+                    data['numcrono2'] = ''
+
+            # Poderes Pension data
+            cursor.execute(
+                """
+                SELECT p_fecotor, p_fecvcto, p_pension, p_presauto
+                FROM poderes_pension
+                WHERE id_poder = %s
+                """,
+                [id_poder],
+            )
+            row2 = cursor.fetchone()
+            if row2:
+                # Emission date in letters
+                data['emision'] = self.letras.date_to_letters(row2[0]).upper() if row2[0] else ''
+                data['vigencia_fin'] = row2[1] or ''
+                data['prestacion'] = (row2[2] or '')
+                data['prestacion_autorizada'] = (row2[3] or '')
+        return data
+
+    def _get_participants_data(self, id_poder: int) -> Dict[str, Any]:
+        """
+        Reuse the participants structure from Poder Fuera de Registro, producing P_*, T_* and pronoun helpers.
+        """
+        E: Dict[str, Any] = {}
+        with connection.cursor() as cursor:
+            # Principals
+            cursor.execute(
+                """
+                SELECT 
+                    UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS p_nom,
+                    UPPER(n.descripcion) AS p_nacionalidad,
+                    CASE WHEN c.sexo='F' THEN 'IDENTIFICADA CON' ELSE 'IDENTIFICADO CON' END AS p_ide,
+                    UPPER(td.td_abrev) AS p_tipo_doc,
+                    UPPER(c.numdoc) AS p_numdoc,
+                    UPPER(te.desestcivil) AS p_estado_civil,
+                    UPPER(COALESCE(c.detaprofesion, '')) AS p_ocupacion,
+                    CONCAT('CON DOMICILIO EN ', UPPER(c.direccion), ' ',
+                           UPPER(COALESCE(CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto), ''))) AS p_domicilio,
+                    c.sexo AS p_sexo
+                FROM poderes_contratantes pc
+                JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                JOIN tipoestacivil te ON te.idestcivil = c.idestcivil
+                LEFT JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
+                LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
+                WHERE pc.id_poder = %s AND pc.c_condicontrat IN ('007','011','009')
+                ORDER BY pc.id_poder, pc.c_codcontrat
+                LIMIT 2
+                """,
+                [id_poder],
+            )
+            principal_cols = [col[0] for col in cursor.description]
+            principal_rows: List[Dict[str, Any]] = [dict(zip(principal_cols, row)) for row in cursor.fetchall()]
+
+            # For each principal, find linked witness
+            for idx, p_row in enumerate(principal_rows, start=1):
+                suffix = '' if idx == 1 else '_2'
+
+                nat = (p_row.get('p_nacionalidad') or '')
+                sex = (p_row.get('p_sexo') or 'M')
+                if nat:
+                    if sex == 'M' and nat.endswith('A'): nat = nat[:-1] + 'O'
+                    elif sex == 'F' and nat.endswith('O'): nat = nat[:-1] + 'A'
+
+                E[f'P_NOM{suffix}'] = p_row.get('p_nom') or ''
+                E[f'P_NACIONALIDAD{suffix}'] = nat
+                E[f'P_IDE{suffix}'] = p_row.get('p_ide') or 'IDENTIFICADO CON'
+                E[f'P_DOC{suffix}'] = p_row.get('p_numdoc') or ''
+                E[f'P_TIPO_DOC{suffix}'] = p_row.get('p_tipo_doc') or ''
+                E[f'P_ESTADO_CIVIL{suffix}'] = p_row.get('p_estado_civil') or ''
+                E[f'P_OCUPACION{suffix}'] = p_row.get('p_ocupacion') or ''
+                E[f'P_DOMICILIO{suffix}'] = p_row.get('p_domicilio') or ''
+                E[f'P_SEXO{suffix}'] = sex
+
+                principal_doc_num = p_row.get('p_numdoc')
+                if principal_doc_num:
+                    logger.info(f"Searching for witness linked to principal DNI: {principal_doc_num} for id_poder: {id_poder}")
+                    cursor.execute(
+                        """
+                        SELECT
+                            UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS t_nom,
+                            UPPER(n.descripcion) AS t_nacionalidad,
+                            CASE WHEN c.sexo='F' THEN 'IDENTIFICADA CON' ELSE 'IDENTIFICADO CON' END AS t_ide,
+                            UPPER(td.td_abrev) AS t_tipo_doc,
+                            UPPER(c.numdoc) AS t_numdoc,
+                            UPPER(te.desestcivil) AS t_estado_civil,
+                            UPPER(COALESCE(c.detaprofesion, '')) AS t_ocupacion,
+                            CONCAT('CON DOMICILIO EN ', UPPER(c.direccion), ' ',
+                                   UPPER(COALESCE(CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto), ''))) AS t_domicilio,
+                            c.sexo AS t_sexo
+                        FROM poderes_contratantes pc
+                        JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                        JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                        JOIN tipoestacivil te ON te.idestcivil = c.idestcivil
+                        LEFT JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
+                        LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
+                        WHERE pc.id_poder = %s AND pc.codi_testigo = %s AND pc.c_condicontrat = '008'
+                        LIMIT 1
+                        """,
+                        [id_poder, principal_doc_num]
+                    )
+                    witness_cols = [col[0] for col in cursor.description]
+                    w_row = cursor.fetchone()
+
+                    if w_row:
+                        logger.info(f"Found witness data: {w_row}")
+                        witness_data = dict(zip(witness_cols, w_row))
+                        natw = (witness_data.get('t_nacionalidad') or '')
+                        sexw = (witness_data.get('t_sexo') or 'M')
+                        if natw:
+                            if sexw == 'M' and natw.endswith('A'): natw = natw[:-1] + 'O'
+                            elif sexw == 'F' and natw.endswith('O'): natw = natw[:-1] + 'A'
+
+                        E[f'T_INTERVIENE{suffix}'] = 'INTERVIENE:'
+                        E[f'T_NOM{suffix}'] = witness_data.get('t_nom') or ''
+                        E[f'T_NACIONALIDAD{suffix}'] = natw
+                        E[f'T_IDE{suffix}'] = witness_data.get('t_ide') or 'IDENTIFICADO CON'
+                        E[f'T_DOC{suffix}'] = witness_data.get('t_numdoc') or ''
+                        E[f'T_TIPO_DOC{suffix}'] = witness_data.get('t_tipo_doc') or ''
+                        E[f'T_ESTADO_CIVIL{suffix}'] = witness_data.get('t_estado_civil') or ''
+                        E[f'T_OCUPACION{suffix}'] = witness_data.get('t_ocupacion') or ''
+                        E[f'T_DOMICILIO{suffix}'] = witness_data.get('t_domicilio') or ''
+                        E[f'T_CALIDAD{suffix}'] = 'QUIEN INTERVIENE EN CALIDAD DE TESTIGO A RUEGO'
+
+            # Pluralization helpers
+            num_principals = 0
+            if 'P_NOM' in E and E['P_NOM']:
+                num_principals += 1
+            if 'P_NOM_2' in E and E['P_NOM_2']:
+                num_principals += 1
+            if num_principals > 1:
+                return {
+                    **E,
+                    'P_EL': 'Los', 'P_S': 's', 'P_ES_SON': 'son', 'P_ES': 'es',
+                    'P_O_ARON': 'aron', 'P_N': 'n', 'P_DEL_LOS': 'de los', 'P_A_LOS': 'a los'
+                }
+            else:
+                sex = E.get('P_SEXO') or ('F' if str(E.get('P_IDE','')).strip().endswith('A') else 'M')
+                if sex == 'F':
+                    return {
+                        **E,
+                        'P_EL': 'La', 'P_S': '', 'P_ES_SON': 'es', 'P_ES': '',
+                        'P_O_ARON': 'ó', 'P_N': '', 'P_DEL_LOS': 'de la', 'P_A_LOS': 'a la'
+                    }
+                return {
+                    **E,
+                    'P_EL': 'El', 'P_S': '', 'P_ES_SON': '', 'P_ES': '',
+                    'P_O_ARON': 'ó', 'P_N': '', 'P_DEL_LOS': 'del', 'P_A_LOS': 'al'
+                }
+
+    def _get_apoderado_fragment(self, id_poder: int) -> Dict[str, str]:
+        """
+        Build C_* variables used by the template to reference the apoderado in a natural sentence.
+        - C_NOM: "{APODERADO}, "
+        - C_DOC: "IDENTIFICADO(A) CON {TDOC} N° {NUM}, "
+        - C_IDE: (kept empty for compatibility with legacy template)
+        - C_O_A: 'a' if female, else 'o' (used in 'apoderad{{C_O_A}}')
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT UPPER(CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat)) AS nom,
+                       UPPER(td.td_abrev) AS tipo_doc,
+                       UPPER(c.numdoc) AS numdoc,
+                       c.sexo
+                FROM poderes_contratantes pc
+                JOIN cliente c ON c.numdoc = pc.c_codcontrat
+                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                WHERE pc.id_poder = %s AND pc.c_condicontrat = '006'
+                ORDER BY pc.id_poder, pc.c_codcontrat
+                LIMIT 1
+                """,
+                [id_poder],
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {'C_NOM': '', 'C_DOC': '', 'C_IDE': '', 'C_O_A': 'o'}
+            nom, tipo_doc, numdoc, sexo = row
+            is_female = (sexo or 'M') == 'F'
+            c_nom = f"{(nom or '').upper()}, "
+            c_doc = f"{'IDENTIFICADA' if is_female else 'IDENTIFICADO'} CON {(tipo_doc or '').upper()} N° {(numdoc or '').upper()}, "
+            return {
+                'C_NOM': c_nom,
+                'C_DOC': c_doc,
+                'C_IDE': '',
+                'C_O_A': 'a' if is_female else 'o',
+            }
+
+    def _build_context(self, id_poder: int, poder_data: Dict[str, Any]) -> Dict[str, Any]:
+        context: Dict[str, Any] = {}
+        context.update(poder_data)
+        # Optional user data (kept blank if unavailable)
+        context.update(self._get_user_data(None))
+        # Participants and pronouns
+        E = self._get_participants_data(id_poder)
+        context['E'] = E
+        for k in ['P_EL', 'P_S', 'P_ES_SON', 'P_ES', 'P_O_ARON', 'P_N', 'P_DEL_LOS', 'P_A_LOS']:
+            context[k] = E.get(k, '')
+        context.update(E)
+        # Apoderado fragment used in the prose
+        context.update(self._get_apoderado_fragment(id_poder))
         return context 

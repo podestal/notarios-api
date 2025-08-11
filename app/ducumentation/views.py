@@ -37,7 +37,7 @@ from django.urls import reverse
 from .utils import NumberToLetterConverter
 from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
 from .extraprotocolares.permiso_viajes import PermisoViajeInteriorDocumentService, PermisoViajeExteriorDocumentService
-from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService, PoderONPDocumentService, PoderEssaludDocumentService
+from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService, PoderPensionDocumentService, PoderEssaludDocumentService
 from notaria.models import IngresoPoderes  
 
 @api_view(['GET'])
@@ -1236,7 +1236,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         else:
             return service.generate_poder_fuera_registro_document(id_poder, mode)
 
-    @action(detail=False, methods=['post'], url_path='poder-essalud')
+    @action(detail=False, methods=['get'], url_path='poder-essalud')
     def poder_essalud(self, request):
         """
         Generate or retrieve a Poder Essalud document.
@@ -1266,8 +1266,31 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return service.generate_poder_essalud_document(id_poder, mode)
 
 
-    @action(detail=False, methods=['post'], url_path='poder-onp')
+    @action(detail=False, methods=['get'], url_path='poder-onp')
     def poder_onp(self, request):
-        # Placeholder for ONP implementation
-        return Response({'message': 'Endpoint for Poder ONP not yet implemented.'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        """
+        Generate or retrieve a Poder ONP document.
+        - action=generate: Creates a new document, saves it to R2, and returns it.
+        - action=retrieve: Fetches an existing document from R2 and returns it.
+        """
+        id_poder = request.query_params.get('id_poder')
+        action = request.query_params.get('action', 'generate')
+        mode = request.query_params.get('mode', 'download')
 
+        if not id_poder:
+            return Response({'error': 'id_poder is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            rec = IngresoPoderes.objects.get(id_poder=id_poder)
+            num_kardex = rec.num_kardex
+            if not num_kardex:
+                return Response({'status': 'error', 'message': 'num_kardex is empty for the provided id_poder'}, status=status.HTTP_400_BAD_REQUEST)
+            filename = f"__PROY__{num_kardex}.docx"
+        except IngresoPoderes.DoesNotExist:
+            return Response({'status': 'error', 'message': f'IngresoPoderes with id_poder {id_poder} not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        service = PoderPensionDocumentService()
+        if action == 'retrieve':
+            return service.retrieve_document(id_poder, filename, mode)
+        else:
+            return service.generate_poder_pension_document(id_poder, mode)
