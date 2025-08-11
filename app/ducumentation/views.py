@@ -4,7 +4,7 @@ from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework import status
 from . import models, serializers
-from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo
+from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo, IngresoCartas
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
 from django.http import HttpResponse
@@ -39,6 +39,7 @@ from .services import VehicleTransferDocumentService, NonContentiousDocumentServ
 from .extraprotocolares.permiso_viajes import PermisoViajeInteriorDocumentService, PermisoViajeExteriorDocumentService
 from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService, PoderPensionDocumentService, PoderEssaludDocumentService
 from notaria.models import IngresoPoderes  
+from .extraprotocolares.cartas_notariales import CartasNotarialesDocumentService
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -1294,3 +1295,33 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return service.retrieve_document(id_poder, filename, mode)
         else:
             return service.generate_poder_pension_document(id_poder, mode)
+
+    @action(detail=False, methods=['get'], url_path='carta-notarial')
+    def carta_notarial(self, request):
+        """
+        Generate or retrieve a Carta Notarial document.
+        - action=generate: Creates a new document, saves it to R2, and returns it.
+        - action=retrieve: Fetches an existing document from R2 and returns it.
+        """
+        id_carta = request.query_params.get('id_carta')
+        print(f"DEBUG: id_carta: {id_carta}")
+        action = request.query_params.get('action', 'generate')
+        mode = request.query_params.get('mode', 'download')
+
+        if not id_carta:
+            return Response({'error': 'id_carta is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            rec = IngresoCartas.objects.get(id_carta=id_carta)
+            print(f"DEBUG: rec: {rec}")
+            num_carta = rec.num_carta
+            if not num_carta:
+                return Response({'status': 'error', 'message': 'num_carta is empty for the provided id_carta'}, status=status.HTTP_400_BAD_REQUEST)
+        except IngresoCartas.DoesNotExist:
+            return Response({'status': 'error', 'message': f'IngresoCartas with id_carta {id_carta} not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        service = CartasNotarialesDocumentService()
+        if action == 'retrieve':
+            return service.retrieve_carta_document(num_carta, mode)
+        else:
+            return service.generate_carta_document(num_carta, mode)

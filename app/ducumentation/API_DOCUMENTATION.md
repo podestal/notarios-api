@@ -124,3 +124,158 @@ curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
 "http://your-domain.com/api/v1/extraprotocolares/permiso-viaje-exterior/?id_viaje=12345&action=retrieve&mode=open"
 ```
 **Expected JSON Response:** The same JSON structure as in Scenario 3, pointing to the existing file in R2. 
+
+---
+
+### 3. Carta Notarial (Certificación de Entrega)
+
+This endpoint handles the generation and retrieval of Certificación de Entrega de Carta Notarial documents.
+
+- URL: `carta-notarial/`  
+- Method: `GET`
+
+#### Parameters
+
+| Parameter    | Type   | Required | Default     | Description                                                                 |
+|--------------|--------|----------|-------------|-----------------------------------------------------------------------------|
+| `id_carta`   | Int    | Yes      | -           | Primary key of the `IngresoCartas` record.                                   |
+| `action`     | String | No       | `generate`  | `generate` to create a new file, `retrieve` to fetch an existing file.       |
+| `mode`       | String | No       | `download`  | `download` to return `.docx` file, `open` to return a temporary pre-signed URL. |
+
+#### Notes
+- Output filename: `__CARTA__{num_carta}.docx` stored under R2 path `rodriguez-zea/documentos/`.
+- 409 Conflict if generating when the document already exists.
+- 404 Not Found if retrieving a document that does not exist in R2.
+
+#### Usage Examples
+
+- Generate and download:
+
+```bash
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/carta-notarial/?id_carta=508" \
+--output carta_notarial.docx
+```
+
+- Retrieve existing and download:
+
+```bash
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/carta-notarial/?id_carta=508&action=retrieve" \
+--output carta_notarial_existente.docx
+```
+
+- Generate/Retrieve and get open URL:
+
+```bash
+# Generate + open
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/carta-notarial/?id_carta=508&mode=open"
+
+# Retrieve + open
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/carta-notarial/?id_carta=508&action=retrieve&mode=open"
+```
+
+---
+
+### 4. Poderes
+
+Endpoints to generate or retrieve Poder documents.
+
+#### 4.1 Poder Fuera de Registro
+- URL: `poder-fuera-registro/`  
+- Method: `GET`
+
+Parameters:
+
+| Parameter   | Type   | Required | Default     | Description                                                                 |
+|-------------|--------|----------|-------------|-----------------------------------------------------------------------------|
+| `id_poder`  | Int    | Yes      | -           | Primary key of the `IngresoPoderes` record.                                   |
+| `action`    | String | No       | `generate`  | `generate` to create a new file, `retrieve` to fetch an existing file.       |
+| `mode`      | String | No       | `download`  | `download` to return `.docx` file, `open` to return a temporary pre-signed URL. |
+
+- Output filename: `__PROY__{num_kardex}.docx`
+- Template in R2: `PODER FUERA DE REGISTRO BASE.docx`
+- 409 on duplicate generate; 404 on missing retrieve.
+
+##### Usage Examples
+
+- Generate and download:
+
+```bash
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-fuera-registro/?id_poder=315" \
+--output poder_fuera_registro.docx
+```
+
+- Retrieve and download:
+
+```bash
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-fuera-registro/?id_poder=315&action=retrieve" \
+--output poder_fuera_registro_existente.docx
+```
+
+- Open URL:
+
+```bash
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-fuera-registro/?id_poder=315&mode=open"
+```
+
+#### 4.2 Poder ESSALUD
+- URL: `poder-essalud/`  
+- Method: `GET`
+
+Parameters: same as 4.1.
+
+- Output filename: `__PROY__{num_kardex}.docx`
+- Template in R2: `plantilla_poder_essalud.docx`
+- 409 on duplicate generate; 404 on missing retrieve.
+
+##### Usage Examples
+
+```bash
+# Generate and download
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-essalud/?id_poder=315" \
+--output poder_essalud.docx
+
+# Retrieve and download
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-essalud/?id_poder=315&action=retrieve" \
+--output poder_essalud_existente.docx
+
+# Open URL
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-essalud/?id_poder=315&mode=open"
+```
+
+#### 4.3 Poder ONP (Pensión)
+- URL: `poder-onp/`  
+- Method: `GET`
+
+Parameters: same as 4.1.
+
+- Output filename: `__PROY__{num_kardex}.docx`
+- Template in R2: `COBRO DE PENSION ONP.docx`
+- 409 on duplicate generate; 404 on missing retrieve.
+
+##### Usage Examples
+
+```bash
+# Generate and download
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-onp/?id_poder=315" \
+--output poder_onp.docx
+
+# Retrieve and download
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-onp/?id_poder=315&action=retrieve" \
+--output poder_onp_existente.docx
+
+# Open URL
+curl -X GET -H "Authorization: JWT YOUR_JWT_TOKEN" \
+"http://your-domain.com/api/v1/extraprotocolares/poder-onp/?id_poder=315&mode=open"
+``` 
