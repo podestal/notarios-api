@@ -111,6 +111,20 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             else:
                 context['DATOS_TESTIGO'] = ''
 
+            # Testigo aliases matching <I_...> tags in legacy template
+            context['I_NOM'] = context.get('NOM_TESTIGO', '')
+            context['I_NACIONALIDAD'] = ''
+            context['I_DOC'] = 'IDENTIFICADO CON'
+            context['DOC_I'] = f"{context.get('TIPDOC_TESTIGO', '')} N°".strip()
+            context['I_IDE'] = context.get('NUMDOC_TESTIGO', '')
+            context['I_OCUPACION'] = ''
+            context['I_ESTADO_CIVIL'] = ''
+            context['I_DOMICILIO'] = (f"CON DOMICILIO EN {context.get('UBIGEO_TESTIGO', '')}").strip()
+            context['I_ROGADO'] = 'QUIEN INTERVIENE EN CALIDAD DE TESTIGO A RUEGO'
+
+            # Date alias for template expecting fec_letras_completa
+            context['fec_letras_completa'] = context.get('FECHA_INGRESO_LETRAS', '')
+
             # Render and save
             doc = DocxTemplate(io.BytesIO(template_bytes))
             doc.render(context)
