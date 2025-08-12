@@ -4,7 +4,7 @@ from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework import status
 from . import models, serializers
-from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo, IngresoCartas
+from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo, IngresoCartas, CertDomiciliario
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
 from django.http import HttpResponse
@@ -40,6 +40,7 @@ from .extraprotocolares.permiso_viajes import PermisoViajeInteriorDocumentServic
 from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService, PoderPensionDocumentService, PoderEssaludDocumentService
 from notaria.models import IngresoPoderes  
 from .extraprotocolares.cartas_notariales import CartasNotarialesDocumentService
+from .extraprotocolares.cert_domiciliarios import CertDomiciliariosDocumentService
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -1327,3 +1328,33 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return service.retrieve_carta_document(num_carta, mode)
         else:
             return service.generate_carta_document(num_carta, mode)
+
+
+    @action(detail=False, methods=['get'], url_path='cert-domiciliario')
+    def cert_domiciliario(self, request):
+        """
+        Generate or retrieve a Cert Domiciliario document.
+        - action=generate: Creates a new document, saves it to R2, and returns it.
+        - action=retrieve: Fetches an existing document from R2 and returns it.
+        """
+        id_domiciliario = request.query_params.get('id_domiciliario')
+        action = request.query_params.get('action', 'generate')
+        mode = request.query_params.get('mode', 'download')
+
+        if not id_domiciliario:
+            return Response({'error': 'num_certificado is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            rec = CertDomiciliario.objects.get(id_domiciliario=id_domiciliario)
+            num_certificado = rec.num_certificado
+            if not rec:
+                return Response({'error': 'CertDomiciliario with id_domiciliario {id_domiciliario} not found'}, status=status.HTTP_404_NOT_FOUND)
+        except CertDomiciliario.DoesNotExist:
+            return Response({'error': f'CertDomiciliario with id_domiciliario {id_domiciliario} not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        service = CertDomiciliariosDocumentService()
+        if action == 'retrieve':
+            return service.retrieve_cdom_document(num_certificado, mode)
+        else:
+            return service.generate_cdom_document(num_certificado, mode)
+        
