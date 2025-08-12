@@ -4,7 +4,7 @@ from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework import status
 from . import models, serializers
-from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo, IngresoCartas, CertDomiciliario
+from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo, IngresoCartas, CertDomiciliario, Libros
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
 from django.http import HttpResponse
@@ -41,6 +41,8 @@ from .extraprotocolares.poderes import PoderFueraDeRegistroDocumentService, Pode
 from notaria.models import IngresoPoderes  
 from .extraprotocolares.cartas_notariales import CartasNotarialesDocumentService
 from .extraprotocolares.cert_domiciliarios import CertDomiciliariosDocumentService
+from .extraprotocolares.libros import LibrosDocumentService
+from notaria.models import Libros
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -1358,3 +1360,38 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         else:
             return service.generate_cdom_document(num_certificado, mode)
         
+    @action(detail=False, methods=['get'], url_path='libro')
+    def libro(self, request):
+        """
+        Generate or retrieve a Libro document.
+        - action=generate: Creates a new document, saves it to R2, and returns it.
+        - action=retrieve: Fetches an existing document from R2 and returns it.
+        Query params:
+        - num_libro: required
+        - orientation: optional ('H' or 'V'), defaults to 'V' (vertical)
+        - action: optional ('generate' | 'retrieve'), defaults to 'generate'
+        - mode: optional ('download' | 'open'), defaults to 'download'
+        """
+        id_libro = request.query_params.get('id_libro')
+        orientation = request.query_params.get('orientation', 'H')
+        action = request.query_params.get('action', 'generate')
+        mode = request.query_params.get('mode', 'download')
+
+        if not id_libro:
+            return Response({'status': 'error', 'message': 'num_libro is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            rec = Libros.objects.get(id=id_libro)
+            num_libro = rec.numlibro
+            anio_libro = rec.ano
+        except Libros.DoesNotExist:
+            return Response({'status': 'error', 'message': f'Libros with id {id_libro} not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not anio_libro:
+            return Response({'status': 'error', 'message': f'ano is empty for the provided num_libro {num_libro}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        service = LibrosDocumentService()
+        if action == 'retrieve':
+            return service.retrieve_libro_document(num_libro, str(anio_libro), mode)
+        else:
+            return service.generate_libro_document(num_libro, str(anio_libro), orientation, mode)
