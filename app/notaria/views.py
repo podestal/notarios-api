@@ -1893,7 +1893,7 @@ class CertDomiciliarioViewSet(ModelViewSet):
             self.queryset = self.queryset.filter(fec_ingreso__lte=dateTo)
 
         if num_certificado:
-            
+
             self.queryset = self.queryset.filter(num_certificado=num_certificado)
         if nombre_solic:
             self.queryset = self.queryset.filter(nombre_solic__icontains=nombre_solic)
@@ -1901,5 +1901,48 @@ class CertDomiciliarioViewSet(ModelViewSet):
         page_cert_domiciliario = self.paginate_queryset(self.queryset)
         serializer = serializers.CertDomiciliarioSerializer(page_cert_domiciliario, many=True)
         return self.get_paginated_response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create a CertDomiciliario instance with auto-generated correlative numbers.
+        Generates correlative numbers for num_certificado field.
         
+        num_certificado format: "YYYYNNNNNN" (year + 6-digit correlative, resets yearly)
+        """
+        data = request.data.copy()
+        current_year = datetime.now().year
+
+        try:
+            # Get the last record by id_domiciliario (same as queryset ordering)
+            last_record = models.CertDomiciliario.objects.filter(
+                num_certificado__isnull=False
+            ).exclude(num_certificado='').order_by('-id_domiciliario').first()
+
+            if last_record and last_record.num_certificado:
+                # Generate num_certificado: check if last record is from current year
+                if last_record.num_certificado and last_record.num_certificado.startswith(str(current_year)):
+                    # Same year, increment correlative
+                    last_correlative = int(last_record.num_certificado[-6:])
+                    new_correlative = last_correlative + 1
+                else:
+                    # New year, start with 000001
+                    new_correlative = 1
+            else:
+                # First record ever, start with defaults
+                new_correlative = 1
+            
+            # Format the correlative number
+            data['num_certificado'] = f"{current_year}{new_correlative:06d}"
+            
+        except Exception as e:
+            # Fallback values if there's an error
+            data['num_certificado'] = f"{current_year}000001"
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
 

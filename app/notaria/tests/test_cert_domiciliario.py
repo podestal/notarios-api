@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from unittest.mock import MagicMock, patch
 
 from notaria.views import CertDomiciliarioViewSet
+from datetime import datetime as real_datetime
 
 
 class CertDomiciliarioListTests(TestCase):
@@ -160,3 +161,81 @@ class CertDomiciliarioListTests(TestCase):
         # Since we passed Response({'results': data}), response.data should equal serializer.data
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, {'results': [{'id': 1}]}) 
+
+    @patch('notaria.views.CertDomiciliarioViewSet.serializer_class')
+    @patch('notaria.views.models.CertDomiciliario.objects')
+    @patch('notaria.views.datetime')
+    def test_create_generates_first_when_no_last(self, mock_dt, mock_objects, mock_serializer):
+        # Freeze year
+        mock_dt.now.return_value = real_datetime(2025, 1, 15)
+        # No last record
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+        # Serializer stub
+        ser_inst = MagicMock()
+        ser_inst.data = {'created': True}
+        ser_inst.is_valid.return_value = True
+        mock_serializer.return_value = ser_inst
+
+        request = self.factory.post('/api/v1/cert_domiciliario/', {}, format='json')
+        view = CertDomiciliarioViewSet.as_view({'post': 'create'})
+
+        with patch.object(CertDomiciliarioViewSet, 'perform_create', return_value=None), \
+             patch.object(CertDomiciliarioViewSet, 'get_success_headers', return_value={}):
+            response = view(request)
+
+        # Assert num_certificado composed as YYYY000001
+        called_kwargs = mock_serializer.call_args.kwargs
+        self.assertIn('data', called_kwargs)
+        self.assertEqual(called_kwargs['data']['num_certificado'], '2025000001')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data, {'created': True})
+
+    @patch('notaria.views.CertDomiciliarioViewSet.serializer_class')
+    @patch('notaria.views.models.CertDomiciliario.objects')
+    @patch('notaria.views.datetime')
+    def test_create_increments_same_year(self, mock_dt, mock_objects, mock_serializer):
+        mock_dt.now.return_value = real_datetime(2025, 3, 10)
+        last = MagicMock()
+        last.num_certificado = '2025000123'
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = last
+
+        ser_inst = MagicMock()
+        ser_inst.data = {'created': True}
+        ser_inst.is_valid.return_value = True
+        mock_serializer.return_value = ser_inst
+
+        request = self.factory.post('/api/v1/cert_domiciliario/', {}, format='json')
+        view = CertDomiciliarioViewSet.as_view({'post': 'create'})
+
+        with patch.object(CertDomiciliarioViewSet, 'perform_create', return_value=None), \
+             patch.object(CertDomiciliarioViewSet, 'get_success_headers', return_value={}):
+            response = view(request)
+
+        called_kwargs = mock_serializer.call_args.kwargs
+        self.assertEqual(called_kwargs['data']['num_certificado'], '2025000124')
+        self.assertEqual(response.status_code, 201)
+
+    @patch('notaria.views.CertDomiciliarioViewSet.serializer_class')
+    @patch('notaria.views.models.CertDomiciliario.objects')
+    @patch('notaria.views.datetime')
+    def test_create_resets_new_year(self, mock_dt, mock_objects, mock_serializer):
+        mock_dt.now.return_value = real_datetime(2025, 1, 2)
+        last = MagicMock()
+        last.num_certificado = '2024000999'
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = last
+
+        ser_inst = MagicMock()
+        ser_inst.data = {'created': True}
+        ser_inst.is_valid.return_value = True
+        mock_serializer.return_value = ser_inst
+
+        request = self.factory.post('/api/v1/cert_domiciliario/', {}, format='json')
+        view = CertDomiciliarioViewSet.as_view({'post': 'create'})
+
+        with patch.object(CertDomiciliarioViewSet, 'perform_create', return_value=None), \
+             patch.object(CertDomiciliarioViewSet, 'get_success_headers', return_value={}):
+            response = view(request)
+
+        called_kwargs = mock_serializer.call_args.kwargs
+        self.assertEqual(called_kwargs['data']['num_certificado'], '2025000001')
+        self.assertEqual(response.status_code, 201) 
