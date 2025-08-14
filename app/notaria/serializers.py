@@ -700,6 +700,7 @@ class CreatePermiViajeSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PermiViaje
         fields = [
+            'id_viaje',
             'num_kardex',
             'num_formu',
             'asunto',
