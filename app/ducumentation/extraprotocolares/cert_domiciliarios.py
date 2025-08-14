@@ -84,22 +84,58 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             context['P_DOC'] = f"{'IDENTIFICADA' if sex == 'F' else 'IDENTIFICADO'} CON {tip_doc} N°"
             context['DOC'] = f"{tip_doc} N°"
             context['P_IDE'] = num_doc
-            # Domicile text
+            
+            # Domicile text - match PHP logic exactly
             domicilio = context.get('DIRECCION', '')
             distrito_texto = context.get('DISTRITO_TEXTO', '')
             context['P_DOMICILIO'] = f"CON DOMICILIO EN {domicilio} {distrito_texto}".strip()
-            # Civil status, nationality, occupation
+            
+            # Civil status and nationality with gender handling (matching PHP logic)
             est_civil = context.get('E_CIVIL', '') or ''
             nacionalidad = context.get('NACIONALIDAD', '') or ''
-            if est_civil:
-                context['P_ESTADO_CIVIL'] = est_civil[:-1] + ('A' if sex == 'F' else 'O') if len(est_civil) > 0 else est_civil
+            
+            # Gender-based variables (matching PHP)
+            if sex == 'F':
+                context['EL_LA'] = 'LA'
+                context['DEL_A'] = 'DE LA' 
+                context['P_O_A'] = 'A'
+                context['A_EL'] = 'A LA'
+            else:  # sex == 'M'
+                context['EL_LA'] = 'EL'
+                context['DEL_A'] = 'DEL'
+                context['P_O_A'] = 'O'
+                context['A_EL'] = 'AL'
+            
+            # Handle civil status with proper gender endings (PHP logic)
+            # Note: E_CIVIL appears to be an ID, we need to map it to actual text
+            if est_civil and str(est_civil).strip() and str(est_civil) != '0':
+                # For now, provide common civil status mappings
+                civil_status_map = {
+                    '1': 'SOLTERO',
+                    '2': 'CASADO', 
+                    '3': 'DIVORCIADO',
+                    '4': 'VIUDO',
+                    '5': 'CONVIVIENTE'
+                }
+                est_civil_text = civil_status_map.get(str(est_civil), 'SOLTERO')
+                if len(est_civil_text) > 1:
+                    context['P_ESTADO_CIVIL'] = est_civil_text[:-1] + ('A' if sex == 'F' else 'O')
+                else:
+                    context['P_ESTADO_CIVIL'] = est_civil_text
             else:
-                context['P_ESTADO_CIVIL'] = ''
-            if nacionalidad:
-                context['P_NACIONALIDAD'] = nacionalidad[:-1] + ('A' if sex == 'F' else 'O') if len(nacionalidad) > 0 else nacionalidad
+                context['P_ESTADO_CIVIL'] = 'SOLTERA' if sex == 'F' else 'SOLTERO'
+            
+            # Handle nationality with proper gender endings (PHP logic)
+            if nacionalidad and str(nacionalidad).strip():
+                nacionalidad_str = str(nacionalidad).strip().upper()
+                if len(nacionalidad_str) > 1:
+                    context['P_NACIONALIDAD'] = nacionalidad_str[:-1] + ('A' if sex == 'F' else 'O')
+                else:
+                    context['P_NACIONALIDAD'] = nacionalidad_str
             else:
-                context['P_NACIONALIDAD'] = ''
-            context['P_OCUPACION'] = context.get('PROFESION', '')
+                context['P_NACIONALIDAD'] = 'PERUANA' if sex == 'F' else 'PERUANO'
+            
+            context['P_OCUPACION'] = context.get('PROFESION', '') or ''
 
             # Testigo line (optional)
             if context.get('NOM_TESTIGO'):
@@ -124,6 +160,48 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
 
             # Date alias for template expecting fec_letras_completa
             context['fec_letras_completa'] = context.get('FECHA_INGRESO_LETRAS', '')
+            
+            # Additional aliases to match PHP variable names
+            context['MOTIVO'] = context.get('MOTIVO', '') or 'trámites varios'
+            context['OBSERVACION'] = context.get('OBSERVACION', '') or ''
+
+            # Additional fields for certificate details (matching PHP variable names)
+            context['DECLARA_SER'] = context.get('declara_ser', '') or ''
+            context['PROPIETARIO'] = context.get('propietario', '') or ''
+            context['RECIBIDO_POR'] = context.get('recibido', '') or ''
+            context['NRO_RECIBO_SERVICIOS'] = context.get('numero_recibo', '') or ''
+            context['MES_RECIBO_SERVICIOS'] = context.get('mes_facturado', '') or ''
+            context['RECIBO_SERVICIOS'] = context.get('recibo_empresa', '') or ''
+            
+            # Handle service type description (matching PHP logic)
+            recibo_empresa = context.get('recibo_empresa', '') or ''
+            if 'SEDA JULIACA' in recibo_empresa.upper():
+                context['RECIBO_SERVICIOS_D'] = 'saneamiento y agua potable'
+            elif 'ELECTRO PUNO' in recibo_empresa.upper():
+                context['RECIBO_SERVICIOS_D'] = 'servicios de luz eléctrica'
+            else:
+                context['RECIBO_SERVICIOS_D'] = 'servicios básicos'
+            
+            # Format occupation date if available
+            fecha_ocupa = context.get('fecha_ocupa')
+            if fecha_ocupa:
+                try:
+                    context['FECHA_OCUPA_LETRAS'] = self.letras.date_to_letters(fecha_ocupa).upper()
+                except Exception:
+                    context['FECHA_OCUPA_LETRAS'] = ''
+            else:
+                context['FECHA_OCUPA_LETRAS'] = ''
+            
+            # Signature section logic (matching PHP)
+            nom_testigo = context.get('NOM_TESTIGO', '') or ''
+            if nom_testigo and nom_testigo.strip():
+                # With witness
+                context['evalua_firma'] = f"-----------------------------------\nHUELLA DEL SOLICITANTE\n{context.get('NOMBRE_SOLIC', '')}\n{tip_doc} N°: {num_doc}\n\n\n\n"
+                context['evalua_firma_testigo'] = f"-----------------------------------\n{nom_testigo}\n{context.get('TIPDOC_TESTIGO', '')} N°: {context.get('NUMDOC_TESTIGO', '')}\n\n\n\n"
+            else:
+                # Without witness
+                context['evalua_firma'] = f"-----------------------------------\n{context.get('NOMBRE_SOLIC', '')}\n{tip_doc} N°: {num_doc}\n\n\n\n"
+                context['evalua_firma_testigo'] = ""
 
             # Render and save
             doc = DocxTemplate(io.BytesIO(template_bytes))
