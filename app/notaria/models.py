@@ -913,6 +913,16 @@ class Tipofolio(models.Model):
         db_table = 'tipofolio'
 
 
+class Tipolibro(models.Model):
+    idtiplib = models.IntegerField(primary_key=True)
+    coddlib = models.CharField(max_length=2)
+    destiplib = models.CharField(max_length=50)
+
+    class Meta:
+        managed = False
+        db_table = 'tipolibro'
+
+
 class CertDomiciliario(models.Model):
     id_domiciliario = models.AutoField(primary_key=True)
     num_certificado = models.CharField(max_length=10, blank=True, null=True)

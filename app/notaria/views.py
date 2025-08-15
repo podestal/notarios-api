@@ -1871,6 +1871,14 @@ class LibrosViewSet(ModelViewSet):
         return self.get_paginated_response(serializer.data)
 
 
+class TipolibroViewSet(ModelViewSet):
+    """
+    ViewSet for the Tipolibro model.
+    """
+    queryset = models.Tipolibro.objects.all()
+    serializer_class = serializers.TipolibroSerializer
+
+
 class CertDomiciliarioViewSet(ModelViewSet):
     """
     ViewSet for the CertDomiciliario model.

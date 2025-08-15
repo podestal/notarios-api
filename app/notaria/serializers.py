@@ -859,6 +859,15 @@ class LibrosSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class TipolibroSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Tipolibro model.
+    """
+    class Meta:
+        model = models.Tipolibro
+        fields = '__all__'
+
+
 class CertDomiciliarioSerializer(serializers.ModelSerializer):
     """
     Serializer for the CertDomiciliario model.
