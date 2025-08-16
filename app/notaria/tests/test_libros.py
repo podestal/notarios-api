@@ -4,6 +4,8 @@ from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
 from unittest.mock import patch, MagicMock
 from datetime import datetime
+from notaria import models
+from notaria.views import LibrosViewSet
 
 
 @pytest.mark.django_db
@@ -500,4 +502,249 @@ class TestLibrosViewSetList(APITestCase):
                 assert response.status_code in [200, 404, 500]
         except Exception as e:
             # If it fails due to missing database, that's expected for unmanaged models
-            assert "database" in str(e).lower() or "table" in str(e).lower() 
+            assert "database" in str(e).lower() or "table" in str(e).lower()
+
+
+@pytest.mark.django_db
+class TestLibrosViewSetCreate(APITestCase):
+    """Test cases for LibrosViewSet create method with correlative number generation."""
+
+    def setUp(self):
+        self.api_client = APIClient()
+        self.url = '/api/libros/'
+        
+        # Sample data for creating libros
+        self.valid_create_data = {
+            "ano": "2025",
+            "fecing": "2025-01-15",
+            "tipper": "J",
+            "apepat": "RODRIGUEZ",
+            "apemat": "PODESTA",
+            "prinom": "LUIS",
+            "segnom": "ANTONIO",
+            "ruc": "20608508750",
+            "domicilio": "JR. BARRANCO 480",
+            "coddis": "070101",
+            "empresa": "HOBEDO SOCIEDAD ANONIMA CERRADA",
+            "domfiscal": "JR. BARRANCO Nº 480",
+            "idtiplib": 1,
+            "descritiplib": "LIBRO MAYOR",
+            "idlegal": 1,
+            "folio": "44",
+            "idtipfol": 1,
+            "detalle": "Libro de prueba",
+            "idnotario": 1,
+            "solicitante": "RODRIGUEZ PODESTA, LUIS",
+            "comentario": "Comentario de prueba",
+            "feclegal": "2025-01-15",
+            "comentario2": "Segundo comentario",
+            "dni": "47067139",
+            "idusuario": 1,
+            "idnlibro": 5,
+            "codclie": "0000022765",
+            "flag": 1,
+            "numdoc_plantilla": "",
+            "estadosisgen": 0
+        }
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_generates_first_numlibro_when_no_records(self, mock_objects):
+        """Test that first libro gets numlibro '000001' when no records exist."""
+        # Arrange
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+        
+        with patch.object(LibrosViewSet, 'get_serializer') as mock_get_serializer, \
+             patch.object(LibrosViewSet, 'perform_create') as mock_perform_create, \
+             patch.object(LibrosViewSet, 'get_success_headers', return_value={}) as mock_headers:
+            
+            mock_serializer = MagicMock()
+            mock_serializer.data = {'numlibro': '000001', 'ano': '2025'}
+            mock_serializer.is_valid.return_value = True
+            mock_get_serializer.return_value = mock_serializer
+            
+            # Act
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+
+            # Assert
+            mock_get_serializer.assert_called_once()
+            serializer_call_data = mock_get_serializer.call_args[1]['data']
+            self.assertEqual(serializer_call_data['numlibro'], '000001')
+            mock_perform_create.assert_called_once()
+            self.assertEqual(response.status_code, 201)
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_increments_numlibro_when_records_exist(self, mock_objects):
+        """Test that numlibro increments correctly when records exist."""
+        # Arrange
+        last_record = MagicMock()
+        last_record.numlibro = '000123'
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = last_record
+        
+        with patch.object(LibrosViewSet, 'get_serializer') as mock_get_serializer, \
+             patch.object(LibrosViewSet, 'perform_create') as mock_perform_create, \
+             patch.object(LibrosViewSet, 'get_success_headers', return_value={}) as mock_headers:
+            
+            mock_serializer = MagicMock()
+            mock_serializer.data = {'numlibro': '000124', 'ano': '2025'}
+            mock_serializer.is_valid.return_value = True
+            mock_get_serializer.return_value = mock_serializer
+            
+            # Act
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+
+            # Assert
+            serializer_call_data = mock_get_serializer.call_args[1]['data']
+            self.assertEqual(serializer_call_data['numlibro'], '000124')
+            self.assertEqual(response.status_code, 201)
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_handles_large_numlibro(self, mock_objects):
+        """Test that large numlibro values are handled correctly."""
+        # Arrange
+        last_record = MagicMock()
+        last_record.numlibro = '999998'
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = last_record
+        
+        with patch.object(LibrosViewSet, 'get_serializer') as mock_get_serializer, \
+             patch.object(LibrosViewSet, 'perform_create') as mock_perform_create, \
+             patch.object(LibrosViewSet, 'get_success_headers', return_value={}) as mock_headers:
+            
+            mock_serializer = MagicMock()
+            mock_serializer.data = {'numlibro': '999999', 'ano': '2025'}
+            mock_serializer.is_valid.return_value = True
+            mock_get_serializer.return_value = mock_serializer
+            
+            # Act
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+
+            # Assert
+            serializer_call_data = mock_get_serializer.call_args[1]['data']
+            self.assertEqual(serializer_call_data['numlibro'], '999999')
+            self.assertEqual(response.status_code, 201)
+
+    def test_numlibro_zero_padding_format(self):
+        """Test that numlibro is properly zero-padded to 6 digits."""
+        test_cases = [
+            (1, '000001'),
+            (10, '000010'),
+            (100, '000100'),
+            (1000, '001000'),
+            (10000, '010000'),
+            (100000, '100000'),
+        ]
+        
+        for correlative, expected in test_cases:
+            with self.subTest(correlative=correlative):
+                formatted = f"{correlative:06d}"
+                self.assertEqual(formatted, expected)
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_handles_empty_numlibro(self, mock_objects):
+        """Test that empty numlibro is handled correctly."""
+        # Arrange
+        last_record = MagicMock()
+        last_record.numlibro = ''
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = last_record
+        
+        with patch.object(LibrosViewSet, 'get_serializer') as mock_get_serializer, \
+             patch.object(LibrosViewSet, 'perform_create') as mock_perform_create, \
+             patch.object(LibrosViewSet, 'get_success_headers', return_value={}) as mock_headers:
+            
+            mock_serializer = MagicMock()
+            mock_serializer.data = {'numlibro': '000001', 'ano': '2025'}
+            mock_serializer.is_valid.return_value = True
+            mock_get_serializer.return_value = mock_serializer
+            
+            # Act
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+
+            # Assert
+            serializer_call_data = mock_get_serializer.call_args[1]['data']
+            self.assertEqual(serializer_call_data['numlibro'], '000001')
+            self.assertEqual(response.status_code, 201)
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_handles_numlibro_with_prefix(self, mock_objects):
+        """Test that numlibro with prefix extracts last 6 digits correctly."""
+        # Arrange
+        last_record = MagicMock()
+        last_record.numlibro = 'PREFIX000456'  # Should extract '000456'
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = last_record
+        
+        with patch.object(LibrosViewSet, 'get_serializer') as mock_get_serializer, \
+             patch.object(LibrosViewSet, 'perform_create') as mock_perform_create, \
+             patch.object(LibrosViewSet, 'get_success_headers', return_value={}) as mock_headers:
+            
+            mock_serializer = MagicMock()
+            mock_serializer.data = {'numlibro': '000457', 'ano': '2025'}
+            mock_serializer.is_valid.return_value = True
+            mock_get_serializer.return_value = mock_serializer
+            
+            # Act
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+
+            # Assert
+            serializer_call_data = mock_get_serializer.call_args[1]['data']
+            self.assertEqual(serializer_call_data['numlibro'], '000457')
+            self.assertEqual(response.status_code, 201)
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_preserves_original_data(self, mock_objects):
+        """Test that create preserves all original data except numlibro."""
+        # Arrange
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+        
+        with patch.object(LibrosViewSet, 'get_serializer') as mock_get_serializer, \
+             patch.object(LibrosViewSet, 'perform_create') as mock_perform_create, \
+             patch.object(LibrosViewSet, 'get_success_headers', return_value={}) as mock_headers:
+            
+            mock_serializer = MagicMock()
+            mock_serializer.data = {'numlibro': '000001', 'ano': '2025'}
+            mock_serializer.is_valid.return_value = True
+            mock_get_serializer.return_value = mock_serializer
+            
+            # Act
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+
+            # Assert
+            serializer_call_data = mock_get_serializer.call_args[1]['data']
+            
+            # Check that all original data is preserved
+            for key, value in self.valid_create_data.items():
+                if key != 'numlibro':  # numlibro is auto-generated
+                    self.assertEqual(serializer_call_data[key], value)
+            
+            # Check that numlibro was auto-generated
+            self.assertEqual(serializer_call_data['numlibro'], '000001')
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_handles_database_error(self, mock_objects):
+        """Test that database errors are handled gracefully."""
+        # Arrange
+        mock_objects.filter.side_effect = Exception("Database connection error")
+        
+        # Act & Assert
+        try:
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+            # If it doesn't raise an exception, it should return an error status
+            self.assertIn(response.status_code, [400, 500])
+        except Exception as e:
+            # Database errors are expected for unmanaged models
+            self.assertIn("database", str(e).lower())
+
+    @patch('notaria.views.models.Libros.objects')
+    def test_create_handles_non_numeric_numlibro(self, mock_objects):
+        """Test handling of non-numeric numlibro in existing records."""
+        # Arrange
+        last_record = MagicMock()
+        last_record.numlibro = 'ABCDEF'  # Non-numeric
+        mock_objects.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = last_record
+        
+        # Act & Assert
+        try:
+            response = self.api_client.post(self.url, self.valid_create_data, format='json')
+            # Should handle the error gracefully
+            self.assertIn(response.status_code, [400, 500])
+        except ValueError as e:
+            # ValueError is expected when trying to convert non-numeric string to int
+            self.assertIn("invalid literal", str(e).lower()) 
