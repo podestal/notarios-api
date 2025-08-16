@@ -1871,6 +1871,32 @@ class LibrosViewSet(ModelViewSet):
         return self.get_paginated_response(serializer.data)
 
 
+    def create(self, request, *args, **kwargs):
+        """
+        Create a Libros instance with auto-generated correlative numbers.
+        Generates correlative numbers for numlibro field.
+        """
+        data = request.data.copy()
+        last_record = models.Libros.objects.filter(
+            numlibro__isnull=False
+        ).exclude(numlibro='').order_by('-id').first()
+        
+        if last_record and last_record.numlibro:
+            last_correlative = int(last_record.numlibro[-6:])
+            new_correlative = last_correlative + 1
+        else:
+            new_correlative = 1
+        
+        data['numlibro'] = f"{new_correlative:06d}"
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
 class TipolibroViewSet(ModelViewSet):
     """
     ViewSet for the Tipolibro model.

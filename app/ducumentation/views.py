@@ -1332,6 +1332,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return service.generate_carta_document(num_carta, mode)
 
 
+
     @action(detail=False, methods=['get'], url_path='cert-domiciliario')
     def cert_domiciliario(self, request):
         """
@@ -1373,7 +1374,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         - mode: optional ('download' | 'open'), defaults to 'download'
         """
         id_libro = request.query_params.get('id_libro')
-        orientation = request.query_params.get('orientation', 'H')
+        orientation = request.query_params.get('orientation', 'V')
         action = request.query_params.get('action', 'generate')
         mode = request.query_params.get('mode', 'download')
 
