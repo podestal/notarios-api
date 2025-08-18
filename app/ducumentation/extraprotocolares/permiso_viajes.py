@@ -577,6 +577,53 @@ class PermisosViajeReportService:
             except Exception as e:
                 print(f"DEBUG: Error getting participants for viaje {id_viaje}: {e}")
                 return []  # Return empty list on error to continue processing
+
+    def _get_participants_batch(self, viaje_ids: List[int]) -> Dict[int, List[Dict[str, str]]]:
+        """Fetch participants for multiple viajes in a single query."""
+        if not viaje_ids:
+            return {}
+            
+        with connection.cursor() as cursor:
+            # Create placeholders for IN clause
+            placeholders = ','.join(['%s'] * len(viaje_ids))
+            
+            query = f"""
+                SELECT 
+                    vc.id_viaje, 
+                    vc.c_descontrat,
+                    cc.des_condicion,
+                    vc.c_codcontrat as doc,
+                    td.td_abrev as tipo_documento 
+                FROM viaje_contratantes as vc
+                LEFT JOIN cliente as c ON c.numdoc=vc.c_codcontrat
+                LEFT JOIN tipodocumento as td ON td.idtipdoc=c.idtipdoc
+                LEFT JOIN c_condiciones as cc ON vc.c_condicontrat = cc.id_condicion
+                WHERE vc.id_viaje IN ({placeholders})
+                GROUP BY vc.id_viaje, vc.c_codcontrat, cc.des_condicion
+                ORDER BY vc.id_viaje, vc.id_contratante
+                LIMIT 100
+            """
+            
+            try:
+                cursor.execute(query, viaje_ids)
+                columns = [col[0] for col in cursor.description]
+                results = cursor.fetchall()
+                
+                # Group participants by viaje_id
+                participants_by_viaje = {}
+                for row in results:
+                    viaje_id = row[0]
+                    if viaje_id not in participants_by_viaje:
+                        participants_by_viaje[viaje_id] = []
+                    
+                    participant = dict(zip(columns, row))
+                    participants_by_viaje[viaje_id].append(participant)
+                
+                return participants_by_viaje
+                
+            except Exception as e:
+                print(f"DEBUG: Error in batch participant query: {e}")
+                return {}  # Return empty dict on error
     
     def _format_date_in_spanish(self, date_str: str) -> str:
         """Convert YYYY-MM-DD date string to Spanish format."""
@@ -625,7 +672,7 @@ class PermisosViajeReportService:
         """Generate Excel report for Permisos de Viaje."""
         try:
             from openpyxl import Workbook
-            from openpyxl.styles import Font, Alignment, Border, Side
+            from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
             
             report_data = self._get_report_data(desde, hasta)
             notary_name = self._get_notary_info()
@@ -636,86 +683,175 @@ class PermisosViajeReportService:
             ws = wb.active
             ws.title = "Permisos de Viaje"
             
-            # Styles
-            title_font = Font(size=18, bold=True)
-            header_font = Font(size=13, bold=True)
-            data_font = Font(size=12)
-            center_alignment = Alignment(horizontal='center', vertical='center')
-            left_alignment = Alignment(horizontal='left', vertical='top')
+            # Styles to match PHP formatting
+            title_font = Font(name="Arial", size=18, bold=True)  # 18.5px ≈ 18pt, bold
+            header_font = Font(name="Arial", size=13, bold=True)  # 13.5px ≈ 13pt, bold
+            data_font = Font(name="Arial", size=13)  # 13.5px ≈ 13pt, normal
+            center_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
             
-            # Title
+            # Borders for data table (matching PHP BORDER="1" bordercolor="#333333")
+            thin_border = Border(
+                left=Side(border_style="thin", color="333333"),
+                right=Side(border_style="thin", color="333333"),
+                top=Side(border_style="thin", color="333333"),
+                bottom=Side(border_style="thin", color="333333")
+            )
+            
+            # No borders for header section (matching PHP border='0')
+            no_border = Border(
+                left=Side(style=None),
+                right=Side(style=None),
+                top=Side(style=None),
+                bottom=Side(style=None)
+            )
+            
+            # Title - matches PHP font-size:18.5px, bold, center
             ws.merge_cells('A1:G1')
             ws['A1'] = 'INDICE CRONOLOGICO - PERMISOS DE VIAJE'
             ws['A1'].font = title_font
             ws['A1'].alignment = center_alignment
+            ws['A1'].border = no_border
             
             ws.merge_cells('A2:G2')
             ws['A2'] = f'AÑO {anio}'
             ws['A2'].font = title_font
             ws['A2'].alignment = center_alignment
+            ws['A2'].border = no_border
             
-            # Notary info section (no borders)
+            # Notary info section - matches PHP table with border='0'
             row = 4
+            # Row 1: NOTARIA (colspan="2" align="left")
+            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'NOTARIA'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].alignment = left_alignment
+            ws[f'A{row}'].border = no_border
             ws[f'C{row}'] = f': {notary_name}'
-            ws[f'A{row}'].font = header_font
             ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].alignment = left_alignment
+            ws[f'C{row}'].border = no_border
             
             row += 1
+            # Row 2: DIRECCION
+            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'DIRECCION'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].alignment = left_alignment
+            ws[f'A{row}'].border = no_border
             ws[f'C{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].alignment = left_alignment
+            ws[f'C{row}'].border = no_border
             ws[f'E{row}'] = 'TELEFONO'
+            ws[f'E{row}'].font = header_font
+            ws[f'E{row}'].alignment = left_alignment
+            ws[f'E{row}'].border = no_border
+            ws.merge_cells(f'F{row}:G{row}')
             ws[f'F{row}'] = ': (051) 326609'
-            ws[f'A{row}'].font = header_font
-            ws[f'C{row}'].font = data_font
-            ws[f'E{row}'].font = header_font
             ws[f'F{row}'].font = data_font
+            ws[f'F{row}'].alignment = left_alignment
+            ws[f'F{row}'].border = no_border
             
             row += 1
+            # Row 3: DEPARTAMENTO
+            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'DEPARTAMENTO'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].alignment = left_alignment
+            ws[f'A{row}'].border = no_border
             ws[f'C{row}'] = ': PUNO'
+            ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].alignment = left_alignment
+            ws[f'C{row}'].border = no_border
             ws[f'E{row}'] = 'RUC'
+            ws[f'E{row}'].font = header_font
+            ws[f'E{row}'].alignment = left_alignment
+            ws[f'E{row}'].border = no_border
+            ws.merge_cells(f'F{row}:G{row}')
             ws[f'F{row}'] = ': 10024231572'
-            ws[f'A{row}'].font = header_font
-            ws[f'C{row}'].font = data_font
-            ws[f'E{row}'].font = header_font
             ws[f'F{row}'].font = data_font
+            ws[f'F{row}'].alignment = left_alignment
+            ws[f'F{row}'].border = no_border
             
             row += 1
+            # Row 4: PROVINCIA
+            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'PROVINCIA'
-            ws[f'C{row}'] = ': SAN ROMAN'
-            ws[f'E{row}'] = 'DESDE'
-            ws[f'F{row}'] = f': {self._format_date_in_spanish(desde)}'
             ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].alignment = left_alignment
+            ws[f'A{row}'].border = no_border
+            ws[f'C{row}'] = ': SAN ROMAN'
             ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].alignment = left_alignment
+            ws[f'C{row}'].border = no_border
+            ws[f'E{row}'] = 'DESDE'
             ws[f'E{row}'].font = header_font
+            ws[f'E{row}'].alignment = left_alignment
+            ws[f'E{row}'].border = no_border
+            ws.merge_cells(f'F{row}:G{row}')
+            ws[f'F{row}'] = f': {self._format_date_in_spanish(desde)}'
             ws[f'F{row}'].font = data_font
+            ws[f'F{row}'].alignment = left_alignment
+            ws[f'F{row}'].border = no_border
             
             row += 1
+            # Row 5: DISTRITO
+            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'DISTRITO'
-            ws[f'C{row}'] = ': JULIACA'
-            ws[f'E{row}'] = 'HASTA'
-            ws[f'F{row}'] = f': {self._format_date_in_spanish(hasta)}'
             ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].alignment = left_alignment
+            ws[f'A{row}'].border = no_border
+            ws[f'C{row}'] = ': JULIACA'
             ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].alignment = left_alignment
+            ws[f'C{row}'].border = no_border
+            ws[f'E{row}'] = 'HASTA'
             ws[f'E{row}'].font = header_font
+            ws[f'E{row}'].alignment = left_alignment
+            ws[f'E{row}'].border = no_border
+            ws.merge_cells(f'F{row}:G{row}')
+            ws[f'F{row}'] = f': {self._format_date_in_spanish(hasta)}'
             ws[f'F{row}'].font = data_font
+            ws[f'F{row}'].alignment = left_alignment
+            ws[f'F{row}'].border = no_border
             
             # Add spacing
             row += 2
             
-            # Data table headers
+            # Data table headers - matches PHP BORDER="1" with borders
             headers = ['NRO.', 'FECHA', 'PARTICIPANTES', 'VIA', 'DESTINO', 'OBSERVACIONES']
             for col, header in enumerate(headers, 1):
                 cell = ws.cell(row=row, column=col, value=header)
                 cell.font = header_font
                 cell.alignment = center_alignment
+                cell.border = thin_border  # Add borders for data table headers
+            
+            # Set specific column widths to fit everything in A-F range (6 columns)
+            ws.column_dimensions['A'].width = 10  # NRO. (expanded from 8)
+            ws.column_dimensions['B'].width = 15  # FECHA (expanded from 12)
+            ws.column_dimensions['C'].width = 55  # PARTICIPANTES (expanded from 40)
+            ws.column_dimensions['D'].width = 25  # VIA (expanded from 18)
+            ws.column_dimensions['E'].width = 35  # DESTINO (expanded from 25)
+            ws.column_dimensions['F'].width = 50  # OBSERVACIONES (expanded from 35)
+            ws.column_dimensions['G'].width = 5   # Empty column for spacing (no border)
             
             # Add data rows
             row += 1
-            for data_row in report_data:
+            
+            # Limit to first 20 records for faster testing
+            limited_data = report_data[:20] if len(report_data) > 20 else report_data
+            
+            # Batch query all participants for all viajes at once
+            viaje_ids = [data_row[0] for data_row in limited_data if len(data_row) > 0]
+            all_participants = self._get_participants_batch(viaje_ids)
+            
+            for data_row in limited_data:
                 # Main data row
                 correlativo = str(data_row[7])[-6:] if data_row[7] else ''  # Extract last 6 digits
+                # Convert to simple number (1 instead of 000001) - matches PHP (int)substr()
+                correlativo_simple = str(int(correlativo)) if correlativo and correlativo.isdigit() else correlativo
+                
                 fecha_crono = data_row[2] if len(data_row) > 2 else ''
                 via = data_row[9] if len(data_row) > 9 else ''
                 destino = data_row[5] if len(data_row) > 5 else ''
@@ -723,47 +859,92 @@ class PermisosViajeReportService:
                 
                 # Convert datetime.date objects to strings
                 if hasattr(fecha_crono, 'strftime'):
-                    fecha_crono = fecha_crono.strftime('%d/%m/%Y')
+                    fecha_crono = fecha_crono.strftime('%d/%m/%Y')  # matches fechabd_an() format
                 
-                # Get participants for this viaje
+                # Get participants for this viaje from batch results
                 id_viaje = data_row[0] if len(data_row) > 0 else 0
-                participants = self._get_participants_for_viaje(id_viaje)
+                participants = all_participants.get(id_viaje, [])
                 
-                # Create participant text
+                # Create participant text exactly like PHP nested table
                 participant_text = ""
                 for participant in participants:
                     condicion = participant.get('des_condicion', '')
                     nombre = participant.get('c_descontrat', '')
                     tipo_doc = participant.get('tipo_documento', '')
                     num_doc = participant.get('doc', '')
-                    participant_text += f"{condicion}: {nombre}\n{tipo_doc}: {num_doc}\n"
+                    # Format exactly like PHP: "CONDICION :NOMBRE" and "TIPO_DOC:NUM_DOC"
+                    participant_text += f"{condicion} :{nombre}\n{tipo_doc}:{num_doc}\n"
                 
-                # Main data row
-                ws.cell(row=row, column=1, value=str(correlativo)).alignment = center_alignment
-                ws.cell(row=row, column=2, value=str(fecha_crono)).alignment = center_alignment
+                # Format observations to fit in column F
+                if observacion:
+                    # Split long observations and add line breaks every 70 characters (increased from 50)
+                    formatted_observacion = ""
+                    words = observacion.split()
+                    current_line = ""
+                    for word in words:
+                        if len(current_line + word) > 70:  # Increased from 50 to use more of the wide column
+                            formatted_observacion += current_line.strip() + "\n"
+                            current_line = word + " "
+                        else:
+                            current_line += word + " "
+                    formatted_observacion += current_line.strip()
+                    observacion = formatted_observacion
+                
+                # Main data row - matches PHP table structure with borders
+                ws.cell(row=row, column=1, value=correlativo_simple).alignment = center_alignment
+                ws.cell(row=row, column=2, value=fecha_crono).alignment = center_alignment
                 ws.cell(row=row, column=3, value=participant_text.strip()).alignment = left_alignment
-                ws.cell(row=row, column=4, value=str(via) if via else '').alignment = center_alignment
-                ws.cell(row=row, column=5, value=str(destino) if destino else '').alignment = center_alignment
-                ws.cell(row=row, column=6, value=str(observacion) if observacion else '').alignment = left_alignment
+                ws.cell(row=row, column=4, value=via).alignment = center_alignment
+                ws.cell(row=row, column=5, value=destino.replace('?', '-').upper() if destino else '').alignment = center_alignment
+                ws.cell(row=row, column=6, value=observacion.upper() if observacion else '').alignment = left_alignment
                 
-                # Set font for all cells
-                for col in range(1, 7):
-                    ws.cell(row=row, column=col).font = data_font
+                # Set font and borders for data cells (columns A-F get borders)
+                for col in range(1, 7):  # A to F (6 columns)
+                    cell = ws.cell(row=row, column=col)
+                    cell.font = data_font
+                    cell.border = thin_border  # Add borders for data cells
+                
+                # Calculate required row height based on content
+                max_lines = 1
+                
+                # Count lines in participant text
+                if participant_text:
+                    participant_lines = len(participant_text.strip().split('\n'))
+                    max_lines = max(max_lines, participant_lines)
+                
+                # Count lines in observations (more accurate calculation)
+                if observacion:
+                    observation_lines = len(observacion.strip().split('\n'))
+                    max_lines = max(max_lines, observation_lines)
+                    
+                    # Also check if any single line in observations is very long
+                    for line in observacion.strip().split('\n'):
+                        if len(line) > 70:  # If a line is longer than our wrap limit
+                            # Calculate how many visual lines this would actually take
+                            visual_lines = (len(line) // 70) + 1
+                            max_lines = max(max_lines, visual_lines)
+                
+                # Count lines in via (in case it's long)
+                if via and len(str(via)) > 25:
+                    via_lines = (len(str(via)) // 25) + 1
+                    max_lines = max(max_lines, via_lines)
+                
+                # Count lines in destino (in case it's long)
+                if destino and len(str(destino)) > 35:
+                    destino_lines = (len(str(destino)) // 35) + 1
+                    max_lines = max(max_lines, destino_lines)
+                
+                # Set row height based on content with more generous spacing
+                # Minimum 60px, then 30px per line for better readability
+                calculated_height = max(60, max_lines * 30)
+                
+                # Add extra padding for very content-heavy rows
+                if max_lines > 4:
+                    calculated_height += 20  # Extra padding for complex rows
+                
+                ws.row_dimensions[row].height = calculated_height
                 
                 row += 1
-            
-            # Auto-adjust column widths
-            for column in ws.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                ws.column_dimensions[column_letter].width = adjusted_width
             
             # Save to buffer
             buffer = io.BytesIO()
@@ -906,6 +1087,13 @@ class PermisosViajeReportService:
                 limited_data = report_data[:20] if len(report_data) > 20 else report_data
                 print(f"DEBUG: Limited to {len(limited_data)} records for testing")
                 
+                # Batch query all participants for all viajes at once
+                viaje_ids = [data_row[0] for data_row in limited_data if len(data_row) > 0]
+                print(f"DEBUG: Batch querying participants for {len(viaje_ids)} viajes")
+                
+                all_participants = self._get_participants_batch(viaje_ids)
+                print(f"DEBUG: Retrieved {len(all_participants)} total participants")
+                
                 for i, data_row in enumerate(limited_data):
                     if i % 5 == 0:  # Log progress every 5 records
                         print(f"DEBUG: Processing record {i+1}/{len(limited_data)}")
@@ -925,9 +1113,9 @@ class PermisosViajeReportService:
                             fecha_crono = fecha_crono.strftime('%d/%m/%Y')
                             print(f"DEBUG: Converted fecha_crono to: {fecha_crono}")
                         
-                        # Get participants for this viaje
+                        # Get participants for this viaje from batch results
                         id_viaje = data_row[0] if len(data_row) > 0 else 0
-                        participants = self._get_participants_for_viaje(id_viaje)
+                        participants = all_participants.get(id_viaje, [])
                         print(f"DEBUG: Got {len(participants)} participants for viaje {id_viaje}")
                         
                         # Create participant text
