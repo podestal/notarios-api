@@ -1,5 +1,7 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
+
+from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
 from . import models
 from . import serializers
 from . import pagination
@@ -1834,6 +1836,45 @@ class IngresoCartasViewSet(ModelViewSet):
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+    @action(detail=False, methods=['post'], url_path='reporte')
+    def reporte(self, request):
+        """
+        Generate chronological index report for cartas notariales.
+        
+        Parameters:
+        - fechade: Start date (DD/MM/YYYY)
+        - fechaa: End date (DD/MM/YYYY) 
+        - tipo_documento: 'EXCEL' or 'WORD'
+        """
+        fechade = request.data.get('fechade')
+        fechaa = request.data.get('fechaa')
+        tipo_documento = request.data.get('tipo_documento', 'WORD')
+        
+        if not fechade or not fechaa:
+            return Response(
+                {'error': 'Both fechade and fechaa are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Convert dates from DD/MM/YYYY to YYYY-MM-DD
+        try:
+            desde = datetime.strptime(fechade, '%d/%m/%Y').strftime('%Y-%m-%d')
+            hasta = datetime.strptime(fechaa, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use DD/MM/YYYY'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Generate report using your service
+        report_service = CartasNotarialesReportService()
+        
+        if tipo_documento == 'EXCEL':
+            return report_service.generate_excel_report(desde, hasta)
+        else:
+            return report_service.generate_word_report(desde, hasta)
 
 
 class LibrosViewSet(ModelViewSet):
