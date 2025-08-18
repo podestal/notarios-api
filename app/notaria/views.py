@@ -1744,6 +1744,40 @@ class PoderesFueraregViewSet(ModelViewSet):
             return Response(serializer.data)
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'], url_path='reporte')
+    def reporte(self, request):
+        # TEST THIS ENDPOINT
+        """Generate poderes report (Excel or Word)"""
+        from app.ducumentation.extraprotocolares.poderes import PoderesReportService
+        from datetime import datetime
+        
+        fechade = request.query_params.get('fechade')
+        fechaa = request.query_params.get('fechaa')
+        tipo_documento = request.query_params.get('tipo_documento', 'WORD')
+        
+        if not fechade or not fechaa:
+            return Response(
+                {'error': 'Both fechade and fechaa are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Convert DD/MM/YYYY to YYYY-MM-DD
+            desde = datetime.strptime(fechade, '%d/%m/%Y').strftime('%Y-%m-%d')
+            hasta = datetime.strptime(fechaa, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use DD/MM/YYYY'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        report_service = PoderesReportService()
+        
+        if tipo_documento == 'EXCEL':
+            return report_service.generate_excel_report(desde, hasta)
+        else:
+            return report_service.generate_word_report(desde, hasta)
+
 class PoderesPensionViewSet(ModelViewSet):
     """
     ViewSet for the PoderesPension model.
