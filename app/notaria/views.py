@@ -1838,7 +1838,7 @@ class IngresoCartasViewSet(ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
-    @action(detail=False, methods=['post'], url_path='reporte')
+    @action(detail=False, methods=['get'], url_path='reporte') 
     def reporte(self, request):
         """
         Generate chronological index report for cartas notariales.
@@ -1848,9 +1848,9 @@ class IngresoCartasViewSet(ModelViewSet):
         - fechaa: End date (DD/MM/YYYY) 
         - tipo_documento: 'EXCEL' or 'WORD'
         """
-        fechade = request.data.get('fechade')
-        fechaa = request.data.get('fechaa')
-        tipo_documento = request.data.get('tipo_documento', 'WORD')
+        fechade = request.query_params.get('fechade')  # Changed from request.data to request.query_params
+        fechaa = request.query_params.get('fechaa')
+        tipo_documento = request.query_params.get('tipo_documento', 'WORD')
         
         if not fechade or not fechaa:
             return Response(

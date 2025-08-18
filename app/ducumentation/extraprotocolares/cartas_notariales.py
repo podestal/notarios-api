@@ -3,6 +3,7 @@ import io
 import traceback
 from typing import Dict, Any, Optional
 from datetime import datetime
+from io import BytesIO
 
 from django.db import connection
 from django.http import HttpResponse, JsonResponse
@@ -234,6 +235,10 @@ class CartasNotarialesReportService:
     def _get_report_data(self, desde, hasta):
         """Fetch data for the report"""
         with connection.cursor() as cursor:
+            # Convert YYYY-MM-DD back to DD/MM/YYYY for the SQL query
+            desde_formatted = datetime.strptime(desde, '%Y-%m-%d').strftime('%d/%m/%Y')
+            hasta_formatted = datetime.strptime(hasta, '%Y-%m-%d').strftime('%d/%m/%Y')
+            
             cursor.execute("""
                 SELECT
                     ic.num_carta AS num_carta,
@@ -253,9 +258,11 @@ class CartasNotarialesReportService:
                 WHERE STR_TO_DATE(ic.fec_ingreso,'%%d/%%m/%%Y') 
                       BETWEEN STR_TO_DATE(%s,'%%d/%%m/%%Y') AND STR_TO_DATE(%s,'%%d/%%m/%%Y')
                 ORDER BY ic.num_carta ASC
-            """, [desde, hasta])
+            """, [desde_formatted, hasta_formatted])
             
-            return cursor.fetchall()
+            result = cursor.fetchall()
+            if result:
+                return result
     
     def _get_notary_info(self):
         """Get notary configuration info"""
@@ -288,9 +295,16 @@ class CartasNotarialesReportService:
             return date_str
     
     def _extract_year_from_date(self, date_str):
-        """Extract year from date string DD/MM/YYYY"""
+        """Extract year from date string DD/MM/YYYY or YYYY-MM-DD"""
         try:
-            return date_str.split('/')[-1]
+            # Try to parse as YYYY-MM-DD first
+            if '-' in date_str and len(date_str.split('-')[0]) == 4:
+                return date_str.split('-')[0]
+            # Try to parse as DD/MM/YYYY
+            elif '/' in date_str:
+                return date_str.split('/')[-1]
+            else:
+                return str(datetime.now().year)
         except:
             return str(datetime.now().year)
     
@@ -400,13 +414,14 @@ class CartasNotarialesReportService:
             # Data rows
             row += 1
             for data_row in report_data:
+                
                 # Main data row
-                num_carta = data_row[0]
-                fec_ingreso = data_row[1] or ''
-                fec_entrega = data_row[2] or ''
-                dir_destinatario = data_row[7] or ''
-                recepcion = data_row[11] or ''
-                firmo = data_row[12] or ''
+                num_carta = data_row[0] if len(data_row) > 0 else ''
+                fec_ingreso = data_row[1] if len(data_row) > 1 else ''
+                fec_entrega = data_row[2] if len(data_row) > 2 else ''
+                dir_destinatario = data_row[7] if len(data_row) > 7 else ''
+                recepcion = data_row[10] if len(data_row) > 10 else ''  # Fixed: was 11
+                firmo = data_row[11] if len(data_row) > 11 else ''     # Fixed: was 12
                 
                 # Extract correlative number (remove year prefix)
                 correlativo = str(num_carta)[-6:] if num_carta else ''
@@ -426,10 +441,10 @@ class CartasNotarialesReportService:
                 
                 # Row 2: Additional info
                 row += 1
-                remitente = data_row[5] or ''
-                destinatario = data_row[4] or ''
-                dni_remitente = data_row[8] or ''
-                dni_destinatario = data_row[9] or ''
+                remitente = data_row[5] if len(data_row) > 5 else ''      # Fixed: was 5
+                destinatario = data_row[4] if len(data_row) > 4 else ''    # Fixed: was 4
+                dni_remitente = data_row[8] if len(data_row) > 8 else ''  # Fixed: was 8
+                dni_destinatario = data_row[9] if len(data_row) > 9 else '' # Fixed: was 9
                 
                 ws.cell(row=row, column=1, value='').font = cell_font
                 ws.cell(row=row, column=2, value='REMITENTE:\nDESTINATARIO:').font = cell_font
@@ -464,7 +479,7 @@ class CartasNotarialesReportService:
                 ws.column_dimensions[column_letter].width = adjusted_width
             
             # Save to BytesIO
-            output = BytesIO()
+            output = io.BytesIO()
             wb.save(output)
             output.seek(0)
             
@@ -492,11 +507,6 @@ class CartasNotarialesReportService:
             notary_name = self._get_notary_info()
             
             # Create a new document
-            from docx import Document
-            from docx.shared import Inches, Pt
-            from docx.enum.text import WD_ALIGN_PARAGRAPH
-            from docx.oxml.shared import OxmlElement, qn
-            
             doc = Document()
             
             # Set margins
@@ -520,9 +530,9 @@ class CartasNotarialesReportService:
             doc.add_paragraph()
             doc.add_paragraph()
             
-            # Notary info table
+            # Notary info table - NO BORDERS
             info_table = doc.add_table(rows=5, cols=6)
-            info_table.style = 'Table Grid'
+            # No table style = no borders
             
             # Row 1: NOTARIA
             row = info_table.rows[0]
@@ -566,7 +576,7 @@ class CartasNotarialesReportService:
             row.cells[4].merge(row.cells[5])
             row.cells[4].text = f': {self._format_date_in_spanish(hasta)}'
             
-            # Style the info table
+            # Style the info table - Simple styling without borders
             for row in info_table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
@@ -578,32 +588,33 @@ class CartasNotarialesReportService:
             # Add spacing
             doc.add_paragraph()
             
-            # Main data table
-            if report_data:
-                # Create table with headers
-                headers = ['NRO', 'FEC. INGRESO', 'DIRECCION ENTREGA', 'FEC. ENTREGA', 'RESULTADO', 'FIRMO']
-                data_table = doc.add_table(rows=1, cols=6)
-                data_table.style = 'Table Grid'
-                
-                # Add headers
-                header_row = data_table.rows[0]
-                for i, header in enumerate(headers):
-                    cell = header_row.cells[i]
-                    cell.text = header
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            run.font.bold = True
-                            run.font.size = Pt(12)
-                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                
-                # Add data rows
+            # Main data table - ALWAYS CREATE, even if empty
+            # Create table with headers
+            headers = ['NRO', 'FEC. INGRESO', 'DIRECCION ENTREGA', 'FEC. ENTREGA', 'RESULTADO', 'FIRMO']
+            data_table = doc.add_table(rows=1, cols=6)
+            data_table.style = 'Table Grid'
+            
+            # Add headers
+            header_row = data_table.rows[0]
+            for i, header in enumerate(headers):
+                cell = header_row.cells[i]
+                cell.text = header
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(12)
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Add data rows if data exists
+            if report_data and len(report_data) > 0:
                 for data_row in report_data:
-                    num_carta = data_row[0]
-                    fec_ingreso = data_row[1] or ''
-                    fec_entrega = data_row[2] or ''
-                    dir_destinatario = data_row[7] or ''
-                    recepcion = data_row[11] or ''
-                    firmo = data_row[12] or ''
+                    
+                    num_carta = data_row[0] if len(data_row) > 0 else ''
+                    fec_ingreso = data_row[1] if len(data_row) > 1 else ''
+                    fec_entrega = data_row[2] if len(data_row) > 2 else ''
+                    dir_destinatario = data_row[7] if len(data_row) > 7 else ''
+                    recepcion = data_row[10] if len(data_row) > 10 else ''  # Fixed: was 11
+                    firmo = data_row[11] if len(data_row) > 11 else ''     # Fixed: was 12
                     
                     # Extract correlative number
                     correlativo = str(num_carta)[-6:] if num_carta else ''
@@ -624,10 +635,10 @@ class CartasNotarialesReportService:
                     
                     # Row 2: Additional info
                     row = data_table.add_row()
-                    remitente = data_row[5] or ''
-                    destinatario = data_row[4] or ''
-                    dni_remitente = data_row[8] or ''
-                    dni_destinatario = data_row[9] or ''
+                    remitente = data_row[5] if len(data_row) > 5 else ''      # Fixed: was 5
+                    destinatario = data_row[4] if len(data_row) > 4 else ''    # Fixed: was 4
+                    dni_remitente = data_row[8] if len(data_row) > 8 else ''  # Fixed: was 8
+                    dni_destinatario = data_row[9] if len(data_row) > 9 else '' # Fixed: was 9
                     
                     row.cells[0].text = ''
                     row.cells[1].text = 'REMITENTE:\nDESTINATARIO:'
@@ -642,22 +653,32 @@ class CartasNotarialesReportService:
                         if i == 1:  # REMITENTE/DESTINATARIO column
                             for paragraph in row.cells[i].paragraphs:
                                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        elif i == 3:  # DNI column
+                        elif i == 4:  # DNI column
                             for paragraph in row.cells[i].paragraphs:
                                 paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
                         else:
                             for paragraph in row.cells[i].paragraphs:
                                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                
-                # Style all cells
-                for row in data_table.rows:
-                    for cell in row.cells:
-                        for paragraph in cell.paragraphs:
-                            for run in paragraph.runs:
-                                run.font.size = Pt(12)
+            else:
+                # Add a "no data" row if no data exists
+                no_data_row = data_table.add_row()
+                no_data_cell = no_data_row.cells[0]
+                no_data_cell.merge(no_data_row.cells[5])
+                no_data_cell.text = 'No se encontraron registros para el período especificado'
+                for paragraph in no_data_cell.paragraphs:
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    for run in paragraph.runs:
+                        run.font.italic = True
+            
+            # Style all cells
+            for row in data_table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.size = Pt(12)
             
             # Save to BytesIO
-            output = BytesIO()
+            output = io.BytesIO()
             doc.save(output)
             output.seek(0)
             
