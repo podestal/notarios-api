@@ -517,10 +517,7 @@ class PermisosViajeReportService:
         Parameters desde and hasta should be in YYYY-MM-DD format.
         """
         with connection.cursor() as cursor:
-            # Convert YYYY-MM-DD back to DD/MM/YYYY for the SQL query
-            desde_dd_mm_yyyy = f"{desde[8:10]}/{desde[5:7]}/{desde[:4]}"
-            hasta_dd_mm_yyyy = f"{hasta[8:10]}/{hasta[5:7]}/{hasta[:4]}"
-            
+            # Since fecha_crono is a DATE field, use direct date comparison
             query = """
                 SELECT
                     pv.id_viaje as cod_viaje,
@@ -535,16 +532,16 @@ class PermisosViajeReportService:
                     pv.via,
                     UPPER(pv.observacion) as observacion
                 FROM permi_viaje pv
-                WHERE STR_TO_DATE(pv.fecha_crono, '%%d/%%m/%%Y') >= STR_TO_DATE(%s, '%%d/%%m/%%Y')
-                AND STR_TO_DATE(pv.fecha_crono, '%%d/%%m/%%Y') <= STR_TO_DATE(%s, '%%d/%%m/%%Y')
+                WHERE pv.fecha_crono IS NOT NULL 
+                AND pv.fecha_crono >= %s 
+                AND pv.fecha_crono <= %s
                 ORDER BY kard
             """
             
-            cursor.execute(query, [desde_dd_mm_yyyy, hasta_dd_mm_yyyy])
+            # Execute with YYYY-MM-DD format for DATE field comparison
+            cursor.execute(query, [desde, hasta])
             result = cursor.fetchall()
-            if result:
-                return result
-            return []
+            return result if result else []
     
     def _get_notary_info(self) -> str:
         """Fetch notary name from confinotario table."""
@@ -570,10 +567,16 @@ class PermisosViajeReportService:
                 WHERE vc.id_viaje=%s 
                 GROUP BY vc.c_codcontrat, cc.des_condicion
                 ORDER BY vc.id_contratante
+                LIMIT 10
             """
-            cursor.execute(query, [id_viaje])
-            columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            try:
+                cursor.execute(query, [id_viaje])
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            except Exception as e:
+                print(f"DEBUG: Error getting participants for viaje {id_viaje}: {e}")
+                return []  # Return empty list on error to continue processing
     
     def _format_date_in_spanish(self, date_str: str) -> str:
         """Convert YYYY-MM-DD date string to Spanish format."""
@@ -718,6 +721,10 @@ class PermisosViajeReportService:
                 destino = data_row[5] if len(data_row) > 5 else ''
                 observacion = data_row[10] if len(data_row) > 10 else ''
                 
+                # Convert datetime.date objects to strings
+                if hasattr(fecha_crono, 'strftime'):
+                    fecha_crono = fecha_crono.strftime('%d/%m/%Y')
+                
                 # Get participants for this viaje
                 id_viaje = data_row[0] if len(data_row) > 0 else 0
                 participants = self._get_participants_for_viaje(id_viaje)
@@ -732,12 +739,12 @@ class PermisosViajeReportService:
                     participant_text += f"{condicion}: {nombre}\n{tipo_doc}: {num_doc}\n"
                 
                 # Main data row
-                ws.cell(row=row, column=1, value=correlativo).alignment = center_alignment
-                ws.cell(row=row, column=2, value=fecha_crono).alignment = center_alignment
+                ws.cell(row=row, column=1, value=str(correlativo)).alignment = center_alignment
+                ws.cell(row=row, column=2, value=str(fecha_crono)).alignment = center_alignment
                 ws.cell(row=row, column=3, value=participant_text.strip()).alignment = left_alignment
-                ws.cell(row=row, column=4, value=via).alignment = center_alignment
-                ws.cell(row=row, column=5, value=destino).alignment = center_alignment
-                ws.cell(row=row, column=6, value=observacion).alignment = left_alignment
+                ws.cell(row=row, column=4, value=str(via) if via else '').alignment = center_alignment
+                ws.cell(row=row, column=5, value=str(destino) if destino else '').alignment = center_alignment
+                ws.cell(row=row, column=6, value=str(observacion) if observacion else '').alignment = left_alignment
                 
                 # Set font for all cells
                 for col in range(1, 7):
@@ -788,12 +795,20 @@ class PermisosViajeReportService:
             from docx.oxml import OxmlElement
             from docx.oxml.ns import qn
             
+            print(f"DEBUG: Starting Word report generation for {desde} to {hasta}")
+            
             report_data = self._get_report_data(desde, hasta)
+            print(f"DEBUG: Retrieved {len(report_data)} records")
+            
             notary_name = self._get_notary_info()
+            print(f"DEBUG: Got notary info: {notary_name}")
+            
             anio = self._extract_year_from_date(hasta)
+            print(f"DEBUG: Extracted year: {anio}")
             
             # Create a new document
             doc = Document()
+            print("DEBUG: Created Word document")
             
             # Title
             title = doc.add_heading('INDICE CRONOLOGICO - PERMISOS DE VIAJE', 0)
@@ -862,6 +877,7 @@ class PermisosViajeReportService:
             
             # Add spacing
             doc.add_paragraph()
+            print("DEBUG: Added header table")
             
             # Main data table - ALWAYS CREATE, even if empty
             # Create table with headers
@@ -880,47 +896,88 @@ class PermisosViajeReportService:
                         run.font.size = Pt(12)
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
+            print("DEBUG: Added table headers")
+            
             # Add data rows if data exists
             if report_data and len(report_data) > 0:
-                for data_row in report_data:
-                    # Main data row
-                    correlativo = str(data_row[7])[-6:] if data_row[7] else ''  # Extract last 6 digits
-                    fecha_crono = data_row[2] if len(data_row) > 2 else ''
-                    via = data_row[9] if len(data_row) > 9 else ''
-                    destino = data_row[5] if len(data_row) > 5 else ''
-                    observacion = data_row[10] if len(data_row) > 10 else ''
+                print(f"DEBUG: Processing {len(report_data)} data rows...")
+                
+                # Limit to first 20 records for faster testing
+                limited_data = report_data[:20] if len(report_data) > 20 else report_data
+                print(f"DEBUG: Limited to {len(limited_data)} records for testing")
+                
+                for i, data_row in enumerate(limited_data):
+                    if i % 5 == 0:  # Log progress every 5 records
+                        print(f"DEBUG: Processing record {i+1}/{len(limited_data)}")
                     
-                    # Get participants for this viaje
-                    id_viaje = data_row[0] if len(data_row) > 0 else 0
-                    participants = self._get_participants_for_viaje(id_viaje)
+                    try:
+                        # Main data row
+                        correlativo = str(data_row[7])[-6:] if data_row[7] else ''  # Extract last 6 digits
+                        fecha_crono = data_row[2] if len(data_row) > 2 else ''
+                        via = data_row[9] if len(data_row) > 9 else ''
+                        destino = data_row[5] if len(data_row) > 5 else ''
+                        observacion = data_row[10] if len(data_row) > 10 else ''
+                        
+                        print(f"DEBUG: Record {i+1} data - correlativo: {correlativo}, fecha: {fecha_crono}, via: {via}")
+                        
+                        # Convert datetime.date objects to strings
+                        if hasattr(fecha_crono, 'strftime'):
+                            fecha_crono = fecha_crono.strftime('%d/%m/%Y')
+                            print(f"DEBUG: Converted fecha_crono to: {fecha_crono}")
+                        
+                        # Get participants for this viaje
+                        id_viaje = data_row[0] if len(data_row) > 0 else 0
+                        participants = self._get_participants_for_viaje(id_viaje)
+                        print(f"DEBUG: Got {len(participants)} participants for viaje {id_viaje}")
+                        
+                        # Create participant text
+                        participant_text = ""
+                        for participant in participants:
+                            condicion = participant.get('des_condicion', '')
+                            nombre = participant.get('c_descontrat', '')
+                            tipo_doc = participant.get('tipo_documento', '')
+                            num_doc = participant.get('doc', '')
+                            participant_text += f"{condicion}: {nombre}\n{tipo_doc}: {num_doc}\n"
+                        
+                        print(f"DEBUG: Participant text: {participant_text.strip()}")
+                        
+                        # Add data row
+                        row = data_table.add_row()
+                        print(f"DEBUG: Added row {i+1} to table")
+                        
+                        row.cells[0].text = str(correlativo)
+                        row.cells[1].text = str(fecha_crono)
+                        row.cells[2].text = participant_text.strip()
+                        row.cells[3].text = str(via) if via else ''
+                        row.cells[4].text = str(destino) if destino else ''
+                        row.cells[5].text = str(observacion) if observacion else ''
+                        
+                        print(f"DEBUG: Populated row {i+1} cells")
+                        
+                        # Center align NRO, FECHA, VIA, DESTINO
+                        for i in [0, 1, 3, 4]:
+                            for paragraph in row.cells[i].paragraphs:
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        
+                        # Left align PARTICIPANTES and OBSERVACIONES
+                        for i in [2, 5]:
+                            for paragraph in row.cells[i].paragraphs:
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                        
+                        print(f"DEBUG: Finished styling row {i+1}")
                     
-                    # Create participant text
-                    participant_text = ""
-                    for participant in participants:
-                        condicion = participant.get('des_condicion', '')
-                        nombre = participant.get('c_descontrat', '')
-                        tipo_doc = participant.get('tipo_documento', '')
-                        num_doc = participant.get('doc', '')
-                        participant_text += f"{condicion}: {nombre}\n{tipo_doc}: {num_doc}\n"
-                    
-                    # Add data row
-                    row = data_table.add_row()
-                    row.cells[0].text = correlativo
-                    row.cells[1].text = fecha_crono
-                    row.cells[2].text = participant_text.strip()
-                    row.cells[3].text = via
-                    row.cells[4].text = destino
-                    row.cells[5].text = observacion
-                    
-                    # Center align NRO, FECHA, VIA, DESTINO
-                    for i in [0, 1, 3, 4]:
-                        for paragraph in row.cells[i].paragraphs:
-                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    
-                    # Left align PARTICIPANTES and OBSERVACIONES
-                    for i in [2, 5]:
-                        for paragraph in row.cells[i].paragraphs:
-                            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    except Exception as e:
+                        print(f"DEBUG: Error processing record {i+1}: {e}")
+                        # Add error row instead of crashing
+                        row = data_table.add_row()
+                        row.cells[0].text = f"ERROR-{i+1}"
+                        row.cells[1].text = "ERROR"
+                        row.cells[2].text = f"Error processing record: {str(e)}"
+                        row.cells[3].text = ""
+                        row.cells[4].text = ""
+                        row.cells[5].text = ""
+                
+                print(f"DEBUG: Finished processing data rows. Table now has {len(data_table.rows)} rows")
             else:
                 # Add "No se encontraron registros" message
                 row = data_table.add_row()
@@ -929,10 +986,12 @@ class PermisosViajeReportService:
                 for paragraph in row.cells[0].paragraphs:
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
+            print("DEBUG: Saving document to buffer...")
             # Save to buffer
             buffer = io.BytesIO()
             doc.save(buffer)
             buffer.seek(0)
+            print("DEBUG: Document saved successfully")
             
             # Create response
             filename = f"INDICE_CRONOLOGICO_PERMISOS_DE_VIAJE_{anio}.docx"
@@ -941,9 +1000,13 @@ class PermisosViajeReportService:
                 content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             )
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            print("DEBUG: Response created successfully")
             return response
             
         except Exception as e:
+            print(f"DEBUG: Error in Word report generation: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return HttpResponse(
                 json.dumps({'error': f'Error generating Word report: {str(e)}'}),
                 content_type='application/json',
