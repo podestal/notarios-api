@@ -14,6 +14,8 @@ from django.db import connection
 import re
 from docxtpl import DocxTemplate, RichText
 import traceback
+from datetime import datetime
+import json
 
 
 
@@ -499,3 +501,451 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
                 participants_data.update({'HIJO': 'HIJAS' if all_female else 'HIJOS', 'MENOR': 'MENORES', 'AUTORIZA': 'AUTORIZAN'})
 
             return participants_data, blocks_data 
+
+
+class PermisosViajeReportService:
+    """
+    Service for generating Word and Excel reports for Permisos de Viaje.
+    """
+    
+    def __init__(self):
+        self.letras = NumberToLetterConverter()
+    
+    def _get_report_data(self, desde: str, hasta: str) -> List[tuple]:
+        """
+        Fetch data from permi_viaje and related tables for the date range.
+        Parameters desde and hasta should be in YYYY-MM-DD format.
+        """
+        with connection.cursor() as cursor:
+            # Convert YYYY-MM-DD back to DD/MM/YYYY for the SQL query
+            desde_dd_mm_yyyy = f"{desde[8:10]}/{desde[5:7]}/{desde[:4]}"
+            hasta_dd_mm_yyyy = f"{hasta[8:10]}/{hasta[5:7]}/{hasta[:4]}"
+            
+            query = """
+                SELECT
+                    pv.id_viaje as cod_viaje,
+                    pv.fec_ingreso as fec_ingreso,
+                    pv.fecha_crono as fec_crono,
+                    pv.num_kardex as kard,
+                    (CASE WHEN(pv.asunto='001') THEN 'PERMISO VIAJE AL INTERIOR' ELSE 'PERMISO VIAJE AL EXTERIOR' END) as asunto,
+                    pv.lugar_formu as lugar,
+                    pv.swt_est as estado,
+                    pv.num_kardex AS crono,
+                    pv.num_formu AS formulario,
+                    pv.via,
+                    UPPER(pv.observacion) as observacion
+                FROM permi_viaje pv
+                WHERE STR_TO_DATE(pv.fecha_crono, '%%d/%%m/%%Y') >= STR_TO_DATE(%s, '%%d/%%m/%%Y')
+                AND STR_TO_DATE(pv.fecha_crono, '%%d/%%m/%%Y') <= STR_TO_DATE(%s, '%%d/%%m/%%Y')
+                ORDER BY kard
+            """
+            
+            cursor.execute(query, [desde_dd_mm_yyyy, hasta_dd_mm_yyyy])
+            result = cursor.fetchall()
+            if result:
+                return result
+            return []
+    
+    def _get_notary_info(self) -> str:
+        """Fetch notary name from confinotario table."""
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT CONCAT(nombre, ' ', apellido) as notario FROM confinotario LIMIT 1")
+            row = cursor.fetchone()
+            return row[0] if row else "NOTARIO"
+    
+    def _get_participants_for_viaje(self, id_viaje: int) -> List[Dict[str, str]]:
+        """Fetch participants for a specific viaje."""
+        with connection.cursor() as cursor:
+            query = """
+                SELECT 
+                    vc.id_viaje, 
+                    vc.c_descontrat,
+                    cc.des_condicion,
+                    vc.c_codcontrat as doc,
+                    td.td_abrev as tipo_documento 
+                FROM viaje_contratantes as vc
+                LEFT JOIN cliente as c ON c.numdoc=vc.c_codcontrat
+                LEFT JOIN tipodocumento as td ON td.idtipdoc=c.idtipdoc
+                LEFT JOIN c_condiciones as cc ON vc.c_condicontrat = cc.id_condicion
+                WHERE vc.id_viaje=%s 
+                GROUP BY vc.c_codcontrat, cc.des_condicion
+                ORDER BY vc.id_contratante
+            """
+            cursor.execute(query, [id_viaje])
+            columns = [col[0] for col in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def _format_date_in_spanish(self, date_str: str) -> str:
+        """Convert YYYY-MM-DD date string to Spanish format."""
+        if not date_str:
+            return ""
+        
+        try:
+            # Handle both DD/MM/YYYY and YYYY-MM-DD formats
+            if '/' in date_str:
+                # DD/MM/YYYY format
+                day, month, year = date_str.split('/')
+                date_obj = datetime(int(year), int(month), int(day))
+            else:
+                # YYYY-MM-DD format
+                date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            
+            dias = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
+            meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 
+                    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
+            
+            dia_semana = dias[date_obj.weekday()]
+            dia = date_obj.day
+            mes = meses[date_obj.month - 1]
+            año = date_obj.year
+            
+            return f"{dia_semana}, {dia} DE {mes} DEL {año}"
+        except:
+            return date_str
+    
+    def _extract_year_from_date(self, date_str: str) -> str:
+        """Extract year from date string."""
+        if not date_str:
+            return ""
+        
+        try:
+            if '/' in date_str:
+                # DD/MM/YYYY format
+                return date_str.split('/')[-1]
+            else:
+                # YYYY-MM-DD format
+                return date_str[:4]
+        except:
+            return ""
+    
+    def generate_excel_report(self, desde: str, hasta: str) -> HttpResponse:
+        """Generate Excel report for Permisos de Viaje."""
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, Alignment, Border, Side
+            
+            report_data = self._get_report_data(desde, hasta)
+            notary_name = self._get_notary_info()
+            anio = self._extract_year_from_date(hasta)
+            
+            # Create workbook and worksheet
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Permisos de Viaje"
+            
+            # Styles
+            title_font = Font(size=18, bold=True)
+            header_font = Font(size=13, bold=True)
+            data_font = Font(size=12)
+            center_alignment = Alignment(horizontal='center', vertical='center')
+            left_alignment = Alignment(horizontal='left', vertical='top')
+            
+            # Title
+            ws.merge_cells('A1:G1')
+            ws['A1'] = 'INDICE CRONOLOGICO - PERMISOS DE VIAJE'
+            ws['A1'].font = title_font
+            ws['A1'].alignment = center_alignment
+            
+            ws.merge_cells('A2:G2')
+            ws['A2'] = f'AÑO {anio}'
+            ws['A2'].font = title_font
+            ws['A2'].alignment = center_alignment
+            
+            # Notary info section (no borders)
+            row = 4
+            ws[f'A{row}'] = 'NOTARIA'
+            ws[f'C{row}'] = f': {notary_name}'
+            ws[f'A{row}'].font = header_font
+            ws[f'C{row}'].font = data_font
+            
+            row += 1
+            ws[f'A{row}'] = 'DIRECCION'
+            ws[f'C{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'E{row}'] = 'TELEFONO'
+            ws[f'F{row}'] = ': (051) 326609'
+            ws[f'A{row}'].font = header_font
+            ws[f'C{row}'].font = data_font
+            ws[f'E{row}'].font = header_font
+            ws[f'F{row}'].font = data_font
+            
+            row += 1
+            ws[f'A{row}'] = 'DEPARTAMENTO'
+            ws[f'C{row}'] = ': PUNO'
+            ws[f'E{row}'] = 'RUC'
+            ws[f'F{row}'] = ': 10024231572'
+            ws[f'A{row}'].font = header_font
+            ws[f'C{row}'].font = data_font
+            ws[f'E{row}'].font = header_font
+            ws[f'F{row}'].font = data_font
+            
+            row += 1
+            ws[f'A{row}'] = 'PROVINCIA'
+            ws[f'C{row}'] = ': SAN ROMAN'
+            ws[f'E{row}'] = 'DESDE'
+            ws[f'F{row}'] = f': {self._format_date_in_spanish(desde)}'
+            ws[f'A{row}'].font = header_font
+            ws[f'C{row}'].font = data_font
+            ws[f'E{row}'].font = header_font
+            ws[f'F{row}'].font = data_font
+            
+            row += 1
+            ws[f'A{row}'] = 'DISTRITO'
+            ws[f'C{row}'] = ': JULIACA'
+            ws[f'E{row}'] = 'HASTA'
+            ws[f'F{row}'] = f': {self._format_date_in_spanish(hasta)}'
+            ws[f'A{row}'].font = header_font
+            ws[f'C{row}'].font = data_font
+            ws[f'E{row}'].font = header_font
+            ws[f'F{row}'].font = data_font
+            
+            # Add spacing
+            row += 2
+            
+            # Data table headers
+            headers = ['NRO.', 'FECHA', 'PARTICIPANTES', 'VIA', 'DESTINO', 'OBSERVACIONES']
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=row, column=col, value=header)
+                cell.font = header_font
+                cell.alignment = center_alignment
+            
+            # Add data rows
+            row += 1
+            for data_row in report_data:
+                # Main data row
+                correlativo = str(data_row[7])[-6:] if data_row[7] else ''  # Extract last 6 digits
+                fecha_crono = data_row[2] if len(data_row) > 2 else ''
+                via = data_row[9] if len(data_row) > 9 else ''
+                destino = data_row[5] if len(data_row) > 5 else ''
+                observacion = data_row[10] if len(data_row) > 10 else ''
+                
+                # Get participants for this viaje
+                id_viaje = data_row[0] if len(data_row) > 0 else 0
+                participants = self._get_participants_for_viaje(id_viaje)
+                
+                # Create participant text
+                participant_text = ""
+                for participant in participants:
+                    condicion = participant.get('des_condicion', '')
+                    nombre = participant.get('c_descontrat', '')
+                    tipo_doc = participant.get('tipo_documento', '')
+                    num_doc = participant.get('doc', '')
+                    participant_text += f"{condicion}: {nombre}\n{tipo_doc}: {num_doc}\n"
+                
+                # Main data row
+                ws.cell(row=row, column=1, value=correlativo).alignment = center_alignment
+                ws.cell(row=row, column=2, value=fecha_crono).alignment = center_alignment
+                ws.cell(row=row, column=3, value=participant_text.strip()).alignment = left_alignment
+                ws.cell(row=row, column=4, value=via).alignment = center_alignment
+                ws.cell(row=row, column=5, value=destino).alignment = center_alignment
+                ws.cell(row=row, column=6, value=observacion).alignment = left_alignment
+                
+                # Set font for all cells
+                for col in range(1, 7):
+                    ws.cell(row=row, column=col).font = data_font
+                
+                row += 1
+            
+            # Auto-adjust column widths
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Save to buffer
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            
+            # Create response
+            filename = f"INDICE_CRONOLOGICO_PERMISOS_DE_VIAJE_{anio}.xlsx"
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            return HttpResponse(
+                json.dumps({'error': f'Error generating Excel report: {str(e)}'}),
+                content_type='application/json',
+                status=500
+            )
+    
+    def generate_word_report(self, desde: str, hasta: str) -> HttpResponse:
+        """Generate Word report for Permisos de Viaje."""
+        try:
+            from docx import Document
+            from docx.shared import Pt
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml import OxmlElement
+            from docx.oxml.ns import qn
+            
+            report_data = self._get_report_data(desde, hasta)
+            notary_name = self._get_notary_info()
+            anio = self._extract_year_from_date(hasta)
+            
+            # Create a new document
+            doc = Document()
+            
+            # Title
+            title = doc.add_heading('INDICE CRONOLOGICO - PERMISOS DE VIAJE', 0)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            subtitle = doc.add_heading(f'AÑO {anio}', 0)
+            subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Add spacing
+            doc.add_paragraph()
+            
+            # Notary info table - NO BORDERS
+            info_table = doc.add_table(rows=5, cols=6)
+            # No table style = no borders
+            
+            # Row 1: NOTARIA
+            row = info_table.rows[0]
+            row.cells[0].merge(row.cells[1])
+            row.cells[0].text = 'NOTARIA'
+            row.cells[2].text = f': {notary_name}'
+            
+            # Row 2: DIRECCION
+            row = info_table.rows[1]
+            row.cells[0].merge(row.cells[1])
+            row.cells[0].text = 'DIRECCION'
+            row.cells[2].text = ': JR.BOLIVAR NRO. 340'
+            row.cells[3].text = 'TELEFONO'
+            row.cells[4].merge(row.cells[5])
+            row.cells[4].text = ': (051) 326609'
+            
+            # Row 3: DEPARTAMENTO
+            row = info_table.rows[2]
+            row.cells[0].merge(row.cells[1])
+            row.cells[0].text = 'DEPARTAMENTO'
+            row.cells[2].text = ': PUNO'
+            row.cells[3].text = 'RUC'
+            row.cells[4].merge(row.cells[5])
+            row.cells[4].text = ': 10024231572'
+            
+            # Row 4: PROVINCIA
+            row = info_table.rows[3]
+            row.cells[0].merge(row.cells[1])
+            row.cells[0].text = 'PROVINCIA'
+            row.cells[2].text = ': SAN ROMAN'
+            row.cells[3].text = 'DESDE'
+            row.cells[4].merge(row.cells[5])
+            row.cells[4].text = f': {self._format_date_in_spanish(desde)}'
+            
+            # Row 5: DISTRITO
+            row = info_table.rows[4]
+            row.cells[0].merge(row.cells[1])
+            row.cells[0].text = 'DISTRITO'
+            row.cells[2].text = ': JULIACA'
+            row.cells[3].text = 'HASTA'
+            row.cells[4].merge(row.cells[5])
+            row.cells[4].text = f': {self._format_date_in_spanish(hasta)}'
+            
+            # Style the info table - Simple styling without borders
+            for row in info_table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            if ':' in run.text:
+                                run.font.bold = True
+                            run.font.size = Pt(12)
+            
+            # Add spacing
+            doc.add_paragraph()
+            
+            # Main data table - ALWAYS CREATE, even if empty
+            # Create table with headers
+            headers = ['NRO.', 'FECHA', 'PARTICIPANTES', 'VIA', 'DESTINO', 'OBSERVACIONES']
+            data_table = doc.add_table(rows=1, cols=6)
+            data_table.style = 'Table Grid'
+            
+            # Add headers
+            header_row = data_table.rows[0]
+            for i, header in enumerate(headers):
+                cell = header_row.cells[i]
+                cell.text = header
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(12)
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Add data rows if data exists
+            if report_data and len(report_data) > 0:
+                for data_row in report_data:
+                    # Main data row
+                    correlativo = str(data_row[7])[-6:] if data_row[7] else ''  # Extract last 6 digits
+                    fecha_crono = data_row[2] if len(data_row) > 2 else ''
+                    via = data_row[9] if len(data_row) > 9 else ''
+                    destino = data_row[5] if len(data_row) > 5 else ''
+                    observacion = data_row[10] if len(data_row) > 10 else ''
+                    
+                    # Get participants for this viaje
+                    id_viaje = data_row[0] if len(data_row) > 0 else 0
+                    participants = self._get_participants_for_viaje(id_viaje)
+                    
+                    # Create participant text
+                    participant_text = ""
+                    for participant in participants:
+                        condicion = participant.get('des_condicion', '')
+                        nombre = participant.get('c_descontrat', '')
+                        tipo_doc = participant.get('tipo_documento', '')
+                        num_doc = participant.get('doc', '')
+                        participant_text += f"{condicion}: {nombre}\n{tipo_doc}: {num_doc}\n"
+                    
+                    # Add data row
+                    row = data_table.add_row()
+                    row.cells[0].text = correlativo
+                    row.cells[1].text = fecha_crono
+                    row.cells[2].text = participant_text.strip()
+                    row.cells[3].text = via
+                    row.cells[4].text = destino
+                    row.cells[5].text = observacion
+                    
+                    # Center align NRO, FECHA, VIA, DESTINO
+                    for i in [0, 1, 3, 4]:
+                        for paragraph in row.cells[i].paragraphs:
+                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    
+                    # Left align PARTICIPANTES and OBSERVACIONES
+                    for i in [2, 5]:
+                        for paragraph in row.cells[i].paragraphs:
+                            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            else:
+                # Add "No se encontraron registros" message
+                row = data_table.add_row()
+                row.cells[0].merge(row.cells[5])
+                row.cells[0].text = "No se encontraron registros para el período especificado"
+                for paragraph in row.cells[0].paragraphs:
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Save to buffer
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            
+            # Create response
+            filename = f"INDICE_CRONOLOGICO_PERMISOS_DE_VIAJE_{anio}.docx"
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            return HttpResponse(
+                json.dumps({'error': f'Error generating Word report: {str(e)}'}),
+                content_type='application/json',
+                status=500
+            ) 

@@ -2,6 +2,8 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
+from ducumentation.extraprotocolares.permiso_viajes import PermisosViajeReportService
+
 from . import models
 from . import serializers
 from . import pagination
@@ -1537,6 +1539,45 @@ class PermiViajeViewSet(ModelViewSet):
             'contratantes_map': contratantes_map
         })
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='reporte')
+    def reporte(self, request):
+        """
+        Generate chronological index report for permisos de viaje.
+        
+        Parameters:
+        - fechade: Start date (DD/MM/YYYY)
+        - fechaa: End date (DD/MM/YYYY) 
+        - tipo_documento: 'EXCEL' or 'WORD'
+        """
+        
+        fechade = request.query_params.get('fechade')
+        fechaa = request.query_params.get('fechaa')
+        tipo_documento = request.query_params.get('tipo_documento', 'WORD')
+        
+        if not fechade or not fechaa:
+            return Response(
+                {'error': 'Both fechade and fechaa are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Convert dates from DD/MM/YYYY to YYYY-MM-DD
+        try:
+            desde = datetime.strptime(fechade, '%d/%m/%Y').strftime('%Y-%m-%d')
+            hasta = datetime.strptime(fechaa, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use DD/MM/YYYY'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Generate report using the service
+        report_service = PermisosViajeReportService()
+        
+        if tipo_documento == 'EXCEL':
+            return report_service.generate_excel_report(desde, hasta)
+        else:
+            return report_service.generate_word_report(desde, hasta)
 
 class ViajeContratantesViewSet(ModelViewSet):
     """
