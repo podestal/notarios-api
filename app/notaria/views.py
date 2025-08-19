@@ -46,16 +46,23 @@ class PermisosUsuariosViewSet(ModelViewSet):
 class KardexViewSet(ModelViewSet):
     """
     ViewSet for the Kardex model.
+    
+    Unified filtering through query parameters:
+    - correlative: Filter by kardex prefix (e.g., "2025" for kardex starting with "2025")
+    - name: Filter by client name (searches nombre, apepat, apemat, primom, segnom)
+    - document: Filter by client document number
+    - numescritura: Filter by escritura number
+    - idtipkar: Filter by kardex type
+    - dateFrom/dateTo/dateType: Filter by fechaingreso date range
     """
     serializer_class = serializers.KardexSerializer
     pagination_class = pagination.KardexPagination
 
     def get_queryset(self):
-        idtipkar = self.request.query_params.get('idtipkar')
-        qs = models.Kardex.objects.all().order_by('-idkardex')
-        if idtipkar is not None:
-            qs = qs.filter(idtipkar=idtipkar)
-        return qs
+        """
+        Base queryset - filtering is handled in list() method.
+        """
+        return models.Kardex.objects.all()
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -64,10 +71,73 @@ class KardexViewSet(ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """
-        List all Kardex objects.
+        List all Kardex objects with comprehensive filtering.
         """
-        page_kardex = self.paginate_queryset(self.get_queryset())
+        # Get filter parameters
+        correlative = request.query_params.get('correlative', '')
+        name = request.query_params.get('name', '')
+        document = request.query_params.get('document', '')
+        numescritura = request.query_params.get('numescritura', '')
+        idtipkar = request.query_params.get('idtipkar', '')
+        dateFrom = request.query_params.get('dateFrom', '')
+        dateTo = request.query_params.get('dateTo', '')
+        dateType = request.query_params.get('dateType', '')
 
+        # Start with base queryset
+        queryset = self.get_queryset()
+
+        # Apply idtipkar filter if provided
+        if idtipkar:
+            queryset = queryset.filter(idtipkar=idtipkar)
+
+        # Apply date filters
+        if dateType == 'fechaingreso':
+            if dateFrom and dateTo:
+                queryset = queryset.filter(fechaingreso__range=(dateFrom, dateTo))
+            elif dateFrom:
+                queryset = queryset.filter(fechaingreso__gte=dateFrom)
+            elif dateTo:
+                queryset = queryset.filter(fechaingreso__lte=dateTo)
+
+        # Apply correlative filter (kardex__startswith)
+        if correlative:
+            queryset = queryset.filter(kardex__startswith=correlative)
+
+        # Apply numescritura filter
+        if numescritura:
+            queryset = queryset.filter(numescritura=numescritura)
+
+        # Apply name/document filters through related models
+        if name or document:
+            # Get clientes that match name or document criteria
+            cliente_filters = Q()
+            if name:
+                cliente_filters |= (
+                    Q(nombre__icontains=name) |
+                    Q(apepat__icontains=name) |
+                    Q(apemat__icontains=name) |
+                    Q(prinom__icontains=name) |
+                    Q(segnom__icontains=name)
+                )
+            if document:
+                cliente_filters |= Q(numdoc__icontains=document)
+
+            # Get contratantes for matching clientes
+            matching_clientes = models.Cliente2.objects.filter(cliente_filters).values_list('idcontratante', flat=True)
+            matching_kardex = models.Contratantes.objects.filter(
+                idcontratante__in=matching_clientes
+            ).values_list('kardex', flat=True)
+
+            # Filter kardex by matching kardex IDs
+            queryset = queryset.filter(kardex__in=matching_kardex)
+
+        # Order by fechaingreso (newest first)
+        queryset = queryset.order_by('-fechaingreso')
+
+        # Paginate the filtered queryset
+        page_kardex = self.paginate_queryset(queryset)
+
+        # Prepare optimized data maps for serializer context
         user_ids = set(obj.idusuario for obj in page_kardex)
         kardex_ids = set(obj.kardex for obj in page_kardex)
 
@@ -81,9 +151,9 @@ class KardexViewSet(ModelViewSet):
         ).values('idcontratante', 'kardex')
 
         contratantes_map = defaultdict(list)
-
         for c in contratantes:
             contratantes_map[c['kardex']].append(c['idcontratante'])
+
         contratante_ids = set(c['idcontratante'] for c in contratantes)
 
         clientes_map = {
@@ -95,7 +165,7 @@ class KardexViewSet(ModelViewSet):
             )
         }
 
-        # Pass context manually to serializer if needed
+        # Serialize with context
         serializer = self.get_serializer(page_kardex, many=True, context={
             'usuarios_map': usuarios_map,
             'contratantes_map': contratantes_map,
@@ -258,263 +328,6 @@ class KardexViewSet(ModelViewSet):
             models.DetalleActosKardex.objects.create(**detalle_data)
 
         return Response(serializer.data, status=201)
-
-    
-
-    @action(detail=False, methods=['get'])
-    def kardex_by_correlative(self, request):
-        """
-        Get Kardex records by correlative prefix (kardex__startswith).
-        """
-        correlative = request.query_params.get('correlative')
-        idtipkar = self.request.query_params.get('idtipkar')
-
-        if not correlative:
-            return Response(
-                {"error": "correlative parameter is required."},
-                status=400
-            )
-
-        # Get the filtered queryset
-        kardex_qs = models.Kardex.objects.filter(
-            kardex__startswith=correlative,
-            idtipkar=idtipkar
-        )
-
-        if not kardex_qs.exists():
-            return Response({}, status=200)
-
-        paginator = self.paginator
-        paginated_kardex = paginator.paginate_queryset(kardex_qs, request)
-
-        # Order by fechaingreso
-
-        # Prepare optimized data maps (same as in list)
-        user_ids = set(obj.idusuario for obj in kardex_qs)
-        kardex_ids = set(obj.kardex for obj in kardex_qs)
-
-        usuarios_map = {
-            u.idusuario: u
-            for u in models.Usuarios.objects.filter(idusuario__in=user_ids)
-        }
-
-        contratantes = models.Contratantes.objects.filter(
-            kardex__in=kardex_ids
-        ).values('idcontratante', 'kardex')
-
-        contratantes_map = defaultdict(list)
-
-        for c in contratantes:
-            contratantes_map[c['kardex']].append(c['idcontratante'])
-        print('contratantes_map:', contratantes_map)
-        contratante_ids = set(c['idcontratante'] for c in contratantes)
-
-        clientes_map = {
-            c['idcontratante']: c
-            for c in models.Cliente2.objects.filter(idcontratante__in=contratante_ids)
-            .values('idcontratante', 'idcliente', 'nombre')
-        }
-
-        # Pass context manually
-        serializer = serializers.KardexSerializer(paginated_kardex, many=True, context={
-            'usuarios_map': usuarios_map,
-            'contratantes_map': contratantes_map,
-            'clientes_map': clientes_map,
-        })
-
-        return self.get_paginated_response(serializer.data)
-
-    @action(detail=False, methods=['get'])
-    def by_name(self, request):
-        """
-        Get Kardex records by name.
-        """
-        name = request.query_params.get('name')
-        idtipkar = self.request.query_params.get('idtipkar')
-        if not name:
-            return Response(
-                {"error": "name parameter is required."},
-                status=400
-            )
-
-        cliente = models.Cliente2.objects.filter(
-            Q(nombre__icontains=name) |
-            Q(apepat__icontains=name) |
-            Q(apemat__icontains=name) |
-            Q(prinom__icontains=name) |
-            Q(segnom__icontains=name)
-        ).values('idcontratante', 'idcliente', 'nombre', 'numdoc')
-
-        clientes_map = {c['idcontratante']: c for c in cliente}
-
-        if not cliente.exists():
-            return Response(
-                {"error": "No records found for the given name."},
-                status=404
-            )
-
-        contratantes_ids = [c["idcontratante"] for c in cliente]
-        contratantes = models.Contratantes.objects.filter(
-            idcontratante__in=contratantes_ids
-        ).values('idcontratante', 'kardex')
-
-        contratantes_map = defaultdict(list)
-
-        for c in contratantes:
-            contratantes_map[c['kardex']].append(c['idcontratante'])
-
-        kardex_ids = [c['kardex'] for c in contratantes]
-        kardex_qs = models.Kardex.objects.filter(
-            kardex__in=kardex_ids,
-            idtipkar=idtipkar
-        ).order_by('-fechaingreso')
-
-        if not kardex_qs.exists():
-            return Response({}, status=200)
-
-        paginator = self.paginator
-        paginated_kardex = paginator.paginate_queryset(kardex_qs, request)
-
-        user_ids = set(obj.idusuario for obj in kardex_qs)
-
-        usuarios_map = {
-            u.idusuario: u
-            for u in models.Usuarios.objects.filter(idusuario__in=user_ids)
-        }
-
-        serializer = serializers.KardexSerializer(paginated_kardex, many=True, context={
-            'usuarios_map': usuarios_map,
-            'contratantes_map': contratantes_map,
-            'clientes_map': clientes_map,
-        })
-
-        return self.get_paginated_response(serializer.data)
-
-    @action(detail=False, methods=['get'])
-    def by_document(self, request):
-        """
-        Get Kardex records by name.
-        """
-        document = request.query_params.get('document')
-        idtipkar = self.request.query_params.get('idtipkar')
-        if not document:
-            return Response(
-                {"error": "name parameter is required."},
-                status=400
-            )
-        
-        cliente = models.Cliente2.objects.filter(
-            numdoc__icontains=document
-        ).values('idcontratante', 'idcliente', 'nombre')
-        # clientes_map = defaultdict(list)
-        # for c in cliente:
-        #     clientes_map[c['idcontratante']].append(c)
-        clientes_map = {c['idcontratante']: c for c in cliente}
-
-        if not cliente.exists():
-            return Response(
-                {"error": "No records found for the given name."},
-                status=404
-            )
-        
-        contratantes_ids = [c["idcontratante"] for c in cliente]
-
-        contratantes = models.Contratantes.objects.filter(
-            idcontratante__in=contratantes_ids
-        ).values('idcontratante', 'kardex')
-
-        contratantes_map = defaultdict(list)
-
-        for c in contratantes:
-            contratantes_map[c['kardex']].append(c['idcontratante'])
-
-        print('contratantes_map:', contratantes_map)
-
-        kardex_ids = [c['kardex'] for c in contratantes]
-        kardex_qs = models.Kardex.objects.filter(
-            kardex__in=kardex_ids,
-            idtipkar=idtipkar
-        ).order_by('-fechaingreso')
-
-        if not kardex_qs.exists():
-            return Response({}, status=200)
-
-        paginator = self.paginator
-        paginated_kardex = paginator.paginate_queryset(kardex_qs, request)
-
-        user_ids = set(obj.idusuario for obj in kardex_qs)
-
-        usuarios_map = {
-            u.idusuario: u
-            for u in models.Usuarios.objects.filter(idusuario__in=user_ids)
-        }
-
-        serializer = serializers.KardexSerializer(paginated_kardex, many=True, context={
-            'usuarios_map': usuarios_map,
-            'contratantes_map': contratantes_map,
-            'clientes_map': clientes_map,
-        })
-
-        return self.get_paginated_response(serializer.data)
-
-    @action(detail=False, methods=['get'])
-    def by_numescritura(self, request):
-        """
-        Get Kardex records by numescritura.
-        """
-        numescritura = request.query_params.get('numescritura')
-        idtipkar = self.request.query_params.get('idtipkar')
-        if not numescritura:
-            return Response(
-                {"error": "numescritura parameter is required."},
-                status=400
-            )
-
-        kardex_qs = models.Kardex.objects.filter(
-            numescritura=numescritura,
-            idtipkar=idtipkar
-        ).order_by('-fechaingreso')
-
-        if not kardex_qs.exists():
-            return Response({}, status=200)
-
-        paginator = self.paginator
-        paginated_kardex = paginator.paginate_queryset(kardex_qs, request)
-
-        user_ids = set(obj.idusuario for obj in paginated_kardex)
-        kardex_ids = set(obj.kardex for obj in paginated_kardex)
-
-        usuarios_map = {
-            u.idusuario: u
-            for u in models.Usuarios.objects.filter(idusuario__in=user_ids)
-        }
-
-        contratantes = models.Contratantes.objects.filter(
-            kardex__in=kardex_ids
-        ).values('idcontratante', 'kardex')
-        contratantes_map = defaultdict(list)
-
-        for c in contratantes:
-            contratantes_map[c['kardex']].append(c['idcontratante'])
-
-        contratante_ids = set(c['idcontratante'] for c in contratantes)
-
-        clientes_map = {
-            c['idcontratante']: c
-            for c in models.Cliente2.objects.filter(
-                idcontratante__in=contratante_ids
-            ).values(
-                'idcontratante', 'nombre', 'numdoc'
-            )
-        }
-
-        serializer = serializers.KardexSerializer(paginated_kardex, many=True, context={
-            'usuarios_map': usuarios_map,
-            'contratantes_map': contratantes_map,
-            'clientes_map': clientes_map,
-        })
-
-        return self.get_paginated_response(serializer.data)
 
 
 class TipoKarViewSet(ModelViewSet):
