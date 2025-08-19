@@ -360,7 +360,7 @@ class Cliente2(models.Model):
     nombre = models.CharField(max_length=1000, blank=True, null=True)
     direccion = models.CharField(max_length=3000, blank=True, null=True)
     idtipdoc = models.IntegerField()
-    numdoc = models.CharField(max_length=50)
+    numdoc = models.CharField(max_length=50, blank=True, null=True)
     email = models.CharField(max_length=300, blank=True, null=True)
     telfijo = models.CharField(max_length=20, blank=True, null=True)
     telcel = models.CharField(max_length=20, blank=True, null=True)

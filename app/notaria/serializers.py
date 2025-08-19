@@ -430,6 +430,7 @@ class CreateClienteSerializer(serializers.ModelSerializer):
             'actmunicipal',
             'contacempresa',
             'fechaconstitu',
+            'numdoc_plantilla',
         ]
 
     def create(self, validated_data):

@@ -879,6 +879,36 @@ class ClienteViewSet(ModelViewSet):
         serializer = serializers.ClienteSerializer(clientes[len(clientes) - 1])
         return Response(serializer.data)
 
+    def create(self, request, *args, **kwargs):
+        """
+        Create a Cliente record.
+        """
+        idtipdoc = request.data.get('idtipdoc')
+        if idtipdoc == 10:
+            # Generate CODJU for juridical persons (like PHP script)
+            codju_count = models.Cliente.objects.filter(numdoc_plantilla__contains='CODJU').count()
+            next_number = codju_count + 1
+            
+            # Format as CODJU000001, CODJU000002, etc.
+            new_codju = f"CODJU{str(next_number).zfill(6)}"
+            
+            # Create a mutable copy of the request data
+            data = request.data.copy()
+            data['numdoc_plantilla'] = new_codju
+            
+            # Also ensure numdoc is empty for CODJU records (like PHP)
+            if 'numdoc' not in data:
+                data['numdoc'] = ''
+            
+            # Create serializer with modified data
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        
+        return super().create(request, *args, **kwargs)
+
 
 class Cliente2ViewSet(ModelViewSet):
     """
