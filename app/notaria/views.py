@@ -18,6 +18,12 @@ from collections import defaultdict
 from . import utils
 from datetime import datetime
 
+from django.utils import timezone
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 '''
 ViewSets for the Notaria app.
@@ -328,6 +334,214 @@ class KardexViewSet(ModelViewSet):
             models.DetalleActosKardex.objects.create(**detalle_data)
 
         return Response(serializer.data, status=201)
+
+
+    
+    @action(detail=False, methods=['get'], url_path='uif-errors')
+    def uif_error_dashboard(self, request):
+        """
+        UIF Error Dashboard - validates kardex records for UIF compliance.
+        EXACTLY like the old PHP script.
+        """
+        try:
+            # Get and validate parameters
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+            include_valid = request.query_params.get('includeValid', 'false').lower() == 'true'
+            
+            if not initial_date or not final_date:
+                return Response({
+                    'error': 'Both initialDate and finalDate are required (DD/MM/YYYY format)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Convert dates EXACTLY like PHP
+            try:
+                start_date = datetime.strptime(initial_date, '%d/%m/%Y').date()
+                end_date = datetime.strptime(final_date, '%d/%m/%Y').date()
+            except ValueError:
+                return Response({
+                    'error': 'Invalid date format. Use DD/MM/YYYY'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # EXACTLY like PHP: Get kardex records for date range
+            kardex_records = models.Kardex.objects.filter(
+                fechaescritura__range=[start_date, end_date],
+                idtipkar__not_in=[2, 5]  # Exclude types 2 and 5
+            ).order_by('idtipkar', 'fechaescritura', 'numescritura')
+            
+            # Process validation EXACTLY like PHP
+            errors = []
+            valid_records = []
+            error_summary = {
+                'missing_uif_code': 0,
+                'missing_escritura_number': 0,
+                'missing_conclusion_date': 0,
+                'missing_patrimonial_data': 0,
+                'invalid_act_codes': 0
+            }
+            
+            for kardex in kardex_records:
+                # EXACTLY like PHP: Parse codactos (3-character codes)
+                if not kardex.codactos:
+                    continue
+                    
+                act_codes = []
+                for i in range(0, len(kardex.codactos), 3):
+                    if i + 3 <= len(kardex.codactos):
+                        act_codes.append(kardex.codactos[i:i+3])
+                
+                # EXACTLY like PHP: Validate each act code
+                for act_code in act_codes:
+                    # EXACTLY like PHP: Check if act has valid UIF code
+                    tipo_acto = models.TiposDeActo.objects.filter(
+                        idtipoacto=act_code,
+                        actouif__isnull=False
+                    ).exclude(actouif='').first()
+                    
+                    # Build record data EXACTLY like PHP
+                    record_data = {
+                        'idkardex': kardex.idkardex,
+                        'kardex': kardex.kardex,
+                        'idtipkar': kardex.idtipkar,
+                        'tipo_instrumento': self._get_tipo_instrumento(kardex.idtipkar),
+                        'codacto': act_code,
+                        'numescritura': kardex.numescritura,
+                        'fechaescritura': kardex.fechaescritura,
+                        'fechaconclusion': kardex.fechaconclusion,
+                        'tipo': 'I'  # Initial record
+                    }
+                    
+                    if tipo_acto:
+                        # EXACTLY like PHP: Valid record goes to 'ro' table equivalent
+                        record_data.update({
+                            'act': tipo_acto.desacto,
+                            'uif_code': tipo_acto.actouif,
+                            'umbral': tipo_acto.umbral,
+                            'status': 'valid',
+                            'validation_errors': []
+                        })
+                        
+                        if include_valid:
+                            valid_records.append(record_data)
+                    else:
+                        # EXACTLY like PHP: Invalid record goes to 'ro_not' table equivalent
+                        record_data.update({
+                            'act': f'Acto {act_code}',
+                            'uif_code': '',
+                            'status': 'invalid',
+                            'error_type': 'missing_uif_code',
+                            'error_description': f'Missing UIF code for act {act_code}'
+                        })
+                        errors.append(record_data)
+                        error_summary['missing_uif_code'] += 1
+                
+                # EXACTLY like PHP: Check for missing escritura number
+                if not kardex.numescritura or kardex.numescritura.strip() == '':
+                    errors.append({
+                        'idkardex': kardex.idkardex,
+                        'kardex': kardex.kardex,
+                        'status': 'invalid',
+                        'error_type': 'missing_escritura_number',
+                        'error_description': 'Missing escritura number'
+                    })
+                    error_summary['missing_escritura_number'] += 1
+                
+                # EXACTLY like PHP: Check for missing conclusion date
+                if not kardex.fechaconclusion:
+                    errors.append({
+                        'idkardex': kardex.idkardex,
+                        'kardex': kardex.kardex,
+                        'status': 'invalid',
+                        'error_type': 'missing_conclusion_date',
+                        'error_description': 'Missing conclusion date'
+                    })
+                    error_summary['missing_conclusion_date'] += 1
+            
+            # EXACTLY like PHP: Process complementary data (contract signing dates)
+            complementary_errors = self._process_complementary_data(start_date, end_date)
+            errors.extend(complementary_errors)
+            
+            # Build response
+            response_data = {
+                'errors': errors,
+                'summary': {
+                    'total_kardex': len(kardex_records),
+                    'total_errors': len(errors),
+                    'error_breakdown': error_summary,
+                    'date_range': {
+                        'start': initial_date,
+                        'end': final_date,
+                        'start_iso': start_date.isoformat(),
+                        'end_iso': end_date.isoformat()
+                    }
+                },
+                'metadata': {
+                    'processed_at': timezone.now().isoformat(),
+                    'include_valid_records': include_valid
+                }
+            }
+            
+            if include_valid:
+                response_data['valid_records'] = valid_records
+                response_data['summary']['total_valid'] = len(valid_records)
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error in UIF error dashboard: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Internal server error while processing UIF validation',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _get_tipo_instrumento(self, idtipkar):
+        """EXACTLY like PHP: Get instrument type abbreviation based on idtipkar."""
+        tipo_map = {
+            1: 'E',  # Escritura
+            3: 'T',  # Transferencia
+            4: 'G',  # Otros
+        }
+        return tipo_map.get(idtipkar, 'SIN INICIAL')
+    
+    def _process_complementary_data(self, start_date, end_date):
+        """EXACTLY like PHP: Process complementary data for contracts signed in date range."""
+        complementary_errors = []
+        
+        # EXACTLY like PHP: Get contracts signed in date range but with earlier escritura dates
+        # This replicates the complex query from the original PHP script
+        contratantes = models.Contratantes.objects.filter(
+            fechafirma__isnull=False,
+            fechafirma__range=[start_date, end_date]
+        )
+        
+        for contratante in contratantes:
+            if not contratante.kardex:
+                continue
+                
+            # EXACTLY like PHP: Check if kardex exists and meets criteria
+            try:
+                kardex = models.Kardex.objects.get(kardex=contratante.kardex)
+                
+                # EXACTLY like PHP: Same conditions as original script
+                if (kardex.fechaescritura and 
+                    kardex.fechaescritura < start_date and 
+                    kardex.idtipkar not in [2, 5]):
+                    
+                    # This is complementary data that should be in 'ro' table
+                    # but we're treating it as potential error for now
+                    complementary_errors.append({
+                        'idkardex': kardex.idkardex,
+                        'kardex': kardex.kardex,
+                        'status': 'complementary',
+                        'error_type': 'complementary_data',
+                        'error_description': 'Contract signed in date range but escritura from earlier period',
+                        'fecha_firma': contratante.fechafirma,
+                        'fecha_escritura': kardex.fechaescritura
+                    })
+            except models.Kardex.DoesNotExist:
+                continue
+        
+        return complementary_errors
 
 
 class TipoKarViewSet(ModelViewSet):
