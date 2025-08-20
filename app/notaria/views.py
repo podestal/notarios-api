@@ -398,7 +398,10 @@ class KardexViewSet(ModelViewSet):
                 'missing_escritura_number': 0,
                 'missing_conclusion_date': 0,
                 'missing_patrimonial_data': 0,
-                'invalid_act_codes': 0
+                'invalid_act_codes': 0,
+                'currency_without_amount': 0,
+                'amount_mismatch': 0,
+                'missing_participant_amount': 0
             }
             
             for kardex in kardex_records:
@@ -439,6 +442,18 @@ class KardexViewSet(ModelViewSet):
                             'validation_errors': []
                         })
                         
+                        # EXACTLY like PHP: Check patrimonial data and amounts
+                        patrimonial_errors = self._validate_patrimonial_data(kardex.kardex, act_code, tipo_acto.desacto)
+                        if patrimonial_errors:
+                            errors.extend(patrimonial_errors)
+                            for error in patrimonial_errors:
+                                if error['error_type'] == 'currency_without_amount':
+                                    error_summary['currency_without_amount'] += 1
+                                elif error['error_type'] == 'amount_mismatch':
+                                    error_summary['amount_mismatch'] += 1
+                                elif error['error_type'] == 'missing_participant_amount':
+                                    error_summary['missing_participant_amount'] += 1
+                        
                         if include_valid:
                             valid_records.append(record_data)
                     else:
@@ -448,7 +463,7 @@ class KardexViewSet(ModelViewSet):
                             'uif_code': '',
                             'status': 'invalid',
                             'error_type': 'missing_uif_code',
-                            'error_description': f'Missing UIF code for act {act_code}'
+                            'error_description': f'Código UIF faltante para el acto {act_code}'
                         })
                         errors.append(record_data)
                         error_summary['missing_uif_code'] += 1
@@ -460,7 +475,7 @@ class KardexViewSet(ModelViewSet):
                         'kardex': kardex.kardex,
                         'status': 'invalid',
                         'error_type': 'missing_escritura_number',
-                        'error_description': 'Missing escritura number'
+                        'error_description': 'Número de escritura faltante'
                     })
                     error_summary['missing_escritura_number'] += 1
                 
@@ -471,7 +486,7 @@ class KardexViewSet(ModelViewSet):
                         'kardex': kardex.kardex,
                         'status': 'invalid',
                         'error_type': 'missing_conclusion_date',
-                        'error_description': 'Missing conclusion date'
+                        'error_description': 'Fecha de conclusión faltante'
                     })
                     error_summary['missing_conclusion_date'] += 1
             
@@ -565,6 +580,117 @@ class KardexViewSet(ModelViewSet):
                 continue
         
         return complementary_errors
+    
+    def _validate_patrimonial_data(self, kardex, act_code, act_description):
+        """
+        EXACTLY like PHP: Validate patrimonial data, amounts, and currency codes.
+        This replicates the complex validation logic from the original PHP script.
+        """
+        patrimonial_errors = []
+        
+        try:
+            # Get patrimonial data for this kardex and act
+            patrimonial = models.Patrimonial.objects.filter(
+                kardex=kardex,
+                idtipoacto=act_code
+            ).first()
+            
+            if not patrimonial:
+                return patrimonial_errors
+            
+            # Get all contratantes for this kardex
+            contratantes = models.Contratantes.objects.filter(kardex=kardex)
+            
+            # Check if currency code is provided without amounts
+            if patrimonial.idmon and patrimonial.idmon != '':
+                if not patrimonial.importetrans or patrimonial.importetrans == 0:
+                    # Currency code without amount - this is an error
+                    for contratante in contratantes:
+                        try:
+                            cliente = models.Cliente2.objects.get(idcontratante=contratante.idcontratante)
+                            nombre = cliente.nombre or cliente.razonsocial or f"Contratante {contratante.idcontratante}"
+                            
+                            patrimonial_errors.append({
+                                'idkardex': patrimonial.kardex,
+                                'kardex': kardex,
+                                'act': act_description,
+                                'status': 'invalid',
+                                'error_type': 'currency_without_amount',
+                                'error_description': f'{nombre}, código de moneda no se debe informar sin montos'
+                            })
+                        except models.Cliente2.DoesNotExist:
+                            continue
+            
+            # Check for amount mismatches and missing participant amounts
+            if patrimonial.importetrans and patrimonial.importetrans > 0:
+                # Get all contratantes with amounts
+                contratantes_with_amounts = []
+                total_contratante_amounts = 0
+                
+                for contratante in contratantes:
+                    try:
+                        cliente = models.Cliente2.objects.get(idcontratante=contratante.idcontratante)
+                        nombre = cliente.nombre or cliente.razonsocial or f"Contratante {contratante.idcontratante}"
+                        
+                        # Check if contratante has amount in Contratantesxacto
+                        contratante_acto = models.Contratantesxacto.objects.filter(
+                            kardex=kardex,
+                            idtipoacto=act_code,
+                            idcontratante=contratante.idcontratante
+                        ).first()
+                        
+                        if contratante_acto and contratante_acto.monto:
+                            try:
+                                monto = float(contratante_acto.monto)
+                                total_contratante_amounts += monto
+                                contratantes_with_amounts.append({
+                                    'nombre': nombre,
+                                    'monto': monto
+                                })
+                            except (ValueError, TypeError):
+                                pass
+                        else:
+                            # Missing amount for participant
+                            patrimonial_errors.append({
+                                'idkardex': patrimonial.kardex,
+                                'kardex': kardex,
+                                'act': act_description,
+                                'status': 'invalid',
+                                'error_type': 'missing_participant_amount',
+                                'error_description': f'{nombre} Monto por Participante'
+                            })
+                    except models.Cliente2.DoesNotExist:
+                        continue
+                
+                # Check if total amounts match
+                if total_contratante_amounts > 0:
+                    patrimonial_total = float(patrimonial.importetrans)
+                    
+                    if abs(total_contratante_amounts - patrimonial_total) > 0.01:  # Allow small rounding differences
+                        if total_contratante_amounts > patrimonial_total:
+                            patrimonial_errors.append({
+                                'idkardex': patrimonial.kardex,
+                                'kardex': kardex,
+                                'act': act_description,
+                                'status': 'invalid',
+                                'error_type': 'amount_mismatch',
+                                'error_description': f'La suma de los montos de los contratantes otorgantes supera el monto total de la operacion: {patrimonial_total:.2f}'
+                            })
+                        else:
+                            patrimonial_errors.append({
+                                'idkardex': patrimonial.kardex,
+                                'kardex': kardex,
+                                'act': act_description,
+                                'status': 'invalid',
+                                'error_type': 'amount_mismatch',
+                                'error_description': f'La suma de los montos de los contratantes beneficierios supera el monto total de la operacion: {patrimonial_total:.2f}'
+                            })
+        
+        except Exception as e:
+            # Log any errors in validation but don't break the process
+            logger.warning(f"Error validating patrimonial data for kardex {kardex}: {str(e)}")
+        
+        return patrimonial_errors
 
 
 class TipoKarViewSet(ModelViewSet):
