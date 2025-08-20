@@ -354,14 +354,20 @@ class KardexViewSet(ModelViewSet):
                     'error': 'Both initialDate and finalDate are required (DD/MM/YYYY format)'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Convert dates EXACTLY like PHP
+            # Convert dates - support both DD/MM/YYYY and YYYY-MM-DD formats
             try:
+                # Try DD/MM/YYYY format first (like PHP)
                 start_date = datetime.strptime(initial_date, '%d/%m/%Y').date()
                 end_date = datetime.strptime(final_date, '%d/%m/%Y').date()
             except ValueError:
-                return Response({
-                    'error': 'Invalid date format. Use DD/MM/YYYY'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    # Try YYYY-MM-DD format as fallback
+                    start_date = datetime.strptime(initial_date, '%Y-%m-%d').date()
+                    end_date = datetime.strptime(final_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response({
+                        'error': 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD'
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
             # EXACTLY like PHP: Get kardex records for date range
             kardex_records = models.Kardex.objects.filter(
@@ -563,12 +569,14 @@ class KardexViewSet(ModelViewSet):
                     'total_kardex': len(kardex_records),
                     'total_errors': len(errors),
                     'error_breakdown': error_summary,
-                    'date_range': {
-                        'start': initial_date,
-                        'end': final_date,
-                        'start_iso': start_date.isoformat(),
-                        'end_iso': end_date.isoformat()
-                    }
+                                    'date_range': {
+                    'start': initial_date,
+                    'end': final_date,
+                    'start_iso': start_date.isoformat(),
+                    'end_iso': end_date.isoformat(),
+                    'start_formatted': start_date.strftime('%d/%m/%Y'),
+                    'end_formatted': end_date.strftime('%d/%m/%Y')
+                }
                 },
                 'metadata': {
                     'processed_at': timezone.now().isoformat(),
