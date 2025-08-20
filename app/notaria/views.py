@@ -370,6 +370,26 @@ class KardexViewSet(ModelViewSet):
                 idtipkar__in=[2, 5]  # Exclude types 2 and 5
             ).order_by('idtipkar', 'fechaescritura', 'numescritura')
             
+            # OPTIMIZATION: Pre-fetch all Tiposdeacto data in a single query
+            # Get all unique act codes from all kardex records
+            all_act_codes = set()
+            for kardex in kardex_records:
+                if kardex.codactos:
+                    for i in range(0, len(kardex.codactos), 3):
+                        if i + 3 <= len(kardex.codactos):
+                            all_act_codes.add(kardex.codactos[i:i+3])
+            
+            # Single query to get all relevant Tiposdeacto records
+            tipos_acto_map = {}
+            if all_act_codes:
+                tipos_acto_queryset = models.Tiposdeacto.objects.filter(
+                    idtipoacto__in=list(all_act_codes),
+                    actouif__isnull=False
+                ).exclude(actouif='')
+                
+                for tipo_acto in tipos_acto_queryset:
+                    tipos_acto_map[tipo_acto.idtipoacto] = tipo_acto
+            
             # Process validation EXACTLY like PHP
             errors = []
             valid_records = []
@@ -393,11 +413,8 @@ class KardexViewSet(ModelViewSet):
                 
                 # EXACTLY like PHP: Validate each act code
                 for act_code in act_codes:
-                    # EXACTLY like PHP: Check if act has valid UIF code
-                    tipo_acto = models.Tiposdeacto.objects.filter(
-                        idtipoacto=act_code,
-                        actouif__isnull=False
-                    ).exclude(actouif='').first()
+                    # OPTIMIZATION: Use pre-fetched data instead of database query
+                    tipo_acto = tipos_acto_map.get(act_code)
                     
                     # Build record data EXACTLY like PHP
                     record_data = {
