@@ -362,11 +362,12 @@ class KardexViewSet(ModelViewSet):
                 return Response({
                     'error': 'Invalid date format. Use DD/MM/YYYY'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # EXACTLY like PHP: Get kardex records for date range
             kardex_records = models.Kardex.objects.filter(
-                fechaescritura__range=[start_date, end_date],
-                idtipkar__not_in=[2, 5]  # Exclude types 2 and 5
+                fechaescritura__range=[start_date, end_date]
+            ).exclude(
+                idtipkar__in=[2, 5]  # Exclude types 2 and 5
             ).order_by('idtipkar', 'fechaescritura', 'numescritura')
             
             # Process validation EXACTLY like PHP
@@ -393,7 +394,7 @@ class KardexViewSet(ModelViewSet):
                 # EXACTLY like PHP: Validate each act code
                 for act_code in act_codes:
                     # EXACTLY like PHP: Check if act has valid UIF code
-                    tipo_acto = models.TiposDeActo.objects.filter(
+                    tipo_acto = models.Tiposdeacto.objects.filter(
                         idtipoacto=act_code,
                         actouif__isnull=False
                     ).exclude(actouif='').first()
@@ -461,9 +462,12 @@ class KardexViewSet(ModelViewSet):
             complementary_errors = self._process_complementary_data(start_date, end_date)
             errors.extend(complementary_errors)
             
-            # Build response
+            # Paginate the errors using the same pagination as Kardex list
+            page_errors = self.paginate_queryset(errors)
+            
+            # Build response with pagination
             response_data = {
-                'errors': errors,
+                'errors': page_errors,
                 'summary': {
                     'total_kardex': len(kardex_records),
                     'total_errors': len(errors),
@@ -482,10 +486,12 @@ class KardexViewSet(ModelViewSet):
             }
             
             if include_valid:
-                response_data['valid_records'] = valid_records
+                # Also paginate valid records if requested
+                page_valid_records = self.paginate_queryset(valid_records)
+                response_data['valid_records'] = page_valid_records
                 response_data['summary']['total_valid'] = len(valid_records)
             
-            return Response(response_data, status=status.HTTP_200_OK)
+            return self.get_paginated_response(response_data)
             
         except Exception as e:
             logger.error(f"Error in UIF error dashboard: {str(e)}", exc_info=True)
