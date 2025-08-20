@@ -132,7 +132,7 @@ class KardexViewSet(ModelViewSet):
             queryset = queryset.filter(kardex__in=matching_kardex)
 
         # Order by fechaingreso (newest first)
-        queryset = queryset.order_by('-fechaingreso')
+        queryset = queryset.order_by('-idkardex')
 
         # Paginate the filtered queryset
         page_kardex = self.paginate_queryset(queryset)
