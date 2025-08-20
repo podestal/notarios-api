@@ -390,6 +390,57 @@ class KardexViewSet(ModelViewSet):
                 for tipo_acto in tipos_acto_queryset:
                     tipos_acto_map[tipo_acto.idtipoacto] = tipo_acto
             
+            # OPTIMIZATION: Pre-fetch ALL related data to avoid N+1 queries
+            # Get all unique kardex numbers
+            kardex_numbers = [k.kardex for k in kardex_records]
+            
+            # Bulk fetch patrimonial data
+            patrimonial_map = {}
+            if kardex_numbers:
+                patrimonial_queryset = models.Patrimonial.objects.filter(
+                    kardex__in=kardex_numbers,
+                    idtipoacto__in=list(all_act_codes)
+                )
+                for patrimonial in patrimonial_queryset:
+                    key = f"{patrimonial.kardex}_{patrimonial.idtipoacto}"
+                    patrimonial_map[key] = patrimonial
+            
+            # Bulk fetch contratantes data
+            contratantes_map = {}
+            if kardex_numbers:
+                contratantes_queryset = models.Contratantes.objects.filter(
+                    kardex__in=kardex_numbers
+                )
+                for contratante in contratantes_queryset:
+                    if contratante.kardex not in contratantes_map:
+                        contratantes_map[contratante.kardex] = []
+                    contratantes_map[contratante.kardex].append(contratante)
+            
+            # Get all contratante IDs and bulk fetch cliente2 data
+            all_contratante_ids = []
+            for contratantes in contratantes_map.values():
+                all_contratante_ids.extend([c.idcontratante for c in contratantes])
+            
+            clientes_map = {}
+            if all_contratante_ids:
+                clientes_queryset = models.Cliente2.objects.filter(
+                    idcontratante__in=all_contratante_ids
+                )
+                for cliente in clientes_queryset:
+                    clientes_map[cliente.idcontratante] = cliente
+            
+            # Bulk fetch contratantesxacto data
+            contratantesxacto_map = {}
+            if all_contratante_ids and kardex_numbers and all_act_codes:
+                contratantesxacto_queryset = models.Contratantesxacto.objects.filter(
+                    kardex__in=kardex_numbers,
+                    idtipoacto__in=list(all_act_codes),
+                    idcontratante__in=all_contratante_ids
+                )
+                for cxa in contratantesxacto_queryset:
+                    key = f"{cxa.kardex}_{cxa.idtipoacto}_{cxa.idcontratante}"
+                    contratantesxacto_map[key] = cxa
+            
             # Process validation EXACTLY like PHP
             errors = []
             valid_records = []
@@ -443,7 +494,15 @@ class KardexViewSet(ModelViewSet):
                         })
                         
                         # EXACTLY like PHP: Check patrimonial data and amounts
-                        patrimonial_errors = self._validate_patrimonial_data(kardex.kardex, act_code, tipo_acto.desacto)
+                        patrimonial_errors = self._validate_patrimonial_data(
+                            kardex.kardex, 
+                            act_code, 
+                            tipo_acto.desacto,
+                            patrimonial_map,
+                            contratantes_map,
+                            clientes_map,
+                            contratantesxacto_map
+                        )
                         if patrimonial_errors:
                             errors.extend(patrimonial_errors)
                             for error in patrimonial_errors:
@@ -581,33 +640,32 @@ class KardexViewSet(ModelViewSet):
         
         return complementary_errors
     
-    def _validate_patrimonial_data(self, kardex, act_code, act_description):
+    def _validate_patrimonial_data(self, kardex, act_code, act_description, patrimonial_map, contratantes_map, clientes_map, contratantesxacto_map):
         """
         EXACTLY like PHP: Validate patrimonial data, amounts, and currency codes.
         This replicates the complex validation logic from the original PHP script.
+        Uses pre-fetched data to avoid N+1 queries.
         """
         patrimonial_errors = []
         
         try:
-            # Get patrimonial data for this kardex and act
-            patrimonial = models.Patrimonial.objects.filter(
-                kardex=kardex,
-                idtipoacto=act_code
-            ).first()
+            # Get patrimonial data from pre-fetched map
+            patrimonial_key = f"{kardex}_{act_code}"
+            patrimonial = patrimonial_map.get(patrimonial_key)
             
             if not patrimonial:
                 return patrimonial_errors
             
-            # Get all contratantes for this kardex
-            contratantes = models.Contratantes.objects.filter(kardex=kardex)
+            # Get all contratantes for this kardex from pre-fetched map
+            contratantes = contratantes_map.get(kardex, [])
             
             # Check if currency code is provided without amounts
             if patrimonial.idmon and patrimonial.idmon != '':
                 if not patrimonial.importetrans or patrimonial.importetrans == 0:
                     # Currency code without amount - this is an error
                     for contratante in contratantes:
-                        try:
-                            cliente = models.Cliente2.objects.get(idcontratante=contratante.idcontratante)
+                        cliente = clientes_map.get(contratante.idcontratante)
+                        if cliente:
                             nombre = cliente.nombre or cliente.razonsocial or f"Contratante {contratante.idcontratante}"
                             
                             patrimonial_errors.append({
@@ -618,8 +676,6 @@ class KardexViewSet(ModelViewSet):
                                 'error_type': 'currency_without_amount',
                                 'error_description': f'{nombre}, código de moneda no se debe informar sin montos'
                             })
-                        except models.Cliente2.DoesNotExist:
-                            continue
             
             # Check for amount mismatches and missing participant amounts
             if patrimonial.importetrans and patrimonial.importetrans > 0:
@@ -628,39 +684,36 @@ class KardexViewSet(ModelViewSet):
                 total_contratante_amounts = 0
                 
                 for contratante in contratantes:
-                    try:
-                        cliente = models.Cliente2.objects.get(idcontratante=contratante.idcontratante)
-                        nombre = cliente.nombre or cliente.razonsocial or f"Contratante {contratante.idcontratante}"
-                        
-                        # Check if contratante has amount in Contratantesxacto
-                        contratante_acto = models.Contratantesxacto.objects.filter(
-                            kardex=kardex,
-                            idtipoacto=act_code,
-                            idcontratante=contratante.idcontratante
-                        ).first()
-                        
-                        if contratante_acto and contratante_acto.monto:
-                            try:
-                                monto = float(contratante_acto.monto)
-                                total_contratante_amounts += monto
-                                contratantes_with_amounts.append({
-                                    'nombre': nombre,
-                                    'monto': monto
-                                })
-                            except (ValueError, TypeError):
-                                pass
-                        else:
-                            # Missing amount for participant
-                            patrimonial_errors.append({
-                                'idkardex': patrimonial.kardex,
-                                'kardex': kardex,
-                                'act': act_description,
-                                'status': 'invalid',
-                                'error_type': 'missing_participant_amount',
-                                'error_description': f'{nombre} Monto por Participante'
-                            })
-                    except models.Cliente2.DoesNotExist:
+                    cliente = clientes_map.get(contratante.idcontratante)
+                    if not cliente:
                         continue
+                        
+                    nombre = cliente.nombre or cliente.razonsocial or f"Contratante {contratante.idcontratante}"
+                    
+                    # Check if contratante has amount in Contratantesxacto using pre-fetched data
+                    contratante_acto_key = f"{kardex}_{act_code}_{contratante.idcontratante}"
+                    contratante_acto = contratantesxacto_map.get(contratante_acto_key)
+                    
+                    if contratante_acto and contratante_acto.monto:
+                        try:
+                            monto = float(contratante_acto.monto)
+                            total_contratante_amounts += monto
+                            contratantes_with_amounts.append({
+                                'nombre': nombre,
+                                'monto': monto
+                            })
+                        except (ValueError, TypeError):
+                            pass
+                    else:
+                        # Missing amount for participant
+                        patrimonial_errors.append({
+                            'idkardex': patrimonial.kardex,
+                            'kardex': kardex,
+                            'act': act_description,
+                            'status': 'invalid',
+                            'error_type': 'missing_participant_amount',
+                            'error_description': f'{nombre} Monto por Participante'
+                        })
                 
                 # Check if total amounts match
                 if total_contratante_amounts > 0:
