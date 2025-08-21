@@ -374,7 +374,7 @@ class KardexViewSet(ModelViewSet):
                 fechaescritura__range=[start_date, end_date]
             ).exclude(
                 idtipkar__in=[2, 5]  # Exclude types 2 and 5
-            ).order_by('idtipkar', 'fechaescritura', 'numescritura')
+            ).order_by('-idkardex')
             
             # OPTIMIZATION: Pre-fetch all Tiposdeacto data in a single query
             # Get all unique act codes from all kardex records
