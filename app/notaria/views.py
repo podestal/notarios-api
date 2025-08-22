@@ -409,7 +409,8 @@ class KardexViewSet(ModelViewSet):
                     idtipoacto__in=list(all_act_codes)
                 )
                 for patrimonial in patrimonial_queryset:
-                    key = f"{patrimonial.kardex}_{patrimonial.idtipoacto}"
+                    # Use tuple key format to match _get_patrimonial_summary method
+                    key = (patrimonial.kardex, str(patrimonial.idtipoacto).zfill(3))
                     patrimonial_map[key] = patrimonial
             
             # Bulk fetch contratantes data
@@ -525,6 +526,13 @@ class KardexViewSet(ModelViewSet):
                                     error_summary['missing_participant_amount'] += 1
                             
                             # Add to kardex_no_envian (records that don't send to UIF)
+                            # Include patrimonial data for display like PHP script
+                            patrimonial_data = self._get_patrimonial_summary(
+                                kardex.kardex, 
+                                act_code, 
+                                patrimonial_map
+                            )
+                            record_data.update(patrimonial_data)
                             kardex_no_envian.append(record_data)
                         else:
                             # No patrimonial errors - this is a valid record for UIF (RO)
@@ -551,28 +559,69 @@ class KardexViewSet(ModelViewSet):
                         })
                         errors.append(record_data)
                         error_summary['missing_uif_code'] += 1
+                        
+                        # Also add to kardex_no_envian since it can't be sent to UIF
+                        # Include patrimonial data for display like PHP script
+                        patrimonial_data = self._get_patrimonial_summary(
+                            kardex.kardex, 
+                            act_code, 
+                            patrimonial_map
+                        )
+                        record_data_copy = record_data.copy()
+                        record_data_copy.update(patrimonial_data)
+                        kardex_no_envian.append(record_data_copy)
                 
                 # EXACTLY like PHP: Check for missing escritura number
                 if not kardex.numescritura or kardex.numescritura.strip() == '':
-                    errors.append({
+                    # Get act description from tipo_acto if available
+                    act_desc = tipo_acto.desacto if tipo_acto else f'Acto {act_code}'
+                    escritura_error = {
                         'idkardex': kardex.idkardex,
                         'kardex': kardex.kardex,
+                        'act': act_desc,  # Add act description
                         'status': 'invalid',
                         'error_type': 'missing_escritura_number',
                         'error_description': 'Número de escritura faltante'
-                    })
+                    }
+                    errors.append(escritura_error)
                     error_summary['missing_escritura_number'] += 1
+                    
+                    # Also add to kardex_no_envian since it can't be sent to UIF
+                    # Include patrimonial data for display like PHP script
+                    patrimonial_data = self._get_patrimonial_summary(
+                        kardex.kardex, 
+                        act_code, 
+                        patrimonial_map
+                    )
+                    escritura_error_copy = escritura_error.copy()
+                    escritura_error_copy.update(patrimonial_data)
+                    kardex_no_envian.append(escritura_error_copy)
                 
                 # EXACTLY like PHP: Check for missing conclusion date
                 if not kardex.fechaconclusion:
-                    errors.append({
+                    # Get act description from tipo_acto if available
+                    act_desc = tipo_acto.desacto if tipo_acto else f'Acto {act_code}'
+                    conclusion_error = {
                         'idkardex': kardex.idkardex,
                         'kardex': kardex.kardex,
+                        'act': act_desc,  # Add act description
                         'status': 'invalid',
                         'error_type': 'missing_conclusion_date',
                         'error_description': 'Fecha de conclusión faltante'
-                    })
+                    }
+                    errors.append(conclusion_error)
                     error_summary['missing_conclusion_date'] += 1
+                    
+                    # Also add to kardex_no_envian since it can't be sent to UIF
+                    # Include patrimonial data for display like PHP script
+                    patrimonial_data = self._get_patrimonial_summary(
+                        kardex.kardex, 
+                        act_code, 
+                        patrimonial_map
+                    )
+                    conclusion_error_copy = conclusion_error.copy()
+                    conclusion_error_copy.update(patrimonial_data)
+                    kardex_no_envian.append(conclusion_error_copy)
             
             # EXACTLY like PHP: Process complementary data (contract signing dates)
             complementary_errors = self._process_complementary_data(start_date, end_date)
@@ -799,7 +848,14 @@ class KardexViewSet(ModelViewSet):
             patrimonial = patrimonial_map.get(patrimonial_key)
             
             if not patrimonial:
-                return {}
+                # Return default values if no patrimonial data found
+                return {
+                    'tipo_moneda': 'SOLES',
+                    'tipo_cambio': 0.0,
+                    'patrimonial': 0.0,
+                    'en_dolares': 0.0,
+                    'currency_symbol': 'S./ '
+                }
             
             # Determine currency type and symbol
             if patrimonial.idmon == 2:  # Dollars
@@ -828,7 +884,14 @@ class KardexViewSet(ModelViewSet):
             
         except Exception as e:
             logger.warning(f"Error getting patrimonial summary for kardex {kardex_number}: {str(e)}")
-            return {}
+            # Return default values on error
+            return {
+                'tipo_moneda': 'SOLES',
+                'tipo_cambio': 0.0,
+                'patrimonial': 0.0,
+                'en_dolares': 0.0,
+                'currency_symbol': 'S./ '
+            }
 
 
 class TipoKarViewSet(ModelViewSet):
