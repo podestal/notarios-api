@@ -525,15 +525,8 @@ class KardexViewSet(ModelViewSet):
                                 elif error['error_type'] == 'missing_participant_amount':
                                     error_summary['missing_participant_amount'] += 1
                             
-                            # Add to kardex_no_envian (records that don't send to UIF)
-                            # Include patrimonial data for display like PHP script
-                            patrimonial_data = self._get_patrimonial_summary(
-                                kardex.kardex, 
-                                act_code, 
-                                patrimonial_map
-                            )
-                            record_data.update(patrimonial_data)
-                            kardex_no_envian.append(record_data)
+                            # Don't add patrimonial errors to kardex_no_envian
+                            # They belong in lista_errores only
                         else:
                             # No patrimonial errors - this is a valid record for UIF (RO)
                             # Add patrimonial data like PHP script
@@ -560,16 +553,8 @@ class KardexViewSet(ModelViewSet):
                         errors.append(record_data)
                         error_summary['missing_uif_code'] += 1
                         
-                        # Also add to kardex_no_envian since it can't be sent to UIF
-                        # Include patrimonial data for display like PHP script
-                        patrimonial_data = self._get_patrimonial_summary(
-                            kardex.kardex, 
-                            act_code, 
-                            patrimonial_map
-                        )
-                        record_data_copy = record_data.copy()
-                        record_data_copy.update(patrimonial_data)
-                        kardex_no_envian.append(record_data_copy)
+                        # Don't add validation errors to kardex_no_envian
+                        # They belong in lista_errores only
                 
                 # EXACTLY like PHP: Check for missing escritura number
                 if not kardex.numescritura or kardex.numescritura.strip() == '':
@@ -586,16 +571,8 @@ class KardexViewSet(ModelViewSet):
                     errors.append(escritura_error)
                     error_summary['missing_escritura_number'] += 1
                     
-                    # Also add to kardex_no_envian since it can't be sent to UIF
-                    # Include patrimonial data for display like PHP script
-                    patrimonial_data = self._get_patrimonial_summary(
-                        kardex.kardex, 
-                        act_code, 
-                        patrimonial_map
-                    )
-                    escritura_error_copy = escritura_error.copy()
-                    escritura_error_copy.update(patrimonial_data)
-                    kardex_no_envian.append(escritura_error_copy)
+                    # Don't add validation errors to kardex_no_envian
+                    # They belong in lista_errores only
                 
                 # EXACTLY like PHP: Check for missing conclusion date
                 if not kardex.fechaconclusion:
@@ -612,20 +589,17 @@ class KardexViewSet(ModelViewSet):
                     errors.append(conclusion_error)
                     error_summary['missing_conclusion_date'] += 1
                     
-                    # Also add to kardex_no_envian since it can't be sent to UIF
-                    # Include patrimonial data for display like PHP script
-                    patrimonial_data = self._get_patrimonial_summary(
-                        kardex.kardex, 
-                        act_code, 
-                        patrimonial_map
-                    )
-                    conclusion_error_copy = conclusion_error.copy()
-                    conclusion_error_copy.update(patrimonial_data)
-                    kardex_no_envian.append(conclusion_error_copy)
+                    # Don't add validation errors to kardex_no_envian
+                    # They belong in lista_errores only
             
             # EXACTLY like PHP: Process complementary data (contract signing dates)
             complementary_errors = self._process_complementary_data(start_date, end_date)
             errors.extend(complementary_errors)
+            
+            # EXACTLY like PHP: Get additional "no envían" records from separate source
+            # This replicates the PHP script's separate query to ro_not table
+            additional_no_envian = self._get_additional_no_envian_records(start_date, end_date)
+            kardex_no_envian.extend(additional_no_envian)
             
             # Get filter type parameter to determine which category to paginate
             filter_type = request.query_params.get('type', 'errors')  # errors, ro, no_envian
@@ -892,6 +866,96 @@ class KardexViewSet(ModelViewSet):
                 'en_dolares': 0.0,
                 'currency_symbol': 'S./ '
             }
+
+    def _get_additional_no_envian_records(self, start_date, end_date):
+        """
+        Get additional records that "no envían" to UIF.
+        This replicates the PHP script's separate query to ro_not table.
+        
+        These are records that are NOT part of the main UIF validation process
+        but should be included in the "Lista de kardex que no envían".
+        """
+        try:
+            # Get records that are in the date range but NOT in the main kardex validation
+            # This includes records that might be:
+            # - Below threshold amounts
+            # - Different types of acts not requiring UIF submission
+            # - Records in a different status
+            
+            # Query for records that have patrimonial data but don't meet UIF criteria
+            additional_records = []
+            
+            # Get all kardex records in the date range that might be excluded from UIF
+            excluded_kardex = models.Kardex.objects.filter(
+                fechaescritura__range=[start_date, end_date]
+            ).exclude(
+                # Exclude records that are already processed in main validation
+                codactos__isnull=True
+            ).exclude(
+                # Exclude records that are clearly for UIF (have UIF codes)
+                codactos__regex=r'[0-9]{3}.*[0-9]{3}'  # Has multiple act codes
+            )
+            
+            for kardex in excluded_kardex:
+                # Parse act codes if they exist
+                if kardex.codactos:
+                    act_codes = []
+                    for i in range(0, len(kardex.codactos), 3):
+                        if i + 3 <= len(kardex.codactos):
+                            act_codes.append(kardex.codactos[i:i+3])
+                    
+                    for act_code in act_codes:
+                        # Get act description
+                        tipo_acto = models.Tiposdeacto.objects.filter(
+                            idtipoacto=act_code
+                        ).first()
+                        
+                        act_description = tipo_acto.desacto if tipo_acto else f'Acto {act_code}'
+                        
+                        # Get patrimonial data
+                        patrimonial = models.Patrimonial.objects.filter(
+                            kardex=kardex.kardex,
+                            idtipoacto=act_code
+                        ).first()
+                        
+                        if patrimonial:
+                            # Determine currency type
+                            if patrimonial.idmon == 2:  # Dollars
+                                currency_description = 'DOLARES'
+                            else:  # Soles
+                                currency_description = 'SOLES'
+                            
+                            # Build record data like PHP script
+                            record_data = {
+                                'idkardex': kardex.idkardex,
+                                'kardex': kardex.kardex,
+                                'act': act_description,
+                                'tipo_moneda': currency_description,
+                                'patrimonial': float(patrimonial.importetrans) if patrimonial.importetrans else 0.0,
+                                'status': 'excluded_from_uif',
+                                'reason': 'Below threshold or not requiring UIF submission'
+                            }
+                            
+                            additional_records.append(record_data)
+                        else:
+                            # Record without patrimonial data
+                            record_data = {
+                                'idkardex': kardex.idkardex,
+                                'kardex': kardex.kardex,
+                                'act': act_description,
+                                'tipo_moneda': 'SOLES',
+                                'patrimonial': 0.0,
+                                'status': 'excluded_from_uif',
+                                'reason': 'No patrimonial data'
+                            }
+                            
+                            additional_records.append(record_data)
+            
+            return additional_records
+            
+        except Exception as e:
+            logger.warning(f"Error getting additional no envían records: {str(e)}")
+            return []
 
 
 class TipoKarViewSet(ModelViewSet):
