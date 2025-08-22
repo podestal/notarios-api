@@ -343,12 +343,12 @@ class KardexViewSet(ModelViewSet):
         UIF Error Dashboard - validates kardex records for UIF compliance.
         EXACTLY like the old PHP script.
         """
+
         try:
             # Get and validate parameters
             initial_date = request.query_params.get('initialDate')
             final_date = request.query_params.get('finalDate')
             include_valid = request.query_params.get('includeValid', 'false').lower() == 'true'
-            list_type = request.query_params.get('listType', 'errors')  # 'errors', 'ro', 'not_ro'
             
             if not initial_date or not final_date:
                 return Response({
@@ -448,10 +448,10 @@ class KardexViewSet(ModelViewSet):
                     key = f"{cxa.kardex}_{cxa.idtipoacto}_{cxa.idcontratante}"
                     contratantesxacto_map[key] = cxa
             
-            # Process validation EXACTLY like PHP - separate into three lists like PHP script
+            # Process validation EXACTLY like PHP - separate into three categories like PHP script
             errors = []  # Lista de Errores
-            ro_records = []  # Lista de Kardex (RO) - valid UIF compliant records
-            not_ro_records = []  # Lista de kardex que no envían - invalid records
+            valid_kardex_ro = []  # Lista de Kardex(RO) - valid records for UIF
+            kardex_no_envian = []  # Lista de kardex que no envían
             
             error_summary = {
                 'missing_uif_code': 0,
@@ -512,20 +512,34 @@ class KardexViewSet(ModelViewSet):
                             clientes_map,
                             contratantesxacto_map
                         )
+                        
                         if patrimonial_errors:
-                            # Has patrimonial errors - goes to 'not_ro' list (kardex que no envían)
+                            # If there are patrimonial errors, add to errors list
+                            errors.extend(patrimonial_errors)
                             for error in patrimonial_errors:
-                                error['act'] = tipo_acto.desacto
-                                not_ro_records.append(error)
                                 if error['error_type'] == 'currency_without_amount':
                                     error_summary['currency_without_amount'] += 1
                                 elif error['error_type'] == 'amount_mismatch':
                                     error_summary['amount_mismatch'] += 1
                                 elif error['error_type'] == 'missing_participant_amount':
                                     error_summary['missing_participant_amount'] += 1
+                            
+                            # Add to kardex_no_envian (records that don't send to UIF)
+                            kardex_no_envian.append(record_data)
                         else:
-                            # No patrimonial errors - goes to 'ro' list (valid UIF compliant)
-                            ro_records.append(record_data)
+                            # No patrimonial errors - this is a valid record for UIF (RO)
+                            # Add patrimonial data like PHP script
+                            patrimonial_data = self._get_patrimonial_summary(
+                                kardex.kardex, 
+                                act_code, 
+                                patrimonial_map
+                            )
+                            record_data.update(patrimonial_data)
+                            valid_kardex_ro.append(record_data)
+                        
+                        if include_valid:
+                            # For backward compatibility
+                            pass
                     else:
                         # EXACTLY like PHP: Invalid record goes to 'ro_not' table equivalent
                         record_data.update({
@@ -564,218 +578,59 @@ class KardexViewSet(ModelViewSet):
             complementary_errors = self._process_complementary_data(start_date, end_date)
             errors.extend(complementary_errors)
             
-            # Return different data based on list type (like PHP tabs)
-            if list_type == 'errors':
-                # Lista de Errores - validation errors
-                data_to_paginate = errors
-                response_data = {
-                    'errors': self.paginate_queryset(data_to_paginate),
-                    'summary': {
-                        'total_kardex': len(kardex_records),
-                        'total_errors': len(errors),
-                        'error_breakdown': error_summary,
-                        'date_range': {
-                            'start': initial_date,
-                            'end': final_date,
-                            'start_iso': start_date.isoformat(),
-                            'end_iso': end_date.isoformat(),
-                            'start_formatted': start_date.strftime('%d/%m/%Y'),
-                            'end_formatted': end_date.strftime('%d/%m/%Y')
-                        }
-                    },
-                    'metadata': {
-                        'processed_at': timezone.now().isoformat(),
-                        'list_type': 'errors'
-                    }
-                }
-                return self.get_paginated_response(response_data)
-                
-            elif list_type == 'ro':
-                # Lista de Kardex (RO) - valid UIF compliant records
-                data_to_paginate = ro_records
-                response_data = {
-                    'ro_records': self.paginate_queryset(data_to_paginate),
-                    'summary': {
-                        'total_kardex': len(kardex_records),
-                        'total_ro': len(ro_records),
-                        'date_range': {
-                            'start': initial_date,
-                            'end': final_date,
-                            'start_iso': start_date.isoformat(),
-                            'end_iso': end_date.isoformat(),
-                            'start_formatted': start_date.strftime('%d/%m/%Y'),
-                            'end_formatted': end_date.strftime('%d/%m/%Y')
-                        }
-                    },
-                    'metadata': {
-                        'processed_at': timezone.now().isoformat(),
-                        'list_type': 'ro'
-                    }
-                }
-                return self.get_paginated_response(response_data)
-                
-            elif list_type == 'not_ro':
-                # Lista de kardex que no envían - invalid records
-                data_to_paginate = not_ro_records
-                response_data = {
-                    'not_ro_records': self.paginate_queryset(data_to_paginate),
-                    'summary': {
-                        'total_kardex': len(kardex_records),
-                        'total_not_ro': len(not_ro_records),
-                        'date_range': {
-                            'start': initial_date,
-                            'end': final_date,
-                            'start_iso': start_date.isoformat(),
-                            'end_iso': end_date.isoformat(),
-                            'start_formatted': start_date.strftime('%d/%m/%Y'),
-                            'end_formatted': end_date.strftime('%d/%m/%Y')
-                        }
-                    },
-                    'metadata': {
-                        'processed_at': timezone.now().isoformat(),
-                        'list_type': 'not_ro'
-                    }
-                }
-                return self.get_paginated_response(response_data)
+            # Get filter type parameter to determine which category to paginate
+            filter_type = request.query_params.get('type', 'errors')  # errors, ro, no_envian
             
-            # Default: return errors list
+            # Determine which data to paginate based on type parameter
+            if filter_type == 'ro':
+                paginated_data = self.paginate_queryset(valid_kardex_ro)
+                data_key = 'lista_kardex_ro'
+            elif filter_type == 'no_envian':
+                paginated_data = self.paginate_queryset(kardex_no_envian)
+                data_key = 'lista_kardex_no_envian'
+            else:  # Default to errors
+                paginated_data = self.paginate_queryset(errors)
+                data_key = 'lista_errores'
+            
+            # Build response with all three categories like PHP script
+            response_data = {
+                'lista_errores': errors if filter_type != 'errors' else paginated_data,
+                'lista_kardex_ro': valid_kardex_ro if filter_type != 'ro' else paginated_data,
+                'lista_kardex_no_envian': kardex_no_envian if filter_type != 'no_envian' else paginated_data,
+                'summary': {
+                    'total_kardex': len(kardex_records),
+                    'total_errors': len(errors),
+                    'total_valid_ro': len(valid_kardex_ro),
+                    'total_no_envian': len(kardex_no_envian),
+                    'error_breakdown': error_summary,
+                    'date_range': {
+                        'start': initial_date,
+                        'end': final_date,
+                        'start_iso': start_date.isoformat(),
+                        'end_iso': end_date.isoformat(),
+                        'start_formatted': start_date.strftime('%d/%m/%Y'),
+                        'end_formatted': end_date.strftime('%d/%m/%Y')
+                    }
+                },
+                'metadata': {
+                    'processed_at': timezone.now().isoformat(),
+                    'include_valid_records': include_valid,
+                    'current_filter': filter_type,
+                    'paginated_category': data_key
+                }
+            }
+            
+            if include_valid:
+                # For backward compatibility
+                response_data['valid_records'] = valid_kardex_ro
+                response_data['summary']['total_valid'] = len(valid_kardex_ro)
+            
             return self.get_paginated_response(response_data)
             
         except Exception as e:
             logger.error(f"Error in UIF error dashboard: {str(e)}", exc_info=True)
             return Response({
                 'error': 'Internal server error while processing UIF validation',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    @action(detail=False, methods=['get'], url_path='uif-summary')
-    def uif_summary(self, request):
-        """
-        Get summary statistics for all three UIF lists (like PHP dashboard header).
-        Returns counts for errors, RO records, and not-RO records.
-        """
-        try:
-            # Get and validate parameters
-            initial_date = request.query_params.get('initialDate')
-            final_date = request.query_params.get('finalDate')
-            
-            if not initial_date or not final_date:
-                return Response({
-                    'error': 'Both initialDate and finalDate are required (DD/MM/YYYY or YYYY-MM-DD format)'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Convert dates - support both DD/MM/YYYY and YYYY-MM-DD formats
-            try:
-                # Try DD/MM/YYYY format first (like PHP)
-                start_date = datetime.strptime(initial_date, '%d/%m/%Y').date()
-                end_date = datetime.strptime(final_date, '%d/%m/%Y').date()
-            except ValueError:
-                try:
-                    # Try YYYY-MM-DD format as fallback
-                    start_date = datetime.strptime(initial_date, '%Y-%m-%d').date()
-                    end_date = datetime.strptime(final_date, '%Y-%m-%d').date()
-                except ValueError:
-                    return Response({
-                        'error': 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Get kardex records for date range
-            kardex_records = models.Kardex.objects.filter(
-                fechaescritura__range=[start_date, end_date]
-            ).exclude(
-                idtipkar__in=[2, 5]  # Exclude types 2 and 5
-            ).order_by('-idkardex')
-            
-            # Get all unique act codes
-            all_act_codes = set()
-            for kardex in kardex_records:
-                if kardex.codactos:
-                    for i in range(0, len(kardex.codactos), 3):
-                        if i + 3 <= len(kardex.codactos):
-                            all_act_codes.add(kardex.codactos[i:i+3])
-            
-            # Get tipos de acto
-            tipos_acto_map = {}
-            if all_act_codes:
-                tipos_acto_queryset = models.Tiposdeacto.objects.filter(
-                    idtipoacto__in=list(all_act_codes),
-                    actouif__isnull=False
-                ).exclude(actouif='')
-                
-                for tipo_acto in tipos_acto_queryset:
-                    tipos_acto_map[tipo_acto.idtipoacto] = tipo_acto
-            
-            # Count records by type
-            total_errors = 0
-            total_ro = 0
-            total_not_ro = 0
-            
-            for kardex in kardex_records:
-                if not kardex.codactos:
-                    continue
-                    
-                act_codes = []
-                for i in range(0, len(kardex.codactos), 3):
-                    if i + 3 <= len(kardex.codactos):
-                        act_codes.append(kardex.codactos[i:i+3])
-                
-                for act_code in act_codes:
-                    tipo_acto = tipos_acto_map.get(act_code)
-                    
-                    if tipo_acto:
-                        # Check for patrimonial errors
-                        patrimonial_errors = self._validate_patrimonial_data(
-                            kardex.kardex, 
-                            act_code, 
-                            tipo_acto.desacto,
-                            {}, {}, {}, {}  # Empty maps for summary (we don't need full data)
-                        )
-                        
-                        if patrimonial_errors:
-                            total_not_ro += 1
-                        else:
-                            total_ro += 1
-                    else:
-                        total_errors += 1
-                
-                # Add basic validation errors
-                if not kardex.numescritura or kardex.numescritura.strip() == '':
-                    total_errors += 1
-                if not kardex.fechaconclusion:
-                    total_errors += 1
-            
-            # Get month and year for display
-            month_names = {
-                1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
-                7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
-            }
-            month = month_names.get(start_date.month, '')
-            year = start_date.year
-            
-            return Response({
-                'summary': {
-                    'month': month,
-                    'year': year,
-                    'date_range': f"{initial_date} A {final_date}",
-                    'total_kardex': len(kardex_records),
-                    'total_errors': total_errors,
-                    'total_ro': total_ro,
-                    'total_not_ro': total_not_ro,
-                    'date_range_formatted': {
-                        'start': start_date.strftime('%d/%m/%Y'),
-                        'end': end_date.strftime('%d/%m/%Y')
-                    }
-                },
-                'metadata': {
-                    'processed_at': timezone.now().isoformat(),
-                    'list_type': 'summary'
-                }
-            })
-            
-        except Exception as e:
-            logger.error(f"Error in UIF summary: {str(e)}", exc_info=True)
-            return Response({
-                'error': 'Internal server error while processing UIF summary',
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
@@ -932,6 +787,48 @@ class KardexViewSet(ModelViewSet):
             logger.warning(f"Error validating patrimonial data for kardex {kardex}: {str(e)}")
         
         return patrimonial_errors
+
+    def _get_patrimonial_summary(self, kardex_number, act_code, patrimonial_map):
+        """
+        Get patrimonial summary data for a valid RO record.
+        This method enriches the record with patrimonial information like the PHP script.
+        """
+        try:
+            # Get patrimonial data from the pre-fetched map
+            patrimonial_key = (kardex_number, act_code)
+            patrimonial = patrimonial_map.get(patrimonial_key)
+            
+            if not patrimonial:
+                return {}
+            
+            # Determine currency type and symbol
+            if patrimonial.idmon == 2:  # Dollars
+                currency_symbol = '$ '
+                currency_description = 'DOLARES'
+            else:  # Soles
+                currency_symbol = 'S./ '
+                currency_description = 'SOLES'
+            
+            # Calculate amount in dollars
+            tipo_cambio = float(patrimonial.tipocambio) if patrimonial.tipocambio else 1.0
+            importe_trans = float(patrimonial.importetrans) if patrimonial.importetrans else 0.0
+            
+            if patrimonial.idmon == 1:  # Soles - convert to dollars
+                en_dolares = importe_trans / tipo_cambio if tipo_cambio > 0 else 0.0
+            else:  # Already in dollars
+                en_dolares = importe_trans
+            
+            return {
+                'tipo_moneda': currency_description,
+                'tipo_cambio': tipo_cambio,
+                'patrimonial': importe_trans,
+                'en_dolares': round(en_dolares, 2),
+                'currency_symbol': currency_symbol
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error getting patrimonial summary for kardex {kardex_number}: {str(e)}")
+            return {}
 
 
 class TipoKarViewSet(ModelViewSet):
