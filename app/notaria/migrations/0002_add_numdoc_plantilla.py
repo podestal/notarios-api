@@ -47,9 +47,7 @@ def reverse_migration(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = [
-        ('notaria', '0001_initial'),
-    ]
+    dependencies = []  # Remove dependency on 0001_initial
 
     operations = [
         migrations.RunPython(
