@@ -304,7 +304,19 @@ class LibrosReportService:
             # Print the dates for debugging
             print(f"Searching for records between {desde_formatted} and {hasta_formatted}")
             
+            # First check if numdoc_plantilla column exists
+            # Check if numdoc_plantilla column exists
             cursor.execute("""
+                SELECT COUNT(*) 
+                FROM information_schema.columns 
+                WHERE table_schema = DATABASE()
+                AND table_name = 'libros' 
+                AND column_name = 'numdoc_plantilla'
+            """)
+            has_numdoc_plantilla = cursor.fetchone()[0] > 0
+            
+            # Build query based on available columns
+            query = """
                 SELECT
                     concat(libros.numlibro) as num_crono,
                     libros.fecing as fecha,
@@ -318,7 +330,7 @@ class LibrosReportService:
                     libros.dni as dni,
                     libros.descritiplib as deslibro,
                     libros.solicitante as solicitante,
-                    libros.numdoc_plantilla as ruc_plantilla
+                    {numdoc_plantilla_col}
                 FROM
                     libros
                     LEFT JOIN nlibro ON libros.idnlibro = nlibro.idnlibro
@@ -326,7 +338,14 @@ class LibrosReportService:
                     LEFT JOIN tipolibro ON libros.idtiplib = tipolibro.idtiplib
                 WHERE STR_TO_DATE(fecing, '%%Y-%%m-%%d') BETWEEN STR_TO_DATE(%s, '%%d/%%m/%%Y') AND STR_TO_DATE(%s, '%%d/%%m/%%Y')
                 ORDER BY num_crono
-            """, [desde_formatted, hasta_formatted])
+            """
+            
+            # Replace numdoc_plantilla column with NULL if it doesn't exist
+            query = query.format(
+                numdoc_plantilla_col='libros.numdoc_plantilla as ruc_plantilla' if has_numdoc_plantilla else 'NULL as ruc_plantilla'
+            )
+            
+            cursor.execute(query, [desde_formatted, hasta_formatted])
             
             result = cursor.fetchall()
             print(f"Found {len(result) if result else 0} records")
