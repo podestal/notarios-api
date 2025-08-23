@@ -855,9 +855,72 @@ class LibrosSerializer(serializers.ModelSerializer):
     """
     Serializer for the Libros model.
     """
+    #     numlibro = models.CharField(max_length=10)
+    # ano = models.CharField(max_length=4)
+    # fecing = models.DateField()
+    # tipper = models.CharField(max_length=1, blank=True, null=True)
+    # apepat = models.CharField(max_length=1000, blank=True, null=True)
+    # apemat = models.CharField(max_length=1000, blank=True, null=True)
+    # prinom = models.CharField(max_length=1000, blank=True, null=True)
+    # segnom = models.CharField(max_length=1000, blank=True, null=True)
+    # ruc = models.CharField(max_length=11, blank=True, null=True)
+    # domicilio = models.CharField(max_length=2000, blank=True, null=True)
+    # coddis = models.CharField(max_length=6, blank=True, null=True)
+    # empresa = models.CharField(max_length=5000, blank=True, null=True)
+    # domfiscal = models.CharField(max_length=3000, blank=True, null=True)
+    # idtiplib = models.IntegerField(blank=True, null=True)
+    # descritiplib = models.CharField(max_length=3000, blank=True, null=True)
+    # idlegal = models.IntegerField(blank=True, null=True)
+    # folio = models.CharField(max_length=20, blank=True, null=True)
+    # idtipfol = models.IntegerField(blank=True, null=True)
+    # detalle = models.CharField(max_length=3000, blank=True, null=True)
+    # idnotario = models.IntegerField(blank=True, null=True)
+    # solicitante = models.CharField(max_length=3000, blank=True, null=True)
+    # comentario = models.CharField(max_length=3000, blank=True, null=True)
+    # feclegal = models.CharField(max_length=12, blank=True, null=True)
+    # comentario2 = models.CharField(max_length=3000, blank=True, null=True)
+    # dni = models.CharField(max_length=11, blank=True, null=True)
+    # idusuario = models.IntegerField(blank=True, null=True)
+    # idnlibro = models.IntegerField(blank=True, null=True)
+    # codclie = models.CharField(max_length=10, blank=True, null=True)
+    # flag = models.IntegerField(blank=True, null=True)
+    # numdoc_plantilla = models.CharField(max_length=11, blank=True, null=True)
+    # estadosisgen = models.IntegerField(db_column='estadoSisgen', blank=True, null=True)  
     class Meta:
         model = models.Libros
-        fields = '__all__'
+        fields = [
+            'numlibro',
+            'ano',
+            'fecing',
+            'tipper',
+            'apepat',
+            'apemat',
+            'prinom',
+            'segnom',
+            'ruc',
+            'domicilio',
+            'coddis',
+            'empresa',
+            'domfiscal',
+            'idtiplib',
+            'descritiplib',
+            'idlegal',
+            'folio',
+            'idtipfol',
+            'detalle',
+            'idnotario',
+            'solicitante',
+            'comentario',
+            'feclegal',
+            'comentario2',
+            'dni',
+            'idusuario',
+            'idnlibro',
+            'codclie',
+            'flag',
+            # 'numdoc_plantilla',
+            'estadosisgen',
+        ]
 
 
 class TipolibroSerializer(serializers.ModelSerializer):
