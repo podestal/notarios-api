@@ -75,7 +75,9 @@ def reverse_migration(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = []  # No dependencies needed
+    dependencies = [
+        ('notaria', '0004_add_dni_destinatario_to_ingreso_cartas'),
+    ]
 
     operations = [
         migrations.RunPython(

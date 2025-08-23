@@ -47,7 +47,9 @@ def reverse_migration(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = []  # No dependencies needed
+    dependencies = [
+        ('notaria', '0002_add_numdoc_plantilla'),
+    ]
 
     operations = [
         migrations.RunPython(
