@@ -2454,10 +2454,11 @@ class LibrosViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Convert dates from DD/MM/YYYY to YYYY-MM-DD
+        # Validate date format but keep original format for the service
         try:
-            desde = datetime.strptime(fechade, '%d/%m/%Y').strftime('%Y-%m-%d')
-            hasta = datetime.strptime(fechaa, '%d/%m/%Y').strftime('%Y-%m-%d')
+            # Just validate the format
+            datetime.strptime(fechade, '%d/%m/%Y')
+            datetime.strptime(fechaa, '%d/%m/%Y')
         except ValueError:
             return Response(
                 {'error': 'Invalid date format. Use DD/MM/YYYY'}, 
@@ -2468,9 +2469,9 @@ class LibrosViewSet(ModelViewSet):
         report_service = LibrosReportService()
         
         if tipo_documento == 'EXCEL':
-            return report_service.generate_excel_report(desde, hasta)
+            return report_service.generate_excel_report(fechade, fechaa)
         else:
-            return report_service.generate_word_report(desde, hasta)
+            return report_service.generate_word_report(fechade, fechaa)
 
     def list(self, request, *args, **kwargs):
         dateFrom = request.query_params.get('dateFrom', '')

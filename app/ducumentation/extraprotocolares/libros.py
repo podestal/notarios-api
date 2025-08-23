@@ -301,6 +301,9 @@ class LibrosReportService:
             desde_formatted = desde.strftime('%d/%m/%Y') if hasattr(desde, 'strftime') else desde
             hasta_formatted = hasta.strftime('%d/%m/%Y') if hasattr(hasta, 'strftime') else hasta
             
+            # Print the dates for debugging
+            print(f"Searching for records between {desde_formatted} and {hasta_formatted}")
+            
             cursor.execute("""
                 SELECT
                     concat(libros.numlibro) as num_crono,
@@ -321,12 +324,13 @@ class LibrosReportService:
                     LEFT JOIN nlibro ON libros.idnlibro = nlibro.idnlibro
                     LEFT JOIN tipofolio ON libros.idtipfol = tipofolio.idtipfol
                     LEFT JOIN tipolibro ON libros.idtiplib = tipolibro.idtiplib
-                WHERE STR_TO_DATE(libros.fecing,'%%Y-%%m-%%d') >= STR_TO_DATE(%s,'%%d/%%m/%%Y') 
-                AND STR_TO_DATE(libros.fecing,'%%Y-%%m-%%d') <= STR_TO_DATE(%s,'%%d/%%m/%%Y')
+                WHERE STR_TO_DATE(fecing, '%%Y-%%m-%%d') BETWEEN STR_TO_DATE(%s, '%%d/%%m/%%Y') AND STR_TO_DATE(%s, '%%d/%%m/%%Y')
                 ORDER BY num_crono
             """, [desde_formatted, hasta_formatted])
             
             result = cursor.fetchall()
+            print(f"Found {len(result) if result else 0} records")
+            
             if result:
                 return result
             return []
