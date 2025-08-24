@@ -85,7 +85,10 @@ def normalize_db_schema(apps, schema_editor):
             'indicronocar': 'VARCHAR(1) NULL',
             'indicronolib': 'VARCHAR(1) NULL',
             'indicronovia': 'VARCHAR(1) NULL',
-            'indicronopod': 'VARCHAR(1) NULL'
+            'indicronopod': 'VARCHAR(1) NULL',
+            'egreso': 'VARCHAR(1) NULL',
+            'sisgen': 'VARCHAR(1) NULL',
+            'userresponsable': 'INT NULL'
         },
         'kardex': {
             'kardex': 'VARCHAR(30) PRIMARY KEY',
@@ -358,95 +361,158 @@ def normalize_db_schema(apps, schema_editor):
             'facultades': 'TEXT',
             'fechainicio': 'DATE',
             'fechafin': 'DATE',
-            'estado': 'VARCHAR(1)'
+            'estado': 'VARCHAR(1)',
+            'idtipoacto': 'VARCHAR(15) NULL',
+            'facultades': 'VARCHAR(150) NULL',
+            'inscrito': 'VARCHAR(50) NULL',
+            'sede_registral': 'VARCHAR(15) NULL',
+            'partida': 'VARCHAR(50) NULL',
+            'idcontratante_r': 'VARCHAR(15) NULL',
+            'id_ro_repre': 'VARCHAR(50) NULL',
+            'ido': 'VARCHAR(5) NULL',
+            'odb': 'VARCHAR(5) NULL'
         },
         'patrimonial': {
-            'idpatrimonial': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idcontratante': 'VARCHAR(10)',
-            'idtipkar': 'INT',
-            'kardex': 'VARCHAR(30)',
-            'tipobien': 'VARCHAR(50)',
-            'descripcion': 'TEXT',
-            'valor': 'DECIMAL(10,2)',
-            'estado': 'VARCHAR(1)'
+            'itemmp': 'VARCHAR(6) PRIMARY KEY',
+            'kardex': 'VARCHAR(30) NULL',
+            'idtipoacto': 'VARCHAR(6)',
+            'nminuta': 'VARCHAR(30)',
+            'idmon': 'INT',
+            'tipocambio': 'VARCHAR(10) NULL',
+            'importetrans': 'DECIMAL(12,2)',
+            'exhibiomp': 'VARCHAR(2)',
+            'presgistral': 'VARCHAR(50) NULL',
+            'nregistral': 'VARCHAR(50) NULL',
+            'idsedereg': 'VARCHAR(3)',
+            'fpago': 'VARCHAR(3)',
+            'idoppago': 'VARCHAR(5)',
+            'ofondos': 'VARCHAR(150) NULL',
+            'item': 'INT',
+            'des_idoppago': 'VARCHAR(50) NULL'
         },
         'detallevehicular': {
-            'iddetallevehicular': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idcontratante': 'VARCHAR(10)',
-            'idtipkar': 'INT',
-            'kardex': 'VARCHAR(30)',
-            'placa': 'VARCHAR(10)',
-            'marca': 'VARCHAR(50)',
-            'modelo': 'VARCHAR(50)',
-            'anio': 'INT',
-            'color': 'VARCHAR(30)',
-            'motor': 'VARCHAR(20)',
-            'serie': 'VARCHAR(20)',
-            'estado': 'VARCHAR(1)'
+            'detveh': 'INT AUTO_INCREMENT PRIMARY KEY',
+            'kardex': 'VARCHAR(30) NULL',
+            'idtipacto': 'VARCHAR(20) NULL',
+            'idplaca': 'VARCHAR(3)',
+            'numplaca': 'VARCHAR(50)',
+            'clase': 'VARCHAR(50) NULL',
+            'marca': 'VARCHAR(100) NULL',
+            'anofab': 'VARCHAR(30) NULL',
+            'modelo': 'VARCHAR(100) NULL',
+            'combustible': 'VARCHAR(100) NULL',
+            'carroceria': 'VARCHAR(100) NULL',
+            'fecinsc': 'VARCHAR(30) NULL',
+            'color': 'VARCHAR(100) NULL',
+            'motor': 'VARCHAR(100) NULL',
+            'numcil': 'VARCHAR(3) NULL',
+            'numserie': 'VARCHAR(30) NULL',
+            'numrueda': 'VARCHAR(3) NULL',
+            'idmon': 'VARCHAR(5) NULL',
+            'precio': 'DECIMAL(16,2) NULL',
+            'codmepag': 'VARCHAR(4) NULL',
+            'pregistral': 'VARCHAR(100) NULL',
+            'idsedereg': 'VARCHAR(100) NULL'
         },
         'detallebienes': {
-            'iddetallebienes': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idcontratante': 'VARCHAR(10)',
-            'idtipkar': 'INT',
-            'kardex': 'VARCHAR(30)',
-            'tipobien': 'VARCHAR(50)',
-            'descripcion': 'TEXT',
-            'valor': 'DECIMAL(10,2)',
-            'estado': 'VARCHAR(1)'
+            'detbien': 'INT AUTO_INCREMENT PRIMARY KEY',
+            'itemmp': 'VARCHAR(6)',
+            'kardex': 'VARCHAR(30) NULL',
+            'idtipacto': 'VARCHAR(10) NULL',
+            'tipob': 'VARCHAR(100)',
+            'idtipbien': 'INT',
+            'coddis': 'VARCHAR(6)',
+            'fechaconst': 'VARCHAR(12) NULL',
+            'oespecific': 'VARCHAR(200) NULL',
+            'smaquiequipo': 'VARCHAR(200) NULL',
+            'tpsm': 'VARCHAR(3) NULL',
+            'npsm': 'VARCHAR(200) NULL',
+            'pregistral': 'VARCHAR(50) NULL',
+            'idsedereg': 'VARCHAR(50) NULL'
         },
         'detallemediopago': {
-            'iddetallemediopago': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idcontratante': 'VARCHAR(10)',
-            'idtipkar': 'INT',
-            'kardex': 'VARCHAR(30)',
-            'tipomediopago': 'VARCHAR(50)',
-            'descripcion': 'TEXT',
-            'monto': 'DECIMAL(10,2)',
-            'estado': 'VARCHAR(1)'
+            'detmp': 'INT AUTO_INCREMENT PRIMARY KEY',
+            'itemmp': 'VARCHAR(6) NULL',
+            'kardex': 'VARCHAR(30) NULL',
+            'tipacto': 'VARCHAR(10) NULL',
+            'codmepag': 'INT NULL',
+            'fpago': 'VARCHAR(10) NULL',
+            'idbancos': 'INT NULL',
+            'importemp': 'DECIMAL(12,2) NULL',
+            'idmon': 'VARCHAR(10) NULL',
+            'foperacion': 'VARCHAR(12) NULL'
         },
         'predios': {
-            'idpredio': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idcontratante': 'VARCHAR(10)',
-            'idtipkar': 'INT',
-            'kardex': 'VARCHAR(30)',
-            'direccion': 'VARCHAR(200)',
-            'area': 'DECIMAL(10,2)',
-            'valor': 'DECIMAL(10,2)',
-            'estado': 'VARCHAR(1)'
+            'id_predio': 'INT AUTO_INCREMENT PRIMARY KEY',
+            'tipo': 'VARCHAR(20)',
+            'tipo_zona': 'VARCHAR(6) NULL',
+            'zona': 'VARCHAR(200) NULL',
+            'denominacion': 'VARCHAR(200) NULL',
+            'tipo_via': 'VARCHAR(60) NULL',
+            'nombre_via': 'VARCHAR(60) NULL',
+            'numero': 'VARCHAR(10) NULL',
+            'manzana': 'VARCHAR(10) NULL',
+            'lote': 'VARCHAR(10) NULL',
+            'kardex': 'VARCHAR(20) NULL',
+            'fecha_registro': 'DATETIME NULL'
         },
         'tpl_template': {
-            'idtemplate': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'nombretemplate': 'VARCHAR(100)',
-            'descripcion': 'TEXT',
-            'contenido': 'LONGTEXT',
-            'estado': 'VARCHAR(1)'
+            'pktemplate': 'INT AUTO_INCREMENT PRIMARY KEY',
+            'nametemplate': 'VARCHAR(250) NULL',
+            'fktypekardex': 'INT NULL',
+            'codeacts': 'VARCHAR(50) NULL',
+            'contract': 'VARCHAR(3000) NULL',
+            'urltemplate': 'VARCHAR(250) NULL',
+            'filename': 'VARCHAR(250) NULL',
+            'registrationdate': 'DATETIME NULL',
+            'statusregister': 'INT NULL'
         },
         'legalizacion': {
             'idlegalizacion': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idtipkar': 'INT',
-            'kardex': 'VARCHAR(30)',
-            'fechalegalizacion': 'DATE',
-            'observaciones': 'TEXT',
-            'estado': 'VARCHAR(1)'
+            'fechaingreso': 'DATE',
+            'direccioncertificado': 'VARCHAR(250)',
+            'documento': 'TEXT',
+            'dni': 'VARCHAR(11) NULL'
         },
         'permi_viaje': {
-            'idpermivi': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idtipkar': 'INT',
-            'kardex': 'VARCHAR(30)',
-            'fechasolicitud': 'DATE',
-            'fechaaprobacion': 'DATE',
-            'estado': 'VARCHAR(1)',
-            'observaciones': 'TEXT',
-            'via': 'VARCHAR(255) NULL',
+            'id_viaje': 'INT AUTO_INCREMENT PRIMARY KEY',
+            'num_kardex': 'VARCHAR(30) NULL',
+            'asunto': 'VARCHAR(1000) NULL',
+            'fec_ingreso': 'DATE NULL',
+            'nom_recep': 'VARCHAR(1000) NULL',
+            'hora_recep': 'VARCHAR(30) NULL',
+            'referencia': 'VARCHAR(3000) NULL',
+            'nom_comu': 'VARCHAR(500) NULL',
+            'tel_comu': 'VARCHAR(500) NULL',
+            'email_comu': 'VARCHAR(500) NULL',
+            'documento': 'VARCHAR(500) NULL',
+            'num_crono': 'VARCHAR(50) NULL',
+            'fecha_crono': 'DATE NULL',
+            'num_formu': 'VARCHAR(30) NULL',
+            'lugar_formu': 'VARCHAR(3000) NULL',
+            'observacion': 'TEXT NULL',
+            'swt_est': 'VARCHAR(5) NULL',
+            'partida_e': 'VARCHAR(200) NULL',
+            'sede_regis': 'VARCHAR(200) NULL',
+            'qr': 'INT NULL',
+            'via': 'VARCHAR(60) NULL',
             'fecha_desde': 'DATE NULL',
             'fecha_hasta': 'DATE NULL'
         },
         'viaje_contratantes': {
-            'idviajecontratante': 'INT AUTO_INCREMENT PRIMARY KEY',
-            'idpermivi': 'INT',
-            'idcontratante': 'VARCHAR(10)',
-            'tipoviaje': 'VARCHAR(50)',
-            'estado': 'VARCHAR(1)'
+            'id_contratante': 'INT AUTO_INCREMENT PRIMARY KEY',
+            'id_viaje': 'INT NULL',
+            'c_codcontrat': 'VARCHAR(30) NULL',
+            'c_descontrat': 'VARCHAR(2000) NULL',
+            'c_fircontrat': 'VARCHAR(20) NULL',
+            'c_condicontrat': 'VARCHAR(30) NULL',
+            'edad': 'VARCHAR(10) NULL',
+            'condi_edad': 'VARCHAR(10) NULL',
+            'codi_testigo': 'VARCHAR(2000) NULL',
+            'tip_incapacidad': 'VARCHAR(2000) NULL',
+            'codi_podera': 'VARCHAR(100) NULL',
+            'partida_e': 'VARCHAR(2000) NULL',
+            'sede_regis': 'VARCHAR(2000) NULL'
         },
         'ingreso_poderes': {
             'idingresopoder': 'INT AUTO_INCREMENT PRIMARY KEY',
@@ -486,7 +552,8 @@ def normalize_db_schema(apps, schema_editor):
             'estado': 'VARCHAR(1)',
             'observaciones': 'TEXT',
             'dni_destinatario': 'VARCHAR(8) NULL',
-            'recepcion': 'VARCHAR(250) NULL'
+            'recepcion': 'VARCHAR(250) NULL',
+            'firmo': 'VARCHAR(2) NULL'
         },
         'libros': {
             'idlibro': 'INT AUTO_INCREMENT PRIMARY KEY',
@@ -560,6 +627,38 @@ def normalize_db_schema(apps, schema_editor):
         }
     }
 
+    def generate_create_table_sql(table_name, fields):
+        """Generate CREATE TABLE SQL for a table"""
+        try:
+            # Build column definitions
+            columns = []
+            primary_keys = []
+            
+            for field_name, field_definition in fields.items():
+                if 'PRIMARY KEY' in field_definition:
+                    primary_keys.append(field_name)
+                    # Remove PRIMARY KEY from definition for column creation
+                    clean_definition = field_definition.replace(' PRIMARY KEY', '')
+                    columns.append(f"    {field_name} {clean_definition}")
+                else:
+                    columns.append(f"    {field_name} {field_definition}")
+            
+            # Add primary key constraint if specified
+            if primary_keys:
+                columns.append(f"    PRIMARY KEY ({', '.join(primary_keys)})")
+            
+            # Build the CREATE TABLE SQL
+            columns_str = ',\n'.join(columns)
+            create_sql = f"""CREATE TABLE {table_name} (
+{columns_str}
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"""
+            
+            return create_sql
+            
+        except Exception as e:
+            logger.error(f"Error generating CREATE TABLE SQL for {table_name}: {str(e)}")
+            return None
+
     with schema_editor.connection.cursor() as cursor:
         for table_name, fields in schema_requirements.items():
             try:
@@ -572,9 +671,19 @@ def normalize_db_schema(apps, schema_editor):
                 """, [table_name])
                 
                 if cursor.fetchone()[0] == 0:
-                    # Table doesn't exist, skip it
-                    logger.info(f"Table {table_name} doesn't exist, skipping")
-                    continue
+                    # Table doesn't exist, create it
+                    logger.info(f"Table {table_name} doesn't exist, creating it")
+                    create_table_sql = generate_create_table_sql(table_name, fields)
+                    if create_table_sql:
+                        try:
+                            cursor.execute(create_table_sql)
+                            logger.info(f"Created table {table_name}")
+                        except Exception as e:
+                            logger.error(f"Failed to create table {table_name}: {str(e)}")
+                            continue
+                    else:
+                        logger.warning(f"Cannot create table {table_name} - no create SQL generated")
+                        continue
                 
                 # Get existing columns for this table
                 cursor.execute("""
