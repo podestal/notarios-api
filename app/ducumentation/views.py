@@ -1396,3 +1396,76 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return service.retrieve_libro_document(num_libro, str(anio_libro), mode)
         else:
             return service.generate_libro_document(num_libro, str(anio_libro), orientation, mode)
+
+@api_view(['POST'])
+def save_doc(request):
+    """
+    Save changes made in Word document back to R2 bucket
+    Receives a file upload and saves it to the R2 storage
+    """
+    try:
+        # Check if file was uploaded
+        if 'file' not in request.FILES:
+            return Response({
+                'status': 'error',
+                'message': 'No file uploaded'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        uploaded_file = request.FILES['file']
+        
+        # Validate file type
+        if not uploaded_file.name.endswith('.docx'):
+            return Response({
+                'status': 'error',
+                'message': 'Only .docx files are allowed'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Use the filename provided by the Word add-in
+        filename = uploaded_file.name
+        object_key = f"rodriguez-zea/documentos/{filename}"
+        
+        print(f"DEBUG: Saving document to R2: {object_key}")
+        print(f"DEBUG: Filename: {filename}")
+        print(f"DEBUG: File size: {uploaded_file.size} bytes")
+        
+        # Create S3 client
+        s3 = boto3.client(
+            's3',
+            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
+            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
+        )
+        
+        # Upload file to R2
+        try:
+            s3.upload_fileobj(
+                uploaded_file,
+                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                object_key
+            )
+            
+            print(f"DEBUG: Successfully saved document to R2: {object_key}")
+            
+            return Response({
+                'status': 'success',
+                'message': 'Document saved successfully',
+                'filename': filename,
+                'r2_path': object_key,
+                'file_size': uploaded_file.size
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"DEBUG: Error uploading to R2: {e}")
+            return Response({
+                'status': 'error',
+                'message': f'Failed to save document to R2: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except Exception as e:
+        print(f"DEBUG: Error in save_doc view: {e}")
+        return Response({
+            'status': 'error',
+            'message': f'Internal server error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
