@@ -1493,6 +1493,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         else:
             return service.generate_libro_document(num_libro, str(anio_libro), orientation, mode)
 
+@csrf_exempt
 @require_api_token
 @require_http_methods(["POST"])
 def save_doc(request):
