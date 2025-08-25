@@ -1,8 +1,7 @@
 from rest_framework_nested import routers
 from . import views
 from django.urls import path, re_path
-from rest_framework.decorators import api_view
-from rest_framework.permissions import IsAuthenticated
+from django.views.decorators.csrf import csrf_exempt
 
 """
 URL configuration for the Notaria app.
@@ -21,7 +20,7 @@ print("DEBUG: urls.py loaded")
 urlpatterns = [
     path('upload-docx/', views.generate_document_by_tipkar, name='generate_document_by_tipkar'),
     path('update-docx/', views.update_document_by_tipkar, name='update_document_by_tipkar'),
-    path('save-doc/', views.save_doc, name='save_doc'),
+    path('save-doc/', csrf_exempt(views.save_doc), name='save_doc'),
     path('generate-token/', views.generate_token, name='generate_token'),
     path('test-r2/', views.test_r2_connection, name='test_r2_connection'),
     re_path(r'^download/(?P<kardex>[^/]+)/__PROY__(?P<kardex2>[^/]+)\.docx$', download_docx, name='download_docx'),
