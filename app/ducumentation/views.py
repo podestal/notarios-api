@@ -29,9 +29,12 @@ from django.views.decorators.http import require_http_methods
 from docx.shared import RGBColor, Pt
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.views.decorators.http import require_GET
 from django.utils.decorators import method_decorator
+import secrets
+import hashlib
+from functools import wraps
 
 import re
 from django.urls import reverse
@@ -44,6 +47,98 @@ from .extraprotocolares.cartas_notariales import CartasNotarialesDocumentService
 from .extraprotocolares.cert_domiciliarios import CertDomiciliariosDocumentService
 from .extraprotocolares.libros import LibrosDocumentService
 from notaria.models import Libros
+
+# Token-based authentication for save_doc view
+def generate_secure_token():
+    """Generate a secure token for API access"""
+    # Generate a random 32-byte token
+    token = secrets.token_urlsafe(32)
+    # Hash it for storage (we'll store the hash, not the plain token)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    return token, token_hash
+
+def validate_api_token(request):
+    """Validate the API token from request headers"""
+    # Get token from Authorization header
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    
+    if not auth_header.startswith('Token '):
+        return False, "Missing or invalid Authorization header format"
+    
+    token = auth_header[6:]  # Remove 'Token ' prefix
+    
+    if not token:
+        return False, "Empty token"
+    
+    # Get valid tokens from environment variables
+    # You can set multiple tokens separated by commas
+    env_tokens = os.environ.get('API_TOKENS', '')
+    if env_tokens:
+        valid_tokens = [t.strip() for t in env_tokens.split(',') if t.strip()]
+    else:
+        # Fallback to hardcoded tokens (for development only)
+        valid_tokens = [
+            "your-secure-token-here-12345",  # Replace with your actual token
+            "office-addin-token-67890",       # You can have multiple tokens
+        ]
+    
+    if token in valid_tokens:
+        return True, "Token valid"
+    else:
+        return False, "Invalid token"
+
+def require_api_token(view_func):
+    """Decorator to require valid API token"""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        is_valid, message = validate_api_token(request)
+        if not is_valid:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Authentication failed: {message}'
+            }, status=401)
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+def require_admin_user(view_func):
+    """Decorator to require admin user - works with JWT authentication"""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        print(f"DEBUG: require_admin_user - User: {request.user}, Authenticated: {request.user.is_authenticated}, Staff: {getattr(request.user, 'is_staff', False)}")
+        print(f"DEBUG: require_admin_user - Headers: {dict(request.META)}")
+        
+        # Check if user is authenticated via JWT (like your other endpoints)
+        if request.user.is_authenticated and request.user.is_staff:
+            print(f"DEBUG: require_admin_user - JWT auth successful for user: {request.user.username}")
+            return view_func(request, *args, **kwargs)
+        
+        # If not JWT authenticated, check for admin token as fallback
+        admin_token = request.META.get('HTTP_X_ADMIN_TOKEN', '')
+        if admin_token:
+            print(f"DEBUG: require_admin_user - Admin token provided: {admin_token[:10]}...")
+            # Check if admin token is valid
+            valid_admin_tokens = os.environ.get('ADMIN_TOKENS', 'admin-secret-token-12345').split(',')
+            if admin_token in valid_admin_tokens:
+                print(f"DEBUG: require_admin_user - Admin token valid")
+                return view_func(request, *args, **kwargs)
+            else:
+                print(f"DEBUG: require_admin_user - Admin token invalid")
+        
+        # If neither JWT nor admin token is valid
+        print(f"DEBUG: require_admin_user - No valid authentication found")
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Admin access required. Use JWT authentication or provide X-Admin-Token header.',
+            'debug_info': {
+                'user_authenticated': request.user.is_authenticated,
+                'user_is_staff': getattr(request.user, 'is_staff', False),
+                'admin_token_provided': bool(admin_token),
+                'jwt_token_provided': bool(request.META.get('HTTP_AUTHORIZATION', '').startswith('Bearer ')),
+                'session_id': request.session.session_key if hasattr(request, 'session') else None
+            }
+        }, status=403)
+    
+    return wrapper
 
 @api_view(['GET'])
 def generate_document_by_tipkar(request):
@@ -1398,7 +1493,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         else:
             return service.generate_libro_document(num_libro, str(anio_libro), orientation, mode)
 
-@csrf_exempt
+@require_api_token
 @require_http_methods(["POST"])
 def save_doc(request):
     """
@@ -1471,3 +1566,25 @@ def save_doc(request):
             'status': 'error',
             'message': f'Internal server error: {str(e)}'
         }, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def generate_token(request):
+    """
+    Generate a new secure token for API access
+    This endpoint is for admin use only
+    """
+    try:
+        token, token_hash = generate_secure_token()
+        return Response({
+            'status': 'success',
+            'message': 'Token generated successfully',
+            'token': token,
+            'token_hash': token_hash,
+            'note': 'Store this token securely. It will not be shown again.'
+        })
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Failed to generate token: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

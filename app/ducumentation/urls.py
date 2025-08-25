@@ -22,6 +22,7 @@ urlpatterns = [
     path('upload-docx/', views.generate_document_by_tipkar, name='generate_document_by_tipkar'),
     path('update-docx/', views.update_document_by_tipkar, name='update_document_by_tipkar'),
     path('save-doc/', views.save_doc, name='save_doc'),
+    path('generate-token/', views.generate_token, name='generate_token'),
     path('test-r2/', views.test_r2_connection, name='test_r2_connection'),
     re_path(r'^download/(?P<kardex>[^/]+)/__PROY__(?P<kardex2>[^/]+)\.docx$', download_docx, name='download_docx'),
 ] + router.urls
