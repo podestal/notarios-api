@@ -3,11 +3,12 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from . import models, serializers
 from notaria.models import TplTemplate, Detallevehicular, Patrimonial, Contratantes, Actocondicion, Cliente2, Nacionalidades, Kardex, Usuarios, Contratantesxacto, Ubigeo, IngresoCartas, CertDomiciliario, Libros
 from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from notaria import pagination
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 import boto3
 from botocore.client import Config
 from django.conf import settings
@@ -24,7 +25,7 @@ from datetime import datetime
 from docxtpl import DocxTemplate
 from docxcompose.properties import CustomProperties
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.response import Response
+from django.views.decorators.http import require_http_methods
 from docx.shared import RGBColor, Pt
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
@@ -1398,7 +1399,7 @@ class ExtraprotocolaresViewSet(ModelViewSet):
             return service.generate_libro_document(num_libro, str(anio_libro), orientation, mode)
 
 @csrf_exempt
-@api_view(['POST'])
+@require_http_methods(["POST"])
 def save_doc(request):
     """
     Save changes made in Word document back to R2 bucket
@@ -1407,19 +1408,19 @@ def save_doc(request):
     try:
         # Check if file was uploaded
         if 'file' not in request.FILES:
-            return Response({
+            return JsonResponse({
                 'status': 'error',
                 'message': 'No file uploaded'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=400)
         
         uploaded_file = request.FILES['file']
         
         # Validate file type
         if not uploaded_file.name.endswith('.docx'):
-            return Response({
+            return JsonResponse({
                 'status': 'error',
                 'message': 'Only .docx files are allowed'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=400)
         
         # Use the filename provided by the Word add-in
         filename = uploaded_file.name
@@ -1449,24 +1450,24 @@ def save_doc(request):
             
             print(f"DEBUG: Successfully saved document to R2: {object_key}")
             
-            return Response({
+            return JsonResponse({
                 'status': 'success',
                 'message': 'Document saved successfully',
                 'filename': filename,
                 'r2_path': object_key,
                 'file_size': uploaded_file.size
-            }, status=status.HTTP_200_OK)
+            })
             
         except Exception as e:
             print(f"DEBUG: Error uploading to R2: {e}")
-            return Response({
+            return JsonResponse({
                 'status': 'error',
                 'message': f'Failed to save document to R2: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            }, status=500)
             
     except Exception as e:
         print(f"DEBUG: Error in save_doc view: {e}")
-        return Response({
+        return JsonResponse({
             'status': 'error',
             'message': f'Internal server error: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        }, status=500)
