@@ -1397,8 +1397,8 @@ class ExtraprotocolaresViewSet(ModelViewSet):
         else:
             return service.generate_libro_document(num_libro, str(anio_libro), orientation, mode)
 
-@api_view(['POST'])
 @csrf_exempt
+@api_view(['POST'])
 def save_doc(request):
     """
     Save changes made in Word document back to R2 bucket
