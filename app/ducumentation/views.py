@@ -59,32 +59,47 @@ def generate_secure_token():
 
 def validate_api_token(request):
     """Validate the API token from request headers"""
+    print("DEBUG: ===== TOKEN VALIDATION START =====")
+    
     # Get token from Authorization header
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    print(f"DEBUG: Raw auth header: '{auth_header}'")
     
     if not auth_header.startswith('Token '):
+        print(f"DEBUG: Header doesn't start with 'Token '")
         return False, "Missing or invalid Authorization header format"
     
     token = auth_header[6:]  # Remove 'Token ' prefix
-    
-    if not token:
-        return False, "Empty token"
+    print(f"DEBUG: Extracted token: '{token}'")
     
     # Get valid tokens from environment variables
-    # You can set multiple tokens separated by commas
     env_tokens = os.environ.get('API_TOKENS', '')
+    print(f"DEBUG: Environment API_TOKENS: '{env_tokens}'")
+    print(f"DEBUG: Environment API_TOKENS type: {type(env_tokens)}")
+    print(f"DEBUG: All environment variables: {dict(os.environ)}")
+    
     if env_tokens:
         valid_tokens = [t.strip() for t in env_tokens.split(',') if t.strip()]
+        print(f"DEBUG: Parsed valid_tokens: {valid_tokens}")
     else:
+        print(f"DEBUG: No environment tokens, using fallback")
         # Fallback to hardcoded tokens (for development only)
         valid_tokens = [
-            "your-secure-token-here-12345",  # Replace with your actual token
-            "office-addin-token-67890",       # You can have multiple tokens
+            "your-secure-token-here-12345",
+            "office-addin-token-67890",
         ]
+        print(f"DEBUG: Fallback valid_tokens: {valid_tokens}")
+    
+    print(f"DEBUG: Final valid_tokens list: {valid_tokens}")
+    print(f"DEBUG: Token in valid_tokens: {token in valid_tokens}")
+    print(f"DEBUG: Token length: {len(token)}")
+    print(f"DEBUG: Valid token lengths: {[len(t) for t in valid_tokens]}")
     
     if token in valid_tokens:
+        print(f"DEBUG: TOKEN VALID - Authentication successful!")
         return True, "Token valid"
     else:
+        print(f"DEBUG: TOKEN INVALID - Authentication failed!")
         return False, "Invalid token"
 
 def require_api_token(view_func):
