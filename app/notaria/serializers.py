@@ -859,6 +859,7 @@ class LibrosSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Libros
         fields = [
+            'id',
             'numlibro',
             'ano',
             'fecing',
