@@ -3,6 +3,8 @@ from rest_framework import status
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
 from ducumentation.extraprotocolares.permiso_viajes import PermisosViajeReportService
+from ducumentation.extraprotocolares.cert_domiciliarios import CertDomiciliariosReportService
+from datetime import datetime
 
 from . import models
 from . import serializers
@@ -2583,6 +2585,45 @@ class CertDomiciliarioViewSet(ModelViewSet):
     queryset = models.CertDomiciliario.objects.all().order_by('-id_domiciliario')
     serializer_class = serializers.CertDomiciliarioSerializer
     pagination_class = pagination.KardexPagination  
+
+    @action(detail=False, methods=['get'], url_path='reporte')
+    def reporte(self, request):
+        """
+        Generate chronological index report for cert_domiciliario.
+        Parameters:
+        - fechade: Start date (DD/MM/YYYY)
+        - fechaa: End date (DD/MM/YYYY) 
+        - tipo_documento: 'EXCEL' or 'WORD'
+        """
+
+        fechade = request.query_params.get('fechade')
+        fechaa = request.query_params.get('fechaa')
+        tipo_documento = request.query_params.get('tipo_documento', 'WORD')
+        
+        
+        if not fechade or not fechaa:
+            return Response(
+                {'error': 'Both fechade and fechaa are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        
+        # Convert dates from DD/MM/YYYY to YYYY-MM-DD
+        try:
+            desde = datetime.strptime(fechade, '%d/%m/%Y').strftime('%Y-%m-%d')
+            hasta = datetime.strptime(fechaa, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use DD/MM/YYYY'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        report_service = CertDomiciliariosReportService()
+
+        if tipo_documento == 'EXCEL':
+            return report_service.generate_excel_report(desde, hasta)
+        else:
+            return report_service.generate_word_report(desde, hasta)
 
     def list(self, request, *args, **kwargs):
         dateFrom = request.query_params.get('dateFrom', '')

@@ -344,3 +344,477 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             else:
                 data['FECHA_INGRESO_LETRAS'] = ''
         return data 
+
+
+class CertDomiciliariosReportService:
+    """Service for generating cert_domiciliario reports matching PHP script format"""
+    
+    def _sanitize_cell_value(self, value):
+        """Sanitize cell values to prevent Excel corruption"""
+        if value is None:
+            return ""
+        
+        # Convert to string and strip whitespace
+        val_str = str(value).strip()
+        
+        # Remove control characters that can cause XML corruption
+        import re
+        val_str = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', val_str)
+        
+        # Limit to Excel's cell character limit
+        val_str = val_str[:32767]
+        
+        return val_str
+    
+    def _get_report_data(self, desde, hasta):
+        """Fetch data for the report matching PHP query"""
+        with connection.cursor() as cursor:
+            # Convert YYYY-MM-DD back to DD/MM/YYYY for the SQL query
+            desde_formatted = desde.strftime('%d/%m/%Y') if hasattr(desde, 'strftime') else desde
+            hasta_formatted = hasta.strftime('%d/%m/%Y') if hasattr(hasta, 'strftime') else hasta
+            
+            # Print the dates for debugging
+            print(f"Searching for records between {desde_formatted} and {hasta_formatted}")
+            
+            # Query matching PHP script exactly
+            query = """
+                SELECT 
+                    cd.num_certificado as kardex, 
+                    cd.fec_ingreso as fecha,
+                    cd.nombre_solic as solicitante,
+                    cd.numdoc_solic as documento_solicitante,
+                    cd.domic_solic as domicilio_solicitante,
+                    cd.motivo_solic as motivo_solicitante,
+                    cd.recibo_empresa as recibo,
+                    cd.numero_recibo as numero_recibo
+                FROM cert_domiciliario as cd
+                WHERE STR_TO_DATE(fec_ingreso,'%%Y-%%m-%%d') >= STR_TO_DATE(%s,'%%d/%%m/%%Y') 
+                AND STR_TO_DATE(fec_ingreso,'%%Y-%%m/%%d') <= STR_TO_DATE(%s,'%%d/%%m/%%Y') 
+                ORDER BY kardex
+            """
+            
+            cursor.execute(query, [desde_formatted, hasta_formatted])
+            
+            result = cursor.fetchall()
+            print(f"Found {len(result) if result else 0} records")
+            
+            if result:
+                return result
+            return []
+    
+    def _get_notary_info(self):
+        """Get notary configuration info"""
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT nombre, apellido FROM confinotario")
+            result = cursor.fetchone()
+            if result:
+                return f"{result[0]} {result[1]}"
+            return "NOTARIO"
+    
+    def _format_date_in_spanish(self, date_input):
+        """Convert date to Spanish format like 'LUNES, 15 DE ENERO DEL 2025'"""
+        try:
+            # Handle both datetime objects and date strings
+            if hasattr(date_input, 'strftime'):
+                # It's a datetime object
+                date_obj = date_input
+            else:
+                # It's a string, try to parse it
+                from datetime import datetime
+                # Try different formats
+                if '-' in str(date_input) and len(str(date_input).split('-')[0]) == 4:
+                    date_obj = datetime.strptime(str(date_input), '%Y-%m-%d')
+                elif '/' in str(date_input):
+                    date_obj = datetime.strptime(str(date_input), '%d/%m/%Y')
+                else:
+                    return str(date_input)
+            
+            # Spanish day names
+            dias = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
+            # Spanish month names
+            meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 
+                    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
+            
+            dia_semana = dias[date_obj.weekday()]
+            dia = date_obj.day
+            mes = meses[date_obj.month - 1]
+            anio = date_obj.year
+            
+            return f"{dia_semana}, {dia} DE {mes} DEL {anio}"
+        except:
+            return str(date_input)
+    
+    def _extract_year_from_date(self, date_input):
+        """Extract year from date string DD/MM/YYYY or YYYY-MM-DD or datetime object"""
+        try:
+            # Handle datetime objects
+            if hasattr(date_input, 'year'):
+                return str(date_input.year)
+            
+            # Handle strings
+            date_str = str(date_input)
+            # Try to parse as YYYY-MM-DD first
+            if '-' in date_str and len(date_str.split('-')[0]) == 4:
+                return date_str.split('-')[0]
+            # Try to parse as DD/MM/YYYY
+            elif '/' in date_str:
+                return date_str.split('/')[-1]
+            else:
+                from datetime import datetime
+                return str(datetime.now().year)
+        except:
+            from datetime import datetime
+            return str(datetime.now().year)
+    
+    def _format_date_for_display(self, date_obj):
+        """Format date like PHP script logic"""
+        try:
+            if hasattr(date_obj, 'strftime'):
+                return date_obj.strftime('%d/%m/%Y')
+            return str(date_obj)
+        except:
+            return str(date_obj)
+    
+    def _format_recibo_type(self, recibo):
+        """Format recibo type like PHP script logic"""
+        if recibo == 'SEDA JULIACA S.A.':
+            return 'RECIBO DE AGUA'
+        elif recibo == 'ELECTRO PUNO S.A.A':
+            return 'RECIBO DE LUZ'
+        else:
+            return recibo or ''
+    
+    def generate_excel_report(self, desde, hasta):
+        """Generate Excel report matching PHP script format"""
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+            import json
+            
+            # Get data
+            report_data = self._get_report_data(desde, hasta)
+            notary_name = self._get_notary_info()
+            anio = self._extract_year_from_date(hasta)
+            
+            # Create workbook and worksheet
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "CERTIFICADO DOMICILIARIO"
+            
+            # Styles matching PHP script
+            title_font = Font(name='Arial', size=18.5, bold=True)
+            header_font = Font(name='Arial', size=13.5, bold=True)
+            data_font = Font(name='Arial', size=13.5)
+            center_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+            
+            # Borders for data table
+            thin_border = Border(
+                left=Side(border_style="thin"),
+                right=Side(border_style="thin"),
+                top=Side(border_style="thin"),
+                bottom=Side(border_style="thin")
+            )
+            
+            # No borders for header section
+            no_border = Border(
+                left=Side(style=None),
+                right=Side(style=None),
+                top=Side(style=None),
+                bottom=Side(style=None)
+            )
+            
+            # Title section
+            ws.merge_cells('A1:I1')
+            ws['A1'] = 'INDICE CRONOLOGICO - CERTIFICADO DOMICILIARIO'
+            ws['A1'].font = title_font
+            ws['A1'].alignment = center_alignment
+            ws['A1'].border = no_border
+            
+            ws.merge_cells('A2:I2')
+            ws['A2'] = f'AÑO {anio}'
+            ws['A2'].font = title_font
+            ws['A2'].alignment = center_alignment
+            ws['A2'].border = no_border
+            
+            # Notary info section
+            row = 4
+            ws[f'A{row}'] = 'NOTARIA'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].border = no_border
+            ws[f'C{row}'] = f': {self._sanitize_cell_value(notary_name)}'
+            ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].border = no_border
+            
+            row += 1
+            ws[f'A{row}'] = 'DIRECCION'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].border = no_border
+            ws[f'C{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].border = no_border
+            ws[f'F{row}'] = 'TELEFONO'
+            ws[f'F{row}'].font = header_font
+            ws[f'F{row}'].border = no_border
+            ws[f'H{row}'] = ': (051) 326609'
+            ws[f'H{row}'].font = data_font
+            ws[f'H{row}'].border = no_border
+            
+            row += 1
+            ws[f'A{row}'] = 'DEPARTAMENTO'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].border = no_border
+            ws[f'C{row}'] = ': PUNO'
+            ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].border = no_border
+            ws[f'F{row}'] = 'RUC'
+            ws[f'F{row}'].font = header_font
+            ws[f'F{row}'].border = no_border
+            ws[f'H{row}'] = ': 10024231572'
+            ws[f'H{row}'].font = data_font
+            ws[f'H{row}'].border = no_border
+            
+            row += 1
+            ws[f'A{row}'] = 'PROVINCIA'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].border = no_border
+            ws[f'C{row}'] = ': SAN ROMAN'
+            ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].border = no_border
+            ws[f'F{row}'] = 'DESDE'
+            ws[f'F{row}'].font = header_font
+            ws[f'F{row}'].border = no_border
+            ws[f'H{row}'] = f': {self._format_date_in_spanish(desde).upper()}'
+            ws[f'H{row}'].font = data_font
+            ws[f'H{row}'].border = no_border
+            
+            row += 1
+            ws[f'A{row}'] = 'DISTRITO'
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].border = no_border
+            ws[f'C{row}'] = ': JULIACA'
+            ws[f'C{row}'].font = data_font
+            ws[f'C{row}'].border = no_border
+            ws[f'F{row}'] = 'HASTA'
+            ws[f'F{row}'].font = header_font
+            ws[f'F{row}'].border = no_border
+            ws[f'H{row}'] = f': {self._format_date_in_spanish(hasta).upper()}'
+            ws[f'H{row}'].font = data_font
+            ws[f'H{row}'].border = no_border
+            
+            # Data table headers
+            row += 2
+            headers = ['N°', 'FECHA', 'SOLICITANTE', 'N° DNI', 'DOMICILIO', 'MOTIVO', 'DOCUMENTO VERIFICADO', 'COMPROBANTE']
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=row, column=col, value=header)
+                cell.font = header_font
+                cell.alignment = center_alignment
+                cell.border = thin_border
+            
+            # Data rows
+            for data_row in report_data:
+                row += 1
+                kardex, fecha, solicitante, documento_solicitante, domicilio_solicitante, motivo_solicitante, recibo, numero_recibo = data_row
+                
+                # Format kardex (substr from position 4 like PHP)
+                kardex_formatted = str(kardex)[3:] if len(str(kardex)) > 3 else str(kardex)
+                
+                # Format recibo type
+                recibo_formatted = self._format_recibo_type(recibo)
+                
+                # Row data
+                row_data = [
+                    kardex_formatted,
+                    self._format_date_for_display(fecha),
+                    self._sanitize_cell_value(solicitante),
+                    documento_solicitante,
+                    self._sanitize_cell_value(domicilio_solicitante),
+                    self._sanitize_cell_value(motivo_solicitante),
+                    recibo_formatted,
+                    numero_recibo
+                ]
+                
+                for col, value in enumerate(row_data, 1):
+                    cell = ws.cell(row=row, column=col, value=value)
+                    cell.font = data_font
+                    cell.border = thin_border
+                    
+                    # Right align numbers, left align text
+                    if col in [1, 2, 4, 8]:  # N°, FECHA, N° DNI, COMPROBANTE
+                        cell.alignment = Alignment(horizontal='right', vertical='top', wrap_text=True)
+                    else:
+                        cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+            
+            # Auto-adjust column widths
+            for column in ws.columns:
+                max_length = 0
+                column_letter = get_column_letter(column[0].column)
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Save to buffer
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            
+            # Create response
+            from django.http import HttpResponse
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename=INDICE_CRONOLOGICO_CERTIFICADO_DOMICILIARIO_{anio}.xlsx'
+            response['Access-Control-Allow-Origin'] = '*'
+            
+            return response
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            from django.http import HttpResponse
+            return HttpResponse(f"Error generating Excel report: {e}", status=500)
+    
+    def generate_word_report(self, desde, hasta):
+        """Generate Word report matching PHP script format"""
+        try:
+            from docx import Document
+            from docx.shared import Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.shared import OxmlElement, qn
+            
+            # Get data
+            report_data = self._get_report_data(desde, hasta)
+            notary_name = self._get_notary_info()
+            anio = self._extract_year_from_date(hasta)
+            
+            # Create document
+            doc = Document()
+            
+            # Set margins
+            sections = doc.sections
+            for section in sections:
+                section.top_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.5)
+                section.left_margin = Inches(0.5)
+                section.right_margin = Inches(0.5)
+            
+            # Title
+            title = doc.add_heading('INDICE CRONOLOGICO - CERTIFICADO DOMICILIARIO', 0)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            subtitle = doc.add_heading(f'AÑO {anio}', 0)
+            subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Add spacing
+            doc.add_paragraph()
+            
+            # Notary info table
+            info_table = doc.add_table(rows=5, cols=9)
+            info_table.style = 'Table Grid'
+            
+            # Row 1: NOTARIA
+            row1 = info_table.rows[0]
+            row1.cells[0].text = 'NOTARIA'
+            row1.cells[0].paragraphs[0].runs[0].bold = True
+            row1.cells[2].text = f': {notary_name}'
+            
+            # Row 2: DIRECCION
+            row2 = info_table.rows[1]
+            row2.cells[0].text = 'DIRECCION'
+            row2.cells[0].paragraphs[0].runs[0].bold = True
+            row2.cells[2].text = ': JR.BOLIVAR NRO. 340'
+            row2.cells[4].text = 'TELEFONO'
+            row2.cells[4].paragraphs[0].runs[0].bold = True
+            row2.cells[7].text = ': (051) 326609'
+            
+            # Row 3: DEPARTAMENTO
+            row3 = info_table.rows[2]
+            row3.cells[0].text = 'DEPARTAMENTO'
+            row3.cells[0].paragraphs[0].runs[0].bold = True
+            row3.cells[2].text = ': PUNO'
+            row3.cells[4].text = 'RUC'
+            row3.cells[4].paragraphs[0].runs[0].bold = True
+            row3.cells[7].text = ': 10024231572'
+            
+            # Row 4: PROVINCIA
+            row4 = info_table.rows[3]
+            row4.cells[0].text = 'PROVINCIA'
+            row4.cells[0].paragraphs[0].runs[0].bold = True
+            row4.cells[2].text = ': SAN ROMAN'
+            row4.cells[4].text = 'DESDE'
+            row4.cells[4].paragraphs[0].runs[0].bold = True
+            row4.cells[7].text = f': {self._format_date_in_spanish(desde).upper()}'
+            
+            # Row 5: DISTRITO
+            row5 = info_table.rows[4]
+            row5.cells[0].text = 'DISTRITO'
+            row5.cells[0].paragraphs[0].runs[0].bold = True
+            row5.cells[2].text = ': JULIACA'
+            row5.cells[4].text = 'HASTA'
+            row5.cells[4].paragraphs[0].runs[0].bold = True
+            row5.cells[7].text = f': {self._format_date_in_spanish(hasta).upper()}'
+            
+            # Add spacing
+            doc.add_paragraph()
+            
+            # Data table
+            if report_data:
+                data_table = doc.add_table(rows=1, cols=8)
+                data_table.style = 'Table Grid'
+                
+                # Headers
+                header_row = data_table.rows[0]
+                headers = ['N°', 'FECHA', 'SOLICITANTE', 'N° DNI', 'DOMICILIO', 'MOTIVO', 'DOCUMENTO VERIFICADO', 'COMPROBANTE']
+                for i, header in enumerate(headers):
+                    header_row.cells[i].text = header
+                    header_row.cells[i].paragraphs[0].runs[0].bold = True
+                
+                # Data rows
+                for data_row in report_data:
+                    kardex, fecha, solicitante, documento_solicitante, domicilio_solicitante, motivo_solicitante, recibo, numero_recibo = data_row
+                    
+                    # Format kardex (substr from position 4 like PHP)
+                    kardex_formatted = str(kardex)[3:] if len(str(kardex)) > 3 else str(kardex)
+                    
+                    # Format recibo type
+                    recibo_formatted = self._format_recibo_type(recibo)
+                    
+                    # Add row
+                    row = data_table.add_row()
+                    row.cells[0].text = str(kardex_formatted)
+                    row.cells[1].text = self._format_date_for_display(fecha)
+                    row.cells[2].text = str(solicitante or '')
+                    row.cells[3].text = str(documento_solicitante or '')
+                    row.cells[4].text = str(domicilio_solicitante or '')
+                    row.cells[5].text = str(motivo_solicitante or '')
+                    row.cells[6].text = str(recibo_formatted or '')
+                    row.cells[7].text = str(numero_recibo or '')
+            
+            # Save to buffer
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            
+            # Create response
+            from django.http import HttpResponse
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'attachment; filename=INDICE_CRONOLOGICO_CERTIFICADO_DOMICILIARIO_{anio}.docx'
+            response['Access-Control-Allow-Origin'] = '*'
+            
+            return response
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            from django.http import HttpResponse
+            return HttpResponse(f"Error generating Word report: {e}", status=500) 
