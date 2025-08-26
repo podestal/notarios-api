@@ -2158,7 +2158,11 @@ class IngresoPoderesViewSet(ModelViewSet):
 
         if dateType == 'fecha_ingreso':
             if dateFrom and dateTo:
-                self.queryset = self.queryset.filter(fec_ingreso__range=(dateFrom, dateTo))
+                # Convert string dates to proper format for string comparison
+                self.queryset = self.queryset.filter(
+                    fec_ingreso__gte=dateFrom,
+                    fec_ingreso__lte=dateTo
+                )
             elif dateFrom:
                 self.queryset = self.queryset.filter(fec_ingreso__gte=dateFrom)
             elif dateTo:
@@ -2170,6 +2174,22 @@ class IngresoPoderesViewSet(ModelViewSet):
                 self.queryset = self.queryset.filter(fec_crono__gte=dateFrom)
             elif dateTo:
                 self.queryset = self.queryset.filter(fec_crono__lte=dateTo)
+        elif dateType == 'fecha_diligencia':
+            if dateFrom and dateTo:
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') BETWEEN STR_TO_DATE(%s, '%%d/%%m/%%Y') AND STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateFrom, dateTo]
+                )
+            elif dateFrom:
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') >= STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateFrom]
+                )
+            elif dateTo:
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') <= STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateTo]
+                )
 
         page_permisos = self.paginate_queryset(self.queryset)
 
@@ -2308,21 +2328,43 @@ class IngresoCartasViewSet(ModelViewSet):
         dateFrom = request.query_params.get('dateFrom', '')
         dateTo = request.query_params.get('dateTo', '')
         dateType = request.query_params.get('dateType', '')
-
         if dateType == 'fecha_ingreso':
             if dateFrom and dateTo:
-                self.queryset = self.queryset.filter(fec_ingreso__range=(dateFrom, dateTo))
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_ingreso, '%%d/%%m/%%Y') BETWEEN STR_TO_DATE(%s, '%%d/%%m/%%Y') AND STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateFrom, dateTo]
+                )
             elif dateFrom:
-                self.queryset = self.queryset.filter(fec_ingreso__gte=dateFrom)
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_ingreso, '%%d/%%m/%%Y') >= STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateFrom]
+                )
             elif dateTo:
-                self.queryset = self.queryset.filter(fec_ingreso__lte=dateTo)
-        elif dateType == 'fec_entrega':
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_ingreso, '%%d/%%m/%%Y') <= STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateTo]
+                )
+        elif dateType == 'fecha_diligencia':
             if dateFrom and dateTo:
-                self.queryset = self.queryset.filter(fec_entrega__range=(dateFrom, dateTo))
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') BETWEEN STR_TO_DATE(%s, '%%d/%%m/%%Y') AND STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateFrom, dateTo]
+                )
             elif dateFrom:
-                self.queryset = self.queryset.filter(fec_entrega__gte=dateFrom)
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') >= STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateFrom]
+                )
             elif dateTo:
-                self.queryset = self.queryset.filter(fec_entrega__lte=dateTo)
+                self.queryset = self.queryset.extra(
+                    where=["STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') <= STR_TO_DATE(%s, '%%d/%%m/%%Y')"],
+                    params=[dateTo]
+                )
+
+        print('dateFrom', dateFrom)
+        print('dateTo', dateTo)
+        print('dateType', dateType)
+        print('queryset', self.queryset)
 
         if numCarta:
             self.queryset = self.queryset.filter(num_carta=numCarta)
