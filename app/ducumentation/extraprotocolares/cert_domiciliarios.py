@@ -368,38 +368,69 @@ class CertDomiciliariosReportService:
     
     def _get_report_data(self, desde, hasta):
         """Fetch data for the report matching PHP query"""
-        with connection.cursor() as cursor:
-            # Convert YYYY-MM-DD back to DD/MM/YYYY for the SQL query
-            desde_formatted = desde.strftime('%d/%m/%Y') if hasattr(desde, 'strftime') else desde
-            hasta_formatted = hasta.strftime('%d/%m/%Y') if hasattr(hasta, 'strftime') else hasta
+        try:
+            from django.db import connection
+            from notaria.models import CertDomiciliario
             
-            # Print the dates for debugging
-            print(f"Searching for records between {desde_formatted} and {hasta_formatted}")
+            print(f"DEBUG: Input dates - desde: {desde} (type: {type(desde)}), hasta: {hasta} (type: {type(hasta)})")
             
-            # Query matching PHP script exactly
-            query = """
-                SELECT 
-                    cd.num_certificado as kardex, 
-                    cd.fec_ingreso as fecha,
-                    cd.nombre_solic as solicitante,
-                    cd.numdoc_solic as documento_solicitante,
-                    cd.domic_solic as domicilio_solicitante,
-                    cd.motivo_solic as motivo_solicitante,
-                    cd.recibo_empresa as recibo,
-                    cd.numero_recibo as numero_recibo
-                FROM cert_domiciliario as cd
-                WHERE STR_TO_DATE(fec_ingreso,'%%Y-%%m-%%d') >= STR_TO_DATE(%s,'%%d/%%m/%%Y') 
-                AND STR_TO_DATE(fec_ingreso,'%%Y-%%m/%%d') <= STR_TO_DATE(%s,'%%d/%%m/%%Y') 
-                ORDER BY kardex
-            """
+            # Convert dates to proper format for Django ORM
+            if isinstance(desde, str):
+                if '-' in desde and len(desde.split('-')[0]) == 4:
+                    # It's YYYY-MM-DD format, convert to datetime
+                    from datetime import datetime
+                    desde_dt = datetime.strptime(desde, '%Y-%m-%d')
+                else:
+                    # It's DD/MM/YYYY format, convert to datetime
+                    from datetime import datetime
+                    desde_dt = datetime.strptime(desde, '%d/%m/%Y')
+            else:
+                desde_dt = desde
             
-            cursor.execute(query, [desde_formatted, hasta_formatted])
+            if isinstance(hasta, str):
+                if '-' in hasta and len(hasta.split('-')[0]) == 4:
+                    # It's YYYY-MM-DD format, convert to datetime
+                    from datetime import datetime
+                    hasta_dt = datetime.strptime(hasta, '%Y-%m-%d')
+                else:
+                    # It's DD/MM/YYYY format, convert to datetime
+                    from datetime import datetime
+                    hasta_dt = datetime.strptime(hasta, '%d/%m/%Y')
+            else:
+                hasta_dt = hasta
             
-            result = cursor.fetchall()
-            print(f"Found {len(result) if result else 0} records")
+            print(f"DEBUG: Converted dates - desde_dt: {desde_dt}, hasta_dt: {hasta_dt}")
             
-            if result:
-                return result
+            # Use Django ORM like the working list method
+            queryset = CertDomiciliario.objects.filter(
+                fec_ingreso__range=(desde_dt, hasta_dt)
+            ).order_by('num_certificado')
+            
+            print(f"DEBUG: Django ORM query: {queryset.query}")
+            print(f"DEBUG: Found {queryset.count()} records")
+            
+            # Convert to the format expected by the report
+            result = []
+            for record in queryset:
+                row = (
+                    record.num_certificado,
+                    record.fec_ingreso,
+                    record.nombre_solic,
+                    record.numdoc_solic,
+                    record.domic_solic,
+                    record.motivo_solic,
+                    record.recibo_empresa,
+                    record.numero_recibo
+                )
+                result.append(row)
+                print(f"DEBUG: Record: {row}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"ERROR in _get_report_data: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def _get_notary_info(self):
