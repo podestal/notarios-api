@@ -16,8 +16,15 @@ class SISGENSoapClient:
         self.timeout = timeout
         self.logger = logger
     
-    def send_documents(self, xml_content: str) -> Dict:
+    def send_documents(self, xml_content: Optional[str]) -> Dict:
         """Send documents to SISGEN service"""
+        if not xml_content:
+            return {
+                'success': False,
+                'error': 'No valid XML content to send - missing required data (possibly notary information)',
+                'status': 'ERROR_MISSING_DATA'
+            }
+        
         try:
             # Create SOAP envelope
             soap_request = self._create_soap_envelope(xml_content)
@@ -33,14 +40,14 @@ class SISGENSoapClient:
             return {
                 'success': False,
                 'error': str(e),
-                'status': 'ERROR'
+                'status': 'ERROR_SERVICE'
             }
         except Exception as e:
             self.logger.error(f"Unexpected error sending documents: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
-                'status': 'ERROR'
+                'status': 'ERROR_UNEXPECTED'
             }
     
     def _create_soap_envelope(self, xml_content: str) -> str:

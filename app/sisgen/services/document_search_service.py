@@ -59,15 +59,24 @@ class DocumentSearchService:
     
     def _build_sql_query(self, filters: Dict) -> Tuple[str, List]:
         """Build parameterized SQL query"""
-        # Base query with proper date handling
+        # Base query with proper date handling and notary data
         base_query = """
             SELECT k.idkardex, k.kardex, k.numescritura, k.fechaescritura,
                    IF(ta.cod_ancert IS NULL,'',ta.cod_ancert) AS cod_ancert,
                    k.estado_sisgen, k.idtipkar, k.fechaingreso, k.codactos,
                    k.contrato, k.folioini, k.foliofin, k.fechaconclusion,
-                   ta.actouif, ta.actosunat
+                   ta.actouif, ta.actosunat,
+                   -- Add notary data
+                   cn.codnotario, cn.codoficial, cn.coduif,
+                   CONCAT(cn.nombre, ' ', cn.apellido) as nombre_notario,
+                   cn.direccion as direccion_notario,
+                   cn.distrito as distrito_notario,
+                   cn.provincia as provincia_notario,
+                   cn.departamento as departamento_notario
             FROM kardex k
             LEFT JOIN tiposdeacto ta ON SUBSTRING(k.codactos,1,3) = ta.idtipoacto
+            -- Join with confinotario to get notary data
+            LEFT JOIN confinotario cn ON 1=1
             WHERE 1=1
         """
         
@@ -105,7 +114,15 @@ class DocumentSearchService:
         # Basic filters
         conditions.extend([
             "k.numescritura <> ''",
-            "k.kardex <> ''"
+            "k.kardex <> ''",
+            # Ensure notary data is complete
+            "cn.codnotario IS NOT NULL",
+            "cn.codoficial IS NOT NULL",
+            "cn.coduif IS NOT NULL",
+            "cn.nombre IS NOT NULL",
+            "cn.apellido IS NOT NULL",
+            "cn.direccion IS NOT NULL",
+            "cn.distrito IS NOT NULL"
         ])
         
         # Add conditions to query
@@ -142,7 +159,8 @@ class DocumentSearchService:
         # Get estado display
         estado_display = self._get_estado_display(doc['estado_sisgen'])
         
-        return {
+        # Format document data
+        formatted_doc = {
             'idkardex': doc['idkardex'],
             'kardex': doc['kardex'],
             'numescritura': doc['numescritura'],
@@ -157,8 +175,21 @@ class DocumentSearchService:
             'fechaconclusion': self._format_date_safely(doc['fechaconclusion']),
             'cod_ancert': doc['cod_ancert'] or '',
             'actouif': doc['actouif'] or '',
-            'actosunat': doc['actosunat'] or ''
+            'actosunat': doc['actosunat'] or '',
+            # Add notary data
+            'notary_data': {
+                'codnotario': doc['codnotario'],
+                'codoficial': doc['codoficial'],
+                'coduif': doc['coduif'],
+                'nombre_notario': doc['nombre_notario'],
+                'direccion': doc['direccion_notario'],
+                'distrito': doc['distrito_notario'],
+                'provincia': doc.get('provincia_notario', ''),
+                'departamento': doc.get('departamento_notario', '')
+            }
         }
+        
+        return formatted_doc
     
     def _format_date_safely(self, date_value) -> str:
         """Safely format date values"""
@@ -223,7 +254,8 @@ class DocumentSearchService:
                     'contrato': '',
                     'estado_sisgen': '-1',
                     'actouif': '',
-                    'actosunat': ''
+                    'actosunat': '',
+                    'notary_data': {} # Ensure notary data is empty for gap documents
                 })
             
             processed.append(doc)
