@@ -21,6 +21,7 @@ class DocumentSearchView(APIView):
         try:
             # Get filters from request
             filters = request.data
+            print('DEBUG: Filters', filters)
             
             # Search documents
             service = DocumentSearchService()

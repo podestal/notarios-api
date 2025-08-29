@@ -83,18 +83,25 @@ class DocumentSearchService:
         params = []
         conditions = []
         
-        # Date range - use proper date formatting
+        # Debug incoming filters
+        self.logger.debug(f"Building query with filters: {filters}")
+        
+        # Date range - handle both YYYY-MM-DD and DD/MM/YYYY formats
         if filters.get('fechaDesde') and filters.get('fechaHasta'):
-            conditions.append("DATE(k.fechaescritura) BETWEEN %s AND %s")
+            conditions.append("k.fechaescritura BETWEEN %s AND %s")
             params.extend([filters['fechaDesde'], filters['fechaHasta']])
+            self.logger.debug(f"Date range: {filters['fechaDesde']} to {filters['fechaHasta']}")
         
         # Instrument type
         if filters.get('tipoInstrumento'):
             conditions.append("k.idtipkar = %s")
             params.append(filters['tipoInstrumento'])
+            self.logger.debug(f"Instrument type: {filters['tipoInstrumento']}")
         
-        # Status filter
+        # Status filter - handle -1 as special case for all documents
         estado = filters.get('estado')
+        self.logger.debug(f"Estado filter: {estado}")
+        
         if estado == 4:
             conditions.append("(ta.cod_ancert = '' OR ta.cod_ancert IS NULL)")
         elif estado == 0:
@@ -102,14 +109,16 @@ class DocumentSearchService:
             params.append(estado)
         elif estado == 3:
             conditions.append("k.estado_sisgen = '3'")
-        elif estado != 5 and estado is not None:
+        elif estado != 5 and estado != -1 and estado is not None:  # Modified to handle -1
             conditions.append("k.estado_sisgen = %s")
             params.append(estado)
+        # Note: estado = -1 means no filter, similar to estado = 5
         
         # Act code
         if filters.get('codigoActo') and filters['codigoActo'] != 0:
             conditions.append("ta.idtipoacto = %s")
             params.append(filters['codigoActo'])
+            self.logger.debug(f"Act code: {filters['codigoActo']}")
         
         # Basic filters
         conditions.extend([
@@ -131,7 +140,7 @@ class DocumentSearchService:
         
         base_query += " ORDER BY CAST(k.numescritura AS UNSIGNED)"
         
-        self.logger.debug(f"SQL Query: {base_query}")
+        self.logger.debug(f"Final SQL Query: {base_query}")
         self.logger.debug(f"SQL Params: {params}")
         
         return base_query, params
