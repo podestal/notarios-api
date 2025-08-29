@@ -1,7 +1,13 @@
-# sisgen_service/services/data_processor_service.py
-from typing import Dict, List
+"""
+This module contains the data processor service for SISGEN integration.
+Handles temporary tables and data processing for SISGEN XML generation.
+"""
+
+from typing import Dict, List, Optional
 import logging
+from datetime import datetime
 from django.db import connection
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +16,15 @@ class DataProcessorService:
         self.logger = logger
     
     def process_temp_tables(self, kardex_list: List[str]) -> Dict:
-        """Process temporary tables for SISGEN"""
+        """
+        Process temporary tables for SISGEN XML generation
+        Returns: {
+            'documents': [...],  # Document data for XML
+            'errores': [...],    # Error list
+            'observaciones': [...], # Observations
+            'personas': [...]    # Person errors
+        }
+        """
         try:
             # Clear temp tables
             self._clear_temp_tables()
@@ -27,10 +41,17 @@ class DataProcessorService:
             # Process interventions
             intervenciones = self._process_intervenciones()
             
+            # Get document data for XML generation
+            documents = self._get_documents_for_xml()
+            
             return {
+                'documents': documents,
                 'juridicas_count': len(juridicas),
                 'naturales_count': len(naturales),
-                'intervenciones_count': len(intervenciones)
+                'intervenciones_count': len(intervenciones),
+                'errores': [],  # Will be populated during XML generation
+                'observaciones': [],
+                'personas': []
             }
             
         except Exception as e:
@@ -39,7 +60,13 @@ class DataProcessorService:
     
     def _clear_temp_tables(self):
         """Clear all temporary tables"""
-        tables = ['sisgen_temp', 'sisgen_temp_j', 'sisgen_temp_n', 'sisgen_intervenciones_6']
+        tables = [
+            'sisgen_temp',
+            'sisgen_temp_j',
+            'sisgen_temp_n',
+            'sisgen_intervenciones_6',
+            'sisgen_mensaje'  # Added for message storage
+        ]
         
         with connection.cursor() as cursor:
             for table in tables:
@@ -49,38 +76,126 @@ class DataProcessorService:
         """Insert data into sisgen_temp table"""
         if not kardex_list:
             return
+            
+        placeholders = ', '.join(['%s'] * len(kardex_list))
+        query = f"""
+            INSERT INTO sisgen_temp (
+                idkardex, kardex, idtipkar, fecha_ingreso,
+                codactos, contrato, folioini, foliofin,
+                fecha_conclusion, numescritura, fechaescritura, cod_ancert
+            )
+            SELECT 
+                k.idkardex, k.kardex, k.idtipkar, k.fechaingreso,
+                k.codactos, k.contrato, k.folioini, k.foliofin,
+                k.fechaconclusion, k.numescritura, k.fechaescritura,
+                IF(ta.cod_ancert IS NULL, '', ta.cod_ancert)
+            FROM kardex k
+            LEFT JOIN tiposdeacto ta ON SUBSTRING(k.codactos,1,3) = ta.idtipoacto
+            WHERE k.kardex IN ({placeholders})
+        """
         
-        # This would be populated from the search results
-        # Implementation depends on your data structure
-        pass
+        with connection.cursor() as cursor:
+            cursor.execute(query, kardex_list)
     
-    def _process_juridicas(self) -> List[Dict]:
-        """Process legal entities"""
+    def update_document_statuses(self, sisgen_response: Dict):
+        """Update document statuses based on SISGEN response"""
+        current_date = datetime.now().strftime('%d/%m/%Y')
+        current_time = datetime.now().strftime('%H:%M:%S')
+        
+        for doc in sisgen_response.get('DocumentoNotarial', []):
+            kardex = doc['Documento']['NumKardex']
+            status = doc['Status']
+            
+            # Map status to estado_sisgen
+            estado_map = {
+                'FALLIDO': 3,
+                'GUARDADO': 1,
+                'CON OBSERVACIONES': 2
+            }
+            estado = estado_map.get(status, 0)
+            
+            # Insert into sisgen table
+            self._insert_sisgen_status(
+                kardex=kardex,
+                tipo_kardex=doc['Documento']['TipoInstrumento'],
+                num_escritura=doc['Documento']['NumDocumento'],
+                fecha_instrumento=doc['Documento']['FechaInstrumento'],
+                fecha_envio=current_date,
+                hora_envio=current_time,
+                status=status,
+                estado=estado
+            )
+            
+            # Update kardex table
+            self._update_kardex_status(kardex, estado)
+            
+            # Process errors if any
+            if 'ERRORS' in doc['Documento']:
+                self._process_document_errors(kardex, doc['Documento']['ERRORS'])
+            
+            if 'Maestros' in doc and 'ERRORS' in doc['Maestros']:
+                self._process_maestros_errors(kardex, doc['Maestros']['ERRORS'])
+            
+            if 'Operaciones' in doc:
+                self._process_operaciones_errors(kardex, doc['Operaciones'])
+    
+    def get_final_status(self) -> Dict:
+        """Get final status counts and messages"""
         query = """
-            SELECT cl.idcontratante, cl.idcliente AS id, cl.tipper AS tipp,
-                   cl.idtipdoc AS tipodoc, cl.numdoc AS numdoc, cl.idubigeo,
-                   cl.razonsocial AS razonsocial, cl.domfiscal, cl.telempresa AS telempresa,
-                   cl.mailempresa AS correoemp, cl.contacempresa AS objeto,
-                   cl.fechaconstitu, SUBSTRING(CONCAT('0',cl.idsedereg),1,2) AS sedereg,
-                   cl.numregistro, cl.numpartida AS numpartidareg, cl.actmunicipal,
-                   cl.residente, cl.docpaisemi, co.idcontratante, co.idtipkar,
-                   co.kardex, SUBSTRING(co.condicion,1,3) AS condi, co.firma,
-                   co.fechafirma, co.resfirma, co.tiporepresentacion, co.idcontratanterp,
-                   co.idsedereg, co.numpartida, co.facultades, co.inscrito,
-                   u.coddist AS distrito, u.codprov AS provincia, u.codpto AS departamento,
-                   c.coddivi AS ciuu, codtipdoc AS tipodoc, prof.codprof AS profesion,
-                   na.codnacion AS nacionalidad, cx.uif AS ROUIF, cl.idcliente AS idcliente
-            FROM sisgen_temp
-            LEFT JOIN contratantesxacto cx ON sisgen_temp.kardex = cx.kardex
-            LEFT JOIN cliente2 cl ON cx.idcontratante = cl.idcontratante
-            LEFT JOIN contratantes co ON cl.idcontratante = co.idcontratante
-            LEFT JOIN ubigeo u ON cl.idubigeo = u.coddis
-            LEFT JOIN ciiu c ON cl.actmunicipal = c.coddivi
-            LEFT JOIN tipodocumento td ON cl.idtipdoc = td.idtipdoc
-            LEFT JOIN profesiones prof ON cl.idprofesion = prof.idprofesion
-            LEFT JOIN nacionalidades na ON cl.nacionalidad = na.idnacionalidad
-            WHERE (cx.uif = 'O' OR cx.uif = 'B' OR cx.uif = 'G' OR cx.uif = 'N' OR cx.uif = 'R')
-              AND cl.tipper = 'J'
+            SELECT DISTINCT
+                sm.mensaje,
+                s.tipo_kardex AS TIPKAR,
+                s.kardex AS kardex,
+                s.num_escritura AS NUM_ESC,
+                s.fech_envio AS FEC_ENVIO,
+                s.hora_envio AS HORA_ENVIO,
+                s.estado AS estado,
+                IFNULL(sm.mensaje, '') AS mensaje,
+                s.status AS status,
+                st.idkardex AS IDKARDEX,
+                st.contrato AS contrato
+            FROM sisgen s
+            LEFT JOIN sisgen_mensaje sm ON s.kardex = sm.kardex
+            INNER JOIN sisgen_temp st ON s.kardex = st.kardex
+            ORDER BY s.kardex ASC
+        """
+        
+        with connection.cursor() as cursor:
+            cursor.execute(query)
+            columns = [col[0] for col in cursor.description]
+            data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            # Get status counts
+            cursor.execute("SELECT COUNT(*) FROM sisgen WHERE status = 'GUARDADO'")
+            guardados = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM sisgen WHERE status = 'FALLIDO'")
+            fallidos = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM sisgen WHERE status = 'CON OBSERVACIONES'")
+            observados = cursor.fetchone()[0]
+            
+            return {
+                'data': data,
+                'guardados': guardados,
+                'fallidos': fallidos,
+                'observados': observados
+            }
+    
+    def _get_documents_for_xml(self) -> List[Dict]:
+        """Get document data for XML generation"""
+        query = """
+            SELECT 
+                k.*, 
+                cn.codnotario, cn.codoficial, cn.coduif,
+                CONCAT(cn.nombre, ' ', cn.apellido) as nombre_notario,
+                cn.direccion as direccion_notario,
+                cn.distrito as distrito_notario,
+                cn.provincia as provincia_notario,
+                cn.departamento as departamento_notario
+            FROM sisgen_temp k
+            LEFT JOIN confinotario cn ON 1=1
+            WHERE cn.codnotario IS NOT NULL
         """
         
         with connection.cursor() as cursor:
@@ -88,74 +203,50 @@ class DataProcessorService:
             columns = [col[0] for col in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
     
-    def _process_naturales(self) -> List[Dict]:
-        """Process natural persons"""
-        query = """
-            SELECT cl.idcontratante, cl.idcliente AS id, cl.tipper AS tipp,
-                   cl.apepat AS apepat, cl.apemat AS apemat,
-                   CONCAT(TRIM(cl.prinom),' ',TRIM(cl.segnom)) AS nom,
-                   cl.nombre, cl.direccion AS direccion, cl.idtipdoc, cl.numdoc AS numdoc,
-                   cl.email AS email, cl.telfijo AS telfijo, cl.telcel, cl.telofi,
-                   cl.sexo AS gen, cl.idestcivil AS estc, cl.natper, cl.conyuge,
-                   cl.nacionalidad AS naci, cl.idprofesion, cl.detaprofesion,
-                   cl.idcargoprofe, cl.profocupa, cl.dirfer, cl.idubigeo,
-                   cl.cumpclie AS fechanaci, cl.residente,
-                   u.coddist AS distrito, u.codprov AS provincia, u.codpto AS departamento,
-                   codtipdoc AS tipodoc, prof.codprof AS profesion,
-                   na.codnacion AS nacionalidad, cp.codcargoprofe AS cargo,
-                   cx.uif AS ROLUIF, co.kardex AS kardex
-            FROM sisgen_temp
-            LEFT JOIN contratantesxacto cx ON sisgen_temp.kardex = cx.kardex
-            LEFT JOIN cliente2 cl ON cx.idcontratante = cl.idcontratante
-            LEFT JOIN contratantes co ON cl.idcontratante = co.idcontratante
-            LEFT JOIN ubigeo u ON cl.idubigeo = u.coddis
-            LEFT JOIN ciiu c ON cl.actmunicipal = c.coddivi
-            LEFT JOIN tipodocumento td ON cl.idtipdoc = td.idtipdoc
-            LEFT JOIN profesiones prof ON cl.idprofesion = prof.idprofesion
-            LEFT JOIN nacionalidades na ON cl.nacionalidad = na.idnacionalidad
-            LEFT JOIN cargoprofe cp ON cl.idcargoprofe = cp.idcargoprofe
-            WHERE (cx.uif = 'O' OR cx.uif = 'B' OR cx.uif = 'G' OR cx.uif = 'N' OR cx.uif = 'R')
-              AND cl.tipper = 'N'
-        """
+    def _insert_sisgen_status(self, **kwargs):
+        """Insert status into sisgen table"""
+        fields = ', '.join(kwargs.keys())
+        placeholders = ', '.join(['%s'] * len(kwargs))
+        query = f"INSERT INTO sisgen ({fields}) VALUES ({placeholders})"
         
         with connection.cursor() as cursor:
-            cursor.execute(query)
-            columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            cursor.execute(query, list(kwargs.values()))
+            
+            # Also insert into sisgen_report for history
+            cursor.execute(f"INSERT INTO sisgen_report ({fields}) VALUES ({placeholders})", 
+                         list(kwargs.values()))
     
-    def _process_intervenciones(self) -> List[Dict]:
-        """Process interventions"""
-        query = """
-            SELECT cl.idcontratante AS idcon, cl.idcliente AS idcl, cl.tipper AS tipp,
-                   cl.apepat AS apepat, cl.apemat AS apemat,
-                   CONCAT(cl.prinom,' ',cl.segnom) AS nom, cl.nombre,
-                   cl.direccion AS direccion, cl.idtipdoc AS tipodoc, cl.numdoc AS numdoc,
-                   cl.email AS email, cl.telfijo AS telfijo, cl.telcel, cl.telofi,
-                   cl.sexo AS gen, cl.idestcivil AS estc, cl.natper, cl.conyuge AS conyuge,
-                   cl.nacionalidad AS nacionalidad, cl.idprofesion AS profesion,
-                   cl.detaprofesion, cl.idcargoprofe AS cargo, cl.profocupa, cl.dirfer,
-                   cl.idubigeo, cl.cumpclie AS fechanaci, cl.fechaing,
-                   cl.razonsocial AS razonsocial, cl.domfiscal, cl.telempresa AS telempresa,
-                   cl.mailempresa AS correoemp, cl.contacempresa, cl.fechaconstitu,
-                   cl.idsedereg, cl.numregistro, cl.numpartida AS numpartida,
-                   cl.actmunicipal, cl.tipocli, cl.impeingre, cl.impnumof, cl.impeorigen,
-                   cl.impentidad, cl.impremite, cl.impmotivo, cl.residente, cl.docpaisemi,
-                   co.idcontratante, co.idtipkar, co.kardex, co.firma, co.fechafirma AS ffirma,
-                   co.resfirma, co.tiporepresentacion, co.idcontratanterp, co.idsedereg,
-                   co.numpartida, co.facultades, co.indice, co.visita, co.inscrito,
-                   SUBSTRING(co.condicion,1,3) AS condi, act.condicion AS condicionn,
-                   act.codconsisgen AS condicionnsisgen, cxa.id, cxa.idtipkar, cxa.kardex,
-                   cxa.idtipoacto, cxa.idcontratante, cxa.item, cxa.idcondicion,
-                   act.parte AS parte, cxa.porcentaje, cxa.uif AS repre, cxa.formulario,
-                   cxa.monto AS montoo, cxa.opago, cxa.ofondo AS fondos, cxa.montop
-            FROM sisgen_temp
-            INNER JOIN contratantesxacto cxa ON sisgen_temp.kardex = cxa.kardex
-            INNER JOIN cliente2 cl ON cl.idcontratante = cxa.idcontratante
-            LEFT JOIN contratantes co ON cxa.idcontratante = co.idcontratante
-            LEFT JOIN actocondicion act ON act.idcondicion = cxa.idcondicion
-        """
-        
+    def _update_kardex_status(self, kardex: str, estado: int):
+        """Update kardex estado_sisgen"""
+        query = "UPDATE kardex SET estado_sisgen = %s WHERE kardex = %s"
         with connection.cursor() as cursor:
-            cursor.execute(query)
-            columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            cursor.execute(query, [estado, kardex])
+    
+    def _process_document_errors(self, kardex: str, errors: List[str]):
+        """Process document level errors"""
+        self._insert_error_messages(kardex, errors)
+    
+    def _process_maestros_errors(self, kardex: str, errors: List[str]):
+        """Process maestros level errors"""
+        self._insert_error_messages(kardex, errors)
+    
+    def _process_operaciones_errors(self, kardex: str, operaciones: Dict):
+        """Process operaciones level errors"""
+        for operacion in operaciones.get('Operacion', []):
+            if 'ERRORS' in operacion:
+                self._insert_error_messages(kardex, operacion['ERRORS'])
+            
+            if 'Operantes' in operacion and 'ERRORS' in operacion['Operantes']:
+                self._insert_error_messages(kardex, operacion['Operantes']['ERRORS'])
+            
+            if 'MediosPagos' in operacion:
+                for pago in operacion['MediosPagos'].get('MedioPago', []):
+                    if 'ERRORS' in pago:
+                        self._insert_error_messages(kardex, pago['ERRORS'])
+    
+    def _insert_error_messages(self, kardex: str, messages: List[str]):
+        """Insert error messages into sisgen_mensaje table"""
+        query = "INSERT INTO sisgen_mensaje (kardex, mensaje) VALUES (%s, %s)"
+        with connection.cursor() as cursor:
+            for msg in messages:
+                cursor.execute(query, [kardex, msg])

@@ -55,55 +55,92 @@ class DocumentSearchView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SendToSISGENView(APIView):
+    """
+    Send documents to SISGEN service.
+    
+    POST Parameters:
+    - idkardex: ID of the kardex to send (required if all=0)
+    - kardex: Kardex number to send (required if all=0)
+    - all: 0 for single document, 1 for all documents in temp tables
+    """
     def post(self, request):
-        """Send documents to SISGEN service"""
         try:
-            # Get document IDs from request
-            document_ids = request.data.get('document_ids', [])
+            # Get parameters
+            idkardex = request.data.get('idkardex')
+            kardex = request.data.get('kardex')
+            all_docs = request.data.get('all', 0)
             
-            if not document_ids:
+            # Validate parameters
+            if not all_docs and (not idkardex or not kardex):
                 return Response({
                     'error': 1,
-                    'message': 'No documents specified'
+                    'message': 'idkardex and kardex are required when all=0'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Search for documents
-            search_service = DocumentSearchService()
-            documents, _, _ = search_service.search_documents({
-                'document_ids': document_ids
-            })
+            # Process data
+            data_processor = DataProcessorService()
+            xml_generator = SISGENXmlGenerator()
+            soap_client = SISGENSoapClient(base_url=SISGEN_URLS['KARDEX'])
             
-            if not documents:
+            try:
+                # Process data through temp tables
+                if all_docs:
+                    # Use existing temp tables
+                    result = data_processor.process_temp_tables([])
+                else:
+                    # Process single document
+                    result = data_processor.process_temp_tables([kardex])
+                
+                # Generate XML
+                xml_content = xml_generator.generate_document_xml(result['documents'])
+                if not xml_content:
+                    return Response({
+                        'error': 1,
+                        'message': 'Failed to generate XML - missing required data'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Send to SISGEN
+                response = soap_client.send_documents(xml_content)
+                
+                # Process SISGEN response
+                if response['status'] == 'INTERNAL_SERVER_ERROR':
+                    return Response({
+                        'error': 1,
+                        'messageDescription': 'Error interno del XML.',
+                        'data': [],
+                        'kardex': kardex,
+                        'idKardex': idkardex,
+                        'errores': result.get('errores', []),
+                        'observaciones': result.get('observaciones', []),
+                        'personas': result.get('personas', [])
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+                # Update document statuses based on response
+                data_processor.update_document_statuses(response['documents'])
+                
+                # Get final status counts and messages
+                final_status = data_processor.get_final_status()
+                
+                return Response({
+                    'error': 0,
+                    'messageDescription': '',
+                    'data': final_status['data'],
+                    'kardex': kardex,
+                    'idKardex': idkardex,
+                    'errores': result.get('errores', []),
+                    'observaciones': result.get('observaciones', []),
+                    'personas': result.get('personas', [])
+                })
+                
+            except Exception as e:
+                # logger.error(f"Error processing data: {str(e)}") # Original code had this line commented out
                 return Response({
                     'error': 1,
-                    'message': 'No documents found'
-                }, status=status.HTTP_404_NOT_FOUND)
+                    'message': f'Error processing data: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-            # Process temp tables
-            processor = DataProcessorService()
-            processor.process_temp_tables([doc['kardex'] for doc in documents])
-            
-            # Generate XML
-            xml_generator = SISGENXmlGenerator()
-            xml_content = xml_generator.generate_document_xml(documents)
-            
-            # Send to SISGEN
-            soap_client = SISGENSoapClient(SISGEN_URLS['DOCUMENTS'])
-            result = soap_client.send_documents(xml_content)
-            
-            return Response({
-                'error': 0 if result['success'] else 1,
-                'status': result['status'],
-                'message': result.get('message', ''),
-                'xml_content': xml_content if request.data.get('include_xml') else None
-            })
-            
-        except SISGENServiceException as e:
-            return Response({
-                'error': 1,
-                'message': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
+            # logger.error(f"Unexpected error in SISGEN send: {str(e)}") # Original code had this line commented out
             return Response({
                 'error': 1,
                 'message': 'Internal server error'
