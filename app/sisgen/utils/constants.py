@@ -69,16 +69,17 @@ XML_NAMESPACES = {
     'SISGEN': 'http://ancert.notariado.org/SISGEN/XML',
     'XSI': 'http://www.w3.org/2001/XMLSchema-instance',
     'SOAP': 'http://schemas.xmlsoap.org/soap/envelope/',
-    'SISGEN_WS': 'http://ws.sisgen.ancert.notariado.org/'
+    'SISGEN_WS': 'http://ws.sisgen.ancert.notariado.org/',
+    'SOAP_ACTION': 'http://ws.sisgen.ancert.notariado.org/setDocumentosNotariales'
 }
 
 # SOAP Headers
 SOAP_HEADERS = {
-    'Content-Type': 'text/xml;charset=utf-8',
+    'Content-type': 'text/xml;charset=UTF-8',
     'Accept': 'text/xml',
-    'Accept-Encoding': 'gzip',
     'Cache-Control': 'no-cache',
     'Pragma': 'no-cache',
+    'SOAPAction': 'http://ws.sisgen.ancert.notariado.org/setDocumentosNotariales'
 }
 
 # Error Messages

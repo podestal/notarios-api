@@ -54,6 +54,7 @@ class DocumentSearchView(APIView):
                 'message': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class SendToSISGENView(APIView):
     """
     Send documents to SISGEN service.
@@ -70,6 +71,9 @@ class SendToSISGENView(APIView):
             kardex = request.data.get('kardex')
             all_docs = request.data.get('all', 0)
             
+            print('DEBUG: SendToSISGEN request data:', request.data)
+            print('DEBUG: idkardex:', idkardex, 'kardex:', kardex, 'all:', all_docs)
+            
             # Validate parameters
             if not all_docs and (not idkardex or not kardex):
                 return Response({
@@ -78,29 +82,39 @@ class SendToSISGENView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Process data
-            data_processor = DataProcessorService()
-            xml_generator = SISGENXmlGenerator()
-            soap_client = SISGENSoapClient(base_url=SISGEN_URLS['KARDEX'])
-            
             try:
-                # Process data through temp tables
+                data_processor = DataProcessorService()
+                xml_generator = SISGENXmlGenerator()
+                soap_client = SISGENSoapClient(base_url=SISGEN_URLS['DOCUMENTS'])
+                
+                print('DEBUG: Processing data for kardex:', kardex)
+                
+                # Process document data
                 if all_docs:
-                    # Use existing temp tables
-                    result = data_processor.process_temp_tables([])
+                    # TODO: Implement all documents case if needed
+                    return Response({
+                        'error': 1,
+                        'message': 'All documents processing not implemented'
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 else:
-                    # Process single document
-                    result = data_processor.process_temp_tables([kardex])
+                    result = data_processor.process_document(kardex, idkardex)
+                
+                print('DEBUG: Process result:', result)
                 
                 # Generate XML
                 xml_content = xml_generator.generate_document_xml(result['documents'])
                 if not xml_content:
+                    print('DEBUG: Failed to generate XML - no content')
                     return Response({
                         'error': 1,
                         'message': 'Failed to generate XML - missing required data'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
+                print('DEBUG: Generated XML content')
+                
                 # Send to SISGEN
                 response = soap_client.send_documents(xml_content)
+                print('DEBUG: SISGEN response:', response)
                 
                 # Process SISGEN response
                 if response['status'] == 'INTERNAL_SERVER_ERROR':
@@ -129,19 +143,22 @@ class SendToSISGENView(APIView):
                     'idKardex': idkardex,
                     'errores': result.get('errores', []),
                     'observaciones': result.get('observaciones', []),
-                    'personas': result.get('personas', [])
+                    'personas': result.get('personas', []),
+                    'guardados': final_status.get('guardados', 0),
+                    'fallidos': final_status.get('fallidos', 0),
+                    'observados': final_status.get('observados', 0)
                 })
                 
             except Exception as e:
-                # logger.error(f"Error processing data: {str(e)}") # Original code had this line commented out
+                print('DEBUG: Error processing data:', str(e))
                 return Response({
                     'error': 1,
                     'message': f'Error processing data: {str(e)}'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
         except Exception as e:
-            # logger.error(f"Unexpected error in SISGEN send: {str(e)}") # Original code had this line commented out
+            print('DEBUG: Unexpected error in SISGEN send:', str(e))
             return Response({
                 'error': 1,
-                'message': 'Internal server error'
+                'message': f'Internal server error: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
