@@ -3,8 +3,10 @@ This module contains the XML generator service for the sisgen service.
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from ..utils.constants import APP_CONSTANTS
+from datetime import datetime
+from django.db import connection
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,124 @@ class SISGENXmlGenerator:
                 condition += f'.{participant.get("item")}/'
         return condition
 
+    def _safe_float(self, value: str, default: float = 0.0) -> float:
+        """Safely convert string to float, returning default if conversion fails"""
+        try:
+            if not value or value.strip() == '':
+                return default
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+
+    def _format_date(self, date_str: str) -> str:
+        """Format date to YYYY-MM-DD format"""
+        if not date_str:
+            return ""
+        try:
+            # Try parsing with different formats
+            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+                try:
+                    date_obj = datetime.strptime(date_str, fmt)
+                    return date_obj.strftime('%Y-%m-%d')  # Always return in YYYY-MM-DD format
+                except ValueError:
+                    continue
+            return date_str
+        except Exception:
+            return date_str
+
+    def _get_notary_codes(self, notary_data: Dict) -> Tuple[str, str]:
+        """Get notary codes from confinotario table"""
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT codnotario, ruc 
+                    FROM confinotario 
+                    LIMIT 1
+                """)
+                result = cursor.fetchone()
+                if result:
+                    cod_notario = str(result[0]).strip()
+                    cod_notaria = str(result[1]).strip()
+                    return cod_notario, cod_notaria
+                
+                return "00000000", "00000000000"  # Default values
+        except Exception as e:
+            self.logger.error(f"Error getting notary codes: {str(e)}")
+            return "00000000", "00000000000"
+
+    def _get_tipo_intervencion_desc(self, role: str, acto_juridico: str = None, participant_data: Dict = None) -> Tuple[str, str]:
+        """Get intervention type and description from database"""
+        try:
+            # Get tipo_intervencion based on role
+            tipo_int = '1' if role == 'O' else '2' if role == 'B' else '3'
+            
+            # For acto_juridico 0909 (ACLARACION), get codes from actocondicion
+            if acto_juridico == '0909':
+                with connection.cursor() as cursor:
+                    # Get the specific type of aclaracion from tiposdeacto
+                    cursor.execute("""
+                        SELECT idtipoacto, desacto 
+                        FROM tiposdeacto 
+                        WHERE cod_ancert = %s
+                    """, [acto_juridico])
+                    result = cursor.fetchone()
+                    
+                    if result:
+                        idtipoacto = result[0]
+                        # Get intervention code from actocondicion
+                        parte = '1' if role == 'O' else '2' if role == 'B' else '3'
+                        cursor.execute("""
+                            SELECT codconsisgen 
+                            FROM actocondicion 
+                            WHERE idtipoacto = %s AND parte = %s
+                        """, [idtipoacto, parte])
+                        code_result = cursor.fetchone()
+                        
+                        if code_result and code_result[0]:
+                            return tipo_int, code_result[0]
+                        
+                        # Fallback to default codes if not found
+                        if role == 'O':
+                            return tipo_int, '001'  # Default for Otorgante
+                        elif role == 'B':
+                            return tipo_int, '002'  # Default for Beneficiario
+                        elif role == 'R':
+                            return tipo_int, '006'  # Default for Representante
+            
+            # Default mappings for other acto_juridico types
+            if role == 'O':
+                return tipo_int, '001'
+            elif role == 'B':
+                return tipo_int, '017'
+            elif role == 'R':
+                return tipo_int, '003'
+            
+            return tipo_int, '001'  # default
+        except Exception as e:
+            self.logger.error(f"Error getting intervention description: {str(e)}")
+            return '1', '001'  # default
+
+    def _get_valid_profession_code(self, code: str) -> str:
+        """Get valid SISGEN profession code from database"""
+        if not code:
+            return "001"  # Default code
+        
+        try:
+            with connection.cursor() as cursor:
+                # Try to find the matching profession code
+                cursor.execute("""
+                    SELECT codprof 
+                    FROM profesiones 
+                    WHERE idprofesion = %s
+                """, [code])
+                result = cursor.fetchone()
+                if result and result[0]:
+                    return str(result[0]).zfill(3)
+        except Exception as e:
+            self.logger.error(f"Error getting profession code: {str(e)}")
+        
+        return "001"  # Default if not found or error
+
     def generate_document_xml(self, documents: List[Dict]) -> Optional[str]:
         """
         Generate XML for SISGEN service.
@@ -51,7 +171,7 @@ class SISGENXmlGenerator:
             
             # Start XML document
             xml = '<?xml version="1.0" ?>\n'
-            xml += '<DocumentosNotariales xmlns="http://ancert.notariado.org/SISGEN/XML" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ancert.notariado.org/SISGEN/XML C:\\SISGEN\\SISGEN_V2_RO\\documentos_notariales.xsd">\n'
+            xml += '<DocumentosNotariales xmlns="http://sisgen.notarios.org.pe/SISGEN/XML" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://sisgen.notarios.org.pe/SISGEN/XML C:\\SISGEN\\SISGEN_V2_RO\\documentos_notariales.xsd">\n'
             
             # Add GeneradorDatos section
             xml += '\t<GeneradorDatos>\n'
@@ -67,32 +187,25 @@ class SISGENXmlGenerator:
                 
                 xml += '\t<DocumentoNotarial>\n'
                 
-                # Add DatosNotario section
-                notary_data = doc.get('notary_data', {})
-                xml += '\t\t<DatosNotario>\n'
-                xml += f'\t\t\t<CodNotario>{notary_data.get("codnotario", "")}</CodNotario>\n'
-                xml += f'\t\t\t<CodOficial>{notary_data.get("codoficial", "")}</CodOficial>\n'
-                xml += f'\t\t\t<NombreNotario>{notary_data.get("nombre_notario", "")}</NombreNotario>\n'
-                xml += '\t\t\t<Ubicacion>\n'
-                xml += f'\t\t\t\t<Direccion>{notary_data.get("direccion", "")}</Direccion>\n'
-                xml += f'\t\t\t\t<Distrito>{notary_data.get("distrito", "")}</Distrito>\n'
-                xml += '\t\t\t</Ubicacion>\n'
-                xml += '\t\t</DatosNotario>\n'
-
                 # Add Documento section
-                xml += '\t\t<Documento>\n'
-                xml += f'\t\t\t<NumKardex>{doc.get("kardex", "")}</NumKardex>\n'
-                xml += f'\t\t\t<FechaIngreso>{doc.get("fechaingreso", "")}</FechaIngreso>\n'
-                xml += f'\t\t\t<TipoInstrumento>{doc.get("idtipkar", "")}</TipoInstrumento>\n'
-                xml += f'\t\t\t<NumDocumento>{doc.get("numescritura", "")}</NumDocumento>\n'
-                xml += f'\t\t\t<FechaInstrumento>{doc.get("fechaescritura", "")}</FechaInstrumento>\n'
-                xml += f'\t\t\t<NumFolios>{self._calculate_num_folios(doc)}</NumFolios>\n'
+                xml += '\t<Documento>\n'
+                notary_data = doc.get('notary_data', {})
+                # Format notary codes correctly
+                cod_notario, cod_notaria = self._get_notary_codes(notary_data)
+                xml += f'\t\t<CodNotario>{cod_notario}</CodNotario>\n'
+                xml += f'\t\t<CodNotaria>{cod_notaria}</CodNotaria>\n'
+                xml += f'\t\t<NumKardex>{doc.get("kardex", "")}</NumKardex>\n'
+                xml += f'\t\t<FechaIngreso>{self._format_date(doc.get("fechaingreso", ""))}</FechaIngreso>\n'
+                xml += f'\t\t<TipoInstrumento>E</TipoInstrumento>\n'
+                xml += f'\t\t<NumDocumento>{doc.get("numescritura", "")}</NumDocumento>\n'
+                xml += f'\t\t<FechaInstrumento>{doc.get("fechaescritura", "")}</FechaInstrumento>\n'
+                xml += f'\t\t<NumFolios>{self._calculate_num_folios(doc)}</NumFolios>\n'
                 if doc.get("fechaconclusion"):
-                    xml += f'\t\t\t<FechaConclusion>{doc.get("fechaconclusion", "")}</FechaConclusion>\n'
-                xml += '\t\t</Documento>\n'
+                    xml += f'\t\t<FechaConclusion>{self._format_date(doc.get("fechaconclusion", ""))}</FechaConclusion>\n'
+                xml += '\t</Documento>\n'
 
                 # Add Maestros section
-                xml += '\t\t<Maestros>\n'
+                xml += '\t<Maestros>\n'
                 
                 # Process participants
                 natural_persons = []
@@ -104,16 +217,16 @@ class SISGENXmlGenerator:
                         natural_persons.append(participant)
 
                 if natural_persons:
-                    xml += '\t\t\t<PersonasNaturales>\n'
+                    xml += '\t\t<PersonasNaturales>\n'
                     for person in natural_persons:
-                        xml += f'\t\t\t\t<PersonaNatural id="{person.get("id", "")}">\n'
-                        xml += '\t\t\t\t<DocsIdentificativos>\n'
-                        xml += '\t\t\t\t\t<DocIdentificativo>\n'
-                        xml += f'\t\t\t\t\t\t<TipoDocIdentidad>{person.get("idtipdoc", "")}</TipoDocIdentidad>\n'
+                        xml += f'\t\t\t<PersonaNatural id="{person.get("idcliente", "")}">\n'
+                        xml += '\t\t\t<DocsIdentificativos>\n'
+                        xml += '\t\t\t\t<DocIdentificativo>\n'
+                        xml += f'\t\t\t\t\t<TipoDocIdentidad>{str(person.get("idtipdoc", "")).zfill(2)}</TipoDocIdentidad>\n'
                         if person.get("numdoc"):
-                            xml += f'\t\t\t\t\t\t<NumDocIdentificativo>{person.get("numdoc", "")}</NumDocIdentificativo>\n'
-                        xml += '\t\t\t\t\t</DocIdentificativo>\n'
-                        xml += '\t\t\t\t</DocsIdentificativos>\n'
+                            xml += f'\t\t\t\t\t<NumDocIdentificativo>{person.get("numdoc", "")}</NumDocIdentificativo>\n'
+                        xml += '\t\t\t\t</DocIdentificativo>\n'
+                        xml += '\t\t\t</DocsIdentificativos>\n'
                         
                         if person.get("prinom"):
                             xml += f'\t\t\t\t<Nombre>{person.get("prinom", "")}</Nombre>\n'
@@ -126,25 +239,18 @@ class SISGENXmlGenerator:
                         if person.get("idestcivil"):
                             xml += f'\t\t\t\t<EstadoCivil>{person.get("idestcivil", "")}</EstadoCivil>\n'
                         if person.get("nacionalidad"):
-                            xml += f'\t\t\t\t<PaisNacionalidad>{person.get("nacionalidad", "")}</PaisNacionalidad>\n'
+                            xml += f'\t\t\t\t<PaisNacionalidad>PE</PaisNacionalidad>\n'
                         if person.get("cumpclie"):
-                            xml += f'\t\t\t\t<FechaNacimiento>{person.get("cumpclie", "")}</FechaNacimiento>\n'
-                        if person.get("profesion_plantilla"):
-                            xml += f'\t\t\t\t<Profesion>{person.get("profesion_plantilla", "")}</Profesion>\n'
-                        if person.get("profocupa"):
-                            xml += f'\t\t\t\t<Ocupacion>{person.get("profocupa", "")}</Ocupacion>\n'
-                        if person.get("email") and '@' in person.get("email", ""):
-                            xml += f'\t\t\t\t<Correo>{person.get("email", "")}</Correo>\n'
-                        if person.get("telcel"):
-                            xml += f'\t\t\t\t<Telefono>{person.get("telcel", "")}</Telefono>\n'
+                            xml += f'\t\t\t\t<FechaNacimiento>{self._format_date(person.get("cumpclie", ""))}</FechaNacimiento>\n'
+                        if person.get("idprofesion"):
+                            xml += f'\t\t\t\t<Profesion>{self._get_valid_profession_code(person.get("idprofesion", ""))}</Profesion>\n'
+                        xml += '\t\t\t\t<Cargo>998</Cargo>\n'
                         
                         # Add address if all required fields are present
-                        if all([person.get(f) for f in ["idubigeo"]]) and person.get("direccion"):
+                        if person.get("idubigeo") and person.get("direccion"):
                             xml += '\t\t\t\t<Direccion>\n'
-                            if person.get("residente"):
-                                xml += f'\t\t\t\t\t<ResidePeru>{person.get("residente", "")}</ResidePeru>\n'
-                            if person.get("nacionalidad"):
-                                xml += f'\t\t\t\t\t<PaisResidencia>{person.get("nacionalidad", "")}</PaisResidencia>\n'
+                            xml += '\t\t\t\t\t<ResidePeru>1</ResidePeru>\n'
+                            xml += '\t\t\t\t\t<PaisResidencia>PE</PaisResidencia>\n'
                             xml += '\t\t\t\t<DireccionNacional>\n'
                             ubigeo = person.get("idubigeo", "")
                             if len(ubigeo) == 6:
@@ -154,41 +260,37 @@ class SISGENXmlGenerator:
                             xml += f'\t\t\t\t\t<RestoDireccion>{person.get("direccion", "")}</RestoDireccion>\n'
                             xml += '\t\t\t\t</DireccionNacional>\n'
                             xml += '\t\t\t\t</Direccion>\n'
-                        xml += '\t\t\t\t</PersonaNatural>\n'
-                    xml += '\t\t\t</PersonasNaturales>\n'
+                        xml += '\t\t\t</PersonaNatural>\n'
+                    xml += '\t\t</PersonasNaturales>\n'
 
                 if juridical_persons:
-                    xml += '\t\t\t<PersonasJuridicas>\n'
+                    xml += '\t\t<PersonasJuridicas>\n'
                     for person in juridical_persons:
-                        xml += f'\t\t\t\t<PersonaJuridica id="{person.get("id", "")}">\n'
-                        xml += '\t\t\t\t<DocsIdentificativos>\n'
-                        xml += '\t\t\t\t\t<DocIdentificativo>\n'
-                        xml += f'\t\t\t\t\t\t<TipoDocIdentidad>{person.get("idtipdoc", "")}</TipoDocIdentidad>\n'
+                        xml += f'\t\t\t<PersonaJuridica id="{person.get("idcliente", "")}">\n'
+                        xml += '\t\t\t<DocsIdentificativos>\n'
+                        xml += '\t\t\t\t<DocIdentificativo>\n'
+                        xml += f'\t\t\t\t\t<TipoDocIdentidad>{str(person.get("idtipdoc", "")).zfill(2)}</TipoDocIdentidad>\n'
                         if person.get("numdoc"):
-                            xml += f'\t\t\t\t\t\t<NumDocIdentificativo>{person.get("numdoc", "")}</NumDocIdentificativo>\n'
-                        xml += '\t\t\t\t\t</DocIdentificativo>\n'
-                        xml += '\t\t\t\t</DocsIdentificativos>\n'
+                            xml += f'\t\t\t\t\t<NumDocIdentificativo>{person.get("numdoc", "")}</NumDocIdentificativo>\n'
+                        xml += '\t\t\t\t</DocIdentificativo>\n'
+                        xml += '\t\t\t</DocsIdentificativos>\n'
                         
-                        if person.get("idsedereg") or person.get("numpartida"):
-                            xml += '\t\t\t\t<RegistroFacultades>\n'
-                            if person.get("idsedereg"):
-                                xml += f'\t\t\t\t\t<SedeRegistral>{person.get("idsedereg", "")}</SedeRegistral>\n'
-                            if person.get("numpartida"):
-                                xml += f'\t\t\t\t\t<PartidaRegistral>{person.get("numpartida", "")}</PartidaRegistral>\n'
-                            xml += '\t\t\t\t</RegistroFacultades>\n'
+                        xml += '\t\t\t\t<RegistroFacultades>\n'
+                        if person.get("idsedereg"):
+                            xml += f'\t\t\t\t\t<SedeRegistral>{person.get("idsedereg", "")}</SedeRegistral>\n'
+                        if person.get("numpartida"):
+                            xml += f'\t\t\t\t\t<PartidaRegistral>{person.get("numpartida", "")}</PartidaRegistral>\n'
+                        xml += '\t\t\t\t</RegistroFacultades>\n'
                         
                         if person.get("razonsocial"):
                             xml += f'\t\t\t\t<RazonSocial>{person.get("razonsocial", "")}</RazonSocial>\n'
                         if person.get("contacempresa"):
                             xml += f'\t\t\t\t<OtraActividad>{person.get("contacempresa", "")}</OtraActividad>\n'
-                        if person.get("mailempresa") and '@' in person.get("mailempresa", ""):
-                            xml += f'\t\t\t\t<Correo>{person.get("mailempresa", "")}</Correo>\n'
-                        if person.get("telempresa"):
-                            xml += f'\t\t\t\t<Telefono>{person.get("telempresa", "")}</Telefono>\n'
-
+                        
                         # Add address if all required fields are present
-                        if person.get("idubigeo") != "999999" and person.get("domfiscal"):
+                        if person.get("idubigeo") and person.get("domfiscal"):
                             xml += '\t\t\t\t<Direccion>\n'
+                            xml += '\t\t\t\t\t<ResidePeru>1</ResidePeru>\n'
                             xml += '\t\t\t\t\t<PaisResidencia>PE</PaisResidencia>\n'
                             xml += '\t\t\t\t<DireccionNacional>\n'
                             ubigeo = person.get("idubigeo", "")
@@ -199,123 +301,143 @@ class SISGENXmlGenerator:
                             xml += f'\t\t\t\t\t<RestoDireccion>{person.get("domfiscal", "")}</RestoDireccion>\n'
                             xml += '\t\t\t\t</DireccionNacional>\n'
                             xml += '\t\t\t\t</Direccion>\n'
-                        xml += '\t\t\t\t</PersonaJuridica>\n'
-                    xml += '\t\t\t</PersonasJuridicas>\n'
+                        xml += '\t\t\t</PersonaJuridica>\n'
+                    xml += '\t\t</PersonasJuridicas>\n'
 
-                xml += '\t\t</Maestros>\n'
+                xml += '\t</Maestros>\n'
 
                 # Add Operaciones section
-                xml += '\t\t<Operaciones>\n'
-                xml += '\t\t\t<Operacion>\n'
-                xml += f'\t\t\t\t<CodActoJuridico>{doc.get("cod_ancert", "")}</CodActoJuridico>\n'
-                xml += '\t\t\t\t<Operantes>\n'
-                xml += '\t\t\t\t\t<Objetos>\n'
-                xml += '\t\t\t\t\t</Objetos>\n'
-                xml += '\t\t\t\t\t<Intervenciones>\n'
+                xml += '\t<Operaciones>\n'
+                xml += f'\t\t<Operacion id="{doc.get("codactos", "")}">\n'
+                xml += f'\t\t\t<CodActoJuridico>{doc.get("cod_ancert", "")}</CodActoJuridico>\n'
+                xml += '\t\t<Operantes>\n'
+                xml += '\t\t\t<Objetos>\n'
+                xml += '\t\t\t</Objetos>\n'
+                xml += '\t\t\t<Intervenciones>\n'
                 
-                # Group participants by role
-                otorgantes = [p for p in doc.get('participants', []) if p.get('uif') == 'O']
-                beneficiarios = [p for p in doc.get('participants', []) if p.get('uif') == 'B']
+                # Group participants by role and condition
+                participants_by_role = {}
+                for participant in doc.get('participants', []):
+                    role = participant.get('uif', 'O')
+                    condition = participant.get('idcondicion', '')
+                    key = f"{role}_{condition}"
+                    if key not in participants_by_role:
+                        participants_by_role[key] = []
+                    participants_by_role[key].append(participant)
                 
-                if otorgantes:
-                    xml += '\t\t\t\t\t\t<Intervencion>\n'
-                    xml += '\t\t\t\t\t\t\t<TipoIntervencion>1</TipoIntervencion>\n'
-                    xml += '\t\t\t\t\t\t\t<DescripcionIntervencion>OTORGANTE</DescripcionIntervencion>\n'
-                    xml += '\t\t\t\t\t\t\t<RolRepresentante>O</RolRepresentante>\n'
-                    xml += '\t\t\t\t\t\t\t<Sujetos>\n'
-                    for otorgante in otorgantes:
-                        xml += '\t\t\t\t\t\t\t\t<Sujeto>\n'
-                        xml += f'\t\t\t\t\t\t\t\t\t<IdMaestro>{otorgante.get("idcliente", "")}</IdMaestro>\n'
-                        xml += '\t\t\t\t\t\t\t\t\t<Derecho>\n'
-                        if otorgante.get("porcentaje"):
-                            xml += f'\t\t\t\t\t\t\t\t\t\t<PorcentajeDerecho>{otorgante.get("porcentaje", "")}</PorcentajeDerecho>\n'
-                        xml += '\t\t\t\t\t\t\t\t\t</Derecho>\n'
+                # Process each role group
+                for key, participants in participants_by_role.items():
+                    if not participants:
+                        continue
+                    
+                    role = key.split('_')[0]
+                    tipo_int, desc_int = self._get_tipo_intervencion_desc(
+                        role=role,
+                        acto_juridico=doc.get('cod_ancert'),
+                        participant_data=participants[0]  # Pass the first participant as data
+                    )
+                    
+                    xml += '\t\t\t\t<Intervencion>\n'
+                    xml += f'\t\t\t\t\t<TipoIntervencion>{tipo_int}</TipoIntervencion>\n'
+                    xml += f'\t\t\t\t\t<DescripcionIntervencion>{desc_int}</DescripcionIntervencion>\n'
+                    xml += f'\t\t\t\t\t<RolRepresentante>{role}</RolRepresentante>\n'
+                    xml += '\t\t\t\t\t<Sujetos>\n'
+                    
+                    for participant in participants:
+                        xml += '\t\t\t\t\t\t<Sujeto>\n'
+                        xml += f'\t\t\t\t\t\t\t<IdMaestro>{participant.get("idcliente", "")}</IdMaestro>\n'
                         
-                        # Add condition
-                        condition = self._add_participant_condition(otorgante)
-                        if condition:
-                            xml += f'\t\t\t\t\t\t\t\t\t<Condicion>{condition}</Condicion>\n'
+                        # Add OrigenFondos
+                        if participant.get("ofondo"):
+                            xml += '\t\t\t\t\t\t\t<OrigenFondos>\n'
+                            xml += '\t\t\t\t\t\t\t\t<OrigenFondo>\n'
+                            xml += f'\t\t\t\t\t\t\t\t\t<Origen>{participant.get("ofondo", "").upper()}</Origen>\n'
+                            xml += f'\t\t\t\t\t\t\t\t\t<CuantiaOrigen>{self._safe_float(participant.get("monto", "0.00")):.2f}</CuantiaOrigen>\n'
+                            xml += '\t\t\t\t\t\t\t\t\t<TipoMonedaPago>01</TipoMonedaPago>\n'
+                            xml += '\t\t\t\t\t\t\t\t</OrigenFondo>\n'
+                            xml += '\t\t\t\t\t\t\t</OrigenFondos>\n'
                         
-                        # Find representatives for this otorgante
-                        reps = [p for p in doc.get('participants', []) if p.get('tiporepresentacion') == '1' and p.get('idcontratanterp') == otorgante.get('idcontratante')]
-                        if reps:
-                            xml += '\t\t\t\t\t\t\t\t\t<Representantes>\n'
-                            for rep in reps:
-                                xml += '\t\t\t\t\t\t\t\t\t\t<Representante>\n'
-                                xml += f'\t\t\t\t\t\t\t\t\t\t\t<IdMaestro>{rep.get("idcliente", "")}</IdMaestro>\n'
-                                if rep.get("inscrito") == "1" and (rep.get("idsedereg") or rep.get("numpartida")):
-                                    xml += '\t\t\t\t\t\t\t\t\t\t\t<InscripcionRepresentacion>\n'
-                                    if rep.get("idsedereg"):
-                                        xml += f'\t\t\t\t\t\t\t\t\t\t\t\t<SedeRegistral>{rep.get("idsedereg", "")}</SedeRegistral>\n'
-                                    if rep.get("numpartida"):
-                                        xml += f'\t\t\t\t\t\t\t\t\t\t\t\t<PartidaRegistral>{rep.get("numpartida", "")}</PartidaRegistral>\n'
-                                    xml += '\t\t\t\t\t\t\t\t\t\t\t</InscripcionRepresentacion>\n'
-                                if rep.get("facultades"):
-                                    xml += f'\t\t\t\t\t\t\t\t\t\t\t<Facultades>{rep.get("facultades", "")}</Facultades>\n'
-                                if rep.get("fechafirma"):
-                                    xml += f'\t\t\t\t\t\t\t\t\t\t\t<FechaFirma>{rep.get("fechafirma", "")}</FechaFirma>\n'
-                                xml += '\t\t\t\t\t\t\t\t\t\t</Representante>\n'
-                            xml += '\t\t\t\t\t\t\t\t\t</Representantes>\n'
+                        xml += '\t\t\t\t\t\t\t<Derecho>\n'
+                        if participant.get("porcentaje"):
+                            xml += f'\t\t\t\t\t\t\t\t<PorcentajeDerecho>{self._safe_float(participant.get("porcentaje", "100")):.2f}</PorcentajeDerecho>\n'
+                        xml += '\t\t\t\t\t\t\t</Derecho>\n'
                         
-                        if otorgante.get("fechafirma"):
-                            xml += f'\t\t\t\t\t\t\t\t\t<FechaFirma>{otorgante.get("fechafirma", "")}</FechaFirma>\n'
-                        xml += '\t\t\t\t\t\t\t\t</Sujeto>\n'
-                    xml += '\t\t\t\t\t\t\t</Sujetos>\n'
-                    xml += '\t\t\t\t\t\t</Intervencion>\n'
+                        # Add tax flags for otorgantes
+                        if role == 'O':
+                            xml += '\t\t\t\t\t\t\t<Renta3Cat>0</Renta3Cat>\n'
+                            xml += '\t\t\t\t\t\t\t<CasaEnajenante>0</CasaEnajenante>\n'
+                            xml += '\t\t\t\t\t\t\t<ImpuestoCero>0</ImpuestoCero>\n'
+                        
+                        # Add Representantes section
+                        xml += '\t\t\t\t\t\t\t<Representantes>\n'
+                        # Find representatives for this participant
+                        reps = [p for p in doc.get('participants', []) if p.get('tiporepresentacion') == '1' and p.get('idcontratanterp') == participant.get('idcontratante')]
+                        for rep in reps:
+                            xml += '\t\t\t\t\t\t\t\t<Representante>\n'
+                            xml += f'\t\t\t\t\t\t\t\t\t<IdMaestro>{rep.get("idcliente", "")}</IdMaestro>\n'
+                            if rep.get("inscrito") == "1" and (rep.get("idsedereg") or rep.get("numpartida")):
+                                xml += '\t\t\t\t\t\t\t\t\t<InscripcionRepresentacion>\n'
+                                if rep.get("idsedereg"):
+                                    xml += f'\t\t\t\t\t\t\t\t\t\t<SedeRegistral>{rep.get("idsedereg", "")}</SedeRegistral>\n'
+                                if rep.get("numpartida"):
+                                    xml += f'\t\t\t\t\t\t\t\t\t\t<PartidaRegistral>{rep.get("numpartida", "")}</PartidaRegistral>\n'
+                                xml += '\t\t\t\t\t\t\t\t\t</InscripcionRepresentacion>\n'
+                            if rep.get("fechafirma"):
+                                xml += f'\t\t\t\t\t\t\t\t\t<FechaFirma>{self._format_date(rep.get("fechafirma", ""))}</FechaFirma>\n'
+                            xml += '\t\t\t\t\t\t\t\t</Representante>\n'
+                        xml += '\t\t\t\t\t\t\t</Representantes>\n'
+                        
+                        if participant.get("fechafirma"):
+                            xml += f'\t\t\t\t\t\t\t<FechaFirma>{self._format_date(participant.get("fechafirma", ""))}</FechaFirma>\n'
+                        xml += '\t\t\t\t\t\t</Sujeto>\n'
+                    xml += '\t\t\t\t\t</Sujetos>\n'
+                    xml += '\t\t\t\t</Intervencion>\n'
 
-                if beneficiarios:
-                    xml += '\t\t\t\t\t\t<Intervencion>\n'
-                    xml += '\t\t\t\t\t\t\t<TipoIntervencion>2</TipoIntervencion>\n'
-                    xml += '\t\t\t\t\t\t\t<DescripcionIntervencion>BENEFICIARIO</DescripcionIntervencion>\n'
-                    xml += '\t\t\t\t\t\t\t<RolRepresentante>B</RolRepresentante>\n'
-                    xml += '\t\t\t\t\t\t\t<Sujetos>\n'
-                    for beneficiario in beneficiarios:
-                        xml += '\t\t\t\t\t\t\t\t<Sujeto>\n'
-                        xml += f'\t\t\t\t\t\t\t\t\t<IdMaestro>{beneficiario.get("idcliente", "")}</IdMaestro>\n'
-                        xml += '\t\t\t\t\t\t\t\t\t<Derecho>\n'
-                        if beneficiario.get("porcentaje"):
-                            xml += f'\t\t\t\t\t\t\t\t\t\t<PorcentajeDerecho>{beneficiario.get("porcentaje", "")}</PorcentajeDerecho>\n'
-                        xml += '\t\t\t\t\t\t\t\t\t</Derecho>\n'
-                        
-                        # Add condition
-                        condition = self._add_participant_condition(beneficiario)
-                        if condition:
-                            xml += f'\t\t\t\t\t\t\t\t\t<Condicion>{condition}</Condicion>\n'
-                        
-                        # Find representatives for this beneficiario
-                        reps = [p for p in doc.get('participants', []) if p.get('tiporepresentacion') == '1' and p.get('idcontratanterp') == beneficiario.get('idcontratante')]
-                        if reps:
-                            xml += '\t\t\t\t\t\t\t\t\t<Representantes>\n'
-                            for rep in reps:
-                                xml += '\t\t\t\t\t\t\t\t\t\t<Representante>\n'
-                                xml += f'\t\t\t\t\t\t\t\t\t\t\t<IdMaestro>{rep.get("idcliente", "")}</IdMaestro>\n'
-                                if rep.get("inscrito") == "1" and (rep.get("idsedereg") or rep.get("numpartida")):
-                                    xml += '\t\t\t\t\t\t\t\t\t\t\t<InscripcionRepresentacion>\n'
-                                    if rep.get("idsedereg"):
-                                        xml += f'\t\t\t\t\t\t\t\t\t\t\t\t<SedeRegistral>{rep.get("idsedereg", "")}</SedeRegistral>\n'
-                                    if rep.get("numpartida"):
-                                        xml += f'\t\t\t\t\t\t\t\t\t\t\t\t<PartidaRegistral>{rep.get("numpartida", "")}</PartidaRegistral>\n'
-                                    xml += '\t\t\t\t\t\t\t\t\t\t\t</InscripcionRepresentacion>\n'
-                                if rep.get("facultades"):
-                                    xml += f'\t\t\t\t\t\t\t\t\t\t\t<Facultades>{rep.get("facultades", "")}</Facultades>\n'
-                                if rep.get("fechafirma"):
-                                    xml += f'\t\t\t\t\t\t\t\t\t\t\t<FechaFirma>{rep.get("fechafirma", "")}</FechaFirma>\n'
-                                xml += '\t\t\t\t\t\t\t\t\t\t</Representante>\n'
-                            xml += '\t\t\t\t\t\t\t\t\t</Representantes>\n'
-                        
-                        if beneficiario.get("fechafirma"):
-                            xml += f'\t\t\t\t\t\t\t\t\t<FechaFirma>{beneficiario.get("fechafirma", "")}</FechaFirma>\n'
-                        xml += '\t\t\t\t\t\t\t\t</Sujeto>\n'
-                    xml += '\t\t\t\t\t\t\t</Sujetos>\n'
-                    xml += '\t\t\t\t\t\t</Intervencion>\n'
-
-                xml += '\t\t\t\t\t</Intervenciones>\n'
-                xml += '\t\t\t\t</Operantes>\n'
-                xml += '\t\t\t</Operacion>\n'
-                xml += '\t\t</Operaciones>\n'
+                xml += '\t\t\t</Intervenciones>\n'
+                
+                # Add NoIntervinientes section
+                xml += '\t\t\t<NoIntervinientes>\n'
+                xml += '\t\t\t</NoIntervinientes>\n'
+                xml += '\t\t</Operantes>\n'
+                
+                # Add CuantiaOperacion section
+                xml += '\t\t<CuantiaOperacion>\n'
+                total_monto = sum(self._safe_float(p.get("monto", "0.00")) for p in doc.get('participants', []))
+                xml += f'\t\t\t<Cuantia>{total_monto:.2f}</Cuantia>\n'
+                xml += '\t\t\t<TipoMoneda>01</TipoMoneda>\n'
+                xml += '\t\t</CuantiaOperacion>\n'
+                
+                # Add MediosPagos section
+                xml += '\t\t<MediosPagos>\n'
+                xml += '\t\t<MediosPago>\n'
+                xml += '\t\t\t<MedioPago>001</MedioPago>\n'
+                xml += '\t\t\t<FormaPago>C</FormaPago>\n'
+                xml += '\t\t\t<MomentoPago>1</MomentoPago>\n'
+                xml += f'\t\t\t<CuantiaPago>{total_monto:.2f}</CuantiaPago>\n'
+                xml += '\t\t\t<TipoMonedaPago>01</TipoMonedaPago>\n'
+                xml += '\t\t\t<JustificadoManifestado>1</JustificadoManifestado>\n'
+                xml += f'\t\t\t<FechaPago>{doc.get("fechaescritura", "")}</FechaPago>\n'
+                xml += '\t\t\t<IdPago>0746978</IdPago>\n'
+                xml += '\t\t\t<EntidadFinanciera>00002</EntidadFinanciera>\n'
+                xml += '\t\t</MediosPago>\n'
+                xml += '\t\t</MediosPagos>\n'
+                
+                # Add contract details
+                xml += f'\t\t\t<NombreContrato>{doc.get("contrato", "").strip(" /")}</NombreContrato>\n'
+                xml += f'\t\t\t<FechaMinuta>{doc.get("fechaescritura", "")}</FechaMinuta>\n'
+                
+                xml += '\t\t</Operacion>\n'
+                xml += '\t</Operaciones>\n'
                 xml += '\t</DocumentoNotarial>\n'
 
             xml += '</DocumentosNotariales>'
+            
+            # Clean XML content like PHP
+            xml = (xml
+                .replace("&", "&amp;")
+                .replace("Ã'", "Ñ")
+                .replace("Ï¿½", "Ñ")
+                .replace("Ï¿Ï¿½", "Ñ"))
             
             # Write XML to file like PHP
             with open('textparaenviar-uno.xml', 'w') as f:

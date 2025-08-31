@@ -29,11 +29,9 @@ DB_CONFIG = {
 
 # Application Constants
 APP_CONSTANTS = {
-    'APP_NAME': 'SISNOT',
-    'APP_VERSION': '2.7',
     'PROVIDER_NAME': 'CNL',
-    'MAX_SEARCH_RESULTS': int(os.getenv('MAX_SEARCH_RESULTS', '1000')),
-    'DEFAULT_PAGE_SIZE': int(os.getenv('DEFAULT_PAGE_SIZE', '50')),
+    'APP_NAME': 'SISNOT',
+    'APP_VERSION': '2.7'
 }
 
 # Estado SISGEN Mapping
@@ -64,22 +62,23 @@ VALID_TIPOS_INSTRUMENTO = [1, 2, 3, 4, 5]
 # Date Formats
 DATE_FORMATS = ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']
 
-# XML Namespaces - Cross-platform compatible
+# XML Namespaces
 XML_NAMESPACES = {
-    'SISGEN': 'http://ancert.notariado.org/SISGEN/XML',
+    'SISGEN': 'http://sisgen.notarios.org.pe/SISGEN/XML',
     'XSI': 'http://www.w3.org/2001/XMLSchema-instance',
     'SOAP': 'http://schemas.xmlsoap.org/soap/envelope/',
-    'SISGEN_WS': 'http://ws.sisgen.ancert.notariado.org/',
-    'SOAP_ACTION': 'http://ws.sisgen.ancert.notariado.org/setDocumentosNotariales'
+    'SISGEN_WS': 'http://cnlws.notarios.org.pe/',
+    'SOAP_ACTION': 'http://cnlws.notarios.org.pe/DocumentosNotarialesSOAPService/setDocumentosNotariales'
 }
 
 # SOAP Headers
 SOAP_HEADERS = {
-    'Content-type': 'text/xml;charset=UTF-8',
+    'Content-type': 'text/xml;charset="utf-8"',
     'Accept': 'text/xml',
+    'Accept-Encoding': 'gzip',
     'Cache-Control': 'no-cache',
     'Pragma': 'no-cache',
-    'SOAPAction': 'http://ws.sisgen.ancert.notariado.org/setDocumentosNotariales'
+    'SOAPAction': '"http://cnlws.notarios.org.pe/DocumentosNotarialesSOAPService/setDocumentosNotariales"'
 }
 
 # Error Messages
