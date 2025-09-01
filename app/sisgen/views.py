@@ -11,8 +11,7 @@ from .services.document_search_service import DocumentSearchService
 from .services.xml_generator_service import SISGENXmlGenerator
 from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
-from .utils.constants import SISGEN_URLS
-from .utils.exceptions import DocumentSearchException, SISGENServiceException
+from .utils.exceptions import DocumentSearchException
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -84,9 +83,7 @@ class SendToSISGENView(APIView):
             
             # Process data
             data_processor = DataProcessorService()
-            print('DEBUG: Processing data for kardex:', kardex)
             result = data_processor.process_document(kardex, idkardex)
-            print('DEBUG: Process result:', result)
             
             # Generate XML
             xml_generator = SISGENXmlGenerator()
@@ -98,32 +95,19 @@ class SendToSISGENView(APIView):
                     'message': 'Failed to generate XML - missing required data'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            print('DEBUG: Generated XML content')
-            
             # Send to SISGEN
             soap_client = SoapClientService()
             response = soap_client.send_documents(xml_content)
-            print('DEBUG: SISGEN response:', response)
             
             # Write response to file
             with open('response.xml', 'w') as f:
                 f.write(response.text)
             
-            # Handle SOAP client errors
-            if not response.get('success'):
-                return Response({
-                    'error': 1,
-                    'messageDescription': response.get('error', 'Error interno del XML.'),
-                    'data': [],
-                    'kardex': kardex,
-                    'idKardex': idkardex,
-                    'errores': result.get('errores', []),
-                    'observaciones': result.get('observaciones', []),
-                    'personas': result.get('personas', [])
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Process SISGEN response
+            data_processor.update_document_statuses(response.text)
             
-            # Get final status counts and messages
-            final_status = response
+            # Get final status
+            final_status = data_processor.get_final_status()
             
             return Response({
                 'error': 0,

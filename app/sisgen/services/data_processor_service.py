@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from django.db import connection
 import logging
+import xml.etree.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -117,59 +118,92 @@ class DataProcessorService:
             columns = [col[0] for col in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
     
-    def update_document_statuses(self, response_data: Dict):
+    def update_document_statuses(self, response_text: str):
         """Update document statuses based on SISGEN response"""
-        current_date = datetime.now().strftime('%d/%m/%Y')
-        current_time = datetime.now().strftime('%H:%M:%S')
-        
-        # Find DocumentoNotarial elements
-        doc_notariales = response_data.findall('.//DocumentoNotarial')
-        
-        for doc in doc_notariales:
-            status_elem = doc.find('Status')
-            documento = doc.find('Documento')
+        try:
+            # Parse XML response
+            root = ET.fromstring(response_text)
             
-            if status_elem is not None and documento is not None:
-                status = status_elem.text
-                kardex = documento.find('NumKardex').text if documento.find('NumKardex') is not None else ''
+            # Define namespaces
+            namespaces = {
+                'soap': 'http://schemas.xmlsoap.org/soap/envelope/',
+                'ns2': 'http://cnlws.notarios.org.pe/',
+                'ns3': 'http://sisgen.notarios.org.pe/SISGEN/XML'
+            }
+            
+            # Get current date/time
+            current_date = datetime.now().strftime('%d/%m/%Y')
+            current_time = datetime.now().strftime('%H:%M:%S')
+            
+            # Find return element and get status/message
+            return_elem = root.find('.//ns2:setDocumentosNotarialesResponse/return', namespaces)
+            if return_elem is None:
+                self.logger.error("Could not find return element in response")
+                return
                 
-                # Map status to estado_sisgen
-                estado_map = {
-                    'FALLIDO': 3,
-                    'GUARDADO': 1,
-                    'CON OBSERVACIONES': 2
-                }
-                estado = estado_map.get(status, 0)
+            status = return_elem.find('status').text if return_elem.find('status') is not None else None
+            message = return_elem.find('message').text if return_elem.find('message') is not None else ''
+            
+            # Find DocumentoNotarial elements
+            doc_notariales = root.findall('.//ns3:DocumentoNotarial', namespaces)
+            
+            for doc in doc_notariales:
+                # Get Status and Documento elements
+                status_elem = doc.find('.//ns3:Status', namespaces)
+                documento = doc.find('.//ns3:Documento', namespaces)
                 
-                # Get document details
-                tipo_instrumento = documento.find('TipoInstrumento').text if documento.find('TipoInstrumento') is not None else ''
-                num_escritura = documento.find('NumDocumento').text if documento.find('NumDocumento') is not None else ''
-                fecha_instrumento = documento.find('FechaInstrumento').text if documento.find('FechaInstrumento') is not None else ''
-                
-                # Insert into sisgen and sisgen_report tables
-                self._insert_sisgen_status(
-                    tipo_kardex=tipo_instrumento,
-                    kardex=kardex,
-                    num_escritura=num_escritura,
-                    fecha_instrumento=fecha_instrumento,
-                    fech_envio=current_date,
-                    hora_envio=current_time,
-                    status=status,
-                    estado=estado
-                )
-                
-                # Update kardex status
-                self._update_kardex_status(kardex, estado)
-                
-                # Process errors if any
-                errors_elem = doc.find('.//ERRORS')
-                if errors_elem is not None:
-                    error_messages = []
-                    for error in errors_elem.findall('ERROR'):
-                        if error.text:
-                            error_messages.append(error.text)
-                    if error_messages:
-                        self._process_errors(kardex, error_messages)
+                if status_elem is not None and documento is not None:
+                    doc_status = status_elem.text
+                    kardex = documento.find('.//ns3:NumKardex', namespaces).text if documento.find('.//ns3:NumKardex', namespaces) is not None else ''
+                    
+                    # Map status to estado_sisgen
+                    estado_map = {
+                        'FALLIDO': 3,
+                        'GUARDADO': 1,
+                        'CON OBSERVACIONES': 2
+                    }
+                    estado = estado_map.get(doc_status, 0)
+                    
+                    # Get document details
+                    tipo_instrumento = documento.find('.//ns3:TipoInstrumento', namespaces)
+                    tipo_instrumento = tipo_instrumento.text if tipo_instrumento is not None else ''
+                    
+                    num_escritura = documento.find('.//ns3:NumDocumento', namespaces)
+                    num_escritura = num_escritura.text if num_escritura is not None else ''
+                    
+                    fecha_instrumento = documento.find('.//ns3:FechaInstrumento', namespaces)
+                    fecha_instrumento = fecha_instrumento.text if fecha_instrumento is not None else ''
+                    
+                    # Insert into sisgen and sisgen_report tables
+                    self._insert_sisgen_status(
+                        tipo_kardex=tipo_instrumento,
+                        kardex=kardex,
+                        num_escritura=num_escritura,
+                        fecha_instrumento=fecha_instrumento,
+                        fech_envio=current_date,
+                        hora_envio=current_time,
+                        status=doc_status,
+                        estado=estado
+                    )
+                    
+                    # Update kardex status
+                    self._update_kardex_status(kardex, estado)
+                    
+                    # Process errors if any
+                    errors_elem = doc.find('.//ns3:ERRORS', namespaces)
+                    if errors_elem is not None:
+                        error_messages = []
+                        for error in errors_elem.findall('.//ns3:ERROR', namespaces):
+                            if error.text:
+                                error_messages.append(error.text)
+                        if error_messages:
+                            self._process_errors(kardex, error_messages)
+                    
+                    self.logger.info(f"Updated status for kardex {kardex}: {doc_status} (estado: {estado})")
+                    
+        except Exception as e:
+            self.logger.error(f"Error updating document statuses: {str(e)}")
+            raise
     
     def _insert_sisgen_status(self, **kwargs):
         """Insert status into sisgen tables"""
