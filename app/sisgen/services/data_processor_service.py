@@ -122,36 +122,54 @@ class DataProcessorService:
         current_date = datetime.now().strftime('%d/%m/%Y')
         current_time = datetime.now().strftime('%H:%M:%S')
         
-        for doc in response_data.get('DocumentoNotarial', []):
-            kardex = doc['Documento']['NumKardex']
-            status = doc['Status']
+        # Find DocumentoNotarial elements
+        doc_notariales = response_data.findall('.//DocumentoNotarial')
+        
+        for doc in doc_notariales:
+            status_elem = doc.find('Status')
+            documento = doc.find('Documento')
             
-            # Map status to estado_sisgen
-            estado_map = {
-                'FALLIDO': 3,
-                'GUARDADO': 1,
-                'CON OBSERVACIONES': 2
-            }
-            estado = estado_map.get(status, 0)
-            
-            # Insert into sisgen and sisgen_report tables
-            self._insert_sisgen_status(
-                tipo_kardex=doc['Documento']['TipoInstrumento'],
-                kardex=kardex,
-                num_escritura=doc['Documento']['NumDocumento'],
-                fecha_instrumento=doc['Documento']['FechaInstrumento'],
-                fech_envio=current_date,
-                hora_envio=current_time,
-                status=status,
-                estado=estado
-            )
-            
-            # Update kardex status
-            self._update_kardex_status(kardex, estado)
-            
-            # Process errors if any
-            if 'ERRORS' in doc:
-                self._process_errors(kardex, doc['ERRORS'])
+            if status_elem is not None and documento is not None:
+                status = status_elem.text
+                kardex = documento.find('NumKardex').text if documento.find('NumKardex') is not None else ''
+                
+                # Map status to estado_sisgen
+                estado_map = {
+                    'FALLIDO': 3,
+                    'GUARDADO': 1,
+                    'CON OBSERVACIONES': 2
+                }
+                estado = estado_map.get(status, 0)
+                
+                # Get document details
+                tipo_instrumento = documento.find('TipoInstrumento').text if documento.find('TipoInstrumento') is not None else ''
+                num_escritura = documento.find('NumDocumento').text if documento.find('NumDocumento') is not None else ''
+                fecha_instrumento = documento.find('FechaInstrumento').text if documento.find('FechaInstrumento') is not None else ''
+                
+                # Insert into sisgen and sisgen_report tables
+                self._insert_sisgen_status(
+                    tipo_kardex=tipo_instrumento,
+                    kardex=kardex,
+                    num_escritura=num_escritura,
+                    fecha_instrumento=fecha_instrumento,
+                    fech_envio=current_date,
+                    hora_envio=current_time,
+                    status=status,
+                    estado=estado
+                )
+                
+                # Update kardex status
+                self._update_kardex_status(kardex, estado)
+                
+                # Process errors if any
+                errors_elem = doc.find('.//ERRORS')
+                if errors_elem is not None:
+                    error_messages = []
+                    for error in errors_elem.findall('ERROR'):
+                        if error.text:
+                            error_messages.append(error.text)
+                    if error_messages:
+                        self._process_errors(kardex, error_messages)
     
     def _insert_sisgen_status(self, **kwargs):
         """Insert status into sisgen tables"""

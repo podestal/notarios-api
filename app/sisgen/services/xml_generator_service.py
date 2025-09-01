@@ -91,7 +91,7 @@ class SISGENXmlGenerator:
             # Get tipo_intervencion based on role
             tipo_int = '1' if role == 'O' else '2' if role == 'B' else '3'
             
-            # For acto_juridico 0909 (ACLARACION), get codes from actocondicion
+            # For acto_juridico 0909 (ACLARACION), use specific mappings
             if acto_juridico == '0909':
                 with connection.cursor() as cursor:
                     # Get the specific type of aclaracion from tiposdeacto
@@ -104,25 +104,26 @@ class SISGENXmlGenerator:
                     
                     if result:
                         idtipoacto = result[0]
-                        # Get intervention code from actocondicion
-                        parte = '1' if role == 'O' else '2' if role == 'B' else '3'
-                        cursor.execute("""
-                            SELECT codconsisgen 
-                            FROM actocondicion 
-                            WHERE idtipoacto = %s AND parte = %s
-                        """, [idtipoacto, parte])
-                        code_result = cursor.fetchone()
-                        
-                        if code_result and code_result[0]:
-                            return tipo_int, code_result[0]
-                        
-                        # Fallback to default codes if not found
-                        if role == 'O':
-                            return tipo_int, '001'  # Default for Otorgante
-                        elif role == 'B':
-                            return tipo_int, '002'  # Default for Beneficiario
-                        elif role == 'R':
-                            return tipo_int, '006'  # Default for Representante
+                        # For ACLARACION DE DONACION (idtipoacto 991)
+                        if idtipoacto == '991':
+                            if role == 'O':
+                                return tipo_int, '084'  # Otorgante in ACLARACION DE DONACION
+                            elif role == 'B':
+                                return tipo_int, '011'  # Beneficiario in ACLARACION DE DONACION
+                        # For ACLARACION Y MODIFICACION PARCIAL DE CONSTITUCION E.I.R.L. (idtipoacto 934)
+                        elif idtipoacto == '934':
+                            if role == 'O':
+                                return tipo_int, '005'  # Otorgante
+                            elif role == 'R':
+                                return tipo_int, '006'  # Representante
+                        # For other types of ACLARACION
+                        else:
+                            if role == 'O':
+                                return tipo_int, '084'  # Default for Otorgante in ACLARACION
+                            elif role == 'B':
+                                return tipo_int, '011'  # Default for Beneficiario in ACLARACION
+                            elif role == 'R':
+                                return tipo_int, '006'  # Default for Representante in ACLARACION
             
             # Default mappings for other acto_juridico types
             if role == 'O':

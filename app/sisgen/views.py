@@ -9,10 +9,11 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .services.document_search_service import DocumentSearchService
 from .services.xml_generator_service import SISGENXmlGenerator
-from .services.soap_client_service import SISGENSoapClient
+from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
 from .utils.constants import SISGEN_URLS
 from .utils.exceptions import DocumentSearchException, SISGENServiceException
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DocumentSearchView(APIView):
@@ -82,79 +83,61 @@ class SendToSISGENView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Process data
-            try:
-                data_processor = DataProcessorService()
-                xml_generator = SISGENXmlGenerator()
-                soap_client = SISGENSoapClient(base_url=SISGEN_URLS['DOCUMENTS'])
-                
-                print('DEBUG: Processing data for kardex:', kardex)
-                
-                # Process document data
-                if all_docs:
-                    # TODO: Implement all documents case if needed
-                    return Response({
-                        'error': 1,
-                        'message': 'All documents processing not implemented'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                else:
-                    result = data_processor.process_document(kardex, idkardex)
-                
-                print('DEBUG: Process result:', result)
-                
-                # Generate XML
-                xml_content = xml_generator.generate_document_xml(result['documents'])
-                if not xml_content:
-                    print('DEBUG: Failed to generate XML - no content')
-                    return Response({
-                        'error': 1,
-                        'message': 'Failed to generate XML - missing required data'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                print('DEBUG: Generated XML content')
-                
-                # Send to SISGEN
-                response = soap_client.send_documents(xml_content)
-                print('DEBUG: SISGEN response:', response)
-                
-                # Process SISGEN response
-                if response['status'] == 'INTERNAL_SERVER_ERROR':
-                    return Response({
-                        'error': 1,
-                        'messageDescription': 'Error interno del XML.',
-                        'data': [],
-                        'kardex': kardex,
-                        'idKardex': idkardex,
-                        'errores': result.get('errores', []),
-                        'observaciones': result.get('observaciones', []),
-                        'personas': result.get('personas', [])
-                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                
-                # Update document statuses based on response
-                data_processor.update_document_statuses(response['documents'])
-                
-                # Get final status counts and messages
-                final_status = data_processor.get_final_status()
-                
+            data_processor = DataProcessorService()
+            print('DEBUG: Processing data for kardex:', kardex)
+            result = data_processor.process_document(kardex, idkardex)
+            print('DEBUG: Process result:', result)
+            
+            # Generate XML
+            xml_generator = SISGENXmlGenerator()
+            xml_content = xml_generator.generate_document_xml(result['documents'])
+            if not xml_content:
+                print('DEBUG: Failed to generate XML - no content')
                 return Response({
-                    'error': 0,
-                    'messageDescription': '',
-                    'data': final_status['data'],
+                    'error': 1,
+                    'message': 'Failed to generate XML - missing required data'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            print('DEBUG: Generated XML content')
+            
+            # Send to SISGEN
+            soap_client = SoapClientService()
+            response = soap_client.send_documents(xml_content)
+            print('DEBUG: SISGEN response:', response)
+            
+            # Write response to file
+            with open('response.xml', 'w') as f:
+                f.write(response.text)
+            
+            # Handle SOAP client errors
+            if not response.get('success'):
+                return Response({
+                    'error': 1,
+                    'messageDescription': response.get('error', 'Error interno del XML.'),
+                    'data': [],
                     'kardex': kardex,
                     'idKardex': idkardex,
                     'errores': result.get('errores', []),
                     'observaciones': result.get('observaciones', []),
-                    'personas': result.get('personas', []),
-                    'guardados': final_status.get('guardados', 0),
-                    'fallidos': final_status.get('fallidos', 0),
-                    'observados': final_status.get('observados', 0)
-                })
-                
-            except Exception as e:
-                print('DEBUG: Error processing data:', str(e))
-                return Response({
-                    'error': 1,
-                    'message': f'Error processing data: {str(e)}'
+                    'personas': result.get('personas', [])
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Get final status counts and messages
+            final_status = response
+            
+            return Response({
+                'error': 0,
+                'messageDescription': '',
+                'data': final_status.get('data', []),
+                'kardex': kardex,
+                'idKardex': idkardex,
+                'errores': result.get('errores', []),
+                'observaciones': result.get('observaciones', []),
+                'personas': result.get('personas', []),
+                'guardados': final_status.get('guardados', 0),
+                'fallidos': final_status.get('fallidos', 0),
+                'observados': final_status.get('observados', 0)
+            })
             
         except Exception as e:
             print('DEBUG: Unexpected error in SISGEN send:', str(e))
