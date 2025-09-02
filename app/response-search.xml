@@ -1,50 +1,503 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <SISGENResponse>
   <RequestInfo>
-    <Timestamp>2025-09-02T12:06:27.343344</Timestamp>
+    <Timestamp>2025-09-02T12:14:33.417896</Timestamp>
     <Filters>
       <Filter name="tipoInstrumento">1</Filter>
       <Filter name="fechaDesde">2022-01-01</Filter>
       <Filter name="fechaHasta">2022-12-31</Filter>
-      <Filter name="estado">2</Filter>
+      <Filter name="estado">0</Filter>
       <Filter name="codigoActo">0</Filter>
     </Filters>
   </RequestInfo>
   <ErrorDetails>
     <Kardex id="kardex_errors">
-      <KAR494-2022>Monto inválido para Otorgante</KAR494-2022>
-      <KAR494-2022>Monto inválido para Otorgante</KAR494-2022>
+      <KAR198-2022>Monto inválido para Otorgante</KAR198-2022>
+      <KAR198-2022>Monto inválido para Otorgante</KAR198-2022>
+      <KAR651-2022>Monto inválido para Otorgante</KAR651-2022>
+      <KAR651-2022>Monto inválido para Otorgante</KAR651-2022>
+      <KAR651-2022>Monto inválido para Otorgante</KAR651-2022>
+      <KAR712-2022>Monto inválido para Otorgante</KAR712-2022>
+      <KAR712-2022>Monto inválido para Otorgante</KAR712-2022>
+      <KAR712-2022>Monto inválido para Otorgante</KAR712-2022>
+      <KAR731-2022>Monto inválido para Otorgante</KAR731-2022>
+      <KAR731-2022>Monto inválido para Otorgante</KAR731-2022>
+      <KAR731-2022>Monto inválido para Otorgante</KAR731-2022>
+      <KAR919-2022>Monto inválido para Otorgante</KAR919-2022>
+      <KAR919-2022>Falta origen de fondos para Otorgante</KAR919-2022>
+      <KAR919-2022>Monto inválido para Otorgante</KAR919-2022>
+      <KAR919-2022>Falta origen de fondos para Otorgante</KAR919-2022>
+      <KAR953-2022>Monto inválido para Otorgante</KAR953-2022>
+      <KAR953-2022>Monto inválido para Otorgante</KAR953-2022>
+      <KAR953-2022>Monto inválido para Otorgante</KAR953-2022>
+      <KAR1087-2022>Monto inválido para Otorgante</KAR1087-2022>
+      <KAR1087-2022>Falta origen de fondos para Otorgante</KAR1087-2022>
+      <KAR1087-2022>Monto inválido para Otorgante</KAR1087-2022>
+      <KAR1087-2022>Falta origen de fondos para Otorgante</KAR1087-2022>
+      <KAR1087-2022>Monto inválido para Otorgante</KAR1087-2022>
+      <KAR1087-2022>Falta origen de fondos para Otorgante</KAR1087-2022>
+      <KAR1167-2022>Falta origen de fondos para Otorgante</KAR1167-2022>
+      <KAR1167-2022>Falta origen de fondos para Otorgante</KAR1167-2022>
+      <KAR1167-2022>Falta origen de fondos para Otorgante</KAR1167-2022>
+      <KAR1168-2022>Falta origen de fondos para Otorgante</KAR1168-2022>
+      <KAR1168-2022>Falta origen de fondos para Otorgante</KAR1168-2022>
+      <KAR1168-2022>Falta origen de fondos para Otorgante</KAR1168-2022>
+      <KAR1168-2022>Falta origen de fondos para Otorgante</KAR1168-2022>
+      <KAR1169-2022>Falta origen de fondos para Otorgante</KAR1169-2022>
+      <KAR1169-2022>Falta origen de fondos para Otorgante</KAR1169-2022>
+      <KAR1169-2022>Falta origen de fondos para Otorgante</KAR1169-2022>
+      <KAR1169-2022>Falta origen de fondos para Otorgante</KAR1169-2022>
+      <KAR1539-2022>Monto inválido para Beneficiario</KAR1539-2022>
+      <KAR1596-2022>Monto inválido para Otorgante</KAR1596-2022>
+      <KAR1596-2022>Monto inválido para Otorgante</KAR1596-2022>
+      <KAR1596-2022>Monto inválido para Otorgante</KAR1596-2022>
+      <KAR1596-2022>Monto inválido para Otorgante</KAR1596-2022>
+      <KAR1801-2022>Monto inválido para Otorgante</KAR1801-2022>
+      <KAR1801-2022>Monto inválido para Otorgante</KAR1801-2022>
+      <KAR1801-2022>Monto inválido para Otorgante</KAR1801-2022>
+      <KAR1848-2022>Monto inválido para Beneficiario</KAR1848-2022>
+      <KAR1848-2022>Falta origen de fondos para Beneficiario</KAR1848-2022>
+      <KAR1967-2022>Monto inválido para Otorgante</KAR1967-2022>
+      <KAR1967-2022>Falta origen de fondos para Otorgante</KAR1967-2022>
+      <KAR1971-2022>Monto inválido para Otorgante</KAR1971-2022>
+      <KAR1971-2022>Falta origen de fondos para Otorgante</KAR1971-2022>
+      <KAR1971-2022>Monto inválido para Otorgante</KAR1971-2022>
+      <KAR1971-2022>Falta origen de fondos para Otorgante</KAR1971-2022>
+      <KAR2042-2022>Monto inválido para Otorgante</KAR2042-2022>
+      <KAR2042-2022>Falta origen de fondos para Otorgante</KAR2042-2022>
+      <KAR2082-2022>Monto inválido para Beneficiario</KAR2082-2022>
     </Kardex>
     <Kardex id="observations">
-      <KAR1519-2022>No se encontraron registros UIF</KAR1519-2022>
-      <KAR1980-2022>No se encontraron registros UIF</KAR1980-2022>
+      <KAR1131-2022>No se encontraron registros UIF</KAR1131-2022>
     </Kardex>
     <Kardex id="person_errors">
-      <KAR494-2022>Persona 0000025138: Falta RUC</KAR494-2022>
-      <KAR494-2022>Persona 0000025138: Falta fecha de constitución</KAR494-2022>
-      <KAR494-2022>Persona 0000025138: Falta información registral</KAR494-2022>
-      <KAR494-2022>Persona 0000025138: Falta información de contacto de la empresa</KAR494-2022>
-      <KAR494-2022>Persona 0000025139: Falta información de contacto</KAR494-2022>
-      <KAR494-2022>Persona 0000025139: Falta información de contacto</KAR494-2022>
+      <KAR198-2022>Persona 0000022316: Falta información de contacto</KAR198-2022>
+      <KAR198-2022>Persona 0000022318: Falta información de contacto</KAR198-2022>
+      <KAR198-2022>Persona 0000022371: Falta información de contacto</KAR198-2022>
+      <KAR651-2022>Persona 0000026506: Falta información de contacto</KAR651-2022>
+      <KAR651-2022>Persona 0000026507: Falta información de contacto</KAR651-2022>
+      <KAR651-2022>Persona 0000026508: Falta información de contacto</KAR651-2022>
+      <KAR651-2022>Persona 0000026509: Falta información de contacto</KAR651-2022>
+      <KAR712-2022>Persona 0000027005: Falta información de contacto</KAR712-2022>
+      <KAR712-2022>Persona 0000027006: Falta información de contacto</KAR712-2022>
+      <KAR712-2022>Persona 0000027007: Falta información de contacto</KAR712-2022>
+      <KAR731-2022>Persona 0000027232: Falta información de contacto</KAR731-2022>
+      <KAR731-2022>Persona 0000027233: Falta información de contacto</KAR731-2022>
+      <KAR731-2022>Persona 0000027234: Falta información de contacto</KAR731-2022>
+      <KAR919-2022>Persona 0000028646: Falta información de contacto</KAR919-2022>
+      <KAR919-2022>Persona 0000028647: Falta información de contacto</KAR919-2022>
+      <KAR953-2022>Persona 0000028991: Falta información de contacto</KAR953-2022>
+      <KAR953-2022>Persona 0000028990: Falta información de contacto</KAR953-2022>
+      <KAR953-2022>Persona 0000028992: Falta información de contacto</KAR953-2022>
+      <KAR1048-2022>Persona 0000029690: Falta información de contacto</KAR1048-2022>
+      <KAR1087-2022>Persona 0000029988: Falta información de contacto</KAR1087-2022>
+      <KAR1087-2022>Persona 0000029989: Falta información de contacto</KAR1087-2022>
+      <KAR1087-2022>Persona 0000029990: Falta información de contacto</KAR1087-2022>
+      <KAR1167-2022>Persona 0000030581: Falta información de contacto</KAR1167-2022>
+      <KAR1167-2022>Persona 0000030582: Falta información de contacto</KAR1167-2022>
+      <KAR1167-2022>Persona 0000030583: Falta información de contacto</KAR1167-2022>
+      <KAR1167-2022>Persona 0000030584: Falta información de contacto</KAR1167-2022>
+      <KAR1168-2022>Persona 0000030593: Falta información de contacto</KAR1168-2022>
+      <KAR1168-2022>Persona 0000030594: Falta información de contacto</KAR1168-2022>
+      <KAR1168-2022>Persona 0000030595: Falta información de contacto</KAR1168-2022>
+      <KAR1168-2022>Persona 0000030596: Falta información de contacto</KAR1168-2022>
+      <KAR1168-2022>Persona 0000030598: Falta información de contacto</KAR1168-2022>
+      <KAR1169-2022>Persona 0000030605: Falta información de contacto</KAR1169-2022>
+      <KAR1169-2022>Persona 0000030606: Falta información de contacto</KAR1169-2022>
+      <KAR1169-2022>Persona 0000030607: Falta información de contacto</KAR1169-2022>
+      <KAR1169-2022>Persona 0000030608: Falta información de contacto</KAR1169-2022>
+      <KAR1169-2022>Persona 0000030609: Falta información de contacto</KAR1169-2022>
+      <KAR1497-2022>Persona 0000032799: Falta información de contacto</KAR1497-2022>
+      <KAR1502-2022>Persona 0000032877: Falta información de contacto</KAR1502-2022>
+      <KAR1502-2022>Persona 0000032878: Falta información de contacto</KAR1502-2022>
+      <KAR1502-2022>Persona 0000032880: Falta información de contacto</KAR1502-2022>
+      <KAR1539-2022>Persona 0000033164: Falta fecha de constitución</KAR1539-2022>
+      <KAR1539-2022>Persona 0000033164: Falta información registral</KAR1539-2022>
+      <KAR1539-2022>Persona 0000033164: Falta información de contacto de la empresa</KAR1539-2022>
+      <KAR1539-2022>Persona 0000033165: Falta información de contacto</KAR1539-2022>
+      <KAR1596-2022>Persona 0000033790: Falta información de contacto</KAR1596-2022>
+      <KAR1596-2022>Persona 0000033792: Falta información de contacto</KAR1596-2022>
+      <KAR1596-2022>Persona 0000033793: Falta información de contacto</KAR1596-2022>
+      <KAR1664-2022>Persona 0000034219: Falta información de contacto</KAR1664-2022>
+      <KAR1668-2022>Persona 0000034264: Falta información de contacto</KAR1668-2022>
+      <KAR1668-2022>Persona 0000034266: Falta información de contacto</KAR1668-2022>
+      <KAR1752-2022>Persona 0000034941: Falta información de contacto</KAR1752-2022>
+      <KAR1752-2022>Persona 0000034942: Falta información de contacto</KAR1752-2022>
+      <KAR1752-2022>Persona 0000034943: Falta información de contacto</KAR1752-2022>
+      <KAR1752-2022>Persona 0000034944: Falta información de contacto</KAR1752-2022>
+      <KAR1752-2022>Persona 0000034945: Falta información de contacto</KAR1752-2022>
+      <KAR1752-2022>Persona 0000034946: Falta información de contacto</KAR1752-2022>
+      <KAR1801-2022>Persona 0000035322: Falta información de contacto</KAR1801-2022>
+      <KAR1801-2022>Persona 0000035323: Falta información de contacto</KAR1801-2022>
+      <KAR1801-2022>Persona 0000035324: Falta información de contacto</KAR1801-2022>
+      <KAR1848-2022>Persona 0000035671: Falta información de contacto</KAR1848-2022>
+      <KAR1967-2022>Persona 0000036536: Falta información de contacto</KAR1967-2022>
+      <KAR1971-2022>Persona 0000036567: Falta información de contacto</KAR1971-2022>
+      <KAR1971-2022>Persona 0000036568: Falta fecha de constitución</KAR1971-2022>
+      <KAR1971-2022>Persona 0000036568: Falta información registral</KAR1971-2022>
+      <KAR1971-2022>Persona 0000036568: Falta información de contacto de la empresa</KAR1971-2022>
+      <KAR1971-2022>Persona 0000036569: Falta información de contacto</KAR1971-2022>
+      <KAR2042-2022>Persona 0000036970: Falta información de contacto</KAR2042-2022>
+      <KAR2082-2022>Persona 0000037157: Falta RUC</KAR2082-2022>
+      <KAR2082-2022>Persona 0000037157: Falta fecha de constitución</KAR2082-2022>
+      <KAR2082-2022>Persona 0000037157: Falta información registral</KAR2082-2022>
+      <KAR2082-2022>Persona 0000037157: Falta información de contacto de la empresa</KAR2082-2022>
+      <KAR2082-2022>Persona 0000037158: Falta información de contacto</KAR2082-2022>
     </Kardex>
   </ErrorDetails>
   <Documents>
     <Document>
-      <idkardex>9647</idkardex>
-      <kardex>KAR494-2022</kardex>
-      <numescritura>494</numescritura>
-      <fechaescritura>22/03/2022</fechaescritura>
-      <estado_sisgen>Enviado(Observado)</estado_sisgen>
+      <idkardex>8574</idkardex>
+      <kardex>KAR198-2022</kardex>
+      <numescritura>198</numescritura>
+      <fechaescritura>31/01/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
       <idtipkar>1</idtipkar>
-      <fechaingreso>22/03/2022</fechaingreso>
-      <codactos>937</codactos>
-      <contrato>ACLARACION DE CONSTITUCION DE ASOCIACION / </contrato>
-      <folioini>619</folioini>
-      <foliofin>620</foliofin>
-      <fechaconclusion>22/03/2022</fechaconclusion>
-      <cod_ancert>0909</cod_ancert>
+      <fechaingreso>31/01/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato> ACLARACION POR RENUNCIA DE AREA  / </contrato>
+      <folioini>236</folioini>
+      <foliofin>237v</foliofin>
+      <fechaconclusion>31/01/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
       <actouif></actouif>
       <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000022316: Falta información de contacto', 'Persona 0000022318: Falta información de contacto', 'Persona 0000022371: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>10152</idkardex>
+      <kardex>KAR651-2022</kardex>
+      <numescritura>651</numescritura>
+      <fechaescritura>20/04/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>20/04/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>823v</folioini>
+      <foliofin>824v</foliofin>
+      <fechaconclusion>20/04/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000026506: Falta información de contacto', 'Persona 0000026507: Falta información de contacto', 'Persona 0000026508: Falta información de contacto', 'Persona 0000026509: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>10324</idkardex>
+      <kardex>KAR712-2022</kardex>
+      <numescritura>712</numescritura>
+      <fechaescritura>02/05/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>02/05/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>903</folioini>
+      <foliofin>904v</foliofin>
+      <fechaconclusion>02/05/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000027005: Falta información de contacto', 'Persona 0000027006: Falta información de contacto', 'Persona 0000027007: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>10397</idkardex>
+      <kardex>KAR731-2022</kardex>
+      <numescritura>731</numescritura>
+      <fechaescritura>06/05/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>06/05/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>933</folioini>
+      <foliofin>934</foliofin>
+      <fechaconclusion>06/05/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000027232: Falta información de contacto', 'Persona 0000027233: Falta información de contacto', 'Persona 0000027234: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>10990</idkardex>
+      <kardex>KAR919-2022</kardex>
+      <numescritura>919</numescritura>
+      <fechaescritura>12/06/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>12/06/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>1160</folioini>
+      <foliofin>1161</foliofin>
+      <fechaconclusion>12/06/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000028646: Falta información de contacto', 'Persona 0000028647: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>11123</idkardex>
+      <kardex>KAR953-2022</kardex>
+      <numescritura>953</numescritura>
+      <fechaescritura>20/06/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>20/06/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>1203v</folioini>
+      <foliofin>1205</foliofin>
+      <fechaconclusion>20/06/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000028991: Falta información de contacto', 'Persona 0000028990: Falta información de contacto', 'Persona 0000028992: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>11391</idkardex>
+      <kardex>KAR1048-2022</kardex>
+      <numescritura>1048</numescritura>
+      <fechaescritura>06/07/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>06/07/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>1327v</folioini>
+      <foliofin>1328v</foliofin>
+      <fechaconclusion>06/07/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000029690: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>11521</idkardex>
+      <kardex>KAR1087-2022</kardex>
+      <numescritura>1087</numescritura>
+      <fechaescritura>12/07/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>12/07/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>1377v</folioini>
+      <foliofin>1378</foliofin>
+      <fechaconclusion></fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000029988: Falta información de contacto', 'Persona 0000029989: Falta información de contacto', 'Persona 0000029990: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>11635</idkardex>
+      <kardex>KAR1131-2022</kardex>
+      <numescritura>1131</numescritura>
+      <fechaescritura>19/07/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>19/07/2022</fechaingreso>
+      <codactos>924</codactos>
+      <contrato>TRANSFERENCIA DE TITULARIDAD DE EIRL / </contrato>
+      <folioini>1426v</folioini>
+      <foliofin>1428v</foliofin>
+      <fechaconclusion>19/07/2022</fechaconclusion>
+      <cod_ancert>0220</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>['No se encontraron registros UIF']</observaciones>
+      <personas>[]</personas>
+    </Document>
+    <Document>
+      <idkardex>11748</idkardex>
+      <kardex>KAR1167-2022</kardex>
+      <numescritura>1167</numescritura>
+      <fechaescritura>25/07/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>25/07/2022</fechaingreso>
+      <codactos>208</codactos>
+      <contrato>RESOLUCION DE COMPRAVENTA DE BIENES INMUEBLES / </contrato>
+      <folioini>1471</folioini>
+      <foliofin>1472v</foliofin>
+      <fechaconclusion>25/07/2022</fechaconclusion>
+      <cod_ancert>0128</cod_ancert>
+      <actouif>999</actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000030581: Falta información de contacto', 'Persona 0000030582: Falta información de contacto', 'Persona 0000030583: Falta información de contacto', 'Persona 0000030584: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>11751</idkardex>
+      <kardex>KAR1168-2022</kardex>
+      <numescritura>1168</numescritura>
+      <fechaescritura>25/07/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>25/07/2022</fechaingreso>
+      <codactos>208</codactos>
+      <contrato>RESOLUCION DE COMPRAVENTA DE BIENES INMUEBLES / </contrato>
+      <folioini>1472v</folioini>
+      <foliofin>1474</foliofin>
+      <fechaconclusion>25/07/2022</fechaconclusion>
+      <cod_ancert>0128</cod_ancert>
+      <actouif>999</actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000030593: Falta información de contacto', 'Persona 0000030594: Falta información de contacto', 'Persona 0000030595: Falta información de contacto', 'Persona 0000030596: Falta información de contacto', 'Persona 0000030598: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>11752</idkardex>
+      <kardex>KAR1169-2022</kardex>
+      <numescritura>1169</numescritura>
+      <fechaescritura>25/07/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>25/07/2022</fechaingreso>
+      <codactos>208</codactos>
+      <contrato>RESOLUCION DE COMPRAVENTA DE BIENES INMUEBLES / </contrato>
+      <folioini>1474</folioini>
+      <foliofin>1475v</foliofin>
+      <fechaconclusion>25/07/2022</fechaconclusion>
+      <cod_ancert>0128</cod_ancert>
+      <actouif>999</actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000030605: Falta información de contacto', 'Persona 0000030606: Falta información de contacto', 'Persona 0000030607: Falta información de contacto', 'Persona 0000030608: Falta información de contacto', 'Persona 0000030609: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>12173</idkardex>
+      <kardex>KAR1325-2022</kardex>
+      <numescritura>1325</numescritura>
+      <fechaescritura>16/08/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>16/08/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>1682v</folioini>
+      <foliofin>1684</foliofin>
+      <fechaconclusion>16/08/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
       <notary_data>
         <codnotario>19010409</codnotario>
         <codoficial>01842903195</codoficial>
@@ -58,21 +511,21 @@
       <personas>[]</personas>
     </Document>
     <Document>
-      <idkardex>12692</idkardex>
-      <kardex>KAR1519-2022</kardex>
-      <numescritura>1519</numescritura>
-      <fechaescritura>15/09/2022</fechaescritura>
-      <estado_sisgen>Enviado(Observado)</estado_sisgen>
+      <idkardex>12573</idkardex>
+      <kardex>KAR1477-2022</kardex>
+      <numescritura>1477</numescritura>
+      <fechaescritura>11/09/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
       <idtipkar>1</idtipkar>
-      <fechaingreso>15/09/2022</fechaingreso>
-      <codactos>977</codactos>
-      <contrato>MUTUO CON GARANTIA HIPOTECARIA / </contrato>
-      <folioini>1939v</folioini>
-      <foliofin>1948</foliofin>
-      <fechaconclusion>15/09/2022</fechaconclusion>
-      <cod_ancert>0909</cod_ancert>
-      <actouif></actouif>
-      <actosunat></actosunat>
+      <fechaingreso>11/09/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>1891v</folioini>
+      <foliofin>1893</foliofin>
+      <fechaconclusion>11/09/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
       <notary_data>
         <codnotario>19010409</codnotario>
         <codoficial>01842903195</codoficial>
@@ -86,21 +539,77 @@
       <personas>[]</personas>
     </Document>
     <Document>
-      <idkardex>14061</idkardex>
-      <kardex>KAR1980-2022</kardex>
-      <numescritura>1980</numescritura>
-      <fechaescritura>07/12/2022</fechaescritura>
-      <estado_sisgen>Enviado(Observado)</estado_sisgen>
+      <idkardex>12617</idkardex>
+      <kardex>KAR1497-2022</kardex>
+      <numescritura>1497</numescritura>
+      <fechaescritura>11/09/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
       <idtipkar>1</idtipkar>
-      <fechaingreso>07/12/2022</fechaingreso>
-      <codactos>977</codactos>
-      <contrato>MUTUO CON GARANTIA HIPOTECARIA / </contrato>
-      <folioini>2557</folioini>
-      <foliofin>2565</foliofin>
-      <fechaconclusion>07/12/2022</fechaconclusion>
-      <cod_ancert>0909</cod_ancert>
-      <actouif></actouif>
-      <actosunat></actosunat>
+      <fechaingreso>11/09/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>1910v</folioini>
+      <foliofin>1912</foliofin>
+      <fechaconclusion>11/09/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000032799: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>12648</idkardex>
+      <kardex>KAR1502-2022</kardex>
+      <numescritura>1502</numescritura>
+      <fechaescritura>12/09/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>12/09/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>1917</folioini>
+      <foliofin>1918v</foliofin>
+      <fechaconclusion>12/09/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000032877: Falta información de contacto', 'Persona 0000032878: Falta información de contacto', 'Persona 0000032880: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>12660</idkardex>
+      <kardex>KAR1506-2022</kardex>
+      <numescritura>1506</numescritura>
+      <fechaescritura>13/09/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>13/09/2022</fechaingreso>
+      <codactos>028</codactos>
+      <contrato>COMPRA VENTA DE ACCIONES Y DERECHOS / </contrato>
+      <folioini>1921v</folioini>
+      <foliofin>1923</foliofin>
+      <fechaconclusion>13/09/2022</fechaconclusion>
+      <cod_ancert>0216</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
       <notary_data>
         <codnotario>19010409</codnotario>
         <codoficial>01842903195</codoficial>
@@ -112,6 +621,342 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>[]</personas>
+    </Document>
+    <Document>
+      <idkardex>12758</idkardex>
+      <kardex>KAR1539-2022</kardex>
+      <numescritura>1539</numescritura>
+      <fechaescritura>18/09/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>18/09/2022</fechaingreso>
+      <codactos>060</codactos>
+      <contrato>MODIFICACION DE ESTATUTOS / </contrato>
+      <folioini>1968v</folioini>
+      <foliofin>1973v</foliofin>
+      <fechaconclusion>18/09/2022</fechaconclusion>
+      <cod_ancert>0229</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Beneficiario']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000033164: Falta fecha de constitución', 'Persona 0000033164: Falta información registral', 'Persona 0000033164: Falta información de contacto de la empresa', 'Persona 0000033165: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>12936</idkardex>
+      <kardex>KAR1596-2022</kardex>
+      <numescritura>1596</numescritura>
+      <fechaescritura>04/10/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>04/10/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>2039v</folioini>
+      <foliofin>2040v</foliofin>
+      <fechaconclusion>04/10/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000033790: Falta información de contacto', 'Persona 0000033792: Falta información de contacto', 'Persona 0000033793: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>13096</idkardex>
+      <kardex>KAR1664-2022</kardex>
+      <numescritura>1664</numescritura>
+      <fechaescritura>13/10/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>13/10/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>2136</folioini>
+      <foliofin>2137v</foliofin>
+      <fechaconclusion>13/10/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000034219: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>13112</idkardex>
+      <kardex>KAR1667-2022</kardex>
+      <numescritura>1667</numescritura>
+      <fechaescritura>14/10/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>14/10/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>2139v</folioini>
+      <foliofin>2141v</foliofin>
+      <fechaconclusion>14/10/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>[]</personas>
+    </Document>
+    <Document>
+      <idkardex>13114</idkardex>
+      <kardex>KAR1668-2022</kardex>
+      <numescritura>1668</numescritura>
+      <fechaescritura>16/10/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>16/10/2022</fechaingreso>
+      <codactos>030</codactos>
+      <contrato>COMPRA VENTA DE INMUEBLE / </contrato>
+      <folioini>2141v</folioini>
+      <foliofin>2143v</foliofin>
+      <fechaconclusion>16/10/2022</fechaconclusion>
+      <cod_ancert>0101</cod_ancert>
+      <actouif>012</actouif>
+      <actosunat>04</actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000034264: Falta información de contacto', 'Persona 0000034266: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>13385</idkardex>
+      <kardex>KAR1752-2022</kardex>
+      <numescritura>1752</numescritura>
+      <fechaescritura>31/10/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>31/10/2022</fechaingreso>
+      <codactos>047</codactos>
+      <contrato>DONACION / </contrato>
+      <folioini>2258v</folioini>
+      <foliofin>2260</foliofin>
+      <fechaconclusion>31/10/2022</fechaconclusion>
+      <cod_ancert>0109</cod_ancert>
+      <actouif>016</actouif>
+      <actosunat>15</actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000034941: Falta información de contacto', 'Persona 0000034942: Falta información de contacto', 'Persona 0000034943: Falta información de contacto', 'Persona 0000034944: Falta información de contacto', 'Persona 0000034945: Falta información de contacto', 'Persona 0000034946: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>13531</idkardex>
+      <kardex>KAR1801-2022</kardex>
+      <numescritura>1801</numescritura>
+      <fechaescritura>11/11/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>11/11/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>2330v</folioini>
+      <foliofin>2330v</foliofin>
+      <fechaconclusion>11/11/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000035322: Falta información de contacto', 'Persona 0000035323: Falta información de contacto', 'Persona 0000035324: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>13669</idkardex>
+      <kardex>KAR1848-2022</kardex>
+      <numescritura>1848</numescritura>
+      <fechaescritura>17/11/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>17/11/2022</fechaingreso>
+      <codactos>957</codactos>
+      <contrato>CANCELACION Y LEVANTAMIENTO DE HIPOTECA/MUTUO / </contrato>
+      <folioini>2387v</folioini>
+      <foliofin>2389</foliofin>
+      <fechaconclusion>17/11/2022</fechaconclusion>
+      <cod_ancert>0401</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Beneficiario', 'Falta origen de fondos para Beneficiario']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000035671: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>14023</idkardex>
+      <kardex>KAR1967-2022</kardex>
+      <numescritura>1967</numescritura>
+      <fechaescritura>05/12/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>05/12/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>2537v</folioini>
+      <foliofin>2538</foliofin>
+      <fechaconclusion></fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000036536: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>14035</idkardex>
+      <kardex>KAR1971-2022</kardex>
+      <numescritura>1971</numescritura>
+      <fechaescritura>06/12/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>06/12/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>2542v</folioini>
+      <foliofin>2544</foliofin>
+      <fechaconclusion>06/12/2022</fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000036567: Falta información de contacto', 'Persona 0000036568: Falta fecha de constitución', 'Persona 0000036568: Falta información registral', 'Persona 0000036568: Falta información de contacto de la empresa', 'Persona 0000036569: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>14190</idkardex>
+      <kardex>KAR2042-2022</kardex>
+      <numescritura>2042</numescritura>
+      <fechaescritura>26/12/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>26/12/2022</fechaingreso>
+      <codactos>984</codactos>
+      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
+      <folioini>2664v</folioini>
+      <foliofin>2664v</foliofin>
+      <fechaconclusion></fechaconclusion>
+      <cod_ancert>0912</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000036970: Falta información de contacto']</personas>
+    </Document>
+    <Document>
+      <idkardex>14258</idkardex>
+      <kardex>KAR2082-2022</kardex>
+      <numescritura>2082</numescritura>
+      <fechaescritura>30/12/2022</fechaescritura>
+      <estado_sisgen>No Enviado</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>30/12/2022</fechaingreso>
+      <codactos>060</codactos>
+      <contrato>MODIFICACION DE ESTATUTOS / </contrato>
+      <folioini>2741</folioini>
+      <foliofin>2742</foliofin>
+      <fechaconclusion>30/12/2022</fechaconclusion>
+      <cod_ancert>0229</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>['Monto inválido para Beneficiario']</errores>
+      <observaciones>[]</observaciones>
+      <personas>['Persona 0000037157: Falta RUC', 'Persona 0000037157: Falta fecha de constitución', 'Persona 0000037157: Falta información registral', 'Persona 0000037157: Falta información de contacto de la empresa', 'Persona 0000037158: Falta información de contacto']</personas>
     </Document>
   </Documents>
 </SISGENResponse>

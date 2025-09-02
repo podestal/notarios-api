@@ -81,6 +81,15 @@ class DocumentSearchService:
             
             self.logger.info(f"Found {len(processed_data)} documents")
             
+            # Debug log error tracking state
+            self.logger.debug(f"Error tracking state before formatting:")
+            self.logger.debug(f"Kardex errors: {self.kardex_errors}")
+            self.logger.debug(f"Kardex observations: {self.kardex_observations}")
+            self.logger.debug(f"Person errors: {self.person_errors}")
+            
+            # Process results again to include error data
+            processed_data = self._process_documents(documents, validated_filters)
+            
             error_details = {
                 'kardex_errors': self.kardex_errors,
                 'observations': self.kardex_observations,
@@ -121,7 +130,8 @@ class DocumentSearchService:
     def _validate_document_data(self, documents: List[Dict]):
         """Validate document data and track errors"""
         for doc in documents:
-            kardex = doc.get('kardex', 'Unknown')
+            kardex = doc.get('kardex', '')
+            self.logger.debug(f"Validating document data for kardex: {kardex}")
             
             # Validate required fields
             required_fields = ['numescritura', 'fechaescritura', 'idtipkar', 'codactos']
@@ -149,6 +159,10 @@ class DocumentSearchService:
             
             # Validate UIF data
             self._validate_uif_data(doc)
+            
+            self.logger.debug(f"After validation for kardex {kardex}:")
+            self.logger.debug(f"Errors: {self.kardex_errors.get(kardex, [])}")
+            self.logger.debug(f"Observations: {self.kardex_observations.get(kardex, [])}")
 
     def _validate_notary_data(self, doc: Dict):
         """Validate notary data"""
@@ -170,7 +184,8 @@ class DocumentSearchService:
 
     def _validate_uif_data(self, doc: Dict):
         """Validate UIF-related data"""
-        kardex = doc.get('kardex', 'Unknown')
+        kardex = doc.get('kardex', '')
+        self.logger.debug(f"Validating UIF data for kardex: {kardex}")
         
         try:
             # Get UIF data for the kardex
@@ -203,11 +218,16 @@ class DocumentSearchService:
         except Exception as e:
             self.logger.error(f"Error validating UIF data for kardex {kardex}: {str(e)}")
             self._add_error(kardex, "Error al validar datos UIF")
+            
+        self.logger.debug(f"After UIF validation for kardex {kardex}:")
+        self.logger.debug(f"Errors: {self.kardex_errors.get(kardex, [])}")
+        self.logger.debug(f"Observations: {self.kardex_observations.get(kardex, [])}")
 
     def _validate_person_data(self, documents: List[Dict]):
         """Validate person data and track errors"""
         for doc in documents:
-            kardex = doc.get('kardex', 'Unknown')
+            kardex = doc.get('kardex', '')
+            self.logger.debug(f"Validating person data for kardex: {kardex}")
             
             # Get participants data using the kardex
             participants = self._get_participants_for_kardex(kardex)
@@ -236,6 +256,9 @@ class DocumentSearchService:
                     
                     # Additional validations for juridical persons
                     self._validate_juridical_person(kardex, participant)
+            
+            self.logger.debug(f"After person validation for kardex {kardex}:")
+            self.logger.debug(f"Person errors: {self.person_errors.get(kardex, [])}")
 
     def _validate_natural_person(self, kardex: str, person: Dict):
         """Additional validations for natural persons"""
@@ -413,6 +436,13 @@ class DocumentSearchService:
         """Process and format document results"""
         processed = []
         
+        # Debug log before processing
+        self.logger.debug(f"Processing {len(documents)} documents")
+        self.logger.debug(f"Current error state:")
+        self.logger.debug(f"Kardex errors: {self.kardex_errors}")
+        self.logger.debug(f"Kardex observations: {self.kardex_observations}")
+        self.logger.debug(f"Person errors: {self.person_errors}")
+        
         for doc in documents:
             processed_doc = self._format_single_document(doc)
             processed.append(processed_doc)
@@ -427,6 +457,12 @@ class DocumentSearchService:
         """Format a single document"""
         kardex = doc.get('kardex', '')
         
+        # Debug log for this specific kardex
+        self.logger.debug(f"Formatting document for kardex: {kardex}")
+        self.logger.debug(f"Available errors for this kardex: {self.kardex_errors.get(kardex, [])}")
+        self.logger.debug(f"Available observations for this kardex: {self.kardex_observations.get(kardex, [])}")
+        self.logger.debug(f"Available person errors for this kardex: {self.person_errors.get(kardex, [])}")
+        
         # Format date safely
         fecha_escritura = doc['fechaescritura']
         fecha_formatted = self._format_date_safely(fecha_escritura)
@@ -437,7 +473,7 @@ class DocumentSearchService:
         # Format document data
         formatted_doc = {
             'idkardex': doc['idkardex'],
-            'kardex': doc['kardex'],
+            'kardex': kardex,
             'numescritura': doc['numescritura'],
             'fechaescritura': fecha_formatted,
             'estado_sisgen': estado_display,
@@ -460,12 +496,19 @@ class DocumentSearchService:
                 'distrito': doc['distrito_notario'],
                 'provincia': doc.get('provincia_notario', ''),
                 'departamento': doc.get('departamento_notario', '')
-            },
-            # Add error tracking for this kardex
-            'errores': self.kardex_errors.get(kardex, []),
-            'observaciones': self.kardex_observations.get(kardex, []),
-            'personas': self.person_errors.get(kardex, [])
+            }
         }
+
+        # Add error tracking for this kardex
+        formatted_doc['errores'] = self.kardex_errors.get(kardex, [])
+        formatted_doc['observaciones'] = self.kardex_observations.get(kardex, [])
+        formatted_doc['personas'] = self.person_errors.get(kardex, [])
+        
+        # Debug log the final document
+        self.logger.debug(f"Final formatted document for kardex {kardex}:")
+        self.logger.debug(f"Errores: {formatted_doc['errores']}")
+        self.logger.debug(f"Observaciones: {formatted_doc['observaciones']}")
+        self.logger.debug(f"Personas: {formatted_doc['personas']}")
         
         return formatted_doc
     
