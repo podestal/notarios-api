@@ -25,7 +25,7 @@ class DocumentSearchView(APIView):
             
             # Search documents
             service = DocumentSearchService()
-            data, total, errors = service.search_documents(filters)
+            data, total, errors, error_details = service.search_documents(filters)
             
             if errors:
                 return Response({
@@ -38,9 +38,9 @@ class DocumentSearchView(APIView):
                 'error': 0,
                 'data': data,
                 'total': total,
-                'errores': [],
-                'observaciones': [],
-                'personas': []
+                'errores': error_details.get('kardex_errors', []),
+                'observaciones': error_details.get('observations', []),
+                'personas': error_details.get('person_errors', [])
             })
             
         except DocumentSearchException as e:

@@ -2,8 +2,10 @@
 This module contains the document search service for the sisgen service.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import logging
+import json
+from datetime import datetime
 from django.db import connection
 from ..utils.exceptions import DocumentSearchException, ValidationException
 from ..utils.validators import SearchFiltersValidator
@@ -15,13 +17,30 @@ class DocumentSearchService:
     def __init__(self):
         self.logger = logger
         self.validator = SearchFiltersValidator()
+        # Initialize error tracking lists
+        self.kardex_errors = []  # Similar to errorListKar in PHP
+        self.kardex_observations = []  # Similar to errorListKarObs in PHP
+        self.person_errors = []  # Similar to arrPersonasErr in PHP
     
-    def search_documents(self, filters: Dict) -> Tuple[List[Dict], int, List[str]]:
+    def search_documents(self, filters: Dict) -> Tuple[List[Dict], int, List[str], Dict]:
         """
         Search for notarial documents
-        Returns: (data, total_count, errors)
+        Returns: (data, total_count, errors, error_details)
+        error_details contains: {
+            'kardex_errors': List of kardex-level errors,
+            'observations': List of observations/warnings,
+            'person_errors': List of person-related errors
+        }
         """
         try:
+            # Reset error tracking lists
+            self.kardex_errors = []
+            self.kardex_observations = []
+            self.person_errors = []
+            
+            # Log incoming filters
+            self.logger.info(f"Search request with filters: {json.dumps(filters, indent=2)}")
+            
             # Validate filters
             validated_filters = self.validator.validate(filters)
             
@@ -31,19 +50,241 @@ class DocumentSearchService:
             # Process results
             processed_data = self._process_documents(documents, validated_filters)
             
+            # Run validations but don't block on errors
+            try:
+                self._validate_document_data(processed_data)
+            except Exception as e:
+                self.logger.warning(f"Document validation warning: {str(e)}")
+                
+            try:
+                self._validate_person_data(processed_data)
+            except Exception as e:
+                self.logger.warning(f"Person validation warning: {str(e)}")
+            
             self.logger.info(f"Found {len(processed_data)} documents")
-            return processed_data, len(processed_data), []
+            
+            error_details = {
+                'kardex_errors': self.kardex_errors,
+                'observations': self.kardex_observations,
+                'person_errors': self.person_errors
+            }
+            
+            # Generate response XML for debugging
+            try:
+                self._generate_debug_xml(processed_data, error_details, filters)
+            except Exception as e:
+                self.logger.warning(f"Error generating debug XML: {str(e)}")
+            
+            # Always return data even if there are validation warnings
+            return processed_data, len(processed_data), [], error_details
             
         except ValidationException as e:
-            self.logger.error(f"Validation error: {str(e)}")
-            return [], 0, [str(e)]
+            # Only fail on filter validation errors
+            self.logger.error(f"Filter validation error: {str(e)}")
+            self._generate_error_xml("Validation Error", str(e), filters)
+            return [], 0, [str(e)], self._get_error_details()
         except DocumentSearchException as e:
             self.logger.error(f"Document search error: {str(e)}")
-            return [], 0, [str(e)]
+            self._generate_error_xml("Document Search Error", str(e), filters)
+            return [], 0, [str(e)], self._get_error_details()
         except Exception as e:
             self.logger.error(f"Unexpected error in document search: {str(e)}")
-            return [], 0, [ERROR_MESSAGES['DATABASE_ERROR'].format(error=str(e))]
+            self._generate_error_xml("Unexpected Error", str(e), filters)
+            return [], 0, [ERROR_MESSAGES['DATABASE_ERROR'].format(error=str(e))], self._get_error_details()
 
+    def _get_error_details(self) -> Dict:
+        """Return current error tracking details"""
+        return {
+            'kardex_errors': self.kardex_errors,
+            'observations': self.kardex_observations,
+            'person_errors': self.person_errors
+        }
+
+    def _validate_document_data(self, documents: List[Dict]):
+        """Validate document data and track errors"""
+        for doc in documents:
+            kardex = doc.get('kardex', 'Unknown')
+            
+            # Validate required fields
+            required_fields = ['numescritura', 'fechaescritura', 'idtipkar', 'codactos']
+            for field in required_fields:
+                if not doc.get(field):
+                    self.kardex_errors.append(f"Kardex {kardex}: Missing required field {field}")
+            
+            # Validate date formats
+            if doc.get('fechaescritura'):
+                try:
+                    self._format_date_safely(doc['fechaescritura'])
+                except ValueError:
+                    self.kardex_errors.append(f"Kardex {kardex}: Invalid fechaescritura format")
+            
+            # Validate numeric fields
+            if doc.get('numescritura') and not str(doc['numescritura']).strip().isdigit():
+                self.kardex_observations.append(f"Kardex {kardex}: numescritura should be numeric")
+            
+            # Check for ANCERT code
+            if not doc.get('cod_ancert'):
+                self.kardex_observations.append(f"Kardex {kardex}: Missing ANCERT code")
+            
+            # Validate notary data
+            self._validate_notary_data(doc)
+            
+            # Validate UIF data
+            self._validate_uif_data(doc)
+
+    def _validate_notary_data(self, doc: Dict):
+        """Validate notary data"""
+        kardex = doc.get('kardex', 'Unknown')
+        notary_data = doc.get('notary_data', {})
+        
+        required_notary_fields = [
+            'codnotario', 'codoficial', 'coduif',
+            'nombre_notario', 'direccion', 'distrito'
+        ]
+        
+        for field in required_notary_fields:
+            if not notary_data.get(field):
+                self.kardex_errors.append(f"Kardex {kardex}: Missing notary data - {field}")
+
+    def _validate_uif_data(self, doc: Dict):
+        """Validate UIF-related data"""
+        kardex = doc.get('kardex', 'Unknown')
+        
+        try:
+            # Get UIF data for the kardex
+            with connection.cursor() as cursor:
+                query = """
+                    SELECT cx.uif, cx.monto, cx.ofondo
+                    FROM contratantesxacto cx
+                    WHERE cx.kardex = %s
+                    AND (cx.uif IN ('O', 'B', 'G', 'N', 'R'))
+                """
+                cursor.execute(query, [kardex])
+                uif_records = cursor.fetchall()
+                
+                if not uif_records:
+                    self.kardex_observations.append(f"Kardex {kardex}: No UIF records found")
+                    return
+                
+                for uif_record in uif_records:
+                    uif, monto, ofondo = uif_record
+                    
+                    # Validate monto for operations
+                    if uif in ('O', 'B') and (not monto or float(monto or 0) <= 0):
+                        self.kardex_errors.append(f"Kardex {kardex}: Invalid amount for UIF role {uif}")
+                    
+                    # Validate origen de fondos
+                    if uif in ('O', 'B') and not ofondo:
+                        self.kardex_errors.append(f"Kardex {kardex}: Missing origen de fondos for UIF role {uif}")
+                
+        except Exception as e:
+            self.logger.error(f"Error validating UIF data for kardex {kardex}: {str(e)}")
+            self.kardex_errors.append(f"Kardex {kardex}: Error validating UIF data")
+
+    def _validate_person_data(self, documents: List[Dict]):
+        """Validate person data and track errors"""
+        for doc in documents:
+            kardex = doc.get('kardex', 'Unknown')
+            
+            # Get participants data using the kardex
+            participants = self._get_participants_for_kardex(kardex)
+            
+            for participant in participants:
+                person_id = participant.get('idcontratante', 'Unknown')
+                
+                # Validate natural person data
+                if participant.get('tipper') == 'N':
+                    if not participant.get('numdoc'):
+                        self.person_errors.append(f"Person {person_id}: Missing document number")
+                    if not participant.get('apepat'):
+                        self.person_errors.append(f"Person {person_id}: Missing paternal surname")
+                    if not participant.get('prinom'):
+                        self.person_errors.append(f"Person {person_id}: Missing first name")
+                    
+                    # Additional validations for natural persons
+                    self._validate_natural_person(participant)
+                
+                # Validate juridical person data
+                elif participant.get('tipper') == 'J':
+                    if not participant.get('numdoc'):
+                        self.person_errors.append(f"Person {person_id}: Missing RUC")
+                    if not participant.get('razonsocial'):
+                        self.person_errors.append(f"Person {person_id}: Missing business name")
+                    
+                    # Additional validations for juridical persons
+                    self._validate_juridical_person(participant)
+
+    def _validate_natural_person(self, person: Dict):
+        """Additional validations for natural persons"""
+        person_id = person.get('idcontratante', 'Unknown')
+        
+        # Validate document type and number format
+        doc_type = person.get('idtipdoc')
+        doc_number = person.get('numdoc')
+        
+        if doc_type == '1':  # DNI
+            if doc_number and (len(doc_number) != 8 or not doc_number.isdigit()):
+                self.person_errors.append(f"Person {person_id}: Invalid DNI format")
+        elif doc_type == '4':  # CE
+            if doc_number and len(doc_number) > 12:
+                self.person_errors.append(f"Person {person_id}: Invalid CE format")
+        
+        # Validate required contact information
+        if not any([person.get('telfijo'), person.get('telcel'), person.get('email')]):
+            self.person_errors.append(f"Person {person_id}: Missing contact information")
+        
+        # Validate address
+        if not person.get('direccion') or not person.get('idubigeo'):
+            self.person_errors.append(f"Person {person_id}: Incomplete address information")
+
+    def _validate_juridical_person(self, person: Dict):
+        """Additional validations for juridical persons"""
+        person_id = person.get('idcontratante', 'Unknown')
+        
+        # Validate RUC format
+        ruc = person.get('numdoc')
+        if ruc and (len(ruc) != 11 or not ruc.isdigit() or not ruc.startswith('20')):
+            self.person_errors.append(f"Person {person_id}: Invalid RUC format")
+        
+        # Validate required registration data
+        if not person.get('fechaconstitu'):
+            self.person_errors.append(f"Person {person_id}: Missing constitution date")
+        
+        if not person.get('idsedereg') or not person.get('numpartida'):
+            self.person_errors.append(f"Person {person_id}: Missing registration information")
+        
+        # Validate contact information
+        if not person.get('telempresa') and not person.get('mailempresa'):
+            self.person_errors.append(f"Person {person_id}: Missing company contact information")
+
+    def _get_participants_for_kardex(self, kardex: str) -> List[Dict]:
+        """Get participants data for a kardex"""
+        try:
+            with connection.cursor() as cursor:
+                # Query similar to PHP's natural and juridical person queries
+                query = """
+                    SELECT 
+                        cl.idcontratante, cl.idcliente AS id, cl.tipper,
+                        cl.apepat, cl.apemat, cl.prinom, cl.segnom,
+                        cl.nombre, cl.direccion, cl.idtipdoc, cl.numdoc,
+                        cl.email, cl.telfijo, cl.telcel, cl.telofi,
+                        cl.sexo AS gen, cl.idestcivil AS estc,
+                        cl.natper, cl.conyuge, cl.nacionalidad,
+                        cl.idprofesion, cl.detaprofesion,
+                        cl.idcargoprofe, cl.profocupa, cl.dirfer,
+                        cl.idubigeo, cl.cumpclie AS fechanaci,
+                        cl.razonsocial, cl.domfiscal
+                    FROM contratantesxacto cx
+                    LEFT JOIN cliente2 cl ON cx.idcontratante = cl.idcontratante
+                    WHERE cx.kardex = %s
+                """
+                cursor.execute(query, [kardex])
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting participants for kardex {kardex}: {str(e)}")
+            return []
+    
     def _execute_search_query(self, filters: Dict) -> List[Dict]:
         """Execute raw SQL query with proper parameterization"""
         query, params = self._build_sql_query(filters)
@@ -208,7 +449,6 @@ class DocumentSearchService:
         try:
             if isinstance(date_value, str):
                 # Try to parse the date string
-                from datetime import datetime
                 for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
                     try:
                         date_obj = datetime.strptime(date_value, fmt)
@@ -275,3 +515,104 @@ class DocumentSearchService:
     def _get_estado_display(self, estado: int) -> str:
         """Get display text for estado_sisgen"""
         return ESTADO_SISGEN_MAPPING.get(estado, 'Desconocido')
+
+    def _generate_debug_xml(self, data: List[Dict], error_details: Dict, filters: Dict):
+        """Generate XML file for debugging"""
+        try:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            xml = ['<?xml version="1.0" encoding="UTF-8"?>']
+            xml.append('<SISGENResponse>')
+            
+            # Add request info
+            xml.append('  <RequestInfo>')
+            xml.append(f'    <Timestamp>{datetime.now().isoformat()}</Timestamp>')
+            xml.append('    <Filters>')
+            for key, value in filters.items():
+                xml.append(f'      <Filter name="{key}">{value}</Filter>')
+            xml.append('    </Filters>')
+            xml.append('  </RequestInfo>')
+            
+            # Add error details
+            xml.append('  <ErrorDetails>')
+            for error_type, errors in error_details.items():
+                xml.append(f'    <{error_type}>')
+                for error in errors:
+                    xml.append(f'      <Error>{error}</Error>')
+                xml.append(f'    </{error_type}>')
+            xml.append('  </ErrorDetails>')
+            
+            # Add document data
+            xml.append('  <Documents>')
+            for doc in data:
+                xml.append('    <Document>')
+                self._add_xml_element(doc, xml, indent=6)
+                xml.append('    </Document>')
+            xml.append('  </Documents>')
+            
+            xml.append('</SISGENResponse>')
+            
+            # Write to file
+            with open('response-search.xml', 'w', encoding='utf-8') as f:
+                f.write('\n'.join(xml))
+            
+            self.logger.info("Generated debug XML response file: response-search.xml")
+            
+        except Exception as e:
+            self.logger.error(f"Error generating debug XML: {str(e)}")
+
+    def _generate_error_xml(self, error_type: str, error_message: str, filters: Dict):
+        """Generate XML file for errors"""
+        try:
+            xml = ['<?xml version="1.0" encoding="UTF-8"?>']
+            xml.append('<SISGENError>')
+            
+            # Add error info
+            xml.append('  <ErrorInfo>')
+            xml.append(f'    <Timestamp>{datetime.now().isoformat()}</Timestamp>')
+            xml.append(f'    <Type>{error_type}</Type>')
+            xml.append(f'    <Message>{error_message}</Message>')
+            xml.append('  </ErrorInfo>')
+            
+            # Add request info
+            xml.append('  <RequestInfo>')
+            xml.append('    <Filters>')
+            for key, value in filters.items():
+                xml.append(f'      <Filter name="{key}">{value}</Filter>')
+            xml.append('    </Filters>')
+            xml.append('  </RequestInfo>')
+            
+            # Add error tracking details
+            xml.append('  <ErrorTracking>')
+            for error in self.kardex_errors:
+                xml.append(f'    <KardexError>{error}</KardexError>')
+            for obs in self.kardex_observations:
+                xml.append(f'    <Observation>{obs}</Observation>')
+            for error in self.person_errors:
+                xml.append(f'    <PersonError>{error}</PersonError>')
+            xml.append('  </ErrorTracking>')
+            
+            xml.append('</SISGENError>')
+            
+            # Write to file
+            with open('response-search.xml', 'w', encoding='utf-8') as f:
+                f.write('\n'.join(xml))
+            
+            self.logger.info("Generated error XML response file: response-search.xml")
+            
+        except Exception as e:
+            self.logger.error(f"Error generating error XML: {str(e)}")
+
+    def _add_xml_element(self, data: Dict, xml: List[str], indent: int = 0):
+        """Helper to add nested XML elements"""
+        spaces = ' ' * indent
+        for key, value in data.items():
+            if isinstance(value, dict):
+                xml.append(f'{spaces}<{key}>')
+                self._add_xml_element(value, xml, indent + 2)
+                xml.append(f'{spaces}</{key}>')
+            else:
+                if value is not None:
+                    # Escape special characters
+                    if isinstance(value, str):
+                        value = value.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    xml.append(f'{spaces}<{key}>{value}</{key}>')
