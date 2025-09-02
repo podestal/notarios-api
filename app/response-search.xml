@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <SISGENResponse>
   <RequestInfo>
-    <Timestamp>2025-09-02T12:14:33.417896</Timestamp>
+    <Timestamp>2025-09-02T13:49:25.763083</Timestamp>
     <Filters>
       <Filter name="tipoInstrumento">1</Filter>
       <Filter name="fechaDesde">2022-01-01</Filter>
@@ -173,6 +173,20 @@
       <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000022316: Falta información de contacto', 'Persona 0000022318: Falta información de contacto', 'Persona 0000022371: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>False</has_errors>
+        <errors>[]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <984>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </984>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>10152</idkardex>
@@ -201,6 +215,13 @@
       <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000026506: Falta información de contacto', 'Persona 0000026507: Falta información de contacto', 'Persona 0000026508: Falta información de contacto', 'Persona 0000026509: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'ROSAS DE BUTRON, YOLANDA , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'BUTRON ROSAS, MARCO ANTONIO, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'BUTRON ROSAS, JOSE LUIS, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'BUTRON ROSAS, ROSA , código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>10324</idkardex>
@@ -229,6 +250,13 @@
       <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000027005: Falta información de contacto', 'Persona 0000027006: Falta información de contacto', 'Persona 0000027007: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'BUTRON MAMANI, AURELIANO , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'CHOQUE MAMANI, INOCENCIA , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'FLORES CENTON, SONIA , código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>10397</idkardex>
@@ -257,6 +285,13 @@
       <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000027232: Falta información de contacto', 'Persona 0000027233: Falta información de contacto', 'Persona 0000027234: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'MAMANI PANTIGOSO, HENRY DANTE, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'MAMANI CCAMA, RUBEN DARIO , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'VELASQUEZ PAREDES, SUSANA , código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>10990</idkardex>
@@ -285,6 +320,20 @@
       <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000028646: Falta información de contacto', 'Persona 0000028647: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>False</has_errors>
+        <errors>[]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <984>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </984>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>11123</idkardex>
@@ -313,6 +362,13 @@
       <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000028991: Falta información de contacto', 'Persona 0000028990: Falta información de contacto', 'Persona 0000028992: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'GONZALO MAMANI, EFRAIN , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'MAMANI CALIZAYA, MARTINA , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'CCOPA MAQUERA, ROXANA , código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>11391</idkardex>
@@ -341,6 +397,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000029690: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'missing_participant_amount', 'error_description': 'INCACUTIPA FLORES, MARTIN  Monto por Participante'}, {'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 20000.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>11521</idkardex>
@@ -369,6 +432,20 @@
       <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000029988: Falta información de contacto', 'Persona 0000029989: Falta información de contacto', 'Persona 0000029990: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'missing_conclusion_date', 'error_description': 'Fecha de conclusión faltante'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <984>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </984>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>11635</idkardex>
@@ -397,6 +474,20 @@
       <errores>[]</errores>
       <observaciones>['No se encontraron registros UIF']</observaciones>
       <personas>[]</personas>
+      <uif_validation>
+        <has_errors>False</has_errors>
+        <errors>[]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <924>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </924>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>11748</idkardex>
@@ -425,6 +516,13 @@
       <errores>['Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000030581: Falta información de contacto', 'Persona 0000030582: Falta información de contacto', 'Persona 0000030583: Falta información de contacto', 'Persona 0000030584: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'missing_participant_amount', 'error_description': 'LIMA FLORES, AURELIO  Monto por Participante'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>11751</idkardex>
@@ -453,6 +551,13 @@
       <errores>['Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000030593: Falta información de contacto', 'Persona 0000030594: Falta información de contacto', 'Persona 0000030595: Falta información de contacto', 'Persona 0000030596: Falta información de contacto', 'Persona 0000030598: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'missing_participant_amount', 'error_description': 'LIMA FLORES, AURELIO  Monto por Participante'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>11752</idkardex>
@@ -481,6 +586,13 @@
       <errores>['Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000030605: Falta información de contacto', 'Persona 0000030606: Falta información de contacto', 'Persona 0000030607: Falta información de contacto', 'Persona 0000030608: Falta información de contacto', 'Persona 0000030609: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'missing_participant_amount', 'error_description': 'LIMA FLORES, AURELIO  Monto por Participante'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>12173</idkardex>
@@ -509,6 +621,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>[]</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 5000.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>12573</idkardex>
@@ -537,6 +656,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>[]</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 2200.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>12617</idkardex>
@@ -565,6 +691,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000032799: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 8000.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>12648</idkardex>
@@ -593,6 +726,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000032877: Falta información de contacto', 'Persona 0000032878: Falta información de contacto', 'Persona 0000032880: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 5500.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>12660</idkardex>
@@ -621,6 +761,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>[]</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 4500.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>12758</idkardex>
@@ -649,6 +796,13 @@
       <errores>['Monto inválido para Beneficiario']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000033164: Falta fecha de constitución', 'Persona 0000033164: Falta información registral', 'Persona 0000033164: Falta información de contacto de la empresa', 'Persona 0000033165: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'ASOCIACION DE MOTOTAXIS COLECTOURS - ILAVE, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'CRUZ LAURACIO, LUIS , código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>12936</idkardex>
@@ -677,6 +831,13 @@
       <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000033790: Falta información de contacto', 'Persona 0000033792: Falta información de contacto', 'Persona 0000033793: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'ESCOBAR PARI, FREY RUIZ, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'YANAPA CHATA, AYDEE NELIDA, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'ESCOBAR YANAPA, DIANA SAMIRA, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'ESCOBAR YANAPA, DENALI DANIELA, código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>13096</idkardex>
@@ -705,6 +866,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000034219: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 10000.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>13112</idkardex>
@@ -733,6 +901,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>[]</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 10000.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>13114</idkardex>
@@ -761,6 +936,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000034264: Falta información de contacto', 'Persona 0000034266: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 46000.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>13385</idkardex>
@@ -789,6 +971,13 @@
       <errores>[]</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000034941: Falta información de contacto', 'Persona 0000034942: Falta información de contacto', 'Persona 0000034943: Falta información de contacto', 'Persona 0000034944: Falta información de contacto', 'Persona 0000034945: Falta información de contacto', 'Persona 0000034946: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'amount_mismatch', 'error_description': 'La suma de los montos de los contratantes otorgantes supera el monto total de la operación: 19000.00'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>13531</idkardex>
@@ -817,6 +1006,13 @@
       <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000035322: Falta información de contacto', 'Persona 0000035323: Falta información de contacto', 'Persona 0000035324: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'CUSACANI MAQUERA, ANTONIO , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'NINA CONDORI, VICENTA ELMER, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'BUTRON QUISPE, MARIELLA FIORELLA, código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>13669</idkardex>
@@ -845,6 +1041,20 @@
       <errores>['Monto inválido para Beneficiario', 'Falta origen de fondos para Beneficiario']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000035671: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>False</has_errors>
+        <errors>[]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <957>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </957>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>14023</idkardex>
@@ -873,6 +1083,20 @@
       <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000036536: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'missing_conclusion_date', 'error_description': 'Fecha de conclusión faltante'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <984>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </984>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>14035</idkardex>
@@ -901,6 +1125,20 @@
       <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante', 'Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000036567: Falta información de contacto', 'Persona 0000036568: Falta fecha de constitución', 'Persona 0000036568: Falta información registral', 'Persona 0000036568: Falta información de contacto de la empresa', 'Persona 0000036569: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>False</has_errors>
+        <errors>[]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <984>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </984>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>14190</idkardex>
@@ -929,6 +1167,20 @@
       <errores>['Monto inválido para Otorgante', 'Falta origen de fondos para Otorgante']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000036970: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'missing_conclusion_date', 'error_description': 'Fecha de conclusión faltante'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+          <984>
+            <tipo_moneda>SOLES</tipo_moneda>
+            <tipo_cambio>0.0</tipo_cambio>
+            <patrimonial>0.0</patrimonial>
+            <en_dolares>0.0</en_dolares>
+            <currency_symbol>S./ </currency_symbol>
+          </984>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
     <Document>
       <idkardex>14258</idkardex>
@@ -957,6 +1209,13 @@
       <errores>['Monto inválido para Beneficiario']</errores>
       <observaciones>[]</observaciones>
       <personas>['Persona 0000037157: Falta RUC', 'Persona 0000037157: Falta fecha de constitución', 'Persona 0000037157: Falta información registral', 'Persona 0000037157: Falta información de contacto de la empresa', 'Persona 0000037158: Falta información de contacto']</personas>
+      <uif_validation>
+        <has_errors>True</has_errors>
+        <errors>[{'error_type': 'currency_without_amount', 'error_description': ' ,  , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'TARQUI PACOVILCA, BENJAMIN , código de moneda no se debe informar sin montos'}]</errors>
+        <observations>[]</observations>
+        <patrimonial_data>
+        </patrimonial_data>
+      </uif_validation>
     </Document>
   </Documents>
 </SISGENResponse>

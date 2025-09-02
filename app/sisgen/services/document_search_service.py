@@ -10,6 +10,7 @@ from django.db import connection
 from ..utils.exceptions import DocumentSearchException, ValidationException
 from ..utils.validators import SearchFiltersValidator
 from ..utils.constants import ESTADO_SISGEN_MAPPING, ERROR_MESSAGES
+from .uif_validation_service import UIFValidationService
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ class DocumentSearchService:
         self.kardex_errors = {}  # {kardex: [errors]}
         self.kardex_observations = {}  # {kardex: [observations]}
         self.person_errors = {}  # {kardex: [person_errors]}
+        # Initialize UIF validation service
+        self.uif_validator = UIFValidationService()
     
     def _add_error(self, kardex: str, error: str):
         """Add error for a specific kardex"""
@@ -443,8 +446,15 @@ class DocumentSearchService:
         self.logger.debug(f"Kardex observations: {self.kardex_observations}")
         self.logger.debug(f"Person errors: {self.person_errors}")
         
+        # Get all kardex numbers for bulk validation
+        kardex_numbers = [doc.get('kardex', '') for doc in documents]
+        
+        # Bulk validate UIF data
+        uif_validation_results = self.uif_validator.bulk_validate_kardex(kardex_numbers)
+        
         for doc in documents:
-            processed_doc = self._format_single_document(doc)
+            kardex = doc.get('kardex', '')
+            processed_doc = self._format_single_document(doc, uif_validation_results.get(kardex))
             processed.append(processed_doc)
         
         # Handle special case for estado = 5 (all documents)
@@ -452,8 +462,8 @@ class DocumentSearchService:
             processed = self._handle_all_documents_case(processed)
         
         return processed
-    
-    def _format_single_document(self, doc: Dict) -> Dict:
+
+    def _format_single_document(self, doc: Dict, uif_validation: Optional[Dict] = None) -> Dict:
         """Format a single document"""
         kardex = doc.get('kardex', '')
         
@@ -469,6 +479,15 @@ class DocumentSearchService:
         
         # Get estado display
         estado_display = self._get_estado_display(doc['estado_sisgen'])
+        
+        # Use provided UIF validation or get empty result
+        if uif_validation is None:
+            uif_validation = {
+                'has_uif_errors': False,
+                'uif_errors': [],
+                'uif_observations': [],
+                'patrimonial_data': {}
+            }
         
         # Format document data
         formatted_doc = {
@@ -496,19 +515,26 @@ class DocumentSearchService:
                 'distrito': doc['distrito_notario'],
                 'provincia': doc.get('provincia_notario', ''),
                 'departamento': doc.get('departamento_notario', '')
+            },
+            # Add SISGEN error tracking for this kardex
+            'errores': self.kardex_errors.get(kardex, []),
+            'observaciones': self.kardex_observations.get(kardex, []),
+            'personas': self.person_errors.get(kardex, []),
+            # Add UIF validation results
+            'uif_validation': {
+                'has_errors': uif_validation['has_uif_errors'],
+                'errors': uif_validation['uif_errors'],
+                'observations': uif_validation['uif_observations'],
+                'patrimonial_data': uif_validation['patrimonial_data']
             }
         }
-
-        # Add error tracking for this kardex
-        formatted_doc['errores'] = self.kardex_errors.get(kardex, [])
-        formatted_doc['observaciones'] = self.kardex_observations.get(kardex, [])
-        formatted_doc['personas'] = self.person_errors.get(kardex, [])
         
         # Debug log the final document
         self.logger.debug(f"Final formatted document for kardex {kardex}:")
         self.logger.debug(f"Errores: {formatted_doc['errores']}")
         self.logger.debug(f"Observaciones: {formatted_doc['observaciones']}")
         self.logger.debug(f"Personas: {formatted_doc['personas']}")
+        self.logger.debug(f"UIF Validation: {formatted_doc['uif_validation']}")
         
         return formatted_doc
     
