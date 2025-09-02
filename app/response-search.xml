@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SISGENResponse>
+  <RequestInfo>
+    <Timestamp>2025-09-02T12:06:27.343344</Timestamp>
+    <Filters>
+      <Filter name="tipoInstrumento">1</Filter>
+      <Filter name="fechaDesde">2022-01-01</Filter>
+      <Filter name="fechaHasta">2022-12-31</Filter>
+      <Filter name="estado">2</Filter>
+      <Filter name="codigoActo">0</Filter>
+    </Filters>
+  </RequestInfo>
+  <ErrorDetails>
+    <Kardex id="kardex_errors">
+      <KAR494-2022>Monto inválido para Otorgante</KAR494-2022>
+      <KAR494-2022>Monto inválido para Otorgante</KAR494-2022>
+    </Kardex>
+    <Kardex id="observations">
+      <KAR1519-2022>No se encontraron registros UIF</KAR1519-2022>
+      <KAR1980-2022>No se encontraron registros UIF</KAR1980-2022>
+    </Kardex>
+    <Kardex id="person_errors">
+      <KAR494-2022>Persona 0000025138: Falta RUC</KAR494-2022>
+      <KAR494-2022>Persona 0000025138: Falta fecha de constitución</KAR494-2022>
+      <KAR494-2022>Persona 0000025138: Falta información registral</KAR494-2022>
+      <KAR494-2022>Persona 0000025138: Falta información de contacto de la empresa</KAR494-2022>
+      <KAR494-2022>Persona 0000025139: Falta información de contacto</KAR494-2022>
+      <KAR494-2022>Persona 0000025139: Falta información de contacto</KAR494-2022>
+    </Kardex>
+  </ErrorDetails>
+  <Documents>
+    <Document>
+      <idkardex>9647</idkardex>
+      <kardex>KAR494-2022</kardex>
+      <numescritura>494</numescritura>
+      <fechaescritura>22/03/2022</fechaescritura>
+      <estado_sisgen>Enviado(Observado)</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>22/03/2022</fechaingreso>
+      <codactos>937</codactos>
+      <contrato>ACLARACION DE CONSTITUCION DE ASOCIACION / </contrato>
+      <folioini>619</folioini>
+      <foliofin>620</foliofin>
+      <fechaconclusion>22/03/2022</fechaconclusion>
+      <cod_ancert>0909</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>[]</personas>
+    </Document>
+    <Document>
+      <idkardex>12692</idkardex>
+      <kardex>KAR1519-2022</kardex>
+      <numescritura>1519</numescritura>
+      <fechaescritura>15/09/2022</fechaescritura>
+      <estado_sisgen>Enviado(Observado)</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>15/09/2022</fechaingreso>
+      <codactos>977</codactos>
+      <contrato>MUTUO CON GARANTIA HIPOTECARIA / </contrato>
+      <folioini>1939v</folioini>
+      <foliofin>1948</foliofin>
+      <fechaconclusion>15/09/2022</fechaconclusion>
+      <cod_ancert>0909</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>[]</personas>
+    </Document>
+    <Document>
+      <idkardex>14061</idkardex>
+      <kardex>KAR1980-2022</kardex>
+      <numescritura>1980</numescritura>
+      <fechaescritura>07/12/2022</fechaescritura>
+      <estado_sisgen>Enviado(Observado)</estado_sisgen>
+      <idtipkar>1</idtipkar>
+      <fechaingreso>07/12/2022</fechaingreso>
+      <codactos>977</codactos>
+      <contrato>MUTUO CON GARANTIA HIPOTECARIA / </contrato>
+      <folioini>2557</folioini>
+      <foliofin>2565</foliofin>
+      <fechaconclusion>07/12/2022</fechaconclusion>
+      <cod_ancert>0909</cod_ancert>
+      <actouif></actouif>
+      <actosunat></actosunat>
+      <notary_data>
+        <codnotario>19010409</codnotario>
+        <codoficial>01842903195</codoficial>
+        <coduif>75580002</coduif>
+        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
+        <direccion>AV. HUANCANE N° 269</direccion>
+        <distrito>SAN MIGUEL</distrito>
+      </notary_data>
+      <errores>[]</errores>
+      <observaciones>[]</observaciones>
+      <personas>[]</personas>
+    </Document>
+  </Documents>
+</SISGENResponse>

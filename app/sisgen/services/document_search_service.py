@@ -17,11 +17,29 @@ class DocumentSearchService:
     def __init__(self):
         self.logger = logger
         self.validator = SearchFiltersValidator()
-        # Initialize error tracking lists
-        self.kardex_errors = []  # Similar to errorListKar in PHP
-        self.kardex_observations = []  # Similar to errorListKarObs in PHP
-        self.person_errors = []  # Similar to arrPersonasErr in PHP
+        # Initialize error tracking dictionaries by kardex
+        self.kardex_errors = {}  # {kardex: [errors]}
+        self.kardex_observations = {}  # {kardex: [observations]}
+        self.person_errors = {}  # {kardex: [person_errors]}
     
+    def _add_error(self, kardex: str, error: str):
+        """Add error for a specific kardex"""
+        if kardex not in self.kardex_errors:
+            self.kardex_errors[kardex] = []
+        self.kardex_errors[kardex].append(error)
+    
+    def _add_observation(self, kardex: str, observation: str):
+        """Add observation for a specific kardex"""
+        if kardex not in self.kardex_observations:
+            self.kardex_observations[kardex] = []
+        self.kardex_observations[kardex].append(observation)
+    
+    def _add_person_error(self, kardex: str, error: str):
+        """Add person error for a specific kardex"""
+        if kardex not in self.person_errors:
+            self.person_errors[kardex] = []
+        self.person_errors[kardex].append(error)
+
     def search_documents(self, filters: Dict) -> Tuple[List[Dict], int, List[str], Dict]:
         """
         Search for notarial documents
@@ -34,9 +52,9 @@ class DocumentSearchService:
         """
         try:
             # Reset error tracking lists
-            self.kardex_errors = []
-            self.kardex_observations = []
-            self.person_errors = []
+            self.kardex_errors = {}
+            self.kardex_observations = {}
+            self.person_errors = {}
             
             # Log incoming filters
             self.logger.info(f"Search request with filters: {json.dumps(filters, indent=2)}")
@@ -109,22 +127,22 @@ class DocumentSearchService:
             required_fields = ['numescritura', 'fechaescritura', 'idtipkar', 'codactos']
             for field in required_fields:
                 if not doc.get(field):
-                    self.kardex_errors.append(f"Kardex {kardex}: Missing required field {field}")
+                    self._add_error(kardex, f"Falta campo requerido: {field}")
             
             # Validate date formats
             if doc.get('fechaescritura'):
                 try:
                     self._format_date_safely(doc['fechaescritura'])
                 except ValueError:
-                    self.kardex_errors.append(f"Kardex {kardex}: Invalid fechaescritura format")
+                    self._add_error(kardex, "Formato de fecha de escritura inválido")
             
             # Validate numeric fields
             if doc.get('numescritura') and not str(doc['numescritura']).strip().isdigit():
-                self.kardex_observations.append(f"Kardex {kardex}: numescritura should be numeric")
+                self._add_observation(kardex, "El número de escritura debe ser numérico")
             
             # Check for ANCERT code
             if not doc.get('cod_ancert'):
-                self.kardex_observations.append(f"Kardex {kardex}: Missing ANCERT code")
+                self._add_observation(kardex, "Falta código ANCERT")
             
             # Validate notary data
             self._validate_notary_data(doc)
@@ -137,14 +155,18 @@ class DocumentSearchService:
         kardex = doc.get('kardex', 'Unknown')
         notary_data = doc.get('notary_data', {})
         
-        required_notary_fields = [
-            'codnotario', 'codoficial', 'coduif',
-            'nombre_notario', 'direccion', 'distrito'
-        ]
+        required_notary_fields = {
+            'codnotario': 'Código de notario',
+            'codoficial': 'Código oficial',
+            'coduif': 'Código UIF',
+            'nombre_notario': 'Nombre del notario',
+            'direccion': 'Dirección',
+            'distrito': 'Distrito'
+        }
         
-        for field in required_notary_fields:
+        for field, display_name in required_notary_fields.items():
             if not notary_data.get(field):
-                self.kardex_errors.append(f"Kardex {kardex}: Missing notary data - {field}")
+                self._add_error(kardex, f"Falta dato notarial: {display_name}")
 
     def _validate_uif_data(self, doc: Dict):
         """Validate UIF-related data"""
@@ -163,23 +185,24 @@ class DocumentSearchService:
                 uif_records = cursor.fetchall()
                 
                 if not uif_records:
-                    self.kardex_observations.append(f"Kardex {kardex}: No UIF records found")
+                    self._add_observation(kardex, "No se encontraron registros UIF")
                     return
                 
                 for uif_record in uif_records:
                     uif, monto, ofondo = uif_record
+                    role_name = 'Otorgante' if uif == 'O' else 'Beneficiario'
                     
                     # Validate monto for operations
                     if uif in ('O', 'B') and (not monto or float(monto or 0) <= 0):
-                        self.kardex_errors.append(f"Kardex {kardex}: Invalid amount for UIF role {uif}")
+                        self._add_error(kardex, f"Monto inválido para {role_name}")
                     
                     # Validate origen de fondos
                     if uif in ('O', 'B') and not ofondo:
-                        self.kardex_errors.append(f"Kardex {kardex}: Missing origen de fondos for UIF role {uif}")
+                        self._add_error(kardex, f"Falta origen de fondos para {role_name}")
                 
         except Exception as e:
             self.logger.error(f"Error validating UIF data for kardex {kardex}: {str(e)}")
-            self.kardex_errors.append(f"Kardex {kardex}: Error validating UIF data")
+            self._add_error(kardex, "Error al validar datos UIF")
 
     def _validate_person_data(self, documents: List[Dict]):
         """Validate person data and track errors"""
@@ -195,26 +218,26 @@ class DocumentSearchService:
                 # Validate natural person data
                 if participant.get('tipper') == 'N':
                     if not participant.get('numdoc'):
-                        self.person_errors.append(f"Person {person_id}: Missing document number")
+                        self._add_person_error(kardex, f"Persona {person_id}: Falta número de documento")
                     if not participant.get('apepat'):
-                        self.person_errors.append(f"Person {person_id}: Missing paternal surname")
+                        self._add_person_error(kardex, f"Persona {person_id}: Falta apellido paterno")
                     if not participant.get('prinom'):
-                        self.person_errors.append(f"Person {person_id}: Missing first name")
+                        self._add_person_error(kardex, f"Persona {person_id}: Falta primer nombre")
                     
                     # Additional validations for natural persons
-                    self._validate_natural_person(participant)
+                    self._validate_natural_person(kardex, participant)
                 
                 # Validate juridical person data
                 elif participant.get('tipper') == 'J':
                     if not participant.get('numdoc'):
-                        self.person_errors.append(f"Person {person_id}: Missing RUC")
+                        self._add_person_error(kardex, f"Persona {person_id}: Falta RUC")
                     if not participant.get('razonsocial'):
-                        self.person_errors.append(f"Person {person_id}: Missing business name")
+                        self._add_person_error(kardex, f"Persona {person_id}: Falta razón social")
                     
                     # Additional validations for juridical persons
-                    self._validate_juridical_person(participant)
+                    self._validate_juridical_person(kardex, participant)
 
-    def _validate_natural_person(self, person: Dict):
+    def _validate_natural_person(self, kardex: str, person: Dict):
         """Additional validations for natural persons"""
         person_id = person.get('idcontratante', 'Unknown')
         
@@ -224,38 +247,38 @@ class DocumentSearchService:
         
         if doc_type == '1':  # DNI
             if doc_number and (len(doc_number) != 8 or not doc_number.isdigit()):
-                self.person_errors.append(f"Person {person_id}: Invalid DNI format")
+                self._add_person_error(kardex, f"Persona {person_id}: Formato de DNI inválido")
         elif doc_type == '4':  # CE
             if doc_number and len(doc_number) > 12:
-                self.person_errors.append(f"Person {person_id}: Invalid CE format")
+                self._add_person_error(kardex, f"Persona {person_id}: Formato de CE inválido")
         
         # Validate required contact information
         if not any([person.get('telfijo'), person.get('telcel'), person.get('email')]):
-            self.person_errors.append(f"Person {person_id}: Missing contact information")
+            self._add_person_error(kardex, f"Persona {person_id}: Falta información de contacto")
         
         # Validate address
         if not person.get('direccion') or not person.get('idubigeo'):
-            self.person_errors.append(f"Person {person_id}: Incomplete address information")
+            self._add_person_error(kardex, f"Persona {person_id}: Información de dirección incompleta")
 
-    def _validate_juridical_person(self, person: Dict):
+    def _validate_juridical_person(self, kardex: str, person: Dict):
         """Additional validations for juridical persons"""
         person_id = person.get('idcontratante', 'Unknown')
         
         # Validate RUC format
         ruc = person.get('numdoc')
         if ruc and (len(ruc) != 11 or not ruc.isdigit() or not ruc.startswith('20')):
-            self.person_errors.append(f"Person {person_id}: Invalid RUC format")
+            self._add_person_error(kardex, f"Persona {person_id}: Formato de RUC inválido")
         
         # Validate required registration data
         if not person.get('fechaconstitu'):
-            self.person_errors.append(f"Person {person_id}: Missing constitution date")
+            self._add_person_error(kardex, f"Persona {person_id}: Falta fecha de constitución")
         
         if not person.get('idsedereg') or not person.get('numpartida'):
-            self.person_errors.append(f"Person {person_id}: Missing registration information")
+            self._add_person_error(kardex, f"Persona {person_id}: Falta información registral")
         
         # Validate contact information
         if not person.get('telempresa') and not person.get('mailempresa'):
-            self.person_errors.append(f"Person {person_id}: Missing company contact information")
+            self._add_person_error(kardex, f"Persona {person_id}: Falta información de contacto de la empresa")
 
     def _get_participants_for_kardex(self, kardex: str) -> List[Dict]:
         """Get participants data for a kardex"""
@@ -402,6 +425,8 @@ class DocumentSearchService:
     
     def _format_single_document(self, doc: Dict) -> Dict:
         """Format a single document"""
+        kardex = doc.get('kardex', '')
+        
         # Format date safely
         fecha_escritura = doc['fechaescritura']
         fecha_formatted = self._format_date_safely(fecha_escritura)
@@ -426,7 +451,6 @@ class DocumentSearchService:
             'cod_ancert': doc['cod_ancert'] or '',
             'actouif': doc['actouif'] or '',
             'actosunat': doc['actosunat'] or '',
-            # Add notary data
             'notary_data': {
                 'codnotario': doc['codnotario'],
                 'codoficial': doc['codoficial'],
@@ -436,7 +460,11 @@ class DocumentSearchService:
                 'distrito': doc['distrito_notario'],
                 'provincia': doc.get('provincia_notario', ''),
                 'departamento': doc.get('departamento_notario', '')
-            }
+            },
+            # Add error tracking for this kardex
+            'errores': self.kardex_errors.get(kardex, []),
+            'observaciones': self.kardex_observations.get(kardex, []),
+            'personas': self.person_errors.get(kardex, [])
         }
         
         return formatted_doc
@@ -534,11 +562,12 @@ class DocumentSearchService:
             
             # Add error details
             xml.append('  <ErrorDetails>')
-            for error_type, errors in error_details.items():
-                xml.append(f'    <{error_type}>')
-                for error in errors:
-                    xml.append(f'      <Error>{error}</Error>')
-                xml.append(f'    </{error_type}>')
+            for kardex, errors in error_details.items():
+                xml.append(f'    <Kardex id="{kardex}">')
+                for error_type, errors_list in errors.items():
+                    for error in errors_list:
+                        xml.append(f'      <{error_type}>{error}</{error_type}>')
+                xml.append('    </Kardex>')
             xml.append('  </ErrorDetails>')
             
             # Add document data
@@ -583,12 +612,15 @@ class DocumentSearchService:
             
             # Add error tracking details
             xml.append('  <ErrorTracking>')
-            for error in self.kardex_errors:
-                xml.append(f'    <KardexError>{error}</KardexError>')
-            for obs in self.kardex_observations:
-                xml.append(f'    <Observation>{obs}</Observation>')
-            for error in self.person_errors:
-                xml.append(f'    <PersonError>{error}</PersonError>')
+            for kardex, errors in self.kardex_errors.items():
+                for error in errors:
+                    xml.append(f'    <KardexError kardex="{kardex}">{error}</KardexError>')
+            for kardex, observations in self.kardex_observations.items():
+                for obs in observations:
+                    xml.append(f'    <Observation kardex="{kardex}">{obs}</Observation>')
+            for kardex, person_errors in self.person_errors.items():
+                for error in person_errors:
+                    xml.append(f'    <PersonError kardex="{kardex}">{error}</PersonError>')
             xml.append('  </ErrorTracking>')
             
             xml.append('</SISGENError>')
