@@ -1,5 +1,8 @@
 from .base import *
 
+# Add the session cookie middleware to the beginning of the middleware list
+MIDDLEWARE = ['sisgen.middleware.SessionCookieMiddleware'] + MIDDLEWARE
+
 DEBUG = True
 ALLOWED_HOSTS.extend(filter(None, os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")))
 

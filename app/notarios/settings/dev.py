@@ -36,3 +36,6 @@ CORS_ALLOWED_ORIGINS.extend(
 )
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Add the session cookie middleware to the beginning of the middleware list
+MIDDLEWARE = ['sisgen.middleware.SessionCookieMiddleware'] + MIDDLEWARE

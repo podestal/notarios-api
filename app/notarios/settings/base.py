@@ -231,3 +231,8 @@ SIMPLE_JWT = {
 # }
 
 AWS_S3_ADDRESSING_STYLE = "virtual"
+
+# Session Configuration
+SESSION_COOKIE_AGE = 86400  # 24 hours in seconds
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = True  # Update session expiry on each request

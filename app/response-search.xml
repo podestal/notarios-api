@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <SISGENResponse>
   <RequestInfo>
-    <Timestamp>2025-09-02T13:57:14.698170</Timestamp>
+    <Timestamp>2025-09-03T11:26:12.559017</Timestamp>
     <Filters>
       <Filter name="tipoInstrumento">1</Filter>
       <Filter name="fechaDesde">2022-01-01</Filter>
@@ -17,9 +17,6 @@
       <KAR651-2022>Monto inválido para Otorgante</KAR651-2022>
       <KAR651-2022>Monto inválido para Otorgante</KAR651-2022>
       <KAR651-2022>Monto inválido para Otorgante</KAR651-2022>
-      <KAR712-2022>Monto inválido para Otorgante</KAR712-2022>
-      <KAR712-2022>Monto inválido para Otorgante</KAR712-2022>
-      <KAR712-2022>Monto inválido para Otorgante</KAR712-2022>
       <KAR731-2022>Monto inválido para Otorgante</KAR731-2022>
       <KAR731-2022>Monto inválido para Otorgante</KAR731-2022>
       <KAR731-2022>Monto inválido para Otorgante</KAR731-2022>
@@ -78,9 +75,6 @@
       <KAR651-2022>Persona 0000026507: Falta información de contacto</KAR651-2022>
       <KAR651-2022>Persona 0000026508: Falta información de contacto</KAR651-2022>
       <KAR651-2022>Persona 0000026509: Falta información de contacto</KAR651-2022>
-      <KAR712-2022>Persona 0000027005: Falta información de contacto</KAR712-2022>
-      <KAR712-2022>Persona 0000027006: Falta información de contacto</KAR712-2022>
-      <KAR712-2022>Persona 0000027007: Falta información de contacto</KAR712-2022>
       <KAR731-2022>Persona 0000027232: Falta información de contacto</KAR731-2022>
       <KAR731-2022>Persona 0000027233: Falta información de contacto</KAR731-2022>
       <KAR731-2022>Persona 0000027234: Falta información de contacto</KAR731-2022>
@@ -218,41 +212,6 @@
       <uif_validation>
         <has_errors>True</has_errors>
         <errors>[{'error_type': 'currency_without_amount', 'error_description': 'ROSAS DE BUTRON, YOLANDA , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'BUTRON ROSAS, MARCO ANTONIO, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'BUTRON ROSAS, JOSE LUIS, código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'BUTRON ROSAS, ROSA , código de moneda no se debe informar sin montos'}]</errors>
-        <observations>[]</observations>
-        <patrimonial_data>
-        </patrimonial_data>
-      </uif_validation>
-    </Document>
-    <Document>
-      <idkardex>10324</idkardex>
-      <kardex>KAR712-2022</kardex>
-      <numescritura>712</numescritura>
-      <fechaescritura>02/05/2022</fechaescritura>
-      <estado_sisgen>No Enviado</estado_sisgen>
-      <idtipkar>1</idtipkar>
-      <fechaingreso>02/05/2022</fechaingreso>
-      <codactos>984</codactos>
-      <contrato>ACLARACION, RECTIFICACION Y RATIFICACION / </contrato>
-      <folioini>903</folioini>
-      <foliofin>904v</foliofin>
-      <fechaconclusion>02/05/2022</fechaconclusion>
-      <cod_ancert>0912</cod_ancert>
-      <actouif></actouif>
-      <actosunat></actosunat>
-      <notary_data>
-        <codnotario>19010409</codnotario>
-        <codoficial>01842903195</codoficial>
-        <coduif>75580002</coduif>
-        <nombre_notario>ARTURO  POMA RODRIGO</nombre_notario>
-        <direccion>AV. HUANCANE N° 269</direccion>
-        <distrito>SAN MIGUEL</distrito>
-      </notary_data>
-      <errores>['Monto inválido para Otorgante', 'Monto inválido para Otorgante', 'Monto inválido para Otorgante']</errores>
-      <observaciones>[]</observaciones>
-      <personas>['Persona 0000027005: Falta información de contacto', 'Persona 0000027006: Falta información de contacto', 'Persona 0000027007: Falta información de contacto']</personas>
-      <uif_validation>
-        <has_errors>True</has_errors>
-        <errors>[{'error_type': 'currency_without_amount', 'error_description': 'BUTRON MAMANI, AURELIANO , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'CHOQUE MAMANI, INOCENCIA , código de moneda no se debe informar sin montos'}, {'error_type': 'currency_without_amount', 'error_description': 'FLORES CENTON, SONIA , código de moneda no se debe informar sin montos'}]</errors>
         <observations>[]</observations>
         <patrimonial_data>
         </patrimonial_data>

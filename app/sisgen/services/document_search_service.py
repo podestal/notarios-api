@@ -11,6 +11,7 @@ from ..utils.exceptions import DocumentSearchException, ValidationException
 from ..utils.validators import SearchFiltersValidator
 from ..utils.constants import ESTADO_SISGEN_MAPPING, ERROR_MESSAGES
 from .uif_validation_service import UIFValidationService
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,38 @@ class DocumentSearchService:
         self.person_errors = {}  # {kardex: [person_errors]}
         # Initialize UIF validation service
         self.uif_validator = UIFValidationService()
+        # Initialize batch processing state
+        self.search_id = None
+        self.all_kardex = []  # Store all kardex numbers in order
+        self.processed_kardex = set()
+        self.total_documents = 0
+        self.validated_filters = None
+        self.current_page = 1
+        self.batch_size = 10  # Fixed batch size
     
+    @classmethod
+    def from_session_data(cls, session_data: Dict) -> 'DocumentSearchService':
+        """Create service instance from session data"""
+        service = cls()
+        service.search_id = session_data.get('search_id')
+        service.all_kardex = session_data.get('all_kardex', [])
+        service.processed_kardex = set(session_data.get('processed_kardex', []))
+        service.total_documents = session_data.get('total_documents', 0)
+        service.validated_filters = session_data.get('validated_filters')
+        service.current_page = session_data.get('current_page', 1)
+        return service
+
+    def get_session_data(self) -> Dict:
+        """Get serializable session data"""
+        return {
+            'search_id': self.search_id,
+            'all_kardex': self.all_kardex,
+            'processed_kardex': list(self.processed_kardex),
+            'total_documents': self.total_documents,
+            'validated_filters': self.validated_filters,
+            'current_page': self.current_page
+        }
+
     def _add_error(self, kardex: str, error: str):
         """Add error for a specific kardex"""
         if kardex not in self.kardex_errors:
@@ -42,6 +74,178 @@ class DocumentSearchService:
         if kardex not in self.person_errors:
             self.person_errors[kardex] = []
         self.person_errors[kardex].append(error)
+
+    def initialize_search(self, filters: Dict) -> Dict:
+        """Initialize a new search session"""
+        try:
+            # Reset error tracking lists and state
+            self.kardex_errors = {}
+            self.kardex_observations = {}
+            self.person_errors = {}
+            self.current_page = 1
+            
+            # Log incoming filters
+            self.logger.info(f"Search request with filters: {json.dumps(filters, indent=2)}")
+            
+            # Validate filters
+            self.validated_filters = self.validator.validate(filters)
+            
+            # Get initial document list (only basic info)
+            with connection.cursor() as cursor:
+                query = """
+                    SELECT k.kardex, k.numescritura
+                    FROM kardex k
+                    LEFT JOIN tiposdeacto ta ON SUBSTRING(k.codactos,1,3) = ta.idtipoacto
+                    WHERE 1=1
+                """
+                conditions, params = self._build_filter_conditions(self.validated_filters)
+                if conditions:
+                    query += " AND " + " AND ".join(conditions)
+                query += " ORDER BY k.numescritura"  # Ensure consistent ordering
+                
+                cursor.execute(query, params)
+                documents = cursor.fetchall()
+            
+            # Generate unique search ID and store state
+            self.search_id = f"search_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(documents)}"
+            self.total_documents = len(documents)
+            self.all_kardex = [doc[0] for doc in documents]  # Store all kardex numbers in order
+            self.processed_kardex = set()
+            
+            return {
+                'search_id': self.search_id,
+                'total_documents': self.total_documents,
+                'processed': 0,
+                'current_page': 1,
+                'total_pages': math.ceil(self.total_documents / self.batch_size),
+                'has_next': self.total_documents > self.batch_size,
+                'has_previous': False
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing search: {str(e)}")
+            raise DocumentSearchException(f"Failed to initialize search: {str(e)}")
+
+    def get_page(self, search_id: str, page: int = 1) -> Tuple[List[Dict], Dict, Dict]:
+        """Get specific page of documents"""
+        if search_id != self.search_id:
+            raise DocumentSearchException("Invalid search session")
+            
+        try:
+            # Calculate page bounds
+            total_pages = math.ceil(self.total_documents / self.batch_size)
+            if page < 1 or page > total_pages:
+                raise DocumentSearchException(f"Invalid page number. Must be between 1 and {total_pages}")
+            
+            # Calculate slice indices
+            start_idx = (page - 1) * self.batch_size
+            end_idx = min(start_idx + self.batch_size, self.total_documents)
+            
+            # Get kardex numbers for this page
+            page_kardex = self.all_kardex[start_idx:end_idx]
+            
+            # Get full document data for this page
+            documents = self._execute_batch_query(page_kardex)
+            
+            # Process documents
+            processed_data = self._process_documents(documents, self.validated_filters)
+            
+            # Update tracking
+            self.processed_kardex.update(page_kardex)
+            self.current_page = page
+            
+            # Get error details and status
+            error_details = self._get_error_details()
+            page_status = self._get_page_status()
+            
+            return processed_data, error_details, page_status
+            
+        except Exception as e:
+            self.logger.error(f"Error getting page {page}: {str(e)}")
+            raise DocumentSearchException(f"Failed to get page: {str(e)}")
+
+    def _get_page_status(self) -> Dict:
+        """Get current page status"""
+        total_pages = math.ceil(self.total_documents / self.batch_size)
+        return {
+            'search_id': self.search_id,
+            'total_documents': self.total_documents,
+            'processed': len(self.processed_kardex),
+            'current_page': self.current_page,
+            'total_pages': total_pages,
+            'has_next': self.current_page < total_pages,
+            'has_previous': self.current_page > 1,
+            'page_size': self.batch_size
+        }
+
+    def _execute_batch_query(self, kardex_list: List[str]) -> List[Dict]:
+        """Execute query for a batch of kardex numbers"""
+        query = """
+            SELECT k.idkardex, k.kardex, k.numescritura, k.fechaescritura,
+                   IF(ta.cod_ancert IS NULL,'',ta.cod_ancert) AS cod_ancert,
+                   k.estado_sisgen, k.idtipkar, k.fechaingreso, k.codactos,
+                   k.contrato, k.folioini, k.foliofin, k.fechaconclusion,
+                   ta.actouif, ta.actosunat,
+                   cn.codnotario, cn.codoficial, cn.coduif,
+                   CONCAT(cn.nombre, ' ', cn.apellido) as nombre_notario,
+                   cn.direccion as direccion_notario,
+                   cn.distrito as distrito_notario,
+                   cn.provincia as provincia_notario,
+                   cn.departamento as departamento_notario
+            FROM kardex k
+            LEFT JOIN tiposdeacto ta ON SUBSTRING(k.codactos,1,3) = ta.idtipoacto
+            LEFT JOIN confinotario cn ON 1=1
+            WHERE k.kardex IN %s
+        """
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(query, [tuple(kardex_list)])
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Database query error: {str(e)}")
+            raise DocumentSearchException(f"Database query failed: {str(e)}")
+
+    def _build_filter_conditions(self, filters: Dict) -> Tuple[List[str], List]:
+        """Extract filter conditions from _build_sql_query"""
+        conditions = []
+        params = []
+        
+        # Date range
+        if filters.get('fechaDesde') and filters.get('fechaHasta'):
+            conditions.append("k.fechaescritura BETWEEN %s AND %s")
+            params.extend([filters['fechaDesde'], filters['fechaHasta']])
+        
+        # Instrument type
+        if filters.get('tipoInstrumento'):
+            conditions.append("k.idtipkar = %s")
+            params.append(filters['tipoInstrumento'])
+        
+        # Status filter
+        estado = filters.get('estado')
+        if estado == 4:
+            conditions.append("(ta.cod_ancert = '' OR ta.cod_ancert IS NULL)")
+        elif estado == 0:
+            conditions.append("k.estado_sisgen = %s")
+            params.append(estado)
+        elif estado == 3:
+            conditions.append("k.estado_sisgen = '3'")
+        elif estado != 5 and estado != -1 and estado is not None:
+            conditions.append("k.estado_sisgen = %s")
+            params.append(estado)
+        
+        # Act code
+        if filters.get('codigoActo') and filters['codigoActo'] != 0:
+            conditions.append("ta.idtipoacto = %s")
+            params.append(filters['codigoActo'])
+        
+        # Basic filters
+        conditions.extend([
+            "k.numescritura <> ''",
+            "k.kardex <> ''"
+        ])
+        
+        return conditions, params
 
     def search_documents(self, filters: Dict) -> Tuple[List[Dict], int, List[str], Dict]:
         """
