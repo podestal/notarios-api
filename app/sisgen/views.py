@@ -12,6 +12,8 @@ from .services.xml_generator_service import SISGENXmlGenerator
 from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
 from .utils.exceptions import DocumentSearchException
+from .services.book_search_service import BookSearchService
+from rest_framework.decorators import api_view
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -129,3 +131,41 @@ class SendToSISGENView(APIView):
                 'error': 1,
                 'message': f'Internal server error: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+def search_books(request):
+    """
+    Search for books with filters
+    """
+    try:
+        # Initialize service
+        book_service = BookSearchService()
+        
+        # Get filters from request
+        filters = {
+            'fechaDesde': request.data.get('fechaDesde'),
+            'fechaHasta': request.data.get('fechaHasta'),
+            'estado': request.data.get('estado')
+        }
+        
+        # Execute search
+        data, total, errors, error_details = book_service.search_books(filters)
+        
+        # Format response
+        response = {
+            'error': 0 if not errors else 1,
+            'data': data,
+            'total': total
+        }
+        
+        if errors:
+            response['errors'] = errors
+            response['error_details'] = error_details
+            
+        return Response(response)
+        
+    except Exception as e:
+        return Response({
+            'error': 1,
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
