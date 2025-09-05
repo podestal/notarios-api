@@ -185,11 +185,11 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
             filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
 
             # Prevent regenerating if already exists
-            if self._document_exists_in_r2(filename):
-                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
-                    'id_poder': id_poder,
-                    'filename': filename,
-                })
+            # if self._document_exists_in_r2(filename):
+            #     return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+            #         'id_poder': id_poder,
+            #         'filename': filename,
+            #     })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
@@ -519,11 +519,11 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
             filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
 
             # Prevent regenerating if already exists
-            if self._document_exists_in_r2(filename):
-                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
-                    'id_poder': id_poder,
-                    'filename': filename,
-                })
+            # if self._document_exists_in_r2(filename):
+            #     return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+            #         'id_poder': id_poder,
+            #         'filename': filename,
+            #     })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
@@ -672,11 +672,11 @@ class PoderPensionDocumentService(BasePoderDocumentService):
             filename = f"__PODER__{id_poder}-{anio_kardex}.docx"
 
             # Prevent regenerating if already exists
-            if self._document_exists_in_r2(filename):
-                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
-                    'id_poder': id_poder,
-                    'filename': filename,
-                })
+            # if self._document_exists_in_r2(filename):
+            #     return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+            #         'id_poder': id_poder,
+            #         'filename': filename,
+            #     })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:

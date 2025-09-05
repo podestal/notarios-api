@@ -57,12 +57,12 @@ class LibrosDocumentService(BaseR2DocumentService):
                 return self.json_error(400, "num_libro and anio_libro are required")
 
             filename = f"__LIBRO__{num_libro}-{anio_libro}.docx"
-            if self._document_exists_in_r2(filename):
-                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
-                    'num_libro': num_libro,
-                    'anio_libro': anio_libro,
-                    'filename': filename,
-                })
+            # if self._document_exists_in_r2(filename):
+            #     return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+            #         'num_libro': num_libro,
+            #         'anio_libro': anio_libro,
+            #         'filename': filename,
+            #     })
 
             # Select template by orientation
             orientation_upper = (orientation or "V").upper()

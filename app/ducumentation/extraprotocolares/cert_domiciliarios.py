@@ -55,11 +55,11 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             formatted = self._format_num_certificado(num_certificado)
             filename = f"__CDOM__{formatted}.docx"
 
-            if self._document_exists_in_r2(filename):
-                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
-                    'num_certificado': num_certificado,
-                    'filename': filename,
-                })
+            # if self._document_exists_in_r2(filename):
+            #     return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+            #         'num_certificado': num_certificado,
+            #         'filename': filename,
+            #     })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
