@@ -373,11 +373,11 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
 
             anio_kardex = (num_kardex or '')[:4]
             filename = f"__PERMIVIAJE__{id_permiviaje}-{anio_kardex}.docx"
-            if self._document_exists_in_r2(filename):
-                return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
-                    'id_permiviaje': id_permiviaje,
-                    'filename': filename,
-                })
+            # if self._document_exists_in_r2(filename):
+            #     return self.json_error(409, "Document already exists. Use action=retrieve to fetch it.", {
+            #         'id_permiviaje': id_permiviaje,
+            #         'filename': filename,
+            #     })
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
