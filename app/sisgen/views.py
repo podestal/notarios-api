@@ -32,20 +32,48 @@ class DocumentSearchView(APIView):
 
             # Route to BookSearchService if tipoInstrumento is 5
             if filters.get('tipoInstrumento') == 5:
-                service = BookSearchService()
-                data, total_count, errors, error_details = service.search_books(filters)
+                # If search_id is provided, try to get existing search data from session
+                if search_id:
+                    session_data = request.session.get('book_search_data')
+                    if session_data and session_data.get('search_id') == search_id:
+                        # Valid session exists
+                        service = BookSearchService.from_session_data(session_data)
+                        data, error_details, page_status = service.get_page(search_id, page)
+                    else:
+                        # Session expired - restart search with stored filters
+                        stored_filters = request.session.get('last_book_filters', {})
+                        filters_to_use = stored_filters or original_filters
+                        
+                        service = BookSearchService()
+                        search_info = service.initialize_search(filters_to_use)
+                        data, error_details, page_status = service.get_page(
+                            search_info['search_id'], 
+                            page=1
+                        )
+                        
+                        # Update page_status to indicate session restart
+                        page_status['session_restarted'] = True
+                        page_status['message'] = 'Search session was restarted with previous filters'
+                else:
+                    # New search
+                    service = BookSearchService()
+                    search_info = service.initialize_search(filters)
+                    data, error_details, page_status = service.get_page(
+                        search_info['search_id'], 
+                        page=1
+                    )
+                
+                # Store both search data and filters
+                request.session['book_search_data'] = service.get_session_data()
+                request.session['last_book_filters'] = original_filters
+                
+                # Update session expiry
+                request.session.set_expiry(86400)  # 24 hours
                 
                 return Response({
                     'error': 0,
                     'data': data,
-                    'pagination': {
-                        'total_documents': total_count,
-                        'current_page': 1,
-                        'total_pages': 1,
-                        'has_next': False,
-                        'has_previous': False,
-                        'message': f'Se encontraron {total_count} libros.'
-                    },
+                    'pagination': page_status,
                     'errores': error_details.get('book_errors', []),
                     'observaciones': error_details.get('observations', [])
                 })

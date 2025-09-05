@@ -2,8 +2,9 @@
 This module contains the book search service for the sisgen service.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import logging
+import math
 from datetime import datetime
 from django.db import connection
 from ..utils.exceptions import DocumentSearchException, ValidationException
@@ -17,6 +18,173 @@ class BookSearchService:
         # Initialize error tracking
         self.book_errors = {}  # {book_id: [errors]}
         self.book_observations = {}  # {book_id: [observations]}
+        # Initialize batch processing state
+        self.search_id = None
+        self.all_book_ids = []  # Store all book IDs in order
+        self.processed_book_ids = set()
+        self.total_books = 0
+        self.validated_filters = None
+        self.current_page = 1
+        self.batch_size = 10  # Fixed batch size
+        
+    @classmethod
+    def from_session_data(cls, session_data: Dict) -> 'BookSearchService':
+        """Create service instance from session data"""
+        service = cls()
+        service.search_id = session_data.get('search_id')
+        service.all_book_ids = session_data.get('all_book_ids', [])
+        service.processed_book_ids = set(session_data.get('processed_book_ids', []))
+        service.total_books = session_data.get('total_books', 0)
+        service.validated_filters = session_data.get('validated_filters')
+        service.current_page = session_data.get('current_page', 1)
+        return service
+
+    def get_session_data(self) -> Dict:
+        """Get serializable session data"""
+        return {
+            'search_id': self.search_id,
+            'all_book_ids': self.all_book_ids,
+            'processed_book_ids': list(self.processed_book_ids),
+            'total_books': self.total_books,
+            'validated_filters': self.validated_filters,
+            'current_page': self.current_page
+        }
+
+    def initialize_search(self, filters: Dict) -> Dict:
+        """Initialize a new search session"""
+        try:
+            # Reset error tracking lists and state
+            self.book_errors = {}
+            self.book_observations = {}
+            self.current_page = 1
+            
+            # Log incoming filters
+            self.logger.info(f"Book search request with filters: {filters}")
+            
+            # Store validated filters
+            self.validated_filters = filters
+            
+            # Get initial book list (only IDs)
+            with connection.cursor() as cursor:
+                # First get the ID column name
+                id_column = self._get_book_id_column()
+                
+                query = f"""
+                    SELECT l.{id_column} as id
+                    FROM libros l
+                    LEFT JOIN tipolibro tl ON tl.idtiplib = l.idtiplib
+                    WHERE 1=1
+                """
+                conditions, params = self._build_filter_conditions(filters)
+                if conditions:
+                    query += " AND " + " AND ".join(conditions)
+                query += f" ORDER BY l.{id_column}"
+                
+                cursor.execute(query, params)
+                books = cursor.fetchall()
+            
+            # Generate unique search ID and store state
+            self.search_id = f"search_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(books)}"
+            self.total_books = len(books)
+            self.all_book_ids = [book[0] for book in books]  # Store all book IDs in order
+            self.processed_book_ids = set()
+            
+            # Handle empty results case
+            if self.total_books == 0:
+                return {
+                    'search_id': self.search_id,
+                    'total_documents': 0,
+                    'processed': 0,
+                    'current_page': 1,
+                    'total_pages': 1,  # At least one page even when empty
+                    'has_next': False,
+                    'has_previous': False,
+                    'message': 'No se encontraron libros que coincidan con los criterios de búsqueda.'
+                }
+            
+            return {
+                'search_id': self.search_id,
+                'total_documents': self.total_books,
+                'processed': 0,
+                'current_page': 1,
+                'total_pages': math.ceil(self.total_books / self.batch_size),
+                'has_next': self.total_books > self.batch_size,
+                'has_previous': False
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing search: {str(e)}")
+            raise DocumentSearchException(f"Failed to initialize search: {str(e)}")
+
+    def get_page(self, search_id: str, page: int = 1) -> Tuple[List[Dict], Dict, Dict]:
+        """Get specific page of books"""
+        if search_id != self.search_id:
+            raise DocumentSearchException("Invalid search session")
+            
+        try:
+            # Handle no results case
+            if self.total_books == 0:
+                return [], self._get_error_details(), {
+                    'search_id': self.search_id,
+                    'total_documents': 0,
+                    'processed': 0,
+                    'current_page': 1,
+                    'total_pages': 1,  # At least one page even when empty
+                    'has_next': False,
+                    'has_previous': False,
+                    'page_size': self.batch_size,
+                    'message': 'No se encontraron libros que coincidan con los criterios de búsqueda.'
+                }
+            
+            # Calculate page bounds
+            total_pages = math.ceil(self.total_books / self.batch_size)
+            if page < 1 or page > total_pages:
+                raise DocumentSearchException(f"Invalid page number. Must be between 1 and {total_pages}")
+            
+            # Calculate slice indices
+            start_idx = (page - 1) * self.batch_size
+            end_idx = min(start_idx + self.batch_size, self.total_books)
+            
+            # Get book IDs for this page
+            page_book_ids = self.all_book_ids[start_idx:end_idx]
+            
+            # Get full book data for this page
+            books = self._execute_batch_query(page_book_ids)
+            
+            # Process books
+            processed_data = self._process_books(books)
+            
+            # Update tracking
+            self.processed_book_ids.update(page_book_ids)
+            self.current_page = page
+            
+            # Get error details and status
+            error_details = self._get_error_details()
+            page_status = self._get_page_status()
+            
+            # Clear and update temporary table
+            self._clear_temp_table()
+            self._insert_temp_records(processed_data)
+            
+            return processed_data, error_details, page_status
+            
+        except Exception as e:
+            self.logger.error(f"Error getting page {page}: {str(e)}")
+            raise DocumentSearchException(f"Failed to get page: {str(e)}")
+
+    def _get_page_status(self) -> Dict:
+        """Get current page status"""
+        total_pages = math.ceil(self.total_books / self.batch_size)
+        return {
+            'search_id': self.search_id,
+            'total_documents': self.total_books,
+            'processed': len(self.processed_book_ids),
+            'current_page': self.current_page,
+            'total_pages': total_pages,
+            'has_next': self.current_page < total_pages,
+            'has_previous': self.current_page > 1,
+            'page_size': self.batch_size
+        }
 
     def search_books(self, filters: Dict) -> Tuple[List[Dict], int, List[str], Dict]:
         """
@@ -28,35 +196,52 @@ class BookSearchService:
         }
         """
         try:
-            # Reset error tracking
-            self.book_errors = {}
-            self.book_observations = {}
+            # Initialize search
+            status = self.initialize_search(filters)
             
-            # Log incoming filters
-            self.logger.info(f"Book search request with filters: {filters}")
+            # Get first page
+            data, error_details, page_status = self.get_page(status['search_id'], 1)
             
-            # Build and execute query
-            books = self._execute_search_query(filters)
-            
-            # Process results
-            processed_data = self._process_books(books)
-            
-            # Clear temporary table
-            self._clear_temp_table()
-            
-            # Insert into temporary table
-            self._insert_temp_records(processed_data)
-            
-            error_details = {
-                'book_errors': self.book_errors,
-                'observations': self.book_observations
-            }
-            
-            return processed_data, len(processed_data), [], error_details
+            return data, len(data), [], error_details
             
         except Exception as e:
             self.logger.error(f"Unexpected error in book search: {str(e)}")
             return [], 0, [str(e)], self._get_error_details()
+
+    def _execute_batch_query(self, book_ids: List[str]) -> List[Dict]:
+        """Execute query for a batch of book IDs"""
+        # First get the ID column name
+        id_column = self._get_book_id_column()
+        
+        query = f"""
+            SELECT 
+                l.{id_column} as id,
+                CONCAT(l.numlibro, '-', l.ano) as libro,
+                l.fecing AS fechaIngreso,
+                l.tipper AS tipoPersona,
+                IF(l.tipper = 'N', 
+                   CONCAT(l.prinom, ' ', l.segnom, ' ', l.apepat, ' ', l.apemat),
+                   l.empresa) AS empresa,
+                l.ruc,
+                l.domfiscal,
+                l.idtiplib,
+                l.descritiplib AS descripcionTipoLibro,
+                IF(l.idtiplib = 99, l.descritiplib, tl.destiplib) as descripcionLibro,
+                IF(l.estadoSisgen IS NULL, 0, l.estadoSisgen) as estadoSisgen
+            FROM libros l
+            LEFT JOIN tipolibro tl ON tl.idtiplib = l.idtiplib
+            WHERE l.{id_column} IN %s
+            ORDER BY l.{id_column}
+        """
+        
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(query, [tuple(book_ids)])
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Database query error: {str(e)}")
+            raise DocumentSearchException(f"Database query failed: {str(e)}")
 
     def _execute_search_query(self, filters: Dict) -> List[Dict]:
         """Execute book search query"""
@@ -70,6 +255,26 @@ class BookSearchService:
         except Exception as e:
             self.logger.error(f"Database query error: {str(e)}")
             raise DocumentSearchException(f"Database query failed: {str(e)}")
+
+    def _build_filter_conditions(self, filters: Dict) -> Tuple[List[str], List]:
+        """Build filter conditions for book search"""
+        conditions = []
+        params = []
+        
+        # Date range filter
+        if filters.get('fechaDesde') and filters.get('fechaHasta'):
+            conditions.append("l.fecing BETWEEN %s AND %s")
+            params.extend([filters['fechaDesde'], filters['fechaHasta']])
+        
+        # Status filter
+        estado = filters.get('estado')
+        if estado == '0':
+            conditions.append("(l.estadoSisgen = 0 OR l.estadoSisgen IS NULL)")
+        elif estado in ('1', '3'):
+            conditions.append("l.estadoSisgen = %s")
+            params.append(estado)
+        
+        return conditions, params
 
     def _build_sql_query(self, filters: Dict) -> Tuple[str, List]:
         """Build SQL query for book search"""
@@ -96,21 +301,7 @@ class BookSearchService:
             WHERE 1=1
         """
         
-        params = []
-        conditions = []
-        
-        # Date range filter
-        if filters.get('fechaDesde') and filters.get('fechaHasta'):
-            conditions.append("l.fecing BETWEEN %s AND %s")
-            params.extend([filters['fechaDesde'], filters['fechaHasta']])
-        
-        # Status filter
-        estado = filters.get('estado')
-        if estado == '0':
-            conditions.append("(l.estadoSisgen = 0 OR l.estadoSisgen IS NULL)")
-        elif estado in ('1', '3'):
-            conditions.append("l.estadoSisgen = %s")
-            params.append(estado)
+        conditions, params = self._build_filter_conditions(filters)
         
         # Add conditions to query
         if conditions:
