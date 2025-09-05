@@ -112,6 +112,19 @@ class DocumentSearchService:
             self.all_kardex = [doc[0] for doc in documents]  # Store all kardex numbers in order
             self.processed_kardex = set()
             
+            # Handle empty results case
+            if self.total_documents == 0:
+                return {
+                    'search_id': self.search_id,
+                    'total_documents': 0,
+                    'processed': 0,
+                    'current_page': 1,
+                    'total_pages': 1,  # At least one page even when empty
+                    'has_next': False,
+                    'has_previous': False,
+                    'message': 'No se encontraron documentos que coincidan con los criterios de búsqueda.'
+                }
+            
             return {
                 'search_id': self.search_id,
                 'total_documents': self.total_documents,
@@ -132,6 +145,20 @@ class DocumentSearchService:
             raise DocumentSearchException("Invalid search session")
             
         try:
+            # Handle no results case
+            if self.total_documents == 0:
+                return [], self._get_error_details(), {
+                    'search_id': self.search_id,
+                    'total_documents': 0,
+                    'processed': 0,
+                    'current_page': 1,
+                    'total_pages': 1,  # At least one page even when empty
+                    'has_next': False,
+                    'has_previous': False,
+                    'page_size': self.batch_size,
+                    'message': 'No se encontraron documentos que coincidan con los criterios de búsqueda.'
+                }
+            
             # Calculate page bounds
             total_pages = math.ceil(self.total_documents / self.batch_size)
             if page < 1 or page > total_pages:
