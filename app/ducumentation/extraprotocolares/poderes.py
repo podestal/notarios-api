@@ -525,14 +525,19 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
             #         'filename': filename,
             #     })
 
+            logger.info(f"Retrieving template: {self.template_filename}")
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
+                logger.error(f"Template not found: {self.template_filename}")
                 return HttpResponse(
                     f"Error: Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.",
                     status=404,
                 )
+            logger.info(f"Template size: {len(template_bytes)} bytes")
 
             context = self._build_context(id_poder, poder_data)
+            logger.info(f"Context keys: {list(context.keys())}")
+            logger.info(f"Context values for key participants: {context.get('poderdante', ''), context.get('apoderado', '')}")
             # Since we are not coloring this document, we use a simpler render method
             doc = DocxTemplate(io.BytesIO(template_bytes))
             doc.render(context)
@@ -598,9 +603,9 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
                     pc.codi_asegurado AS seguro
                 FROM poderes_contratantes pc
                 JOIN cliente c ON c.numdoc = pc.c_codcontrat
-                JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
-                JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil
-                JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
+                LEFT JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
+                LEFT JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil
+                LEFT JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
                 LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
                 WHERE pc.c_condicontrat = '007' AND pc.id_poder = %s
                 LIMIT 1
