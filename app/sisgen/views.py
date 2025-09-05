@@ -29,6 +29,28 @@ class DocumentSearchView(APIView):
             page = int(filters.pop('page', 1))
             search_id = filters.pop('search_id', None)
             original_filters = filters.copy()  # Keep a copy of original filters
+
+            # Route to BookSearchService if tipoInstrumento is 5
+            if filters.get('tipoInstrumento') == 5:
+                service = BookSearchService()
+                data, total_count, errors, error_details = service.search_books(filters)
+                
+                return Response({
+                    'error': 0,
+                    'data': data,
+                    'pagination': {
+                        'total_documents': total_count,
+                        'current_page': 1,
+                        'total_pages': 1,
+                        'has_next': False,
+                        'has_previous': False,
+                        'message': f'Se encontraron {total_count} libros.'
+                    },
+                    'errores': error_details.get('book_errors', []),
+                    'observaciones': error_details.get('observations', [])
+                })
+
+            print('DEBUG: filters:', filters)
             
             # If search_id is provided, try to get existing search data from session
             if search_id:
