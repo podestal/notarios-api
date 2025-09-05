@@ -74,7 +74,21 @@ class BasePoderDocumentService(BaseR2DocumentService):
         object_key = f"rodriguez-zea/plantillas/{self.template_filename}"
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return response['Body'].read()
+            template_bytes = response['Body'].read()
+            
+            # Validate that this is a proper DOCX file
+            import zipfile
+            from io import BytesIO
+            try:
+                with zipfile.ZipFile(BytesIO(template_bytes)) as zf:
+                    if '[Content_Types].xml' not in zf.namelist():
+                        logger.error(f"Template file {self.template_filename} is not a valid DOCX file (missing [Content_Types].xml)")
+                        return None
+            except zipfile.BadZipFile:
+                logger.error(f"Template file {self.template_filename} is not a valid ZIP/DOCX file")
+                return None
+                
+            return template_bytes
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchKey':
                 return None
