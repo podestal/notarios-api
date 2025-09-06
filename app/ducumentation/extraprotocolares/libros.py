@@ -593,23 +593,35 @@ class LibrosReportService:
                 ws.column_dimensions['F'].width = 20  # NRO. FOLIOS
                 ws.column_dimensions['G'].width = 20  # TIPO FOL.
             else:  # horizontal layout
-                headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DOC. IDENTIDAD', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DNI', 'RUC', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
                 for col, header in enumerate(headers, 1):
                     cell = ws.cell(row=row, column=col, value=header)
                     cell.font = header_font
                     cell.alignment = center_alignment
                     cell.border = thin_border
                 
-                # Set column widths for horizontal layout
-                ws.column_dimensions['A'].width = 10  # NRO
-                ws.column_dimensions['B'].width = 15  # FECHA
-                ws.column_dimensions['C'].width = 25  # TIPO LIBRO
-                ws.column_dimensions['D'].width = 35  # SOLICITANTE
-                ws.column_dimensions['E'].width = 35  # PROPIETARIO
-                ws.column_dimensions['F'].width = 20  # DOC. IDENTIDAD
-                ws.column_dimensions['G'].width = 15  # NRO. LIBRO
-                ws.column_dimensions['H'].width = 15  # NRO. FOLIOS
-                ws.column_dimensions['I'].width = 15  # TIPO FOL.
+                # Set minimum column widths for horizontal layout
+                min_widths = {
+                    'A': 10,  # NRO
+                    'B': 15,  # FECHA
+                    'C': 25,  # TIPO LIBRO
+                    'D': 35,  # SOLICITANTE
+                    'E': 35,  # PROPIETARIO
+                    'F': 15,  # DNI
+                    'G': 15,  # RUC
+                    'H': 15,  # NRO. LIBRO
+                    'I': 15,  # NRO. FOLIOS
+                    'J': 15,  # TIPO FOL.
+                }
+                
+                # Function to calculate text width
+                def get_text_width(text):
+                    if not text:
+                        return 0
+                    return len(str(text)) + 2  # +2 for padding
+                
+                # Track maximum width needed for each column
+                max_widths = {col: width for col, width in min_widths.items()}
             
             # Data rows
             row += 1
@@ -683,13 +695,14 @@ class LibrosReportService:
                             ws.cell(row=row, column=3, value=tip_lib).font = data_font
                             ws.cell(row=row, column=4, value=solicitante).font = data_font
                             ws.cell(row=row, column=5, value=f"{cliente}{empresa}").font = data_font
-                            ws.cell(row=row, column=6, value=dni_ruc_formatted).font = data_font
-                            ws.cell(row=row, column=7, value=n_lib).font = data_font
-                            ws.cell(row=row, column=8, value=folio).font = data_font
-                            ws.cell(row=row, column=9, value=tip_fol).font = data_font
+                            ws.cell(row=row, column=6, value=dni if dni else '').font = data_font
+                            ws.cell(row=row, column=7, value=ruc if ruc else '').font = data_font
+                            ws.cell(row=row, column=8, value=n_lib).font = data_font
+                            ws.cell(row=row, column=9, value=folio).font = data_font
+                            ws.cell(row=row, column=10, value=tip_fol).font = data_font
                             
                             # Apply borders and alignment
-                            for col in range(1, 10):
+                            for col in range(1, 11):  # Updated to include new column
                                 cell = ws.cell(row=row, column=col)
                                 cell.border = thin_border
                                 if col in [1, 2, 7, 8, 9]:  # Center align numeric and date columns
@@ -714,6 +727,18 @@ class LibrosReportService:
                 for col in range(1, 8):
                     ws.cell(row=row, column=col).border = thin_border
             
+            # Update column widths based on content
+            for row in ws.rows:
+                for cell in row:
+                    col_letter = get_column_letter(cell.column)
+                    if col_letter in max_widths:
+                        width = get_text_width(cell.value)
+                        max_widths[col_letter] = max(max_widths[col_letter], width)
+
+            # Apply the calculated widths, but not less than minimum widths
+            for col_letter, width in max_widths.items():
+                ws.column_dimensions[col_letter].width = max(width, min_widths[col_letter])
+
             # Save to BytesIO
             output = io.BytesIO()
             wb.save(output)
@@ -838,7 +863,7 @@ class LibrosReportService:
                         for run in paragraph.runs:
                             if ':' in run.text:
                                 run.font.bold = True
-                            run.font.size = Pt(12)
+                            run.font.size = Pt(10)  # Set font size to 10pt
             
             # Add spacing
             doc.add_paragraph()
@@ -850,8 +875,8 @@ class LibrosReportService:
                     headers = ['NRO.', 'INGRESO LIBRO', 'PERTENECE A', '', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
                     data_table = doc.add_table(rows=1, cols=7)
                 else:  # horizontal layout
-                    headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DOC. IDENTIDAD', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
-                    data_table = doc.add_table(rows=1, cols=9)
+                    headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DNI', 'RUC', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                    data_table = doc.add_table(rows=1, cols=10)
                     # Set page orientation to landscape for horizontal layout
                     section = doc.sections[-1]
                     section.orientation = WD_ORIENT.LANDSCAPE
@@ -859,6 +884,22 @@ class LibrosReportService:
                     section.page_height = Inches(8.27)  # A4 width
                 
                 data_table.style = 'Table Grid'
+                
+                # Set column widths for better content fit with smaller font
+                for i, width in enumerate([
+                    0.8,   # NRO
+                    1.0,   # FECHA
+                    1.6,   # TIPO LIBRO
+                    2.0,   # SOLICITANTE
+                    2.0,   # PROPIETARIO
+                    1.2,   # DNI
+                    1.2,   # RUC
+                    1.0,   # NRO. LIBRO
+                    1.0,   # NRO. FOLIOS
+                    1.0,   # TIPO FOL.
+                ]):
+                    for cell in data_table.columns[i].cells:
+                        cell.width = Inches(width)
             except Exception as e:
                 self.logger.error(f"Error creating table: {str(e)}")
                 raise
@@ -868,12 +909,11 @@ class LibrosReportService:
                 header_row = data_table.rows[0]
                 for i, header in enumerate(headers):
                     cell = header_row.cells[i]
-                    cell.text = header
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            run.font.bold = True
-                            run.font.size = Pt(12)
-                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    paragraph = cell.paragraphs[0]
+                    run = paragraph.add_run(header)
+                    run.font.bold = True
+                    run.font.size = Pt(12)  # Headers stay at 12pt
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             except Exception as e:
                 self.logger.error(f"Error adding headers: {str(e)}")
                 raise
@@ -895,145 +935,85 @@ class LibrosReportService:
                         dni = data_row[9] if len(data_row) > 9 else ''
                         ruc_plantilla = data_row[12] if len(data_row) > 12 else ''
                         
-                        # Format DNI/RUC like PHP script
-                        dni_ruc_formatted = self._format_dni_ruc(dni, ruc, ruc_plantilla)
-                        
                         if orientation == 'vertical':
                             # Row 1: Main data - Vertical layout
                             row = data_table.add_row()
-                            row.cells[0].text = str(num_crono)
-                            row.cells[1].text = f"{self._format_date_for_display(fecha)}     {tip_lib}"
-                            row.cells[2].text = "SOLICITANTE:\nPROPIETARIO:"
-                            row.cells[3].text = dni_ruc_formatted
-                            row.cells[4].text = str(n_lib)
-                            row.cells[5].text = str(folio)
-                            row.cells[6].text = str(tip_fol)
-                            
-                            # Center align main data
-                            for i in range(7):
-                                for paragraph in row.cells[i].paragraphs:
-                                    if i in [0, 4, 5, 6]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
-                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                    else:  # Left align other columns
-                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                            
-                            # Row 2: Additional info
-                            row = data_table.add_row()
-                            row.cells[0].text = ''
-                            row.cells[1].text = f"{solicitante}\n{cliente}{empresa}"
-                            row.cells[2].text = ''
-                            row.cells[3].text = ''
-                            row.cells[4].text = ''
-                            row.cells[5].text = ''
-                            row.cells[6].text = ''
-                            
-                            # Style the info row
-                            for i in range(7):
-                                if i == 1:  # Main content column
-                                    for paragraph in row.cells[i].paragraphs:
-                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                                else:
-                                    for paragraph in row.cells[i].paragraphs:
-                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        else:
-                            # Single row - Horizontal layout
-                            row = data_table.add_row()
-                            row.cells[0].text = str(num_crono)
-                            row.cells[1].text = self._format_date_for_display(fecha)
-                            row.cells[2].text = tip_lib
-                            row.cells[3].text = solicitante
-                            row.cells[4].text = f"{cliente}{empresa}"
-                            row.cells[5].text = dni_ruc_formatted
-                            row.cells[6].text = str(n_lib)
-                            row.cells[7].text = str(folio)
-                            row.cells[8].text = str(tip_fol)
-                            
-                            # Apply alignment
-                            for i in range(9):
-                                for paragraph in row.cells[i].paragraphs:
-                                    if i in [0, 1, 6, 7, 8]:  # Center align numeric and date columns
-                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                    else:  # Left align text columns
-                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    except Exception as e:
-                        self.logger.error(f"Error processing row: {str(e)}")
-                        continue
-                    
-            else:
-                # try:
-                # No data message
-                no_data_row = data_table.add_row()
-                no_data_cell = no_data_row.cells[0]
-                no_data_cell.merge(no_data_row.cells[6])
-                no_data_cell.text = 'No se encontraron registros para el período especificado'
-                for paragraph in no_data_cell.paragraphs:
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    for run in paragraph.runs:
-                        run.font.italic = True
-                        
-                        # Center align main data
-                        for i in range(7):
-                            for paragraph in row.cells[i].paragraphs:
-                                if i in [0, 4, 5, 6]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
+                            cells_data = [
+                                str(num_crono),
+                                f"{self._format_date_for_display(fecha)}     {tip_lib}",
+                                "SOLICITANTE:\nPROPIETARIO:",
+                                dni_ruc_formatted,
+                                str(n_lib),
+                                str(folio),
+                                str(tip_fol)
+                            ]
+                            for idx, data in enumerate(cells_data):
+                                cell = row.cells[idx]
+                                paragraph = cell.paragraphs[0]
+                                run = paragraph.add_run(data)
+                                run.font.size = Pt(10)  # Data rows at 10pt
+                                if idx in [0, 4, 5, 6]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
                                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                                 else:  # Left align other columns
                                     paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                        
-                        # Row 2: Additional info
-                        row = data_table.add_row()
-                        row.cells[0].text = ''
-                        row.cells[1].text = f"{solicitante}\n{cliente}{empresa}"
-                        row.cells[2].text = ''
-                        row.cells[3].text = ''
-                        row.cells[4].text = ''
-                        row.cells[5].text = ''
-                        row.cells[6].text = ''
-                        
-                        # Style the info row
-                        for i in range(7):
-                            if i == 1:  # Main content column
-                                for paragraph in row.cells[i].paragraphs:
+                            
+                            # Row 2: Additional info
+                            row = data_table.add_row()
+                            cells_data = [
+                                '',
+                                f"{solicitante}\n{cliente}{empresa}",
+                                '',
+                                '',
+                                '',
+                                '',
+                                ''
+                            ]
+                            for idx, data in enumerate(cells_data):
+                                cell = row.cells[idx]
+                                paragraph = cell.paragraphs[0]
+                                run = paragraph.add_run(data)
+                                run.font.size = Pt(10)  # Data rows at 10pt
+                                if idx == 1:  # Main content column
                                     paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                            else:
-                                for paragraph in row.cells[i].paragraphs:
+                                else:
                                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    else:
-                        # Single row - Horizontal layout
-                        row = data_table.add_row()
-                        row.cells[0].text = str(num_crono)
-                        row.cells[1].text = self._format_date_for_display(fecha)
-                        row.cells[2].text = tip_lib
-                        row.cells[3].text = solicitante
-                        row.cells[4].text = f"{cliente}{empresa}"
-                        row.cells[5].text = dni_ruc_formatted
-                        row.cells[6].text = str(n_lib)
-                        row.cells[7].text = str(folio)
-                        row.cells[8].text = str(tip_fol)
-                        
-                        # Apply alignment
-                        for i in range(9):
-                            for paragraph in row.cells[i].paragraphs:
-                                if i in [0, 1, 6, 7, 8]:  # Center align numeric and date columns
+                        else:
+                            # Single row - Horizontal layout
+                            row = data_table.add_row()
+                            cells_data = [
+                                str(num_crono),
+                                self._format_date_for_display(fecha),
+                                tip_lib,
+                                solicitante,
+                                f"{cliente}{empresa}",
+                                dni if dni else '',
+                                ruc if ruc else '',
+                                str(n_lib),
+                                str(folio),
+                                str(tip_fol)
+                            ]
+                            for idx, data in enumerate(cells_data):
+                                cell = row.cells[idx]
+                                paragraph = cell.paragraphs[0]
+                                run = paragraph.add_run(data)
+                                run.font.size = Pt(10)  # Data rows at 10pt
+                                if idx in [0, 1, 5, 6, 7, 8, 9]:  # Center align numeric, date, and document columns
                                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                                 else:  # Left align text columns
                                     paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    # else:
-                # Add a "no data" row if no data exists
+                    except Exception as e:
+                        self.logger.error(f"Error processing row: {str(e)}")
+                        continue
+            else:
+                # No data message
                 no_data_row = data_table.add_row()
                 no_data_cell = no_data_row.cells[0]
-                no_data_cell.merge(no_data_row.cells[6])
-                no_data_cell.text = 'No se encontraron registros para el período especificado'
-                for paragraph in no_data_cell.paragraphs:
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    for run in paragraph.runs:
-                        run.font.italic = True
-            
-            # Style all cells
-            for row in data_table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            run.font.size = Pt(12)
+                no_data_cell.merge(no_data_row.cells[-1])  # Merge all cells in the row
+                paragraph = no_data_cell.paragraphs[0]
+                run = paragraph.add_run('No se encontraron registros para el período especificado')
+                run.font.size = Pt(10)  # Set font size to 10pt
+                run.font.italic = True
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
             try:
                 # Save to BytesIO
