@@ -404,33 +404,12 @@ class DocumentSearchService:
             if not doc.get('cod_ancert'):
                 self._add_observation(kardex, "Falta código ANCERT")
             
-            # Validate notary data
-            self._validate_notary_data(doc)
-            
             # Validate UIF data
             self._validate_uif_data(doc)
             
             self.logger.debug(f"After validation for kardex {kardex}:")
             self.logger.debug(f"Errors: {self.kardex_errors.get(kardex, [])}")
             self.logger.debug(f"Observations: {self.kardex_observations.get(kardex, [])}")
-
-    def _validate_notary_data(self, doc: Dict):
-        """Validate notary data"""
-        kardex = doc.get('kardex', 'Unknown')
-        notary_data = doc.get('notary_data', {})
-        
-        required_notary_fields = {
-            'codnotario': 'Código de notario',
-            'codoficial': 'Código oficial',
-            'coduif': 'Código UIF',
-            'nombre_notario': 'Nombre del notario',
-            'direccion': 'Dirección',
-            'distrito': 'Distrito'
-        }
-        
-        for field, display_name in required_notary_fields.items():
-            if not notary_data.get(field):
-                self._add_error(kardex, f"Falta dato notarial: {display_name}")
 
     def _validate_uif_data(self, doc: Dict):
         """Validate UIF-related data"""
