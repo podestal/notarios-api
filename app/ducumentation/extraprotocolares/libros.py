@@ -593,7 +593,7 @@ class LibrosReportService:
                 ws.column_dimensions['F'].width = 20  # NRO. FOLIOS
                 ws.column_dimensions['G'].width = 20  # TIPO FOL.
             else:  # horizontal layout
-                headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DNI', 'RUC', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'DNI', 'PROPIETARIO', 'RUC', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
                 for col, header in enumerate(headers, 1):
                     cell = ws.cell(row=row, column=col, value=header)
                     cell.font = header_font
@@ -606,8 +606,8 @@ class LibrosReportService:
                     'B': 15,  # FECHA
                     'C': 25,  # TIPO LIBRO
                     'D': 35,  # SOLICITANTE
-                    'E': 35,  # PROPIETARIO
-                    'F': 15,  # DNI
+                    'E': 15,  # DNI
+                    'F': 35,  # PROPIETARIO
                     'G': 15,  # RUC
                     'H': 15,  # NRO. LIBRO
                     'I': 15,  # NRO. FOLIOS
@@ -694,8 +694,8 @@ class LibrosReportService:
                             ws.cell(row=row, column=2, value=self._format_date_for_display(fecha)).font = data_font
                             ws.cell(row=row, column=3, value=tip_lib).font = data_font
                             ws.cell(row=row, column=4, value=solicitante).font = data_font
-                            ws.cell(row=row, column=5, value=f"{cliente}{empresa}").font = data_font
-                            ws.cell(row=row, column=6, value=dni if dni else '').font = data_font
+                            ws.cell(row=row, column=5, value=dni if dni else '').font = data_font
+                            ws.cell(row=row, column=6, value=f"{cliente}{empresa}").font = data_font
                             ws.cell(row=row, column=7, value=ruc if ruc else '').font = data_font
                             ws.cell(row=row, column=8, value=n_lib).font = data_font
                             ws.cell(row=row, column=9, value=folio).font = data_font
@@ -875,7 +875,7 @@ class LibrosReportService:
                     headers = ['NRO.', 'INGRESO LIBRO', 'PERTENECE A', '', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
                     data_table = doc.add_table(rows=1, cols=7)
                 else:  # horizontal layout
-                    headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DNI', 'RUC', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                    headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'DNI', 'PROPIETARIO', 'RUC', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
                     data_table = doc.add_table(rows=1, cols=10)
                     # Set page orientation to landscape for horizontal layout
                     section = doc.sections[-1]
@@ -985,8 +985,8 @@ class LibrosReportService:
                                 self._format_date_for_display(fecha),
                                 tip_lib,
                                 solicitante,
-                                f"{cliente}{empresa}",
                                 dni if dni else '',
+                                f"{cliente}{empresa}",
                                 ruc if ruc else '',
                                 str(n_lib),
                                 str(folio),
