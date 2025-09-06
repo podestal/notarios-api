@@ -171,8 +171,24 @@ class DocumentSearchService:
             # Get kardex numbers for this page
             page_kardex = self.all_kardex[start_idx:end_idx]
             
+            # Reset error tracking for this page
+            self.kardex_errors = {}
+            self.kardex_observations = {}
+            self.person_errors = {}
+            
             # Get full document data for this page
             documents = self._execute_batch_query(page_kardex)
+            
+            # Run validations but don't block on errors
+            try:
+                self._validate_document_data(documents)
+            except Exception as e:
+                self.logger.warning(f"Document validation warning: {str(e)}")
+                
+            try:
+                self._validate_person_data(documents)
+            except Exception as e:
+                self.logger.warning(f"Person validation warning: {str(e)}")
             
             # Process documents
             processed_data = self._process_documents(documents, self.validated_filters)

@@ -331,13 +331,69 @@ class BookSearchService:
         processed = []
         
         for book in books:
+            # Reset error tracking for this book
+            book_id = str(book['id'])
+            self.book_errors[book_id] = []
+            self.book_observations[book_id] = []
+            
+            # Validate book data
+            self._validate_book_data(book)
+            
+            # Format and add to processed list
             processed_book = self._format_single_book(book)
             processed.append(processed_book)
         
         return processed
+        
+    def _validate_book_data(self, book: Dict):
+        """Validate book data and track errors"""
+        book_id = str(book['id'])
+        
+        # Validate required fields for all books
+        required_fields = ['libro', 'fechaIngreso', 'idtiplib', 'descripcionTipoLibro']
+        for field in required_fields:
+            if not book.get(field):
+                self._add_error(book_id, f"Falta campo requerido: {field}")
+        
+        # Validate based on person type
+        if book['tipoPersona'] == 'N':  # Natural person
+            if not book.get('empresa'):  # empresa contains the concatenated person name
+                self._add_error(book_id, "Falta nombre de persona natural")
+        else:  # Juridical person
+            if not book.get('ruc'):
+                self._add_error(book_id, "Falta RUC")
+            elif len(str(book['ruc'])) != 11:
+                self._add_error(book_id, "RUC inválido")
+            if not book.get('empresa'):
+                self._add_error(book_id, "Falta razón social")
+        
+        # Validate address
+        if not book.get('domfiscal'):
+            self._add_observation(book_id, "Falta domicilio fiscal")
+        
+        # Validate SISGEN status
+        estado_sisgen = book.get('estadoSisgen')
+        if estado_sisgen is None or estado_sisgen == 0:
+            self._add_error(book_id, "Libro no enviado a SISGEN")
+        elif estado_sisgen == 3:
+            self._add_error(book_id, "Error en envío a SISGEN")
+            
+    def _add_error(self, book_id: str, error: str):
+        """Add error for a specific book"""
+        if book_id not in self.book_errors:
+            self.book_errors[book_id] = []
+        self.book_errors[book_id].append(error)
+    
+    def _add_observation(self, book_id: str, observation: str):
+        """Add observation for a specific book"""
+        if book_id not in self.book_observations:
+            self.book_observations[book_id] = []
+        self.book_observations[book_id].append(observation)
 
     def _format_single_book(self, book: Dict) -> Dict:
         """Format a single book record"""
+        book_id = str(book['id'])
+        
         # Map estado_sisgen to display text
         estado_display = "NO ENVIADO"
         if book['estadoSisgen'] == 1:
@@ -356,7 +412,9 @@ class BookSearchService:
             'idtiplib': book['idtiplib'],
             'descripcionTipoLibro': book['descripcionTipoLibro'],
             'descripcionLibro': book['descripcionLibro'],
-            'estadoSisgen': estado_display
+            'estadoSisgen': estado_display,
+            'errores': self.book_errors.get(book_id, []),
+            'observaciones': self.book_observations.get(book_id, [])
         }
 
     def _clear_temp_table(self):
