@@ -357,11 +357,38 @@ class LibrosReportService:
     def _get_notary_info(self):
         """Get notary configuration info"""
         with connection.cursor() as cursor:
-            cursor.execute("SELECT nombre, apellido FROM confinotario")
+            cursor.execute("""
+                SELECT 
+                    CONCAT(nombre, ' ', apellido) as nombre_completo,
+                    direccion,
+                    telefono,
+                    departamento,
+                    ruc,
+                    provincia,
+                    distrito
+                FROM confinotario
+                LIMIT 1
+            """)
             result = cursor.fetchone()
             if result:
-                return f"{result[0]} {result[1]}"
-            return "NOTARIO"
+                return {
+                    'nombre': result[0],
+                    'direccion': result[1] or '',
+                    'telefono': result[2] or '',
+                    'departamento': result[3] or '',
+                    'ruc': result[4] or '',
+                    'provincia': result[5] or '',
+                    'distrito': result[6] or ''
+                }
+            return {
+                'nombre': 'NOTARIO',
+                'direccion': '',
+                'telefono': '',
+                'departamento': '',
+                'ruc': '', 
+                'provincia': '',
+                'distrito': ''
+            }
     
     def _format_date_in_spanish(self, date_str):
         """Convert date to Spanish format like 'LUNES, 15 DE ENERO DEL 2025'"""
@@ -422,8 +449,14 @@ class LibrosReportService:
             else:
                 return ""
     
-    def generate_excel_report(self, desde, hasta):
-        """Generate Excel report matching PHP script format"""
+    def generate_excel_report(self, desde, hasta, orientation='horizontal'):
+        """Generate Excel report matching PHP script format
+        
+        Args:
+            desde: Start date
+            hasta: End date
+            orientation: 'horizontal' or 'vertical' (default: 'horizontal')
+        """
         try:
             from openpyxl import Workbook
             from openpyxl.styles import Font, Alignment, Border, Side
@@ -432,7 +465,7 @@ class LibrosReportService:
             
             # Get data
             report_data = self._get_report_data(desde, hasta)
-            notary_name = self._get_notary_info()
+            notary_info = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
             # Create workbook and worksheet
@@ -481,7 +514,7 @@ class LibrosReportService:
             ws[f'A{row}'] = 'NOTARIA'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_name)}'
+            ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["nombre"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
             
@@ -489,13 +522,13 @@ class LibrosReportService:
             ws[f'A{row}'] = 'DIRECCION'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'B{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["direccion"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
             ws[f'E{row}'] = 'TELEFONO'
             ws[f'E{row}'].font = header_font
             ws[f'E{row}'].border = no_border
-            ws[f'F{row}'] = ': (051) 326609'
+            ws[f'F{row}'] = f': {self._sanitize_cell_value(notary_info["telefono"])}'
             ws[f'F{row}'].font = data_font
             ws[f'F{row}'].border = no_border
             
@@ -503,13 +536,13 @@ class LibrosReportService:
             ws[f'A{row}'] = 'DEPARTAMENTO'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'B{row}'] = ': PUNO'
+            ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["departamento"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
             ws[f'E{row}'] = 'RUC'
             ws[f'E{row}'].font = header_font
             ws[f'E{row}'].border = no_border
-            ws[f'F{row}'] = ': 10024231572'
+            ws[f'F{row}'] = f': {self._sanitize_cell_value(notary_info["ruc"])}'
             ws[f'F{row}'].font = data_font
             ws[f'F{row}'].border = no_border
             
@@ -517,7 +550,7 @@ class LibrosReportService:
             ws[f'A{row}'] = 'PROVINCIA'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'B{row}'] = ': SAN ROMAN'
+            ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["provincia"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
             ws[f'E{row}'] = 'DESDE'
@@ -531,7 +564,7 @@ class LibrosReportService:
             ws[f'A{row}'] = 'DISTRITO'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'B{row}'] = ': JULIACA'
+            ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["distrito"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
             ws[f'E{row}'] = 'HASTA'
@@ -543,21 +576,40 @@ class LibrosReportService:
             
             # Table headers with borders
             row += 2
-            headers = ['NRO.', 'INGRESO LIBRO', 'PERTENECE A', '', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
-            for col, header in enumerate(headers, 1):
-                cell = ws.cell(row=row, column=col, value=header)
-                cell.font = header_font
-                cell.alignment = center_alignment
-                cell.border = thin_border
-            
-            # Set column widths
-            ws.column_dimensions['A'].width = 15  # NRO
-            ws.column_dimensions['B'].width = 35  # INGRESO LIBRO
-            ws.column_dimensions['C'].width = 20  # PERTENECE A
-            ws.column_dimensions['D'].width = 20  # Empty column
-            ws.column_dimensions['E'].width = 20  # NRO. LIBRO
-            ws.column_dimensions['F'].width = 20  # NRO. FOLIOS
-            ws.column_dimensions['G'].width = 20  # TIPO FOL.
+            if orientation == 'vertical':
+                headers = ['NRO.', 'INGRESO LIBRO', 'PERTENECE A', '', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                for col, header in enumerate(headers, 1):
+                    cell = ws.cell(row=row, column=col, value=header)
+                    cell.font = header_font
+                    cell.alignment = center_alignment
+                    cell.border = thin_border
+                
+                # Set column widths for vertical layout
+                ws.column_dimensions['A'].width = 15  # NRO
+                ws.column_dimensions['B'].width = 35  # INGRESO LIBRO
+                ws.column_dimensions['C'].width = 20  # PERTENECE A
+                ws.column_dimensions['D'].width = 20  # Empty column
+                ws.column_dimensions['E'].width = 20  # NRO. LIBRO
+                ws.column_dimensions['F'].width = 20  # NRO. FOLIOS
+                ws.column_dimensions['G'].width = 20  # TIPO FOL.
+            else:  # horizontal layout
+                headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DOC. IDENTIDAD', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                for col, header in enumerate(headers, 1):
+                    cell = ws.cell(row=row, column=col, value=header)
+                    cell.font = header_font
+                    cell.alignment = center_alignment
+                    cell.border = thin_border
+                
+                # Set column widths for horizontal layout
+                ws.column_dimensions['A'].width = 10  # NRO
+                ws.column_dimensions['B'].width = 15  # FECHA
+                ws.column_dimensions['C'].width = 25  # TIPO LIBRO
+                ws.column_dimensions['D'].width = 35  # SOLICITANTE
+                ws.column_dimensions['E'].width = 35  # PROPIETARIO
+                ws.column_dimensions['F'].width = 20  # DOC. IDENTIDAD
+                ws.column_dimensions['G'].width = 15  # NRO. LIBRO
+                ws.column_dimensions['H'].width = 15  # NRO. FOLIOS
+                ws.column_dimensions['I'].width = 15  # TIPO FOL.
             
             # Data rows
             row += 1
@@ -581,48 +633,73 @@ class LibrosReportService:
                         # Format DNI/RUC like PHP script
                         dni_ruc_formatted = self._format_dni_ruc(dni, ruc, ruc_plantilla)
                         
-                        # Main data row
-                        ws.cell(row=row, column=1, value=int(num_crono) if num_crono.isdigit() else num_crono).font = data_font
-                        ws.cell(row=row, column=2, value=f"{self._format_date_for_display(fecha)}     {tip_lib}").font = data_font
-                        ws.cell(row=row, column=3, value="SOLICITANTE:\nPROPIETARIO:").font = data_font
-                        ws.cell(row=row, column=4, value=f"{dni_ruc_formatted}").font = data_font
-                        ws.cell(row=row, column=5, value=n_lib).font = data_font
-                        ws.cell(row=row, column=6, value=folio).font = data_font
-                        ws.cell(row=row, column=7, value=tip_fol).font = data_font
-                        
-                        # Apply borders and alignment
-                        for col in range(1, 8):
-                            cell = ws.cell(row=row, column=col)
-                            cell.border = thin_border
-                            if col in [1, 5, 6, 7]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
-                                cell.alignment = center_alignment
-                            else:  # Left align other columns
-                                cell.alignment = left_alignment
-                        
-                        # Set row height
-                        ws.row_dimensions[row].height = 45
-                        
-                        # Additional info row
-                        row += 1
-                        ws.cell(row=row, column=1, value='').font = data_font
-                        ws.cell(row=row, column=2, value=f"{solicitante}\n{cliente}{empresa}").font = data_font
-                        ws.cell(row=row, column=3, value='').font = data_font
-                        ws.cell(row=row, column=4, value='').font = data_font
-                        ws.cell(row=row, column=5, value='').font = data_font
-                        ws.cell(row=row, column=6, value='').font = data_font
-                        ws.cell(row=row, column=7, value='').font = data_font
-                        
-                        # Apply borders to info row
-                        for col in range(1, 8):
-                            cell = ws.cell(row=row, column=col)
-                            cell.border = thin_border
-                            if col == 2:  # Main content column
-                                cell.alignment = left_alignment
-                            else:
-                                cell.alignment = center_alignment
-                        
-                        ws.row_dimensions[row].height = 45
-                        row += 1
+                        if orientation == 'vertical':
+                            # Main data row - Vertical layout
+                            ws.cell(row=row, column=1, value=int(num_crono) if num_crono.isdigit() else num_crono).font = data_font
+                            ws.cell(row=row, column=2, value=f"{self._format_date_for_display(fecha)}     {tip_lib}").font = data_font
+                            ws.cell(row=row, column=3, value="SOLICITANTE:\nPROPIETARIO:").font = data_font
+                            ws.cell(row=row, column=4, value=f"{dni_ruc_formatted}").font = data_font
+                            ws.cell(row=row, column=5, value=n_lib).font = data_font
+                            ws.cell(row=row, column=6, value=folio).font = data_font
+                            ws.cell(row=row, column=7, value=tip_fol).font = data_font
+                            
+                            # Apply borders and alignment
+                            for col in range(1, 8):
+                                cell = ws.cell(row=row, column=col)
+                                cell.border = thin_border
+                                if col in [1, 5, 6, 7]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
+                                    cell.alignment = center_alignment
+                                else:  # Left align other columns
+                                    cell.alignment = left_alignment
+                            
+                            # Set row height
+                            ws.row_dimensions[row].height = 45
+                            
+                            # Additional info row
+                            row += 1
+                            ws.cell(row=row, column=1, value='').font = data_font
+                            ws.cell(row=row, column=2, value=f"{solicitante}\n{cliente}{empresa}").font = data_font
+                            ws.cell(row=row, column=3, value='').font = data_font
+                            ws.cell(row=row, column=4, value='').font = data_font
+                            ws.cell(row=row, column=5, value='').font = data_font
+                            ws.cell(row=row, column=6, value='').font = data_font
+                            ws.cell(row=row, column=7, value='').font = data_font
+                            
+                            # Apply borders to info row
+                            for col in range(1, 8):
+                                cell = ws.cell(row=row, column=col)
+                                cell.border = thin_border
+                                if col == 2:  # Main content column
+                                    cell.alignment = left_alignment
+                                else:
+                                    cell.alignment = center_alignment
+                            
+                            ws.row_dimensions[row].height = 45
+                            row += 1
+                        else:
+                            # Single row - Horizontal layout
+                            ws.cell(row=row, column=1, value=int(num_crono) if num_crono.isdigit() else num_crono).font = data_font
+                            ws.cell(row=row, column=2, value=self._format_date_for_display(fecha)).font = data_font
+                            ws.cell(row=row, column=3, value=tip_lib).font = data_font
+                            ws.cell(row=row, column=4, value=solicitante).font = data_font
+                            ws.cell(row=row, column=5, value=f"{cliente}{empresa}").font = data_font
+                            ws.cell(row=row, column=6, value=dni_ruc_formatted).font = data_font
+                            ws.cell(row=row, column=7, value=n_lib).font = data_font
+                            ws.cell(row=row, column=8, value=folio).font = data_font
+                            ws.cell(row=row, column=9, value=tip_fol).font = data_font
+                            
+                            # Apply borders and alignment
+                            for col in range(1, 10):
+                                cell = ws.cell(row=row, column=col)
+                                cell.border = thin_border
+                                if col in [1, 2, 7, 8, 9]:  # Center align numeric and date columns
+                                    cell.alignment = center_alignment
+                                else:  # Left align text columns
+                                    cell.alignment = left_alignment
+                            
+                            # Set row height for single row
+                            ws.row_dimensions[row].height = 30
+                            row += 1
                         
                     except Exception as e:
                         # Error handling
@@ -658,16 +735,23 @@ class LibrosReportService:
                 status=500
             )
     
-    def generate_word_report(self, desde, hasta):
-        """Generate Word report matching PHP script format"""
+    def generate_word_report(self, desde, hasta, orientation='horizontal'):
+        """Generate Word report matching PHP script format
+        
+        Args:
+            desde: Start date
+            hasta: End date
+            orientation: 'horizontal' or 'vertical' (default: 'horizontal')
+        """
         try:
             from docx import Document
             from docx.shared import Inches, Pt
             from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.enum.section import WD_ORIENT
             
             # Get data
             report_data = self._get_report_data(desde, hasta)
-            notary_name = self._get_notary_info()
+            notary_info = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
             # Create a new document
@@ -709,31 +793,31 @@ class LibrosReportService:
             row = info_table.rows[0]
             row.cells[0].merge(row.cells[2])
             row.cells[0].text = 'NOTARIA'
-            row.cells[3].text = f': {notary_name}'
+            row.cells[3].text = f': {notary_info["nombre"]}'
             
             # Row 2: DIRECCION
             row = info_table.rows[1]
             row.cells[0].merge(row.cells[2])
             row.cells[0].text = 'DIRECCION'
-            row.cells[3].text = ': JR.BOLIVAR NRO. 340'
+            row.cells[3].text = f': {notary_info["direccion"]}'
             row.cells[4].text = 'TELEFONO'
             row.cells[5].merge(row.cells[6])
-            row.cells[5].text = ': (051) 326609'
+            row.cells[5].text = f': {notary_info["telefono"]}'
             
             # Row 3: DEPARTAMENTO
             row = info_table.rows[2]
             row.cells[0].merge(row.cells[2])
             row.cells[0].text = 'DEPARTAMENTO'
-            row.cells[3].text = ': PUNO'
+            row.cells[3].text = f': {notary_info["departamento"]}'
             row.cells[4].text = 'RUC'
             row.cells[5].merge(row.cells[6])
-            row.cells[5].text = ': 10024231572'
+            row.cells[5].text = f': {notary_info["ruc"]}'
             
             # Row 4: PROVINCIA
             row = info_table.rows[3]
             row.cells[0].merge(row.cells[2])
             row.cells[0].text = 'PROVINCIA'
-            row.cells[3].text = ': SAN ROMAN'
+            row.cells[3].text = f': {notary_info["provincia"]}'
             row.cells[4].text = 'DESDE'
             row.cells[5].merge(row.cells[6])
             row.cells[5].text = f': {self._format_date_in_spanish(desde)}'
@@ -742,7 +826,7 @@ class LibrosReportService:
             row = info_table.rows[4]
             row.cells[0].merge(row.cells[2])
             row.cells[0].text = 'DISTRITO'
-            row.cells[3].text = ': JULIACA'
+            row.cells[3].text = f': {notary_info["distrito"]}'
             row.cells[4].text = 'HASTA'
             row.cells[5].merge(row.cells[6])
             row.cells[5].text = f': {self._format_date_in_spanish(hasta)}'
@@ -760,79 +844,180 @@ class LibrosReportService:
             doc.add_paragraph()
             
             # Main data table - ALWAYS CREATE, even if empty
-            # Create table with headers
-            headers = ['NRO.', 'INGRESO LIBRO', 'PERTENECE A', '', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
-            data_table = doc.add_table(rows=1, cols=7)
-            data_table.style = 'Table Grid'
+            try:
+                # Create table with headers based on orientation
+                if orientation == 'vertical':
+                    headers = ['NRO.', 'INGRESO LIBRO', 'PERTENECE A', '', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                    data_table = doc.add_table(rows=1, cols=7)
+                else:  # horizontal layout
+                    headers = ['NRO.', 'FECHA', 'TIPO LIBRO', 'SOLICITANTE', 'PROPIETARIO', 'DOC. IDENTIDAD', 'NRO. LIBRO', 'NRO. FOLIOS', 'TIPO FOL.']
+                    data_table = doc.add_table(rows=1, cols=9)
+                    # Set page orientation to landscape for horizontal layout
+                    section = doc.sections[-1]
+                    section.orientation = WD_ORIENT.LANDSCAPE
+                    section.page_width = Inches(11.69)  # A4 height
+                    section.page_height = Inches(8.27)  # A4 width
+                
+                data_table.style = 'Table Grid'
+            except Exception as e:
+                self.logger.error(f"Error creating table: {str(e)}")
+                raise
             
-            # Add headers
-            header_row = data_table.rows[0]
-            for i, header in enumerate(headers):
-                cell = header_row.cells[i]
-                cell.text = header
-                for paragraph in cell.paragraphs:
-                    for run in paragraph.runs:
-                        run.font.bold = True
-                        run.font.size = Pt(12)
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            try:
+                # Add headers
+                header_row = data_table.rows[0]
+                for i, header in enumerate(headers):
+                    cell = header_row.cells[i]
+                    cell.text = header
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.bold = True
+                            run.font.size = Pt(12)
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception as e:
+                self.logger.error(f"Error adding headers: {str(e)}")
+                raise
             
             # Add data rows if data exists
             if report_data and len(report_data) > 0:
                 for data_row in report_data:
-                    
-                    num_crono = data_row[0] if len(data_row) > 0 else ''
-                    fecha = data_row[1] if len(data_row) > 1 else ''
-                    tip_lib = data_row[4] if len(data_row) > 4 else ''
-                    solicitante = data_row[11] if len(data_row) > 11 else ''
-                    cliente = data_row[2] if len(data_row) > 2 else ''
-                    empresa = data_row[3] if len(data_row) > 3 else ''
-                    n_lib = data_row[5] if len(data_row) > 5 else ''
-                    folio = data_row[6] if len(data_row) > 6 else ''
-                    tip_fol = data_row[7] if len(data_row) > 7 else ''
-                    ruc = data_row[8] if len(data_row) > 8 else ''
-                    dni = data_row[9] if len(data_row) > 9 else ''
-                    ruc_plantilla = data_row[12] if len(data_row) > 12 else ''
-                    
-                    # Format DNI/RUC like PHP script
-                    dni_ruc_formatted = self._format_dni_ruc(dni, ruc, ruc_plantilla)
-                    
-                    # Row 1: Main data
-                    row = data_table.add_row()
-                    row.cells[0].text = str(num_crono)
-                    row.cells[1].text = f"{self._format_date_for_display(fecha)}     {tip_lib}"
-                    row.cells[2].text = "SOLICITANTE:\nPROPIETARIO:"
-                    row.cells[3].text = dni_ruc_formatted
-                    row.cells[4].text = str(n_lib)
-                    row.cells[5].text = str(folio)
-                    row.cells[6].text = str(tip_fol)
-                    
-                    # Center align main data
-                    for i in range(7):
-                        for paragraph in row.cells[i].paragraphs:
-                            if i in [0, 4, 5, 6]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
-                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                            else:  # Left align other columns
-                                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    
-                    # Row 2: Additional info
-                    row = data_table.add_row()
-                    row.cells[0].text = ''
-                    row.cells[1].text = f"{solicitante}\n{cliente}{empresa}"
-                    row.cells[2].text = ''
-                    row.cells[3].text = ''
-                    row.cells[4].text = ''
-                    row.cells[5].text = ''
-                    row.cells[6].text = ''
-                    
-                    # Style the info row
-                    for i in range(7):
-                        if i == 1:  # Main content column
-                            for paragraph in row.cells[i].paragraphs:
-                                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    try:
+                        num_crono = data_row[0] if len(data_row) > 0 else ''
+                        fecha = data_row[1] if len(data_row) > 1 else ''
+                        tip_lib = data_row[4] if len(data_row) > 4 else ''
+                        solicitante = data_row[11] if len(data_row) > 11 else ''
+                        cliente = data_row[2] if len(data_row) > 2 else ''
+                        empresa = data_row[3] if len(data_row) > 3 else ''
+                        n_lib = data_row[5] if len(data_row) > 5 else ''
+                        folio = data_row[6] if len(data_row) > 6 else ''
+                        tip_fol = data_row[7] if len(data_row) > 7 else ''
+                        ruc = data_row[8] if len(data_row) > 8 else ''
+                        dni = data_row[9] if len(data_row) > 9 else ''
+                        ruc_plantilla = data_row[12] if len(data_row) > 12 else ''
+                        
+                        # Format DNI/RUC like PHP script
+                        dni_ruc_formatted = self._format_dni_ruc(dni, ruc, ruc_plantilla)
+                        
+                        if orientation == 'vertical':
+                            # Row 1: Main data - Vertical layout
+                            row = data_table.add_row()
+                            row.cells[0].text = str(num_crono)
+                            row.cells[1].text = f"{self._format_date_for_display(fecha)}     {tip_lib}"
+                            row.cells[2].text = "SOLICITANTE:\nPROPIETARIO:"
+                            row.cells[3].text = dni_ruc_formatted
+                            row.cells[4].text = str(n_lib)
+                            row.cells[5].text = str(folio)
+                            row.cells[6].text = str(tip_fol)
+                            
+                            # Center align main data
+                            for i in range(7):
+                                for paragraph in row.cells[i].paragraphs:
+                                    if i in [0, 4, 5, 6]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
+                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                    else:  # Left align other columns
+                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            
+                            # Row 2: Additional info
+                            row = data_table.add_row()
+                            row.cells[0].text = ''
+                            row.cells[1].text = f"{solicitante}\n{cliente}{empresa}"
+                            row.cells[2].text = ''
+                            row.cells[3].text = ''
+                            row.cells[4].text = ''
+                            row.cells[5].text = ''
+                            row.cells[6].text = ''
+                            
+                            # Style the info row
+                            for i in range(7):
+                                if i == 1:  # Main content column
+                                    for paragraph in row.cells[i].paragraphs:
+                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                                else:
+                                    for paragraph in row.cells[i].paragraphs:
+                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         else:
-                            for paragraph in row.cells[i].paragraphs:
-                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            # Single row - Horizontal layout
+                            row = data_table.add_row()
+                            row.cells[0].text = str(num_crono)
+                            row.cells[1].text = self._format_date_for_display(fecha)
+                            row.cells[2].text = tip_lib
+                            row.cells[3].text = solicitante
+                            row.cells[4].text = f"{cliente}{empresa}"
+                            row.cells[5].text = dni_ruc_formatted
+                            row.cells[6].text = str(n_lib)
+                            row.cells[7].text = str(folio)
+                            row.cells[8].text = str(tip_fol)
+                            
+                            # Apply alignment
+                            for i in range(9):
+                                for paragraph in row.cells[i].paragraphs:
+                                    if i in [0, 1, 6, 7, 8]:  # Center align numeric and date columns
+                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                    else:  # Left align text columns
+                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    except Exception as e:
+                        self.logger.error(f"Error processing row: {str(e)}")
+                        continue
+                    
             else:
+                # try:
+                # No data message
+                no_data_row = data_table.add_row()
+                no_data_cell = no_data_row.cells[0]
+                no_data_cell.merge(no_data_row.cells[6])
+                no_data_cell.text = 'No se encontraron registros para el período especificado'
+                for paragraph in no_data_cell.paragraphs:
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    for run in paragraph.runs:
+                        run.font.italic = True
+                        
+                        # Center align main data
+                        for i in range(7):
+                            for paragraph in row.cells[i].paragraphs:
+                                if i in [0, 4, 5, 6]:  # Center align NRO, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
+                                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                else:  # Left align other columns
+                                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                        
+                        # Row 2: Additional info
+                        row = data_table.add_row()
+                        row.cells[0].text = ''
+                        row.cells[1].text = f"{solicitante}\n{cliente}{empresa}"
+                        row.cells[2].text = ''
+                        row.cells[3].text = ''
+                        row.cells[4].text = ''
+                        row.cells[5].text = ''
+                        row.cells[6].text = ''
+                        
+                        # Style the info row
+                        for i in range(7):
+                            if i == 1:  # Main content column
+                                for paragraph in row.cells[i].paragraphs:
+                                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            else:
+                                for paragraph in row.cells[i].paragraphs:
+                                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    else:
+                        # Single row - Horizontal layout
+                        row = data_table.add_row()
+                        row.cells[0].text = str(num_crono)
+                        row.cells[1].text = self._format_date_for_display(fecha)
+                        row.cells[2].text = tip_lib
+                        row.cells[3].text = solicitante
+                        row.cells[4].text = f"{cliente}{empresa}"
+                        row.cells[5].text = dni_ruc_formatted
+                        row.cells[6].text = str(n_lib)
+                        row.cells[7].text = str(folio)
+                        row.cells[8].text = str(tip_fol)
+                        
+                        # Apply alignment
+                        for i in range(9):
+                            for paragraph in row.cells[i].paragraphs:
+                                if i in [0, 1, 6, 7, 8]:  # Center align numeric and date columns
+                                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                else:  # Left align text columns
+                                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # else:
                 # Add a "no data" row if no data exists
                 no_data_row = data_table.add_row()
                 no_data_cell = no_data_row.cells[0]
@@ -850,20 +1035,24 @@ class LibrosReportService:
                         for run in paragraph.runs:
                             run.font.size = Pt(12)
             
-            # Save to BytesIO
-            output = io.BytesIO()
-            doc.save(output)
-            output.seek(0)
-            
-            # Create HTTP response
-            filename = f"INDICE_CRONOLOGICO_LIBROS_CONTABLES_{anio}.docx"
-            response = HttpResponse(
-                output.getvalue(),
-                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
+            try:
+                # Save to BytesIO
+                output = io.BytesIO()
+                doc.save(output)
+                output.seek(0)
+                
+                # Create HTTP response
+                filename = f"INDICE_CRONOLOGICO_LIBROS_CONTABLES_{anio}.docx"
+                response = HttpResponse(
+                    output.getvalue(),
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                )
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                
+                return response
+            except Exception as e:
+                self.logger.error(f"Error saving document: {str(e)}")
+                raise
             
         except Exception as e:
             from rest_framework.response import Response

@@ -543,12 +543,41 @@ class PermisosViajeReportService:
             result = cursor.fetchall()
             return result if result else []
     
-    def _get_notary_info(self) -> str:
-        """Fetch notary name from confinotario table."""
+    def _get_notary_info(self) -> dict:
+        """Get notary configuration info"""
         with connection.cursor() as cursor:
-            cursor.execute("SELECT CONCAT(nombre, ' ', apellido) as notario FROM confinotario LIMIT 1")
-            row = cursor.fetchone()
-            return row[0] if row else "NOTARIO"
+            cursor.execute("""
+                SELECT 
+                    CONCAT(nombre, ' ', apellido) as nombre_completo,
+                    direccion,
+                    telefono,
+                    departamento,
+                    ruc,
+                    provincia,
+                    distrito
+                FROM confinotario
+                LIMIT 1
+            """)
+            result = cursor.fetchone()
+            if result:
+                return {
+                    'nombre': result[0],
+                    'direccion': result[1] or '',
+                    'telefono': result[2] or '',
+                    'departamento': result[3] or '',
+                    'ruc': result[4] or '',
+                    'provincia': result[5] or '',
+                    'distrito': result[6] or ''
+                }
+            return {
+                'nombre': 'NOTARIO',
+                'direccion': '',
+                'telefono': '',
+                'departamento': '',
+                'ruc': '',
+                'provincia': '',
+                'distrito': ''
+            }
     
     def _get_participants_for_viaje(self, id_viaje: int) -> List[Dict[str, str]]:
         """Fetch participants for a specific viaje."""
@@ -675,7 +704,7 @@ class PermisosViajeReportService:
             from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
             
             report_data = self._get_report_data(desde, hasta)
-            notary_name = self._get_notary_info()
+            notary_info = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
             # Create workbook and worksheet
@@ -727,7 +756,7 @@ class PermisosViajeReportService:
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = f': {notary_name}'
+            ws[f'C{row}'] = f': {notary_info["nombre"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -739,7 +768,7 @@ class PermisosViajeReportService:
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'C{row}'] = f': {notary_info["direccion"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -748,7 +777,7 @@ class PermisosViajeReportService:
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
             ws.merge_cells(f'F{row}:G{row}')
-            ws[f'F{row}'] = ': (051) 326609'
+            ws[f'F{row}'] = f': {notary_info["telefono"]}'
             ws[f'F{row}'].font = data_font
             ws[f'F{row}'].alignment = left_alignment
             ws[f'F{row}'].border = no_border
@@ -760,7 +789,7 @@ class PermisosViajeReportService:
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': PUNO'
+            ws[f'C{row}'] = f': {notary_info["departamento"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -769,7 +798,7 @@ class PermisosViajeReportService:
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
             ws.merge_cells(f'F{row}:G{row}')
-            ws[f'F{row}'] = ': 10024231572'
+            ws[f'F{row}'] = f': {notary_info["ruc"]}'
             ws[f'F{row}'].font = data_font
             ws[f'F{row}'].alignment = left_alignment
             ws[f'F{row}'].border = no_border
@@ -781,7 +810,7 @@ class PermisosViajeReportService:
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': SAN ROMAN'
+            ws[f'C{row}'] = f': {notary_info["provincia"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -802,7 +831,7 @@ class PermisosViajeReportService:
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': JULIACA'
+            ws[f'C{row}'] = f': {notary_info["distrito"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -981,8 +1010,8 @@ class PermisosViajeReportService:
             report_data = self._get_report_data(desde, hasta)
             print(f"DEBUG: Retrieved {len(report_data)} records")
             
-            notary_name = self._get_notary_info()
-            print(f"DEBUG: Got notary info: {notary_name}")
+            notary_info = self._get_notary_info()
+            print(f"DEBUG: Got notary info: {notary_info}")
             
             anio = self._extract_year_from_date(hasta)
             print(f"DEBUG: Extracted year: {anio}")
@@ -1009,31 +1038,31 @@ class PermisosViajeReportService:
             row = info_table.rows[0]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'NOTARIA'
-            row.cells[2].text = f': {notary_name}'
+            row.cells[2].text = f': {notary_info["nombre"]}'
             
             # Row 2: DIRECCION
             row = info_table.rows[1]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'DIRECCION'
-            row.cells[2].text = ': JR.BOLIVAR NRO. 340'
+            row.cells[2].text = f': {notary_info["direccion"]}'
             row.cells[3].text = 'TELEFONO'
             row.cells[4].merge(row.cells[5])
-            row.cells[4].text = ': (051) 326609'
+            row.cells[4].text = f': {notary_info["telefono"]}'
             
             # Row 3: DEPARTAMENTO
             row = info_table.rows[2]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'DEPARTAMENTO'
-            row.cells[2].text = ': PUNO'
+            row.cells[2].text = f': {notary_info["departamento"]}'
             row.cells[3].text = 'RUC'
             row.cells[4].merge(row.cells[5])
-            row.cells[4].text = ': 10024231572'
+            row.cells[4].text = f': {notary_info["ruc"]}'
             
             # Row 4: PROVINCIA
             row = info_table.rows[3]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'PROVINCIA'
-            row.cells[2].text = ': SAN ROMAN'
+            row.cells[2].text = f': {notary_info["provincia"]}'
             row.cells[3].text = 'DESDE'
             row.cells[4].merge(row.cells[5])
             row.cells[4].text = f': {self._format_date_in_spanish(desde)}'
@@ -1042,7 +1071,7 @@ class PermisosViajeReportService:
             row = info_table.rows[4]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'DISTRITO'
-            row.cells[2].text = ': JULIACA'
+            row.cells[2].text = f': {notary_info["distrito"]}'
             row.cells[3].text = 'HASTA'
             row.cells[4].merge(row.cells[5])
             row.cells[4].text = f': {self._format_date_in_spanish(hasta)}'

@@ -2594,11 +2594,13 @@ class CertDomiciliarioViewSet(ModelViewSet):
         - fechade: Start date (DD/MM/YYYY)
         - fechaa: End date (DD/MM/YYYY) 
         - tipo_documento: 'EXCEL' or 'WORD'
+        - orientation: 'vertical' or 'horizontal' (default: 'horizontal')
         """
 
         fechade = request.query_params.get('fechade')
         fechaa = request.query_params.get('fechaa')
         tipo_documento = request.query_params.get('tipo_documento', 'WORD')
+        orientation = request.query_params.get('orientation', 'horizontal')
         
         
         if not fechade or not fechaa:
@@ -2618,12 +2620,19 @@ class CertDomiciliarioViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Validate orientation
+        if orientation not in ['vertical', 'horizontal']:
+            return Response(
+                {'error': 'Invalid orientation. Use "vertical" or "horizontal"'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         report_service = CertDomiciliariosReportService()
 
         if tipo_documento == 'EXCEL':
-            return report_service.generate_excel_report(desde, hasta)
+            return report_service.generate_excel_report(desde, hasta, orientation=orientation)
         else:
-            return report_service.generate_word_report(desde, hasta)
+            return report_service.generate_word_report(desde, hasta, orientation=orientation)
 
     def list(self, request, *args, **kwargs):
         dateFrom = request.query_params.get('dateFrom', '')
