@@ -476,24 +476,31 @@ class DocumentSearchService:
             for participant in participants:
                 person_id = participant.get('idcontratante', 'Unknown')
                 
-                # Validate natural person data
+                # Format person name based on type
                 if participant.get('tipper') == 'N':
+                    nombre = f"{participant.get('prinom', '')} {participant.get('segnom', '')} {participant.get('apepat', '')} {participant.get('apemat', '')}".strip()
+                    person_id = f"{nombre} ({participant.get('numdoc', '')})" if participant.get('numdoc') else nombre
+                    
+                    # Validate natural person data
                     if not participant.get('numdoc'):
-                        self._add_person_error(kardex, f"Persona {person_id}: Falta número de documento")
+                        self._add_person_error(kardex, f"{person_id}: Falta número de documento")
                     if not participant.get('apepat'):
-                        self._add_person_error(kardex, f"Persona {person_id}: Falta apellido paterno")
+                        self._add_person_error(kardex, f"{person_id}: Falta apellido paterno")
                     if not participant.get('prinom'):
-                        self._add_person_error(kardex, f"Persona {person_id}: Falta primer nombre")
+                        self._add_person_error(kardex, f"{person_id}: Falta primer nombre")
                     
                     # Additional validations for natural persons
                     self._validate_natural_person(kardex, participant)
                 
                 # Validate juridical person data
                 elif participant.get('tipper') == 'J':
+                    razon_social = participant.get('razonsocial', '').strip()
+                    person_id = f"{razon_social} (RUC: {participant.get('numdoc', '')})" if participant.get('numdoc') else razon_social
+                    
                     if not participant.get('numdoc'):
-                        self._add_person_error(kardex, f"Persona {person_id}: Falta RUC")
+                        self._add_person_error(kardex, f"{person_id}: Falta RUC")
                     if not participant.get('razonsocial'):
-                        self._add_person_error(kardex, f"Persona {person_id}: Falta razón social")
+                        self._add_person_error(kardex, f"{person_id}: Falta razón social")
                     
                     # Additional validations for juridical persons
                     self._validate_juridical_person(kardex, participant)
@@ -503,7 +510,9 @@ class DocumentSearchService:
 
     def _validate_natural_person(self, kardex: str, person: Dict):
         """Additional validations for natural persons"""
-        person_id = person.get('idcontratante', 'Unknown')
+        # Format person name
+        nombre = f"{person.get('prinom', '')} {person.get('segnom', '')} {person.get('apepat', '')} {person.get('apemat', '')}".strip()
+        person_id = f"{nombre} ({person.get('numdoc', '')})" if person.get('numdoc') else nombre
         
         # Validate document type and number format
         doc_type = person.get('idtipdoc')
@@ -511,38 +520,40 @@ class DocumentSearchService:
         
         if doc_type == '1':  # DNI
             if doc_number and (len(doc_number) != 8 or not doc_number.isdigit()):
-                self._add_person_error(kardex, f"Persona {person_id}: Formato de DNI inválido")
+                self._add_person_error(kardex, f"{person_id}: Formato de DNI inválido")
         elif doc_type == '4':  # CE
             if doc_number and len(doc_number) > 12:
-                self._add_person_error(kardex, f"Persona {person_id}: Formato de CE inválido")
+                self._add_person_error(kardex, f"{person_id}: Formato de CE inválido")
         
         # Validate required contact information
         if not any([person.get('telfijo'), person.get('telcel'), person.get('email')]):
-            self._add_person_error(kardex, f"Persona {person_id}: Falta información de contacto")
+            self._add_person_error(kardex, f"{person_id}: Falta información de contacto")
         
         # Validate address
         if not person.get('direccion') or not person.get('idubigeo'):
-            self._add_person_error(kardex, f"Persona {person_id}: Información de dirección incompleta")
+            self._add_person_error(kardex, f"{person_id}: Información de dirección incompleta")
 
     def _validate_juridical_person(self, kardex: str, person: Dict):
         """Additional validations for juridical persons"""
-        person_id = person.get('idcontratante', 'Unknown')
+        # Format company name
+        razon_social = person.get('razonsocial', '').strip()
+        person_id = f"{razon_social} (RUC: {person.get('numdoc', '')})" if person.get('numdoc') else razon_social
         
         # Validate RUC format
         ruc = person.get('numdoc')
         if ruc and (len(ruc) != 11 or not ruc.isdigit() or not ruc.startswith('20')):
-            self._add_person_error(kardex, f"Persona {person_id}: Formato de RUC inválido")
+            self._add_person_error(kardex, f"{person_id}: Formato de RUC inválido")
         
         # Validate required registration data
         if not person.get('fechaconstitu'):
-            self._add_person_error(kardex, f"Persona {person_id}: Falta fecha de constitución")
+            self._add_person_error(kardex, f"{person_id}: Falta fecha de constitución")
         
         if not person.get('idsedereg') or not person.get('numpartida'):
-            self._add_person_error(kardex, f"Persona {person_id}: Falta información registral")
+            self._add_person_error(kardex, f"{person_id}: Falta información registral")
         
         # Validate contact information
         if not person.get('telempresa') and not person.get('mailempresa'):
-            self._add_person_error(kardex, f"Persona {person_id}: Falta información de contacto de la empresa")
+            self._add_person_error(kardex, f"{person_id}: Falta información de contacto de la empresa")
 
     def _get_participants_for_kardex(self, kardex: str) -> List[Dict]:
         """Get participants data for a kardex"""

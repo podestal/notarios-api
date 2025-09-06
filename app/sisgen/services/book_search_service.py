@@ -266,11 +266,13 @@ class BookSearchService:
             conditions.append("l.fecing BETWEEN %s AND %s")
             params.extend([filters['fechaDesde'], filters['fechaHasta']])
         
-        # Status filter
+        # Status filter - handle -1 as special case for all books
         estado = filters.get('estado')
-        if estado == '0':
+        if estado == 0:  # Changed from '0' to 0
             conditions.append("(l.estadoSisgen = 0 OR l.estadoSisgen IS NULL)")
-        elif estado in ('1', '3'):
+        elif estado == 3:  # Changed from '3' to 3
+            conditions.append("l.estadoSisgen = '3'")
+        elif estado != -1 and estado is not None:  # Changed from '-1' to -1
             conditions.append("l.estadoSisgen = %s")
             params.append(estado)
         
