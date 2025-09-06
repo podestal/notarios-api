@@ -420,8 +420,17 @@ class DocumentSearchService:
             # Get UIF data for the kardex
             with connection.cursor() as cursor:
                 query = """
-                    SELECT cx.uif, cx.monto, cx.ofondo
+                    SELECT 
+                        cx.uif, cx.monto, cx.ofondo,
+                        CASE 
+                            WHEN c.tipper = 'N' THEN CONCAT(COALESCE(c.prinom, ''), ' ', COALESCE(c.segnom, ''), ' ', COALESCE(c.apepat, ''), ' ', COALESCE(c.apemat, ''))
+                            WHEN c.tipper = 'J' THEN c.razonsocial
+                            ELSE 'Desconocido'
+                        END as nombre_completo,
+                        c.tipper,
+                        c.numdoc
                     FROM contratantesxacto cx
+                    LEFT JOIN cliente2 c ON cx.idcontratante = c.idcontratante
                     WHERE cx.kardex = %s
                     AND (cx.uif IN ('O', 'B', 'G', 'N', 'R'))
                 """
@@ -433,16 +442,19 @@ class DocumentSearchService:
                     return
                 
                 for uif_record in uif_records:
-                    uif, monto, ofondo = uif_record
+                    uif, monto, ofondo, nombre_completo, tipper, numdoc = uif_record
                     role_name = 'Otorgante' if uif == 'O' else 'Beneficiario'
+                    
+                    # Format person identifier
+                    person_id = f"{nombre_completo.strip()} ({numdoc})" if numdoc else nombre_completo.strip()
                     
                     # Validate monto for operations
                     if uif in ('O', 'B') and (not monto or float(monto or 0) <= 0):
-                        self._add_error(kardex, f"Monto inválido para {role_name}")
+                        self._add_error(kardex, f"Monto inválido para {role_name}: {person_id}")
                     
                     # Validate origen de fondos
                     if uif in ('O', 'B') and not ofondo:
-                        self._add_error(kardex, f"Falta origen de fondos para {role_name}")
+                        self._add_error(kardex, f"Falta origen de fondos para {role_name}: {person_id}")
                 
         except Exception as e:
             self.logger.error(f"Error validating UIF data for kardex {kardex}: {str(e)}")
