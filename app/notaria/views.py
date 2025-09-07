@@ -2484,6 +2484,7 @@ class LibrosViewSet(ModelViewSet):
         - fechade: Start date (DD/MM/YYYY)
         - fechaa: End date (DD/MM/YYYY) 
         - tipo_documento: 'EXCEL' or 'WORD'
+        - orientation: 'vertical' or 'horizontal' (default: 'horizontal')
         """
         from ducumentation.extraprotocolares.libros import LibrosReportService
         from datetime import datetime
@@ -2491,7 +2492,9 @@ class LibrosViewSet(ModelViewSet):
         fechade = request.query_params.get('fechade')
         fechaa = request.query_params.get('fechaa')
         tipo_documento = request.query_params.get('tipo_documento', 'WORD')
+        orientation = request.query_params.get('orientation', 'horizontal')
         
+
         if not fechade or not fechaa:
             return Response(
                 {'error': 'Both fechade and fechaa are required'}, 
@@ -2515,7 +2518,7 @@ class LibrosViewSet(ModelViewSet):
         if tipo_documento == 'EXCEL':
             return report_service.generate_excel_report(fechade, fechaa)
         else:
-            return report_service.generate_word_report(fechade, fechaa)
+            return report_service.generate_word_report(fechade, fechaa, orientation)
 
     def list(self, request, *args, **kwargs):
         dateFrom = request.query_params.get('dateFrom', '')

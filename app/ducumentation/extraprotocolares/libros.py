@@ -277,6 +277,10 @@ class LibrosDocumentService(BaseR2DocumentService):
 class LibrosReportService:
     """Service for generating libros reports matching PHP script format"""
     
+    def __init__(self):
+        import logging
+        self.logger = logging.getLogger(__name__)
+    
     def _sanitize_cell_value(self, value):
         """Sanitize cell values to prevent Excel corruption"""
         if value is None:
@@ -886,18 +890,14 @@ class LibrosReportService:
                 data_table.style = 'Table Grid'
                 
                 # Set column widths for better content fit with smaller font
-                for i, width in enumerate([
-                    0.8,   # NRO
-                    1.0,   # FECHA
-                    1.6,   # TIPO LIBRO
-                    2.0,   # SOLICITANTE
-                    2.0,   # PROPIETARIO
-                    1.2,   # DNI
-                    1.2,   # RUC
-                    1.0,   # NRO. LIBRO
-                    1.0,   # NRO. FOLIOS
-                    1.0,   # TIPO FOL.
-                ]):
+                if orientation == 'vertical':
+                    # Vertical layout: 7 columns
+                    widths = [0.8, 2.0, 1.5, 1.5, 1.0, 1.0, 1.0]  # NRO, INGRESO LIBRO, PERTENECE A, '', NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
+                else:
+                    # Horizontal layout: 10 columns
+                    widths = [0.8, 1.0, 1.6, 2.0, 1.2, 2.0, 1.2, 1.0, 1.0, 1.0]  # NRO, FECHA, TIPO LIBRO, SOLICITANTE, DNI, PROPIETARIO, RUC, NRO. LIBRO, NRO. FOLIOS, TIPO FOL.
+                
+                for i, width in enumerate(widths):
                     for cell in data_table.columns[i].cells:
                         cell.width = Inches(width)
             except Exception as e:
@@ -934,6 +934,9 @@ class LibrosReportService:
                         ruc = data_row[8] if len(data_row) > 8 else ''
                         dni = data_row[9] if len(data_row) > 9 else ''
                         ruc_plantilla = data_row[12] if len(data_row) > 12 else ''
+                        
+                        # Format DNI/RUC like PHP script
+                        dni_ruc_formatted = self._format_dni_ruc(dni, ruc, ruc_plantilla)
                         
                         if orientation == 'vertical':
                             # Row 1: Main data - Vertical layout
