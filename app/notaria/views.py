@@ -2493,7 +2493,7 @@ class LibrosViewSet(ModelViewSet):
         fechaa = request.query_params.get('fechaa')
         tipo_documento = request.query_params.get('tipo_documento', 'WORD')
         orientation = request.query_params.get('orientation', 'horizontal')
-        
+        # print('orientation', orientation)
 
         if not fechade or not fechaa:
             return Response(
