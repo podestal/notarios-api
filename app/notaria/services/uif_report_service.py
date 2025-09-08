@@ -34,6 +34,21 @@ class UifReportService:
             4: 'G',  # Otros
         }.get(record.get('idtipkar'), 'SIN INICIAL')
 
+        # Format dates
+        fecha_escritura = record.get('fechaescritura')
+        if isinstance(fecha_escritura, str):
+            try:
+                fecha_escritura = datetime.strptime(fecha_escritura, '%Y-%m-%d').date()
+            except ValueError:
+                fecha_escritura = None
+
+        fecha_conclusion = record.get('fechaconclusion')
+        if isinstance(fecha_conclusion, str):
+            try:
+                fecha_conclusion = datetime.strptime(fecha_conclusion, '%Y-%m-%d').date()
+            except ValueError:
+                fecha_conclusion = None
+
         # Map data to Excel columns
         return {
             'kardex': record.get('kardex', ''),
@@ -42,59 +57,58 @@ class UifReportService:
             'item_3': 'I',  # Tipo de envio - Initial record
             'item_4': tipo_instrumento,  # Tipo de IPNP
             'item_5': record.get('numescritura', '')[:6],  # Numero del IPNP
-            'item_6': record.get('fechaescritura', '').strftime('%d/%m/%Y') if record.get('fechaescritura') else '',  # Fecha del IPNP
+            'item_6': fecha_escritura.strftime('%d/%m/%Y') if fecha_escritura else '',  # Fecha del IPNP
             'item_7': '',  # Numero del IPNP que se aclara - empty for initial records
             'item_8': '',  # Fecha del IPNP que se aclara - empty for initial records
-            'item_9': '1' if record.get('fechaconclusion') else '0',  # Conclusion
-            'item_10': record.get('fechaconclusion', '').strftime('%d/%m/%Y') if record.get('fechaconclusion') else '',  # Fecha de firma
+            'item_9': '1' if fecha_conclusion else '0',  # Conclusion
+            'item_10': fecha_conclusion.strftime('%d/%m/%Y') if fecha_conclusion else '',  # Fecha de firma
             'item_11': '1',  # Modalidad - Single operation
             'item_12': '1',  # Cantidad de operaciones
-            # ... map all other fields based on your data structure
             'item_13': '',  # Representante
             'item_14': '',  # Persona en cuyo nombre
             'item_15': '',  # Persona a favor
             'item_16': '',  # Persona que representa
             'item_17': '',  # Tipo de representacion
             'item_18': '1',  # Condicion de residencia - default to resident
-            'item_19': record.get('tipo_persona', 'N'),  # Tipo de persona (N/J)
+            'item_19': 'N',  # Tipo de persona - default to Natural
             'item_20': '1',  # Tipo de documento - default to DNI
-            'item_21': record.get('num_doc', '')[:20],  # Numero de documento
-            'item_22': record.get('ruc', '')[:11],  # RUC
-            'item_23': record.get('apellido_paterno', '')[:120],  # Apellido paterno / Razon social
-            'item_24': record.get('apellido_materno', '')[:40],  # Apellido materno
-            'item_25': record.get('nombres', '')[:40],  # Nombres
+            'item_21': '',  # Numero de documento
+            'item_22': '',  # RUC
+            'item_23': '',  # Apellido paterno / Razon social
+            'item_24': '',  # Apellido materno
+            'item_25': '',  # Nombres
             'item_26': 'PE',  # Pais - default to Peru
-            'item_27': record.get('fecha_nacimiento', '')[:8],  # Fecha de nacimiento
-            'item_28': record.get('estado_civil', '')[:1],  # Estado civil
-            'item_29': record.get('ocupacion', '')[:3],  # Codigo de Ocupacion
-            'item_30': record.get('objeto_social', '')[:40],  # Descripcion del objeto social
-            'item_31': record.get('ciiu', '')[:4],  # Codigo CIIU
-            'item_32': record.get('cargo', '')[:3],  # Codigo de Cargo
-            'item_33': record.get('zona_registral', '')[:2],  # Codigo de la Zona Registral
-            'item_34': record.get('partida_registral', '')[:12],  # Numero de la Partida Registral
-            'item_35': record.get('direccion', '')[:150],  # Tipo, nombre y numero de la via
-            'item_36': record.get('departamento', '')[:2],  # Departamento
-            'item_37': record.get('provincia', '')[:2],  # Provincia
-            'item_38': record.get('distrito', '')[:2],  # Distrito
-            'item_39': record.get('telefonos', '')[:40],  # Telefonos
-            'item_40': record.get('participacion_conyuge', '')[:1],  # Participacion del conyuge
-            'item_41': record.get('conyuge_paterno', '')[:40],  # Apellido paterno conyuge
-            'item_42': record.get('conyuge_materno', '')[:40],  # Apellido materno conyuge
-            'item_43': record.get('conyuge_nombres', '')[:40],  # Nombres conyuge
-            'item_44': record.get('tipo_fondos', '')[:2],  # Tipo de fondos
-            'item_45': record.get('tipo_operacion', '')[:3],  # Tipo de operacion
-            'item_46': record.get('forma_pago', '')[:1],  # Forma de pago
-            'item_47': record.get('oportunidad_pago', '')[:2],  # Oportunidad de pago
-            'item_48': record.get('descripcion_pago', '')[:40],  # Descripcion de oportunidad de pago
-            'item_49': record.get('origen_fondos', '')[:40],  # Origen de los fondos
-            'item_50': record.get('moneda', 'PEN')[:3],  # Moneda - default to PEN
-            'item_51': str(record.get('monto_total', '0.00'))[:18],  # Monto total
-            'item_52': str(record.get('monto_participante', '0.00'))[:18],  # Monto por participante
-            'item_53': str(record.get('monto_fondos', '0.00'))[:18],  # Monto relacionado a tipos de fondos
-            'item_54': str(record.get('tipo_cambio', '1.00'))[:6],  # Tipo de cambio
-            'item_55': record.get('inscripcion_registral', '')[:1],  # Inscripcion registral del bien
-            'item_56': record.get('zona_registral_bien', '')[:2],  # Codigo de la Zona Registral
-            'item_57': record.get('partida_registral_bien', '')[:12],  # Numero de partida registral
+            'item_27': '',  # Fecha de nacimiento
+            'item_28': '',  # Estado civil
+            'item_29': '',  # Codigo de Ocupacion
+            'item_30': '',  # Descripcion del objeto social
+            'item_31': '',  # Codigo CIIU
+            'item_32': '',  # Codigo de Cargo
+            'item_33': '',  # Codigo de la Zona Registral
+            'item_34': '',  # Numero de la Partida Registral
+            'item_35': '',  # Tipo, nombre y numero de la via
+            'item_36': '',  # Departamento
+            'item_37': '',  # Provincia
+            'item_38': '',  # Distrito
+            'item_39': '',  # Telefonos
+            'item_40': '',  # Participacion del conyuge
+            'item_41': '',  # Apellido paterno conyuge
+            'item_42': '',  # Apellido materno conyuge
+            'item_43': '',  # Nombres conyuge
+            'item_44': '',  # Tipo de fondos
+            'item_45': record.get('codacto', '')[:3],  # Tipo de operacion - use act code
+            'item_46': '',  # Forma de pago
+            'item_47': '',  # Oportunidad de pago
+            'item_48': '',  # Descripcion de oportunidad de pago
+            'item_49': '',  # Origen de los fondos
+            'item_50': 'PEN',  # Moneda - default to PEN
+            'item_51': '0.00',  # Monto total
+            'item_52': '0.00',  # Monto por participante
+            'item_53': '0.00',  # Monto relacionado a tipos de fondos
+            'item_54': '1.00',  # Tipo de cambio
+            'item_55': '',  # Inscripcion registral del bien
+            'item_56': '',  # Codigo de la Zona Registral
+            'item_57': '',  # Numero de partida registral
         }
 
     def generate_excel_report(self, data: Dict[str, Any], initial_date: str, final_date: str) -> HttpResponse:
