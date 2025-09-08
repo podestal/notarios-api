@@ -23,6 +23,7 @@ from datetime import datetime
 from django.utils import timezone
 from datetime import datetime
 import logging
+from .services.uif_report_service import UifReportService
 
 logger = logging.getLogger(__name__)
 
@@ -958,6 +959,32 @@ class KardexViewSet(ModelViewSet):
         except Exception as e:
             logger.warning(f"Error getting additional no envían records: {str(e)}")
             return []
+
+    @action(detail=False, methods=['get'], url_path='uif-report-excel')
+    def uif_report_excel(self, request):
+        """Generate Excel file for UIF report."""
+        try:
+            # Get and validate parameters
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+            
+            if not initial_date or not final_date:
+                return Response({
+                    'error': 'Both initialDate and finalDate are required (DD/MM/YYYY format)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get UIF data using existing dashboard method
+            data = self.uif_error_dashboard(request).data
+            
+            # Generate Excel file
+            report_service = UifReportService()
+            return report_service.generate_excel_report(data, initial_date, final_date)
+        except Exception as e:
+            logger.error(f"Error generating UIF report Excel: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error generating UIF report Excel',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class TipoKarViewSet(ModelViewSet):
