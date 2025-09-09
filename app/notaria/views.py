@@ -2691,6 +2691,53 @@ class LibrosViewSet(ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @action(detail=False, methods=['get'], url_path='pdt-errors')
+    def pdt_errors(self, request):
+        """
+        Get PDT errors for libros in a date range.
+        
+        Parameters:
+        - initialDate: Start date (DD/MM/YYYY)
+        - finalDate: End date (DD/MM/YYYY)
+        """
+        try:
+            # Get and validate parameters
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+            
+            if not initial_date or not final_date:
+                return Response({
+                    'error': 'Both initialDate and finalDate are required (DD/MM/YYYY format)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Process PDT errors
+            from .services.pdt_libros_service import PdtLibrosService
+            pdt_service = PdtLibrosService(initial_date, final_date)
+            pdt_service.load_data()
+            results = pdt_service.get_results()
+
+            # Return results
+            if request.accepted_renderer.format == 'html':
+                # Return HTML view
+                from django.template.response import TemplateResponse
+                return TemplateResponse(request, 'pdt_libros_errors.html', {
+                    'initial_date': initial_date,
+                    'final_date': final_date,
+                    'total_libros': results['totalRecords'],
+                    'total_errors': results['totalError'],
+                    'errors': results['list']
+                })
+            else:
+                # Return JSON response
+                return Response(results)
+
+        except Exception as e:
+            logger.error(f"Error processing PDT errors: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error processing PDT errors',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class TipolibroViewSet(ModelViewSet):
     """
@@ -2821,5 +2868,41 @@ class CertDomiciliarioViewSet(ModelViewSet):
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+    # @action(detail=False, methods=['post'], url_path='pdt-correct-errors')
+    # def pdt_correct_errors(self, request):
+    #     """
+    #     Correct PDT errors for specified libros.
+        
+    #     Parameters:
+    #     - listError: JSON string containing error details to correct
+    #     """
+    #     try:
+    #         # Get error list from request
+    #         error_list = request.data.get('listError')
+    #         if not error_list:
+    #             return Response({
+    #                 'error': 'listError parameter is required'
+    #             }, status=status.HTTP_400_BAD_REQUEST)
+
+    #         # Parse error list
+    #         import json
+    #         if isinstance(error_list, str):
+    #             error_list = json.loads(error_list)
+
+    #         # Process corrections
+    #         from .services.pdt_libros_service import PdtLibrosService
+    #         pdt_service = PdtLibrosService('', '')  # Dates not needed for correction
+    #         result = pdt_service.correct_errors(error_list)
+
+    #         return Response(result)
+
+    #     except Exception as e:
+    #         logger.error(f"Error correcting PDT errors: {str(e)}", exc_info=True)
+    #         return Response({
+    #             'error': 'Error correcting PDT errors',
+    #             'detail': str(e)
+    #         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
