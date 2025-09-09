@@ -1,5 +1,6 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
+from .services.pdt_libros_service import PdtLibrosService
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
 from ducumentation.extraprotocolares.permiso_viajes import PermisosViajeReportService
@@ -2699,6 +2700,8 @@ class LibrosViewSet(ModelViewSet):
         Parameters:
         - initialDate: Start date (DD/MM/YYYY)
         - finalDate: End date (DD/MM/YYYY)
+        - page: Page number (default: 1)
+        - page_size: Number of items per page (default: 10)
         """
         try:
             # Get and validate parameters
@@ -2711,7 +2714,6 @@ class LibrosViewSet(ModelViewSet):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Process PDT errors
-            from .services.pdt_libros_service import PdtLibrosService
             pdt_service = PdtLibrosService(initial_date, final_date)
             pdt_service.load_data()
             results = pdt_service.get_results()
@@ -2728,8 +2730,21 @@ class LibrosViewSet(ModelViewSet):
                     'errors': results['list']
                 })
             else:
-                # Return JSON response
-                return Response(results)
+                # Paginate the results
+                from rest_framework.pagination import PageNumberPagination
+                paginator = PageNumberPagination()
+                paginator.page_size = int(request.query_params.get('page_size', 10))
+                paginated_errors = paginator.paginate_queryset(results['list'], request)
+
+                # Return paginated JSON response
+                return Response({
+                    'count': len(results['list']),
+                    'total_pages': (len(results['list']) + paginator.page_size - 1) // paginator.page_size,
+                    'current_page': int(request.query_params.get('page', 1)),
+                    'page_size': paginator.page_size,
+                    'results': paginated_errors,
+                    'summary': results['summary']
+                })
 
         except Exception as e:
             logger.error(f"Error processing PDT errors: {str(e)}", exc_info=True)

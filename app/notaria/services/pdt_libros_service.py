@@ -97,7 +97,16 @@ class PdtLibrosService:
         return {
             'list': self.errors,
             'totalError': len(self.errors),
-            'totalRecords': self.total_libros
+            'totalRecords': self.total_libros,
+            'summary': {
+                'total_kardex': self.total_libros,
+                'total_errors': len(self.errors),
+                'error_breakdown': {
+                    'missing_solicitante': len([e for e in self.errors if 'solicitante' in e['errorItem'].lower()]),
+                    'missing_document': len([e for e in self.errors if 'documento' in e['errorItem'].lower()]),
+                    'missing_empresa': len([e for e in self.errors if 'empresa' in e['errorItem'].lower()]),
+                }
+            }
         }
 
     def correct_errors(self, error_list: List[Dict[str, Any]]) -> Dict[str, Any]:
