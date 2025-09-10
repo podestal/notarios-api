@@ -18,6 +18,7 @@ class BookSearchService:
         # Initialize error tracking
         self.book_errors = {}  # {book_id: [errors]}
         self.book_observations = {}  # {book_id: [observations]}
+        self.pdt_errors = {}  # {book_id: [pdt_errors]}
         # Initialize batch processing state
         self.search_id = None
         self.all_book_ids = []  # Store all book IDs in order
@@ -56,6 +57,7 @@ class BookSearchService:
             # Reset error tracking lists and state
             self.book_errors = {}
             self.book_observations = {}
+            self.pdt_errors = {} # Reset PDT errors
             self.current_page = 1
             
             # Log incoming filters
@@ -337,6 +339,7 @@ class BookSearchService:
             book_id = str(book['id'])
             self.book_errors[book_id] = []
             self.book_observations[book_id] = []
+            self.pdt_errors[book_id] = [] # Reset PDT errors for each book
             
             # Validate book data
             self._validate_book_data(book)
@@ -350,6 +353,10 @@ class BookSearchService:
     def _validate_book_data(self, book: Dict):
         """Validate book data and track errors"""
         book_id = str(book['id'])
+        
+        # Reset PDT errors for this book
+        if book_id not in self.pdt_errors:
+            self.pdt_errors[book_id] = []
         
         # Validate required fields for all books
         required_fields = ['libro', 'fechaIngreso', 'idtiplib', 'descripcionTipoLibro']
@@ -379,7 +386,29 @@ class BookSearchService:
             self._add_error(book_id, "Libro no enviado a SISGEN")
         elif estado_sisgen == 3:
             self._add_error(book_id, "Error en envío a SISGEN")
-            
+
+        # PDT Validation
+        self._validate_pdt_data(book)
+
+    def _validate_pdt_data(self, book: Dict):
+        """Validate PDT-specific requirements"""
+        book_id = str(book['id'])
+        
+        # Check for solicitante
+        if not book.get('solicitante'):
+            self._add_pdt_error(book_id, "Falta nombre del solicitante")
+        
+        # Check for document numbers
+        dni = book.get('dni')
+        ruc = book.get('ruc')
+        numdoc_plantilla = book.get('numdoc_plantilla')
+        if not dni and not ruc and not numdoc_plantilla:
+            self._add_pdt_error(book_id, "Falta documento de identidad (DNI/RUC)")
+        
+        # Check for empresa name if RUC exists
+        if ruc and not book.get('empresa'):
+            self._add_pdt_error(book_id, "Falta nombre de empresa para RUC")
+
     def _add_error(self, book_id: str, error: str):
         """Add error for a specific book"""
         if book_id not in self.book_errors:
@@ -391,6 +420,12 @@ class BookSearchService:
         if book_id not in self.book_observations:
             self.book_observations[book_id] = []
         self.book_observations[book_id].append(observation)
+
+    def _add_pdt_error(self, book_id: str, error: str):
+        """Add PDT error for a specific book"""
+        if book_id not in self.pdt_errors:
+            self.pdt_errors[book_id] = []
+        self.pdt_errors[book_id].append(error)
 
     def _format_single_book(self, book: Dict) -> Dict:
         """Format a single book record"""
@@ -416,7 +451,11 @@ class BookSearchService:
             'descripcionLibro': book['descripcionLibro'],
             'estadoSisgen': estado_display,
             'errores': self.book_errors.get(book_id, []),
-            'observaciones': self.book_observations.get(book_id, [])
+            'observaciones': self.book_observations.get(book_id, []),
+            'pdt_validation': {
+                'has_errors': bool(self.pdt_errors.get(book_id, [])),
+                'errors': self.pdt_errors.get(book_id, [])
+            }
         }
 
     def _clear_temp_table(self):
@@ -440,5 +479,6 @@ class BookSearchService:
         """Return current error tracking details"""
         return {
             'book_errors': self.book_errors,
-            'observations': self.book_observations
+            'observations': self.book_observations,
+            'pdt_errors': self.pdt_errors
         } 
