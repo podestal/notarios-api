@@ -25,6 +25,7 @@ from django.utils import timezone
 from datetime import datetime
 import logging
 from .services.uif_report_service import UifReportService
+from .services.pdt_file_service import PdtFileService
 
 logger = logging.getLogger(__name__)
 
@@ -2750,6 +2751,41 @@ class LibrosViewSet(ModelViewSet):
             logger.error(f"Error processing PDT errors: {str(e)}", exc_info=True)
             return Response({
                 'error': 'Error processing PDT errors',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='download-pdt')
+    def download_pdt_file(self, request):
+        """
+        Download PDT file for libros.
+        
+        Parameters:
+        - initialDate: Start date (DD/MM/YYYY)
+        - finalDate: End date (DD/MM/YYYY)
+        """
+        try:
+            # Get and validate parameters
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+            
+            if not initial_date or not final_date:
+                return Response({
+                    'error': 'Both initialDate and finalDate are required (DD/MM/YYYY format)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generate PDT file
+            pdt_service = PdtFileService(
+                initial_date=initial_date,
+                final_date=final_date,
+                file_type=PdtFileService.FILE_TYPE_LIB
+            )
+            
+            return pdt_service.generate_file()
+
+        except Exception as e:
+            logger.error(f"Error generating PDT file: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error generating PDT file',
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
