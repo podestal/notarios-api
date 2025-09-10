@@ -2641,6 +2641,27 @@ class LibrosViewSet(ModelViewSet):
         else:
             return report_service.generate_word_report(fechade, fechaa, orientation)
 
+    @action(detail=False, methods=['get'], url_path='by_numlibro')
+    def by_numlibro(self, request):
+        """
+        Get libros by numlibro.
+        """
+        numlibro = request.query_params.get('numlibro', '')
+        if not numlibro:
+            return Response(
+                {'error': 'numlibro is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        libro = self.queryset.filter(numlibro=numlibro).first()
+        if not libro:
+            return Response(
+                {'error': 'libro not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = self.serializer_class(libro)
+        return Response(serializer.data)
+
+
     def list(self, request, *args, **kwargs):
         dateFrom = request.query_params.get('dateFrom', '')
         dateTo = request.query_params.get('dateTo', '')
