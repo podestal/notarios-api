@@ -33,10 +33,10 @@ class PdtEscriturasService:
                 start_date = datetime.strptime(self.initial_date, '%Y-%m-%d').date()
                 end_date = datetime.strptime(self.final_date, '%Y-%m-%d').date()
 
-            # Get all data in one query
+            # First get base kardex records
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT DISTINCT 
+                    SELECT 
                         k.kardex,
                         k.idkardex,
                         k.fechaingreso,
@@ -55,52 +55,83 @@ class PdtEscriturasService:
                         t.actosunat,
                         t.actouif,
                         t.umbral,
-                        -- Add validation fields directly in the query
-                        IF(k.fechaescritura <= STR_TO_DATE(k.fechaconclusion,'%%d/%%m/%%Y'), 0, 1) AS fecha_validation,
-                        -- Check if bienes exist
-                        EXISTS(
-                            SELECT 1 FROM detallebienes db 
-                            WHERE db.kardex = k.kardex AND db.idtipacto = p.idtipoacto
-                        ) AS has_bienes,
-                        -- Check if medio pago exists
-                        EXISTS(
-                            SELECT 1 FROM detallemediopago dm 
-                            WHERE dm.kardex = k.kardex AND dm.tipacto = p.idtipoacto
-                        ) AS has_medio_pago,
-                        -- Check if formulario exists
-                        EXISTS(
-                            SELECT 1 FROM renta r
-                            LEFT JOIN formulario f ON f.idrenta = r.idrenta
-                            WHERE r.kardex = k.kardex
-                        ) AS has_formulario,
-                        -- Get contratantes info
-                        GROUP_CONCAT(
-                            DISTINCT CONCAT_WS('|', 
-                                cxa.idcontratante,
-                                cxa.parte,
-                                cxa.porcentaje,
-                                c.tipper,
-                                COALESCE(c.razonsocial, CONCAT_WS(' ', c.apepat, c.apemat, c.prinom, c.segnom))
-                            )
-                        ) AS contratantes_info
+                        IF(k.fechaescritura <= STR_TO_DATE(k.fechaconclusion,'%%d/%%m/%%Y'), 0, 1) AS fecha_validation
                     FROM kardex k
                     INNER JOIN patrimonial p ON k.kardex = p.kardex
                     LEFT JOIN tiposdeacto t ON t.idtipoacto = p.idtipoacto
-                    LEFT JOIN contratantesxacto cxa ON k.kardex = cxa.kardex
-                    LEFT JOIN cliente2 c ON cxa.idcontratante = c.idcontratante
                     WHERE k.idtipkar = 1  -- Escrituras
                     AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
                     BETWEEN %s AND %s
-                    GROUP BY k.kardex, k.idkardex, k.fechaingreso, k.codactos,
-                             k.numescritura, k.fechaescritura, k.fechaconclusion,
-                             p.itemmp, p.idmon, p.nminuta, p.importetrans,
-                             p.exhibiomp, p.tipocambio, p.idtipoacto,
-                             t.desacto, t.actosunat, t.actouif, t.umbral
                     ORDER BY k.kardex ASC
                 """, [start_date, end_date])
                 
                 rows = cursor.fetchall()
                 self.total_kardex = len(rows)
+
+                if not rows:
+                    return
+
+                # Get all kardex numbers for bulk queries
+                kardex_list = [row[0] for row in rows]
+                placeholders = ','.join(['%s'] * len(kardex_list))
+
+                # Get bienes info in bulk
+                cursor.execute(f"""
+                    SELECT DISTINCT kardex 
+                    FROM detallebienes 
+                    WHERE kardex IN ({placeholders})
+                """, kardex_list)
+                has_bienes = {row[0] for row in cursor.fetchall()}
+
+                # Get medio pago info in bulk
+                cursor.execute(f"""
+                    SELECT DISTINCT kardex 
+                    FROM detallemediopago 
+                    WHERE kardex IN ({placeholders})
+                """, kardex_list)
+                has_medio_pago = {row[0] for row in cursor.fetchall()}
+
+                # Get formulario info in bulk
+                cursor.execute(f"""
+                    SELECT DISTINCT r.kardex 
+                    FROM renta r
+                    JOIN formulario f ON f.idrenta = r.idrenta
+                    WHERE r.kardex IN ({placeholders})
+                """, kardex_list)
+                has_formulario = {row[0] for row in cursor.fetchall()}
+
+                # Get contratantes info in bulk
+                cursor.execute(f"""
+                    SELECT 
+                        cxa.kardex,
+                        cxa.idcontratante,
+                        cxa.porcentaje,
+                        CASE 
+                            WHEN c.tipper = 'N' THEN CONCAT_WS(' ', 
+                                NULLIF(c.prinom, ''),
+                                NULLIF(c.segnom, ''),
+                                NULLIF(c.apepat, ''),
+                                NULLIF(c.apemat, '')
+                            )
+                            ELSE c.razonsocial
+                        END as nombre,
+                        c.numdoc,
+                        c.tipper
+                    FROM contratantesxacto cxa
+                    JOIN cliente2 c ON cxa.idcontratante = c.idcontratante
+                    WHERE cxa.kardex IN ({placeholders})
+                """, kardex_list)
+                contratantes_info = {}
+                for row in cursor.fetchall():
+                    kardex, id_contratante, porcentaje, nombre, numdoc, tipo_per = row
+                    if kardex not in contratantes_info:
+                        contratantes_info[kardex] = []
+                    # Format person identifier based on type
+                    if tipo_per == 'N':  # Natural person
+                        person_id = f"{nombre.strip()} ({numdoc})" if numdoc else nombre.strip()
+                    else:  # Juridical person
+                        person_id = f"{nombre.strip()} (RUC: {numdoc})" if numdoc else nombre.strip()
+                    contratantes_info[kardex].append((id_contratante, porcentaje, person_id))
 
                 # Process all validations in memory
                 for row in rows:
@@ -111,10 +142,6 @@ class PdtEscriturasService:
                     acto = row[14]
                     acto_sunat = row[15]
                     fecha_validation = row[18]
-                    has_bienes = row[19]
-                    has_medio_pago = row[20]
-                    has_formulario = row[21]
-                    contratantes_info = row[22]
                     monto = row[10]
                     exhibio_mp = row[11]
                     item_mp = row[7]
@@ -146,7 +173,7 @@ class PdtEscriturasService:
                         )
 
                     # Validate bienes
-                    if monto and not has_bienes:
+                    if monto and kardex not in has_bienes:
                         self._add_error(
                             kardex=kardex,
                             id_kardex=id_kardex,
@@ -161,7 +188,7 @@ class PdtEscriturasService:
                         )
 
                     # Validate medio pago
-                    if exhibio_mp and not has_medio_pago:
+                    if exhibio_mp and kardex not in has_medio_pago:
                         self._add_error(
                             kardex=kardex,
                             id_kardex=id_kardex,
@@ -176,7 +203,7 @@ class PdtEscriturasService:
                         )
 
                     # Validate formulario for specific acts
-                    if acto_sunat in ('04', '03') and not has_formulario:
+                    if acto_sunat in ('04', '03') and kardex not in has_formulario:
                         self._add_error(
                             kardex=kardex,
                             id_kardex=id_kardex,
@@ -190,14 +217,13 @@ class PdtEscriturasService:
                         )
 
                     # Validate contratantes
-                    if contratantes_info:
-                        for contratante in contratantes_info.split(','):
-                            id_contratante, parte, porcentaje, tipo_per, nombre = contratante.split('|')
+                    if kardex in contratantes_info:
+                        for id_contratante, porcentaje, person_id in contratantes_info[kardex]:
                             if not porcentaje:
                                 self._add_error(
                                     kardex=kardex,
                                     id_kardex=id_kardex,
-                                    error_item=f"Falta porcentaje de participación para {nombre}",
+                                    error_item=f"Falta porcentaje de participación para {person_id}",
                                     act=acto,
                                     file_type=self.FILE_TYPE_OTG,
                                     writing_date=None,

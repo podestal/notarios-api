@@ -102,16 +102,32 @@ class PdtVehicularesService:
                         cxa.kardex,
                         cxa.idcontratante,
                         cxa.porcentaje,
-                        COALESCE(c.razonsocial, CONCAT_WS(' ', c.apepat, c.apemat, c.prinom, c.segnom)) as nombre
+                        CASE 
+                            WHEN c.tipper = 'N' THEN CONCAT_WS(' ', 
+                                NULLIF(c.prinom, ''),
+                                NULLIF(c.segnom, ''),
+                                NULLIF(c.apepat, ''),
+                                NULLIF(c.apemat, '')
+                            )
+                            ELSE c.razonsocial
+                        END as nombre,
+                        c.numdoc,
+                        c.tipper
                     FROM contratantesxacto cxa
                     JOIN cliente2 c ON cxa.idcontratante = c.idcontratante
                     WHERE cxa.kardex IN ({placeholders})
                 """, kardex_list)
                 contratantes_info = {}
                 for row in cursor.fetchall():
-                    if row[0] not in contratantes_info:
-                        contratantes_info[row[0]] = []
-                    contratantes_info[row[0]].append((row[1], row[2], row[3]))
+                    kardex, id_contratante, porcentaje, nombre, numdoc, tipo_per = row
+                    if kardex not in contratantes_info:
+                        contratantes_info[kardex] = []
+                    # Format person identifier based on type
+                    if tipo_per == 'N':  # Natural person
+                        person_id = f"{nombre.strip()} ({numdoc})" if numdoc else nombre.strip()
+                    else:  # Juridical person
+                        person_id = f"{nombre.strip()} (RUC: {numdoc})" if numdoc else nombre.strip()
+                    contratantes_info[kardex].append((id_contratante, porcentaje, person_id))
 
             # Process validations in memory with pre-fetched data
             for kardex, data in kardex_records.items():
@@ -211,12 +227,12 @@ class PdtVehicularesService:
 
                 # Validate contratantes
                 if kardex in contratantes_info:
-                    for id_contratante, porcentaje, nombre in contratantes_info[kardex]:
+                    for id_contratante, porcentaje, person_id in contratantes_info[kardex]:
                         if not porcentaje:
                             self._add_error(
                                 kardex=kardex,
                                 id_kardex=id_kardex,
-                                error_item=f"Falta porcentaje de participación para {nombre}",
+                                error_item=f"Falta porcentaje de participación para {person_id}",
                                 act=acto,
                                 file_type=self.FILE_TYPE_OTG,
                                 writing_date=None,
