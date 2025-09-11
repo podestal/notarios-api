@@ -27,6 +27,7 @@ import logging
 from .services.uif_report_service import UifReportService
 from .services.pdt_file_service import PdtFileService
 from .services.pdt_escrituras_service import PdtEscriturasService
+from .services.pdt_vehiculares_service import PdtVehicularesService
 
 logger = logging.getLogger(__name__)
 
@@ -1081,7 +1082,7 @@ class KardexViewSet(ModelViewSet):
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=False, methods=['get'], url_path='pdt-errors')
+    @action(detail=False, methods=['get'], url_path='pdt-escrituras')
     def pdt_errors(self, request):
         """
         Get PDT validation errors for escrituras in a date range.
@@ -1102,6 +1103,48 @@ class KardexViewSet(ModelViewSet):
 
             # Initialize PDT service
             pdt_service = PdtEscriturasService(initial_date, final_date)
+            pdt_service.load_data()
+            results = pdt_service.get_results()
+
+            # Get paginated results
+            page = self.paginate_queryset(results['list'])
+            if page is not None:
+                return self.get_paginated_response({
+                    'list': page,
+                    'totalError': results['totalError'],
+                    'totalRecords': results['totalRecords'],
+                    'summary': results['summary']
+                })
+
+            return Response(results)
+
+        except Exception as e:
+            return Response({
+                'error': 1,
+                'errorDescription': str(e)
+            }, status=500)
+
+    @action(detail=False, methods=['get'], url_path='pdt-vehiculares')
+    def pdt_vehiculares(self, request):
+        """
+        Get PDT validation errors for vehicular acts in a date range.
+        
+        Query Parameters:
+        - initialDate: Start date (DD/MM/YYYY)
+        - finalDate: End date (DD/MM/YYYY)
+        """
+        try:
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+
+            if not initial_date or not final_date:
+                return Response({
+                    'error': 1,
+                    'errorDescription': 'Se requieren las fechas inicial y final'
+                }, status=400)
+
+            # Initialize PDT service
+            pdt_service = PdtVehicularesService(initial_date, final_date)
             pdt_service.load_data()
             results = pdt_service.get_results()
 
