@@ -28,6 +28,7 @@ from .services.uif_report_service import UifReportService
 from .services.pdt_file_service import PdtFileService
 from .services.pdt_escrituras_service import PdtEscriturasService
 from .services.pdt_vehiculares_service import PdtVehicularesService
+from .services.pdt_garantias_service import PdtGarantiasService
 
 logger = logging.getLogger(__name__)
 
@@ -1145,6 +1146,48 @@ class KardexViewSet(ModelViewSet):
 
             # Initialize PDT service
             pdt_service = PdtVehicularesService(initial_date, final_date)
+            pdt_service.load_data()
+            results = pdt_service.get_results()
+
+            # Get paginated results
+            page = self.paginate_queryset(results['list'])
+            if page is not None:
+                return self.get_paginated_response({
+                    'list': page,
+                    'totalError': results['totalError'],
+                    'totalRecords': results['totalRecords'],
+                    'summary': results['summary']
+                })
+
+            return Response(results)
+
+        except Exception as e:
+            return Response({
+                'error': 1,
+                'errorDescription': str(e)
+            }, status=500)
+
+    @action(detail=False, methods=['get'], url_path='pdt-garantias')
+    def pdt_garantias(self, request):
+        """
+        Get PDT validation errors for garantías in a date range.
+        
+        Query Parameters:
+        - initialDate: Start date (DD/MM/YYYY)
+        - finalDate: End date (DD/MM/YYYY)
+        """
+        try:
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+
+            if not initial_date or not final_date:
+                return Response({
+                    'error': 1,
+                    'errorDescription': 'Se requieren las fechas inicial y final'
+                }, status=400)
+
+            # Initialize PDT service
+            pdt_service = PdtGarantiasService(initial_date, final_date)
             pdt_service.load_data()
             results = pdt_service.get_results()
 
