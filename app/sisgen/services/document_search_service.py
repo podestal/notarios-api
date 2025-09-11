@@ -11,6 +11,9 @@ from ..utils.exceptions import DocumentSearchException, ValidationException
 from ..utils.validators import SearchFiltersValidator
 from ..utils.constants import ESTADO_SISGEN_MAPPING, ERROR_MESSAGES
 from .uif_validation_service import UIFValidationService
+from notaria.services.pdt_escrituras_service import PdtEscriturasService
+from notaria.services.pdt_vehiculares_service import PdtVehicularesService
+from notaria.services.pdt_garantias_service import PdtGarantiasService
 import math
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,7 @@ class DocumentSearchService:
         self.kardex_errors = {}  # {kardex: [errors]}
         self.kardex_observations = {}  # {kardex: [observations]}
         self.person_errors = {}  # {kardex: [person_errors]}
+        self.pdt_errors = {}  # {kardex: [pdt_errors]}
         # Initialize UIF validation service
         self.uif_validator = UIFValidationService()
         # Initialize batch processing state
@@ -33,7 +37,15 @@ class DocumentSearchService:
         self.validated_filters = None
         self.current_page = 1
         self.batch_size = 10  # Fixed batch size
-    
+        # Initialize PDT services
+        self._init_pdt_services()
+
+    def _init_pdt_services(self):
+        """Initialize PDT services with None dates - will be set during validation"""
+        self.pdt_escrituras = PdtEscriturasService('', '')
+        self.pdt_vehiculares = PdtVehicularesService('', '')
+        self.pdt_garantias = PdtGarantiasService('', '')
+
     @classmethod
     def from_session_data(cls, session_data: Dict) -> 'DocumentSearchService':
         """Create service instance from session data"""
@@ -175,6 +187,7 @@ class DocumentSearchService:
             self.kardex_errors = {}
             self.kardex_observations = {}
             self.person_errors = {}
+            self.pdt_errors = {}
             
             # Get full document data for this page
             documents = self._execute_batch_query(page_kardex)
@@ -189,6 +202,11 @@ class DocumentSearchService:
                 self._validate_person_data(documents)
             except Exception as e:
                 self.logger.warning(f"Person validation warning: {str(e)}")
+                
+            try:
+                self._validate_pdt_data(documents)
+            except Exception as e:
+                self.logger.warning(f"PDT validation warning: {str(e)}")
             
             # Process documents
             processed_data = self._process_documents(documents, self.validated_filters)
@@ -374,7 +392,8 @@ class DocumentSearchService:
         return {
             'kardex_errors': self.kardex_errors,
             'observations': self.kardex_observations,
-            'person_errors': self.person_errors
+            'person_errors': self.person_errors,
+            'pdt_errors': self.pdt_errors
         }
 
     def _validate_document_data(self, documents: List[Dict]):
@@ -684,6 +703,94 @@ class DocumentSearchService:
         
         return base_query, params
     
+    def _validate_pdt_data(self, documents: List[Dict]):
+        """Validate PDT data for documents based on their tipkar"""
+        try:
+            # Group documents by tipkar
+            docs_by_tipkar = {
+                1: [],  # escrituras
+                3: [],  # vehiculares
+                4: []   # garantias
+            }
+            
+            # Reset PDT errors
+            self.pdt_errors = {}
+            
+            # Group documents and get date range
+            min_date = None
+            max_date = None
+            for doc in documents:
+                kardex = doc.get('kardex', '')
+                self.pdt_errors[kardex] = []
+                
+                tipkar = doc.get('idtipkar')
+                if tipkar in docs_by_tipkar:
+                    docs_by_tipkar[tipkar].append(doc)
+                    
+                    # Track date range
+                    fecha_concl = doc.get('fechaconclusion')
+                    if fecha_concl:
+                        try:
+                            fecha_dt = datetime.strptime(fecha_concl, '%d/%m/%Y')
+                            if min_date is None or fecha_dt < min_date:
+                                min_date = fecha_dt
+                            if max_date is None or fecha_dt > max_date:
+                                max_date = fecha_dt
+                        except ValueError:
+                            self.logger.warning(f"Invalid date format for kardex {kardex}: {fecha_concl}")
+            
+            if not min_date or not max_date:
+                self.logger.warning("No valid dates found for PDT validation")
+                return
+                
+            # Format dates for PDT services
+            start_date = min_date.strftime('%d/%m/%Y')
+            end_date = max_date.strftime('%d/%m/%Y')
+            
+            # Validate escrituras
+            if docs_by_tipkar[1]:
+                self.pdt_escrituras = PdtEscriturasService(start_date, end_date)
+                self.pdt_escrituras.load_data()
+                escrituras_results = self.pdt_escrituras.get_results()
+                self._process_pdt_results(escrituras_results, docs_by_tipkar[1])
+            
+            # Validate vehiculares
+            if docs_by_tipkar[3]:
+                self.pdt_vehiculares = PdtVehicularesService(start_date, end_date)
+                self.pdt_vehiculares.load_data()
+                vehiculares_results = self.pdt_vehiculares.get_results()
+                self._process_pdt_results(vehiculares_results, docs_by_tipkar[3])
+            
+            # Validate garantias
+            if docs_by_tipkar[4]:
+                self.pdt_garantias = PdtGarantiasService(start_date, end_date)
+                self.pdt_garantias.load_data()
+                garantias_results = self.pdt_garantias.get_results()
+                self._process_pdt_results(garantias_results, docs_by_tipkar[4])
+                
+        except Exception as e:
+            self.logger.error(f"Error in PDT validation: {str(e)}")
+            
+    def _process_pdt_results(self, results: Dict, documents: List[Dict]):
+        """Process PDT validation results and add errors to documents"""
+        if not results or 'list' not in results:
+            return
+            
+        # Create lookup of errors by kardex
+        errors_by_kardex = {}
+        for error in results['list']:
+            kardex = error.get('kardex')
+            if kardex:
+                if kardex not in errors_by_kardex:
+                    errors_by_kardex[kardex] = []
+                errors_by_kardex[kardex].append(error['errorItem'])
+        
+        # Add errors to documents
+        for doc in documents:
+            kardex = doc.get('kardex')
+            if kardex in errors_by_kardex:
+                self.pdt_errors[kardex].extend(errors_by_kardex[kardex])
+
     def _process_documents(self, documents: List[Dict], filters: Dict) -> List[Dict]:
         """Process and format document results"""
         processed = []
@@ -721,6 +828,7 @@ class DocumentSearchService:
         self.logger.debug(f"Available errors for this kardex: {self.kardex_errors.get(kardex, [])}")
         self.logger.debug(f"Available observations for this kardex: {self.kardex_observations.get(kardex, [])}")
         self.logger.debug(f"Available person errors for this kardex: {self.person_errors.get(kardex, [])}")
+        self.logger.debug(f"Available PDT errors for this kardex: {self.pdt_errors.get(kardex, [])}")
         
         # Format date safely
         fecha_escritura = doc['fechaescritura']
@@ -775,15 +883,13 @@ class DocumentSearchService:
                 'errors': uif_validation['uif_errors'],
                 'observations': uif_validation['uif_observations'],
                 'patrimonial_data': uif_validation['patrimonial_data']
+            },
+            # Add PDT validation results
+            'pdt_validation': {
+                'has_errors': bool(self.pdt_errors.get(kardex, [])),
+                'errors': self.pdt_errors.get(kardex, [])
             }
         }
-        
-        # Debug log the final document
-        self.logger.debug(f"Final formatted document for kardex {kardex}:")
-        self.logger.debug(f"Errores: {formatted_doc['errores']}")
-        self.logger.debug(f"Observaciones: {formatted_doc['observaciones']}")
-        self.logger.debug(f"Personas: {formatted_doc['personas']}")
-        self.logger.debug(f"UIF Validation: {formatted_doc['uif_validation']}")
         
         return formatted_doc
     
