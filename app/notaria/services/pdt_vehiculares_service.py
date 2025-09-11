@@ -33,10 +33,10 @@ class PdtVehicularesService:
                 start_date = datetime.strptime(self.initial_date, '%Y-%m-%d').date()
                 end_date = datetime.strptime(self.final_date, '%Y-%m-%d').date()
 
-            # Get all data in one query
+            # First get kardex records - this is our base set
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT DISTINCT 
+                    SELECT 
                         k.kardex,
                         k.idkardex,
                         k.fechaingreso,
@@ -46,194 +46,184 @@ class PdtVehicularesService:
                         k.fechaconclusion,
                         p.itemmp,
                         p.idmon,
-                        p.nminuta,
                         p.importetrans,
                         p.exhibiomp,
-                        p.tipocambio,
-                        p.idtipoacto,
                         t.desacto,
                         t.actosunat,
-                        t.actouif,
-                        t.umbral,
-                        -- Add validation fields directly in the query
-                        IF(k.fechaescritura <= STR_TO_DATE(k.fechaconclusion,'%%d/%%m/%%Y'), 0, 1) AS fecha_validation,
-                        -- Check if vehicular details exist
-                        EXISTS(
-                            SELECT 1 FROM detallevehicular dv 
-                            WHERE dv.kardex = k.kardex AND dv.idtipacto = p.idtipoacto
-                        ) AS has_vehiculo,
-                        -- Check if medio pago exists
-                        EXISTS(
-                            SELECT 1 FROM detallemediopago dm 
-                            WHERE dm.kardex = k.kardex AND dm.tipacto = p.idtipoacto
-                        ) AS has_medio_pago,
-                        -- Check if formulario exists
-                        EXISTS(
-                            SELECT 1 FROM renta r
-                            LEFT JOIN formulario f ON f.idrenta = r.idrenta
-                            WHERE r.kardex = k.kardex
-                        ) AS has_formulario,
-                        -- Get vehicular details
-                        GROUP_CONCAT(
-                            DISTINCT CONCAT_WS('|',
-                                dv.detveh,
-                                dv.numplaca,
-                                dv.numserie,
-                                dv.motor,
-                                dv.fecinsc
-                            )
-                        ) AS vehiculo_info,
-                        -- Get contratantes info
-                        GROUP_CONCAT(
-                            DISTINCT CONCAT_WS('|', 
-                                cxa.idcontratante,
-                                cxa.parte,
-                                cxa.porcentaje,
-                                c.tipper,
-                                COALESCE(c.razonsocial, CONCAT_WS(' ', c.apepat, c.apemat, c.prinom, c.segnom))
-                            )
-                        ) AS contratantes_info
+                        IF(k.fechaescritura <= STR_TO_DATE(k.fechaconclusion,'%%d/%%m/%%Y'), 0, 1) AS fecha_validation
                     FROM kardex k
                     INNER JOIN patrimonial p ON k.kardex = p.kardex
                     LEFT JOIN tiposdeacto t ON t.idtipoacto = p.idtipoacto
-                    LEFT JOIN detallevehicular dv ON k.kardex = dv.kardex AND dv.idtipacto = p.idtipoacto
-                    LEFT JOIN contratantesxacto cxa ON k.kardex = cxa.kardex
-                    LEFT JOIN cliente2 c ON cxa.idcontratante = c.idcontratante
                     WHERE k.idtipkar = 3  -- Vehicular acts
-                    AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
-                    BETWEEN %s AND %s
-                    GROUP BY k.kardex, k.idkardex, k.fechaingreso, k.codactos,
-                             k.numescritura, k.fechaescritura, k.fechaconclusion,
-                             p.itemmp, p.idmon, p.nminuta, p.importetrans,
-                             p.exhibiomp, p.tipocambio, p.idtipoacto,
-                             t.desacto, t.actosunat, t.actouif, t.umbral
-                    ORDER BY k.kardex ASC
+                    AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') BETWEEN %s AND %s
+                    ORDER BY k.kardex
                 """, [start_date, end_date])
                 
-                rows = cursor.fetchall()
-                self.total_kardex = len(rows)
+                kardex_records = {row[0]: row for row in cursor.fetchall()}
+                self.total_kardex = len(kardex_records)
 
-                # Process all validations in memory
-                for row in rows:
-                    kardex = row[0]
-                    id_kardex = row[1]
-                    num_escritura = row[4]
-                    fecha_escritura = row[5]
-                    acto = row[14]
-                    acto_sunat = row[15]
-                    fecha_validation = row[18]
-                    has_vehiculo = row[19]
-                    has_medio_pago = row[20]
-                    has_formulario = row[21]
-                    vehiculo_info = row[22]
-                    contratantes_info = row[23]
-                    monto = row[10]
-                    exhibio_mp = row[11]
-                    item_mp = row[7]
+                if not kardex_records:
+                    return
 
-                    # Validate escritura number
-                    if not num_escritura or num_escritura == '0':
-                        self._add_error(
-                            kardex=kardex,
-                            id_kardex=id_kardex,
-                            error_item="Número de escritura no puede ser cero",
-                            act=acto or "No especificado",
-                            file_type=self.FILE_TYPE_ACT,
-                            writing_date=fecha_escritura,
-                            id_contractor=None
-                        )
+                # Get vehicle info in bulk
+                kardex_list = list(kardex_records.keys())
+                placeholders = ','.join(['%s'] * len(kardex_list))
+                cursor.execute(f"""
+                    SELECT 
+                        kardex,
+                        COUNT(*) > 0 as has_vehiculo,
+                        MAX(CASE WHEN numplaca IS NOT NULL OR numserie IS NOT NULL OR motor IS NOT NULL THEN 1 ELSE 0 END) as has_valid_info
+                    FROM detallevehicular 
+                    WHERE kardex IN ({placeholders})
+                    GROUP BY kardex
+                """, kardex_list)
+                vehiculo_info = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
 
-                    # Validate conclusion date
-                    if fecha_validation == 1:
-                        self._add_error(
-                            kardex=kardex,
-                            id_kardex=id_kardex,
-                            error_item="La fecha de conclusión no puede ser menor que la fecha de escritura",
-                            act=acto or "No especificado",
-                            file_type=self.FILE_TYPE_ACT,
-                            writing_date=fecha_escritura,
-                            id_contractor=None,
-                            is_correctable=True,
-                            type_of_correction='AUTO'
-                        )
+                # Get medio pago info in bulk
+                cursor.execute(f"""
+                    SELECT DISTINCT kardex 
+                    FROM detallemediopago 
+                    WHERE kardex IN ({placeholders})
+                """, kardex_list)
+                has_medio_pago = {row[0] for row in cursor.fetchall()}
 
-                    # Validate vehicular details
-                    if not has_vehiculo:
-                        self._add_error(
-                            kardex=kardex,
-                            id_kardex=id_kardex,
-                            error_item="No existe vehículo, ingrese un vehículo",
-                            act=acto or "No especificado",
-                            file_type=self.FILE_TYPE_BIE,
-                            writing_date=None,
-                            id_contractor=None,
-                            is_correctable=True,
-                            type_of_correction='AUTO',
-                            item_mp=item_mp
-                        )
-                    elif vehiculo_info:
-                        # Validate vehicle details
-                        for vehiculo in vehiculo_info.split(','):
-                            detveh, placa, serie, motor, fecha_insc = vehiculo.split('|')
-                            if not any([placa, serie, motor]):
-                                self._add_error(
-                                    kardex=kardex,
-                                    id_kardex=id_kardex,
-                                    error_item="Debe ingresar al menos placa, serie o motor del vehículo",
-                                    act=acto,
-                                    file_type=self.FILE_TYPE_BIE,
-                                    writing_date=None,
-                                    id_contractor=None,
-                                    is_correctable=True,
-                                    type_of_correction='AUTO',
-                                    item_mp=item_mp
-                                )
+                # Get formulario info in bulk
+                cursor.execute(f"""
+                    SELECT DISTINCT r.kardex 
+                    FROM renta r
+                    JOIN formulario f ON f.idrenta = r.idrenta
+                    WHERE r.kardex IN ({placeholders})
+                """, kardex_list)
+                has_formulario = {row[0] for row in cursor.fetchall()}
 
-                    # Validate medio pago
-                    if exhibio_mp and not has_medio_pago:
-                        self._add_error(
-                            kardex=kardex,
-                            id_kardex=id_kardex,
-                            error_item="Si exhibió medio de pago, por favor ingrese el registro",
-                            act=acto,
-                            file_type=self.FILE_TYPE_MP,
-                            writing_date=None,
-                            id_contractor=None,
-                            is_correctable=True,
-                            type_of_correction='AUTO',
-                            item_mp=item_mp
-                        )
+                # Get contratantes info in bulk
+                cursor.execute(f"""
+                    SELECT 
+                        cxa.kardex,
+                        cxa.idcontratante,
+                        cxa.porcentaje,
+                        COALESCE(c.razonsocial, CONCAT_WS(' ', c.apepat, c.apemat, c.prinom, c.segnom)) as nombre
+                    FROM contratantesxacto cxa
+                    JOIN cliente2 c ON cxa.idcontratante = c.idcontratante
+                    WHERE cxa.kardex IN ({placeholders})
+                """, kardex_list)
+                contratantes_info = {}
+                for row in cursor.fetchall():
+                    if row[0] not in contratantes_info:
+                        contratantes_info[row[0]] = []
+                    contratantes_info[row[0]].append((row[1], row[2], row[3]))
 
-                    # Validate formulario for specific acts
-                    if acto_sunat in ('04', '03') and not has_formulario:
-                        self._add_error(
-                            kardex=kardex,
-                            id_kardex=id_kardex,
-                            error_item="Falta número de formulario",
-                            act=acto,
-                            file_type=self.FILE_TYPE_FORM,
-                            writing_date=None,
-                            id_contractor=None,
-                            is_correctable=True,
-                            type_of_correction='AUTO'
-                        )
+            # Process validations in memory with pre-fetched data
+            for kardex, data in kardex_records.items():
+                id_kardex = data[1]
+                num_escritura = data[4]
+                fecha_escritura = data[5]
+                acto = data[11]
+                acto_sunat = data[12]
+                fecha_validation = data[13]
+                monto = data[9]
+                exhibio_mp = data[10]
+                item_mp = data[7]
 
-                    # Validate contratantes
-                    if contratantes_info:
-                        for contratante in contratantes_info.split(','):
-                            id_contratante, parte, porcentaje, tipo_per, nombre = contratante.split('|')
-                            if not porcentaje:
-                                self._add_error(
-                                    kardex=kardex,
-                                    id_kardex=id_kardex,
-                                    error_item=f"Falta porcentaje de participación para {nombre}",
-                                    act=acto,
-                                    file_type=self.FILE_TYPE_OTG,
-                                    writing_date=None,
-                                    id_contractor=id_contratante,
-                                    is_correctable=True,
-                                    type_of_correction='AUTO'
-                                )
+                # Validate escritura number
+                if not num_escritura or num_escritura == '0':
+                    self._add_error(
+                        kardex=kardex,
+                        id_kardex=id_kardex,
+                        error_item="Número de escritura no puede ser cero",
+                        act=acto or "No especificado",
+                        file_type=self.FILE_TYPE_ACT,
+                        writing_date=fecha_escritura,
+                        id_contractor=None
+                    )
+
+                # Validate conclusion date
+                if fecha_validation == 1:
+                    self._add_error(
+                        kardex=kardex,
+                        id_kardex=id_kardex,
+                        error_item="La fecha de conclusión no puede ser menor que la fecha de escritura",
+                        act=acto or "No especificado",
+                        file_type=self.FILE_TYPE_ACT,
+                        writing_date=fecha_escritura,
+                        id_contractor=None,
+                        is_correctable=True,
+                        type_of_correction='AUTO'
+                    )
+
+                # Validate vehicular details
+                has_vehiculo, has_valid_info = vehiculo_info.get(kardex, (False, False))
+                if not has_vehiculo:
+                    self._add_error(
+                        kardex=kardex,
+                        id_kardex=id_kardex,
+                        error_item="No existe vehículo, ingrese un vehículo",
+                        act=acto or "No especificado",
+                        file_type=self.FILE_TYPE_BIE,
+                        writing_date=None,
+                        id_contractor=None,
+                        is_correctable=True,
+                        type_of_correction='AUTO',
+                        item_mp=item_mp
+                    )
+                elif not has_valid_info:
+                    self._add_error(
+                        kardex=kardex,
+                        id_kardex=id_kardex,
+                        error_item="Debe ingresar al menos placa, serie o motor del vehículo",
+                        act=acto,
+                        file_type=self.FILE_TYPE_BIE,
+                        writing_date=None,
+                        id_contractor=None,
+                        is_correctable=True,
+                        type_of_correction='AUTO',
+                        item_mp=item_mp
+                    )
+
+                # Validate medio pago
+                if exhibio_mp and kardex not in has_medio_pago:
+                    self._add_error(
+                        kardex=kardex,
+                        id_kardex=id_kardex,
+                        error_item="Si exhibió medio de pago, por favor ingrese el registro",
+                        act=acto,
+                        file_type=self.FILE_TYPE_MP,
+                        writing_date=None,
+                        id_contractor=None,
+                        is_correctable=True,
+                        type_of_correction='AUTO',
+                        item_mp=item_mp
+                    )
+
+                # Validate formulario for specific acts
+                if acto_sunat in ('04', '03') and kardex not in has_formulario:
+                    self._add_error(
+                        kardex=kardex,
+                        id_kardex=id_kardex,
+                        error_item="Falta número de formulario",
+                        act=acto,
+                        file_type=self.FILE_TYPE_FORM,
+                        writing_date=None,
+                        id_contractor=None,
+                        is_correctable=True,
+                        type_of_correction='AUTO'
+                    )
+
+                # Validate contratantes
+                if kardex in contratantes_info:
+                    for id_contratante, porcentaje, nombre in contratantes_info[kardex]:
+                        if not porcentaje:
+                            self._add_error(
+                                kardex=kardex,
+                                id_kardex=id_kardex,
+                                error_item=f"Falta porcentaje de participación para {nombre}",
+                                act=acto,
+                                file_type=self.FILE_TYPE_OTG,
+                                writing_date=None,
+                                id_contractor=id_contratante,
+                                is_correctable=True,
+                                type_of_correction='AUTO'
+                            )
 
         except Exception as e:
             raise Exception(f"Error loading vehicular data: {str(e)}")
