@@ -1478,6 +1478,8 @@ class ContratantesViewSet(ModelViewSet):
             c.condicion.split('.')[0] for c in contratantes
         )
 
+        print('contratantes_tipoactos', contratantes_tipoactos)
+
         condicion_map = {
             c['idcondicion']: c
             for c in models.Actocondicion.objects.filter(
@@ -1515,10 +1517,51 @@ class ContratantesxactoViewSet(ModelViewSet):
     serializer_class = serializers.ContratantesxactoSerializer
     pagination_class = pagination.KardexPagination
 
-    # def get_serializer_class(self):
-    #     if self.request.method == 'POST':
-    #         return serializers.CreateContratantesxactoSerializer
-    #     return serializers.ContratantesxactoSerializer
+    @action(detail=False, methods=['get'])
+    def by_kardex(self, request):
+        """
+        Get Contratantesxacto records by kardex.
+        """
+        kardex = request.query_params.get('kardex')
+        if not kardex:
+            return Response(
+                {"error": "kardex parameter is required."},
+                status=400
+            )
+
+        contratantesxacto = models.Contratantesxacto.objects.filter(kardex=kardex)
+
+        if not contratantesxacto.exists():
+            return Response({}, status=200)
+
+        contratantes_ids = set(c.idcontratante for c in contratantesxacto)
+
+        contratantes_tipoactos = set(c.idcondicion for c in contratantesxacto)
+
+        condicion_map = {
+            c['idcondicion']: c
+            for c in models.Actocondicion.objects.filter(
+                idcondicion__in=contratantes_tipoactos
+            ).values('idcondicion', 'condicion')
+        }
+
+        clientes_map = {
+            c['idcontratante']: c
+            for c in models.Cliente2.objects.filter(
+                idcontratante__in=contratantes_ids
+            ).values(
+                'idcontratante', 'nombre', 'numdoc', 'idcliente', 'razonsocial'
+            )
+        }
+
+        serializer = serializers.GetContratantesxactoSerializerByKardex(
+            contratantesxacto,
+            many=True,
+            context={
+                'clientes_map': clientes_map,
+                'condicion_map': condicion_map
+            })
+        return Response(serializer.data)
 
 
 class ClienteViewSet(ModelViewSet):

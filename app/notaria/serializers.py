@@ -280,6 +280,73 @@ class ContratantesxactoSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
+    """
+    Serializer for the GetContratantesxactoSerializerByKardex model.
+    This serializer is used to validate and serialize the GetContratantesxactoSerializerByKardex data.
+    """
+
+    
+    cliente = serializers.SerializerMethodField()
+    cliente_id = serializers.SerializerMethodField()
+    condicion_str = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Contratantesxacto
+        fields = [
+            'id',
+            'idtipkar',
+            'kardex',
+            'idtipoacto',
+            'idcontratante',
+            'item',
+            'idcondicion',
+            'parte',
+            'porcentaje',
+            'uif',
+            'formulario',
+            'monto',
+            'opago',
+            'ofondo',
+            'montop',
+            'cliente',
+            'cliente_id',
+            'condicion_str'
+        ]
+
+    def get_cliente(self, obj):
+        clientes_map = self.context.get('clientes_map', {})
+        cliente = clientes_map.get(obj.idcontratante)
+        if cliente:
+            if cliente.get('razonsocial'):
+                return (
+                    f"{cliente['razonsocial']}"
+                )
+            elif cliente.get('nombre'):
+                return (
+                    f"{cliente['nombre']}"
+                )
+        return ''
+    
+    def get_cliente_id(self, obj):
+        clientes_map = self.context.get('clientes_map', {})
+        cliente = clientes_map.get(obj.idcontratante)
+        if cliente:
+            return (
+                f"{cliente['idcliente']}"
+            )
+        return ''
+    
+    def get_condicion_str(self, obj):
+        condicion_map = self.context.get('condicion_map', {})
+        condicion = condicion_map.get(obj.idcondicion)
+        if condicion:
+            return (
+                f"{condicion['condicion']}"
+            )
+        return ''
+
+
 class ClienteSerializer(serializers.ModelSerializer):
     """
     Serializer for the Cliente model.
