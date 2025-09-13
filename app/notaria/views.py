@@ -1309,8 +1309,8 @@ class KardexViewSet(ModelViewSet):
                         importe_trans = 0
                     
                     # Calculate percentage and amount distributions
-                    vendedor_percentages = self._divide_evenly(numero_vendedores, 100.0)
-                    comprador_percentages = self._divide_evenly(numero_compradores, 100.0)
+                    vendedor_percentages = self._divide_evenly(numero_vendedores, 100)
+                    comprador_percentages = self._divide_evenly(numero_compradores, 100)
                     vendedor_amounts = self._divide_evenly(numero_vendedores, importe_trans)
                     comprador_amounts = self._divide_evenly(numero_compradores, importe_trans)
                     
@@ -1597,8 +1597,8 @@ class KardexViewSet(ModelViewSet):
                         importe_trans = 0
                     
                     # Calculate distributions
-                    vendedor_percentages = self._divide_evenly(numero_vendedores, 100.0)
-                    comprador_percentages = self._divide_evenly(numero_compradores, 100.0)
+                    vendedor_percentages = self._divide_evenly(numero_vendedores, 100)
+                    comprador_percentages = self._divide_evenly(numero_compradores, 100)
                     vendedor_amounts = self._divide_evenly(numero_vendedores, importe_trans)
                     comprador_amounts = self._divide_evenly(numero_compradores, importe_trans)
                     
