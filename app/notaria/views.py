@@ -1228,229 +1228,236 @@ class KardexViewSet(ModelViewSet):
             # Get current date for modification
             fecha_modificacion = datetime.now().strftime('%d/%m/%Y')
             
-            # Get detalle_actos_kardex records for this kardex
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT * FROM detalle_actos_kardex 
-                    WHERE kardex = %s
-                """, [kardex])
+            # Get detalle_actos_kardex records for this kardex using ORM
+            detalle_actos = models.DetalleActosKardex.objects.filter(kardex=kardex)
+            
+            if not detalle_actos.exists():
+                return Response({
+                    'error': 1,
+                    'errorDescription': 'No se encontraron actos para este kardex'
+                }, status=404)
+            
+            results = []
+            updates_needed = {
+                'patrimonial': [],
+                'contratantesxacto_conditions': [],
+                'contratantesxacto_percentages': [],
+                'kardex_modification': []
+            }
+            
+            for detalle_acto in detalle_actos:
+                item = detalle_acto.item
+                kardex_val = detalle_acto.kardex
+                idtipoacto = detalle_acto.idtipoacto
                 
-                detalle_actos = cursor.fetchall()
-                if not detalle_actos:
-                    return Response({
-                        'error': 1,
-                        'errorDescription': 'No se encontraron actos para este kardex'
-                    }, status=404)
+                # 1. UPDATE patrimonial SET item = ? WHERE kardex = ? AND idtipoacto = ?
+                updates_needed['patrimonial'].append({
+                    'item': item,
+                    'kardex': kardex_val,
+                    'idtipoacto': idtipoacto
+                })
                 
-                results = []
-                updates_needed = {
-                    'patrimonial': [],
-                    'contratantesxacto_conditions': [],
-                    'contratantesxacto_percentages': [],
-                    'kardex_modification': []
-                }
+                # 2. Get actocondicion data and update contratantesxacto conditions
+                acto_condiciones = models.Actocondicion.objects.filter(idtipoacto=idtipoacto)
                 
-                for detalle_row in detalle_actos:
-                    item = detalle_row[1]  # item
-                    kardex_val = detalle_row[0]  # kardex
-                    idtipoacto = detalle_row[2]  # idtipoacto
-                    
-                    # 1. UPDATE patrimonial SET item = ? WHERE kardex = ? AND idtipoacto = ?
-                    updates_needed['patrimonial'].append({
-                        'item': item,
+                for condicion in acto_condiciones:
+                    updates_needed['contratantesxacto_conditions'].append({
+                        'parte': condicion.parte,
+                        'uif': condicion.uif,
+                        'formulario': condicion.formulario,
+                        'montop': condicion.montop,
+                        'idcondicion': condicion.idcondicion,
                         'kardex': kardex_val,
                         'idtipoacto': idtipoacto
                     })
+                
+                # 3. Calculate percentages and amounts
+                # Get participants by parte (1 = vendedor/otorgante, 2 = comprador/beneficiario)
+                vendedores = models.Contratantesxacto.objects.filter(
+                    kardex=kardex_val, 
+                    parte='1'
+                )
+                numero_vendedores = vendedores.count()
+                
+                compradores = models.Contratantesxacto.objects.filter(
+                    kardex=kardex_val, 
+                    parte='2'
+                )
+                numero_compradores = compradores.count()
+                
+                # Get transaction amount
+                try:
+                    patrimonial = models.Patrimonial.objects.get(
+                        idtipoacto=idtipoacto, 
+                        item=item
+                    )
+                    importe_trans = float(patrimonial.importetrans) if patrimonial.importetrans else 0
+                except models.Patrimonial.DoesNotExist:
+                    importe_trans = 0
+                
+                # Calculate percentage and amount distributions
+                vendedor_percentages = self._divide_evenly(numero_vendedores, 100.0)
+                comprador_percentages = self._divide_evenly(numero_compradores, 100.0)
+                vendedor_amounts = self._divide_evenly(numero_vendedores, importe_trans)
+                comprador_amounts = self._divide_evenly(numero_compradores, importe_trans)
+                
+                # Prepare updates for vendedores (parte = 1)
+                for i, vendedor in enumerate(vendedores):
+                    percentage = vendedor_percentages[i] if i < len(vendedor_percentages) else 0
+                    amount = vendedor_amounts[i] if i < len(vendedor_amounts) else 0
                     
-                    # 2. Get actocondicion data and update contratantesxacto conditions
-                    cursor.execute("""
-                        SELECT * FROM actocondicion 
-                        WHERE idtipoacto = %s
-                    """, [idtipoacto])
+                    updates_needed['contratantesxacto_percentages'].append({
+                        'porcentaje': percentage,
+                        'monto': amount,
+                        'item': item,
+                        'parte': '1',
+                        'idcontratante': vendedor.idcontratante,
+                        'idtipoacto': idtipoacto,
+                        'participant_type': 'VENDEDOR/OTORGANTE'
+                    })
+                
+                # Prepare updates for compradores (parte = 2)
+                for i, comprador in enumerate(compradores):
+                    percentage = comprador_percentages[i] if i < len(comprador_percentages) else 0
+                    amount = comprador_amounts[i] if i < len(comprador_amounts) else 0
                     
-                    acto_condiciones = cursor.fetchall()
-                    for condicion_row in acto_condiciones:
-                        idcondicion = condicion_row[0]  # idcondicion
-                        parte = condicion_row[2]  # parte
-                        uif = condicion_row[3]  # uif
-                        formulario = condicion_row[4]  # formulario
-                        montop = condicion_row[5]  # montop
-                        
-                        # UPDATE contratantesxacto SET parte=?, uif=?, formulario=?, montop=? 
-                        # WHERE idcondicion=? AND kardex=? AND idtipoacto=?
-                        updates_needed['contratantesxacto_conditions'].append({
-                            'parte': parte,
-                            'uif': uif,
-                            'formulario': formulario,
-                            'montop': montop,
-                            'idcondicion': idcondicion,
-                            'kardex': kardex_val,
-                            'idtipoacto': idtipoacto
-                        })
-                    
-                    # 3. Calculate percentages and amounts
-                    # Get participants by parte (1 = vendedor/otorgante, 2 = comprador/beneficiario)
-                    cursor.execute("""
-                        SELECT * FROM contratantesxacto 
-                        WHERE item = %s AND parte = '1'
-                    """, [item])
-                    vendedores = cursor.fetchall()
-                    numero_vendedores = len(vendedores)
-                    
-                    cursor.execute("""
-                        SELECT * FROM contratantesxacto 
-                        WHERE item = %s AND parte = '2'
-                    """, [item])
-                    compradores = cursor.fetchall()
-                    numero_compradores = len(compradores)
-                    
-                    # Get transaction amount
-                    cursor.execute("""
-                        SELECT importetrans FROM patrimonial 
-                        WHERE idtipoacto = %s AND item = %s
-                    """, [idtipoacto, item])
-                    importe_result = cursor.fetchone()
-                    importe_trans = float(importe_result[0]) if importe_result and importe_result[0] else 0
-                    
-                    # Calculate percentage and amount distributions
-                    vendedor_percentages = self._divide_evenly(numero_vendedores, 100.0)
-                    comprador_percentages = self._divide_evenly(numero_compradores, 100.0)
-                    vendedor_amounts = self._divide_evenly(numero_vendedores, importe_trans)
-                    comprador_amounts = self._divide_evenly(numero_compradores, importe_trans)
-                    
-                    # Prepare updates for vendedores (parte = 1)
-                    for i, vendedor in enumerate(vendedores):
-                        idcontratante = vendedor[2]  # idcontratante
-                        percentage = vendedor_percentages[i] if i < len(vendedor_percentages) else 0
-                        amount = vendedor_amounts[i] if i < len(vendedor_amounts) else 0
-                        
-                        updates_needed['contratantesxacto_percentages'].append({
-                            'porcentaje': percentage,
-                            'monto': amount,
-                            'item': item,
-                            'parte': '1',
-                            'idcontratante': idcontratante,
-                            'idtipoacto': idtipoacto,
-                            'participant_type': 'VENDEDOR/OTORGANTE'
-                        })
-                    
-                    # Prepare updates for compradores (parte = 2)
-                    for i, comprador in enumerate(compradores):
-                        idcontratante = comprador[2]  # idcontratante
-                        percentage = comprador_percentages[i] if i < len(comprador_percentages) else 0
-                        amount = comprador_amounts[i] if i < len(comprador_amounts) else 0
-                        
-                        updates_needed['contratantesxacto_percentages'].append({
-                            'porcentaje': percentage,
-                            'monto': amount,
-                            'item': item,
-                            'parte': '2',
-                            'idcontratante': idcontratante,
-                            'idtipoacto': idtipoacto,
-                            'participant_type': 'COMPRADOR/BENEFICIARIO'
-                        })
-                    
-                    # Get participant names for display
-                    participant_details = []
-                    for vendedor in vendedores:
-                        cursor.execute("""
-                            SELECT tipper, apepat, apemat, prinom, segnom, razonsocial 
-                            FROM cliente2 WHERE idcontratante = %s
-                        """, [vendedor[2]])
-                        cliente = cursor.fetchone()
-                        if cliente:
-                            if cliente[0] == 'N':  # Natural person
-                                name = f"{cliente[2]} {cliente[3]} {cliente[1]} {cliente[4]}".strip()
-                            else:  # Juridical person
-                                name = cliente[5] or ''
-                            participant_details.append({
-                                'idcontratante': vendedor[2],
-                                'name': name.upper(),
-                                'type': 'VENDEDOR/OTORGANTE',
-                                'parte': '1',
-                                'gets_percentage': True,
-                                'percentage': vendedor_percentages[vendedores.index(vendedor)] if vendedores.index(vendedor) < len(vendedor_percentages) else 0,
-                                'amount': vendedor_amounts[vendedores.index(vendedor)] if vendedores.index(vendedor) < len(vendedor_amounts) else 0
-                            })
-                    
-                    for comprador in compradores:
-                        cursor.execute("""
-                            SELECT tipper, apepat, apemat, prinom, segnom, razonsocial 
-                            FROM cliente2 WHERE idcontratante = %s
-                        """, [comprador[2]])
-                        cliente = cursor.fetchone()
-                        if cliente:
-                            if cliente[0] == 'N':  # Natural person
-                                name = f"{cliente[2]} {cliente[3]} {cliente[1]} {cliente[4]}".strip()
-                            else:  # Juridical person
-                                name = cliente[5] or ''
-                            participant_details.append({
-                                'idcontratante': comprador[2],
-                                'name': name.upper(),
-                                'type': 'COMPRADOR/BENEFICIARIO',
-                                'parte': '2',
-                                'gets_percentage': True,
-                                'percentage': comprador_percentages[compradores.index(comprador)] if compradores.index(comprador) < len(comprador_percentages) else 0,
-                                'amount': comprador_amounts[compradores.index(comprador)] if compradores.index(comprador) < len(comprador_amounts) else 0
-                            })
-                    
-                    # Get other participants (representantes, etc.) who don't get percentages
-                    cursor.execute("""
-                        SELECT cxa.*, c.tipper, c.apepat, c.apemat, c.prinom, c.segnom, c.razonsocial
-                        FROM contratantesxacto cxa
-                        JOIN cliente2 c ON cxa.idcontratante = c.idcontratante
-                        WHERE cxa.item = %s AND cxa.parte NOT IN ('1', '2')
-                    """, [item])
-                    otros_participantes = cursor.fetchall()
-                    
-                    for participante in otros_participantes:
-                        if participante[7] == 'N':  # Natural person
-                            name = f"{participante[9]} {participante[10]} {participante[8]} {participante[11]}".strip()
+                    updates_needed['contratantesxacto_percentages'].append({
+                        'porcentaje': percentage,
+                        'monto': amount,
+                        'item': item,
+                        'parte': '2',
+                        'idcontratante': comprador.idcontratante,
+                        'idtipoacto': idtipoacto,
+                        'participant_type': 'COMPRADOR/BENEFICIARIO'
+                    })
+                
+                # Get participant names for display
+                participant_details = []
+                
+                # Process vendedores
+                for i, vendedor in enumerate(vendedores):
+                    try:
+                        cliente = models.Cliente2.objects.get(idcontratante=vendedor.idcontratante)
+                        if cliente.tipper == 'N':  # Natural person
+                            name = f"{cliente.prinom or ''} {cliente.segnom or ''} {cliente.apepat or ''} {cliente.apemat or ''}".strip()
                         else:  # Juridical person
-                            name = participante[12] or ''
+                            name = cliente.razonsocial or ''
                         
                         participant_details.append({
-                            'idcontratante': participante[2],
+                            'idcontratante': vendedor.idcontratante,
                             'name': name.upper(),
-                            'type': f'PARTE_{participante[4]}',  # parte field
-                            'parte': participante[4],
+                            'type': 'VENDEDOR/OTORGANTE',
+                            'parte': '1',
+                            'gets_percentage': True,
+                            'percentage': vendedor_percentages[i] if i < len(vendedor_percentages) else 0,
+                            'amount': vendedor_amounts[i] if i < len(vendedor_amounts) else 0
+                        })
+                    except models.Cliente2.DoesNotExist:
+                        participant_details.append({
+                            'idcontratante': vendedor.idcontratante,
+                            'name': 'CLIENTE NO ENCONTRADO',
+                            'type': 'VENDEDOR/OTORGANTE',
+                            'parte': '1',
+                            'gets_percentage': True,
+                            'percentage': vendedor_percentages[i] if i < len(vendedor_percentages) else 0,
+                            'amount': vendedor_amounts[i] if i < len(vendedor_amounts) else 0
+                        })
+                
+                # Process compradores
+                for i, comprador in enumerate(compradores):
+                    try:
+                        cliente = models.Cliente2.objects.get(idcontratante=comprador.idcontratante)
+                        if cliente.tipper == 'N':  # Natural person
+                            name = f"{cliente.prinom or ''} {cliente.segnom or ''} {cliente.apepat or ''} {cliente.apemat or ''}".strip()
+                        else:  # Juridical person
+                            name = cliente.razonsocial or ''
+                        
+                        participant_details.append({
+                            'idcontratante': comprador.idcontratante,
+                            'name': name.upper(),
+                            'type': 'COMPRADOR/BENEFICIARIO',
+                            'parte': '2',
+                            'gets_percentage': True,
+                            'percentage': comprador_percentages[i] if i < len(comprador_percentages) else 0,
+                            'amount': comprador_amounts[i] if i < len(comprador_amounts) else 0
+                        })
+                    except models.Cliente2.DoesNotExist:
+                        participant_details.append({
+                            'idcontratante': comprador.idcontratante,
+                            'name': 'CLIENTE NO ENCONTRADO',
+                            'type': 'COMPRADOR/BENEFICIARIO',
+                            'parte': '2',
+                            'gets_percentage': True,
+                            'percentage': comprador_percentages[i] if i < len(comprador_percentages) else 0,
+                            'amount': comprador_amounts[i] if i < len(comprador_amounts) else 0
+                        })
+                
+                # Get other participants (representantes, etc.) who don't get percentages
+                otros_participantes = models.Contratantesxacto.objects.filter(
+                    kardex=kardex_val
+                ).exclude(parte__in=['1', '2'])
+                
+                for participante in otros_participantes:
+                    try:
+                        cliente = models.Cliente2.objects.get(idcontratante=participante.idcontratante)
+                        if cliente.tipper == 'N':  # Natural person
+                            name = f"{cliente.prinom or ''} {cliente.segnom or ''} {cliente.apepat or ''} {cliente.apemat or ''}".strip()
+                        else:  # Juridical person
+                            name = cliente.razonsocial or ''
+                        
+                        participant_details.append({
+                            'idcontratante': participante.idcontratante,
+                            'name': name.upper(),
+                            'type': f'PARTE_{participante.parte}',
+                            'parte': participante.parte,
                             'gets_percentage': False,
                             'percentage': 0,
                             'amount': 0,
                             'reason': 'No recibe porcentaje según configuración de acto'
                         })
-                    
-                    results.append({
-                        'item': item,
-                        'idtipoacto': idtipoacto,
-                        'importe_trans': importe_trans,
-                        'numero_vendedores': numero_vendedores,
-                        'numero_compradores': numero_compradores,
-                        'participants': participant_details
-                    })
+                    except models.Cliente2.DoesNotExist:
+                        participant_details.append({
+                            'idcontratante': participante.idcontratante,
+                            'name': 'CLIENTE NO ENCONTRADO',
+                            'type': f'PARTE_{participante.parte}',
+                            'parte': participante.parte,
+                            'gets_percentage': False,
+                            'percentage': 0,
+                            'amount': 0,
+                            'reason': 'No recibe porcentaje según configuración de acto'
+                        })
                 
-                # Add kardex modification update
-                updates_needed['kardex_modification'].append({
+                results.append({
+                    'item': item,
+                    'idtipoacto': idtipoacto,
+                    'importe_trans': importe_trans,
+                    'numero_vendedores': numero_vendedores,
+                    'numero_compradores': numero_compradores,
+                    'participants': participant_details
+                })
+            
+            # Add kardex modification update
+            updates_needed['kardex_modification'].append({
+                'kardex': kardex,
+                'fecha_modificacion': fecha_modificacion
+            })
+            
+            return Response({
+                'error': 0,
+                'message': 'Cálculo completado exitosamente',
+                'data': {
                     'kardex': kardex,
-                    'fecha_modificacion': fecha_modificacion
-                })
-                
-                return Response({
-                    'error': 0,
-                    'message': 'Cálculo completado exitosamente',
-                    'data': {
-                        'kardex': kardex,
-                        'calculation_results': results,
-                        'updates_needed': updates_needed,
-                        'summary': {
-                            'total_items': len(detalle_actos),
-                            'total_participants': sum(len(item['participants']) for item in results),
-                            'participants_with_percentage': sum(len([p for p in item['participants'] if p['gets_percentage']]) for item in results),
-                            'participants_without_percentage': sum(len([p for p in item['participants'] if not p['gets_percentage']]) for item in results)
-                        }
+                    'calculation_results': results,
+                    'updates_needed': updates_needed,
+                    'summary': {
+                        'total_items': len(results),
+                        'total_participants': sum(len(item['participants']) for item in results),
+                        'participants_with_percentage': sum(len([p for p in item['participants'] if p['gets_percentage']]) for item in results),
+                        'participants_without_percentage': sum(len([p for p in item['participants'] if not p['gets_percentage']]) for item in results)
                     }
-                })
-                
+                }
+            })
+            
         except Exception as e:
             return Response({
                 'error': 1,
