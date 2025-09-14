@@ -3599,43 +3599,64 @@ class RentaViewSet(ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Get the last record to generate new idrenta (like PHP script)
-            last_record = models.Renta.objects.order_by('-idrenta').first()
+            # Pad idcontratante with zeros to make it 10 digits
+            idcontratante_padded = str(idcontratante).zfill(10)
             
-            if last_record and last_record.idrenta:
-                # Convert to int, increment, then pad with zeros
-                numero = int(last_record.idrenta)
-                suma = numero + 1
-                cantidad = len(str(suma))
+            # Check if record already exists for this kardex and idcontratante (like PHP script)
+            existing_renta = models.Renta.objects.filter(
+                kardex=kardex,
+                idcontratante=idcontratante_padded
+            ).first()
+            
+            if existing_renta:
+                # Update existing record (like PHP script)
+                existing_renta.pregu1 = pregu1
+                existing_renta.pregu2 = pregu2
+                existing_renta.pregu3 = pregu3
+                existing_renta.save()
                 
-                # Pad with zeros to make it 6 digits (like PHP switch statement)
-                if cantidad == 1:
-                    nrenta = f"00000{suma}"
-                elif cantidad == 2:
-                    nrenta = f"0000{suma}"
-                elif cantidad == 3:
-                    nrenta = f"000{suma}"
-                elif cantidad == 4:
-                    nrenta = f"00{suma}"
-                elif cantidad == 5:
-                    nrenta = f"0{suma}"
-                elif cantidad == 6:
-                    nrenta = str(suma)
-                else:
-                    nrenta = str(suma).zfill(6)  # Fallback for longer numbers
+                # Serialize the updated record
+                serializer = self.get_serializer(existing_renta)
+                
+                return Response(serializer.data, status=status.HTTP_200_OK)
             else:
-                # First record ever
-                nrenta = "000001"
-            
-            # Create new record (like PHP script)
-            data['idrenta'] = nrenta
-            
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+                # Get the last record to generate new idrenta (like PHP script)
+                last_record = models.Renta.objects.order_by('-idrenta').first()
                 
+                if last_record and last_record.idrenta:
+                    # Convert to int, increment, then pad with zeros
+                    numero = int(last_record.idrenta)
+                    suma = numero + 1
+                    cantidad = len(str(suma))
+                    
+                    # Pad with zeros to make it 6 digits (like PHP switch statement)
+                    if cantidad == 1:
+                        nrenta = f"00000{suma}"
+                    elif cantidad == 2:
+                        nrenta = f"0000{suma}"
+                    elif cantidad == 3:
+                        nrenta = f"000{suma}"
+                    elif cantidad == 4:
+                        nrenta = f"00{suma}"
+                    elif cantidad == 5:
+                        nrenta = f"0{suma}"
+                    elif cantidad == 6:
+                        nrenta = str(suma)
+                    else:
+                        nrenta = str(suma).zfill(6)  # Fallback for longer numbers
+                else:
+                    # First record ever
+                    nrenta = "000001"
+                
+                # Create new record (like PHP script)
+                data['idrenta'] = nrenta
+                data['idcontratante'] = idcontratante_padded  # Use padded idcontratante
+                
+                serializer = self.get_serializer(data=data)
+                serializer.is_valid(raise_exception=True)
+                self.perform_create(serializer)
+                
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
             return Response({
