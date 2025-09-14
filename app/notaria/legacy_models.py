@@ -8,14 +8,12 @@
 from django.db import models
 
 
-class Renta(models.Model):
-    idrenta = models.CharField(primary_key=True, max_length=6)
-    idcontratante = models.CharField(max_length=10)
-    kardex = models.CharField(max_length=30, blank=True, null=True)
-    pregu1 = models.CharField(max_length=2)
-    pregu2 = models.CharField(max_length=2)
-    pregu3 = models.CharField(max_length=2)
+class Formulario(models.Model):
+    idformulario = models.AutoField(primary_key=True)
+    idrenta = models.CharField(max_length=6)
+    numformu = models.CharField(max_length=10)
+    monto = models.CharField(max_length=10)
 
     class Meta:
         managed = False
-        db_table = 'renta'
+        db_table = 'formulario'

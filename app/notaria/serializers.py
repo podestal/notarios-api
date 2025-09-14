@@ -987,3 +987,12 @@ class RentaSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Renta
         fields = '__all__'
+
+
+class FormularioSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Formulario model.
+    """
+    class Meta:
+        model = models.Formulario
+        fields = '__all__'

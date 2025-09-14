@@ -3577,3 +3577,11 @@ class RentaViewSet(ModelViewSet):
     serializer_class = serializers.RentaSerializer
     pagination_class = pagination.KardexPagination
 
+
+class FormularioViewSet(ModelViewSet):
+    """
+    ViewSet for the Formulario model.
+    """
+    queryset = models.Formulario.objects.all()
+    serializer_class = serializers.FormularioSerializer
+    pagination_class = pagination.KardexPagination

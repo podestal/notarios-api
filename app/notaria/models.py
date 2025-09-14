@@ -969,3 +969,14 @@ class Renta(models.Model):
     class Meta:
         managed = False
         db_table = 'renta'
+
+
+class Formulario(models.Model):
+    idformulario = models.AutoField(primary_key=True)
+    idrenta = models.CharField(max_length=6)
+    numformu = models.CharField(max_length=10)
+    monto = models.CharField(max_length=10)
+
+    class Meta:
+        managed = False
+        db_table = 'formulario'
