@@ -36,6 +36,7 @@ router.register('detallebienes', views.DetallebienesViewSet)
 router.register('predios', views.PrediosViewSet)
 router.register('detallemediopago', views.DetallemediopagoViewSet)
 router.register('templates', views.TemplateViewSet)
+router.register('renta', views.RentaViewSet, basename='renta')
 
 # EXTRAPROTOCOLARES
 router.register('legalizacion', views.LegalizacionViewSet)

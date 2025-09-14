@@ -3569,37 +3569,11 @@ class CertDomiciliarioViewSet(ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
-    # @action(detail=False, methods=['post'], url_path='pdt-correct-errors')
-    # def pdt_correct_errors(self, request):
-    #     """
-    #     Correct PDT errors for specified libros.
-        
-    #     Parameters:
-    #     - listError: JSON string containing error details to correct
-    #     """
-    #     try:
-    #         # Get error list from request
-    #         error_list = request.data.get('listError')
-    #         if not error_list:
-    #             return Response({
-    #                 'error': 'listError parameter is required'
-    #             }, status=status.HTTP_400_BAD_REQUEST)
+class RentaViewSet(ModelViewSet):
+    """
+    ViewSet for the Renta model.
+    """
+    queryset = models.Renta.objects.all()
+    serializer_class = serializers.RentaSerializer
+    pagination_class = pagination.KardexPagination
 
-    #         # Parse error list
-    #         import json
-    #         if isinstance(error_list, str):
-    #             error_list = json.loads(error_list)
-
-    #         # Process corrections
-    #         from .services.pdt_libros_service import PdtLibrosService
-    #         pdt_service = PdtLibrosService('', '')  # Dates not needed for correction
-    #         result = pdt_service.correct_errors(error_list)
-
-    #         return Response(result)
-
-    #     except Exception as e:
-    #         logger.error(f"Error correcting PDT errors: {str(e)}", exc_info=True)
-    #         return Response({
-    #             'error': 'Error correcting PDT errors',
-    #             'detail': str(e)
-    #         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

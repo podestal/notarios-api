@@ -8,11 +8,14 @@
 from django.db import models
 
 
-class Tipolibro(models.Model):
-    idtiplib = models.IntegerField()
-    coddlib = models.CharField(max_length=2)
-    destiplib = models.CharField(max_length=50)
+class Renta(models.Model):
+    idrenta = models.CharField(primary_key=True, max_length=6)
+    idcontratante = models.CharField(max_length=10)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
+    pregu1 = models.CharField(max_length=2)
+    pregu2 = models.CharField(max_length=2)
+    pregu3 = models.CharField(max_length=2)
 
     class Meta:
         managed = False
-        db_table = 'tipolibro'
+        db_table = 'renta'

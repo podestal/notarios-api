@@ -977,3 +977,13 @@ class CertDomiciliarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.CertDomiciliario
         fields = '__all__'
+
+
+
+class RentaSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Renta model.
+    """
+    class Meta:
+        model = models.Renta
+        fields = '__all__'
