@@ -3577,6 +3577,71 @@ class RentaViewSet(ModelViewSet):
     serializer_class = serializers.RentaSerializer
     pagination_class = pagination.KardexPagination
 
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """
+        Create or update a Renta instance with auto-generated correlative numbers.
+        Generates correlative numbers for idrenta field.
+        Implements the same logic as the PHP script.
+        """
+        data = request.data.copy()
+        
+        # Extract required fields
+        idcontratante = data.get('idcontratante')
+        kardex = data.get('kardex')
+        pregu1 = data.get('pregu1')
+        pregu2 = data.get('pregu2')
+        pregu3 = data.get('pregu3')
+        
+        if not all([idcontratante, kardex, pregu1, pregu2, pregu3]):
+            return Response({
+                'error': 'Missing required fields: idcontratante, kardex, pregu1, pregu2, pregu3'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get the last record to generate new idrenta (like PHP script)
+            last_record = models.Renta.objects.order_by('-idrenta').first()
+            
+            if last_record and last_record.idrenta:
+                # Convert to int, increment, then pad with zeros
+                numero = int(last_record.idrenta)
+                suma = numero + 1
+                cantidad = len(str(suma))
+                
+                # Pad with zeros to make it 6 digits (like PHP switch statement)
+                if cantidad == 1:
+                    nrenta = f"00000{suma}"
+                elif cantidad == 2:
+                    nrenta = f"0000{suma}"
+                elif cantidad == 3:
+                    nrenta = f"000{suma}"
+                elif cantidad == 4:
+                    nrenta = f"00{suma}"
+                elif cantidad == 5:
+                    nrenta = f"0{suma}"
+                elif cantidad == 6:
+                    nrenta = str(suma)
+                else:
+                    nrenta = str(suma).zfill(6)  # Fallback for longer numbers
+            else:
+                # First record ever
+                nrenta = "000001"
+            
+            # Create new record (like PHP script)
+            data['idrenta'] = nrenta
+            
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+                
+                
+        except Exception as e:
+            return Response({
+                'error': f'Error processing renta: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class FormularioViewSet(ModelViewSet):
     """

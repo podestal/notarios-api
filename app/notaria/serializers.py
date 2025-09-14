@@ -986,7 +986,14 @@ class RentaSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = models.Renta
-        fields = '__all__'
+        fields = [
+            'idrenta',
+            'idcontratante',
+            'kardex',
+            'pregu1',
+            'pregu2',
+            'pregu3',
+        ]
 
 
 class FormularioSerializer(serializers.ModelSerializer):
