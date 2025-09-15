@@ -1994,6 +1994,9 @@ class ContratantesxactoViewSet(ModelViewSet):
         contratantes_tipoactos = set(c.idcondicion for c in contratantesxacto)
 
         renta = models.Renta.objects.filter(idcontratante__in=contratantes_ids)
+        renta_by_kardex = models.Renta.objects.filter(kardex=kardex)
+
+        print('renta_by_kardex', renta_by_kardex.values('idrenta', 'kardex', 'idcontratante', 'pregu1', 'pregu2', 'pregu3'))
 
         condicion_map = {
             c['idcondicion']: c
@@ -3679,3 +3682,20 @@ class FormularioViewSet(ModelViewSet):
     queryset = models.Formulario.objects.all()
     serializer_class = serializers.FormularioSerializer
     pagination_class = pagination.KardexPagination
+
+    @action(detail=False, methods=['get'])
+    def by_renta(self, request):
+        """
+        Get all Formulario instances by renta.
+        """
+        idrenta = request.query_params.get('idrenta')
+        if not idrenta:
+            return Response({
+                'error': 'idrenta is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        formulario = models.Formulario.objects.filter(idrenta=idrenta)
+        serializer = serializers.FormularioSerializer(formulario, many=True)
+        return Response(serializer.data)
+        
+
