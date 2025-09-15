@@ -290,6 +290,7 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
     cliente = serializers.SerializerMethodField()
     cliente_id = serializers.SerializerMethodField()
     condicion_str = serializers.SerializerMethodField()
+    renta = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Contratantesxacto
@@ -311,7 +312,8 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
             'montop',
             'cliente',
             'cliente_id',
-            'condicion_str'
+            'condicion_str',
+            'renta'
         ]
 
     def get_cliente(self, obj):
@@ -346,6 +348,19 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
             )
         return ''
 
+    def get_renta(self, obj):
+        renta_map = self.context.get('renta_map', {})
+        renta = renta_map.get(str(obj.id).zfill(10))
+        print('renta', renta)
+        if renta:
+            return {
+                'idrenta': renta['idrenta'],
+                'kardex': renta['kardex'],
+                'pregu1': renta['pregu1'],
+                'pregu2': renta['pregu2'],
+                'pregu3': renta['pregu3']
+            }
+        return {}
 
 class ClienteSerializer(serializers.ModelSerializer):
     """
