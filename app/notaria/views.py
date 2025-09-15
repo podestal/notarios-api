@@ -1991,14 +1991,9 @@ class ContratantesxactoViewSet(ModelViewSet):
 
         contratantes_ids = set(c.idcontratante for c in contratantesxacto)
 
-        contratantes_por_acto_ids = set(c.id for c in contratantesxacto)
-
-        # Convert to padded strings (10 digits with leading zeros)
-        contratantes_por_acto_ids = {str(id).zfill(10) for id in contratantes_por_acto_ids}
-
         contratantes_tipoactos = set(c.idcondicion for c in contratantesxacto)
 
-        renta = models.Renta.objects.filter(idcontratante__in=contratantes_por_acto_ids)
+        renta = models.Renta.objects.filter(idcontratante__in=contratantes_ids)
 
         condicion_map = {
             c['idcondicion']: c
@@ -2018,7 +2013,7 @@ class ContratantesxactoViewSet(ModelViewSet):
 
         renta_map = {
             c['idcontratante']: c
-            for c in renta.values('idrenta', 'kardex', 'pregu1', 'pregu2', 'pregu3')
+            for c in renta.values('idrenta', 'kardex', 'idcontratante', 'pregu1', 'pregu2', 'pregu3')
         }
 
         serializer = serializers.GetContratantesxactoSerializerByKardex(

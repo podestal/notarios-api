@@ -350,15 +350,15 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
 
     def get_renta(self, obj):
         renta_map = self.context.get('renta_map', {})
-        renta = renta_map.get(str(obj.id).zfill(10))
-        print('renta', renta)
+        renta = renta_map.get(obj.idcontratante)
         if renta:
             return {
                 'idrenta': renta['idrenta'],
                 'kardex': renta['kardex'],
                 'pregu1': renta['pregu1'],
                 'pregu2': renta['pregu2'],
-                'pregu3': renta['pregu3']
+                'pregu3': renta['pregu3'],
+                'idcontratante': renta['idcontratante'],
             }
         return {}
 
