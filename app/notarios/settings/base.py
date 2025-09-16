@@ -177,6 +177,27 @@ CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
 
+# Add this to expose the filename headers
+CORS_EXPOSE_HEADERS = [
+    'Content-Disposition',
+    'X-Filename',
+    'Content-Type',
+    'Content-Length'
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-filename',  # Allow our custom header
+]
+
 AUTH_USER_MODEL = 'core.User'
 
 REST_FRAMEWORK = {

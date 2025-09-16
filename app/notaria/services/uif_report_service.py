@@ -178,6 +178,7 @@ class UifReportService:
             response = HttpResponse(content_type='text/plain')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             response['Content-Transfer-Encoding'] = 'utf8'
+            response['X-Filename'] = filename  # Add custom header for easy access
 
             # Write header
             response.write(f"{header_file}\r\n")

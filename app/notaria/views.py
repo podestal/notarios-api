@@ -1164,7 +1164,24 @@ class KardexViewSet(ModelViewSet):
 
                 # Generate plane report using the service
                 report_service = UifReportService()
-                return report_service.generate_plane_report(data, initial_date, final_date)
+                response = report_service.generate_plane_report(data, initial_date, final_date)
+                
+                # Extract filename from Content-Disposition header
+                content_disposition = response.get('Content-Disposition', '')
+                filename = 'uif_report.txt'  # fallback
+                if 'filename=' in content_disposition:
+                    filename = content_disposition.split('filename=')[1].replace('"', '')
+                
+                # Return JSON response with filename and file content
+                import base64
+                file_content = response.content.decode('utf-8')
+                file_content_b64 = base64.b64encode(response.content).decode('utf-8')
+                
+                return Response({
+                    'filename': filename,
+                    'content': file_content_b64,
+                    'content_type': 'text/plain'
+                })
 
             except Exception as e:
                 logger.error(f"Error processing UIF data: {str(e)}", exc_info=True)
