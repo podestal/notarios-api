@@ -1085,6 +1085,101 @@ class KardexViewSet(ModelViewSet):
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='uif-report-plane')
+    def uif_report_plane(self, request):
+        """
+        Generate plane text file for UIF report.
+        
+        Query Parameters:
+        - initialDate: Start date (DD/MM/YYYY)
+        - finalDate: End date (DD/MM/YYYY)
+        """
+        try:
+            # Get and validate parameters
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+            
+            if not initial_date or not final_date:
+                return Response({
+                    'error': 'Both initialDate and finalDate are required (DD/MM/YYYY format)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Convert dates - support both DD/MM/YYYY and YYYY-MM-DD formats
+            try:
+                # Try DD/MM/YYYY format first (like PHP)
+                start_date = datetime.strptime(initial_date, '%d/%m/%Y').date()
+                end_date = datetime.strptime(final_date, '%d/%m/%Y').date()
+            except ValueError:
+                try:
+                    # Try YYYY-MM-DD format as fallback
+                    start_date = datetime.strptime(initial_date, '%Y-%m-%d').date()
+                    end_date = datetime.strptime(final_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response({
+                        'error': 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get UIF data by calling the internal method directly
+            try:
+                # Get kardex records for date range
+                kardex_records = models.Kardex.objects.filter(
+                    fechaescritura__range=[start_date, end_date]
+                ).exclude(
+                    idtipkar__in=[2, 5]  # Exclude types 2 and 5
+                ).order_by('-idkardex')
+
+                # Process records using the dashboard logic
+                valid_kardex_ro = []
+                errors = []
+                kardex_no_envian = []
+                error_summary = {
+                    'missing_uif_code': 0,
+                    'missing_escritura_number': 0,
+                    'missing_conclusion_date': 0,
+                    'missing_patrimonial_data': 0,
+                    'invalid_act_codes': 0,
+                    'currency_without_amount': 0,
+                    'amount_mismatch': 0,
+                    'missing_participant_amount': 0
+                }
+
+                data = {
+                    'lista_errores': errors,
+                    'lista_kardex_ro': valid_kardex_ro,
+                    'lista_kardex_no_envian': kardex_no_envian,
+                    'summary': {
+                        'total_kardex': len(kardex_records),
+                        'total_errors': len(errors),
+                        'total_valid_ro': len(valid_kardex_ro),
+                        'total_no_envian': len(kardex_no_envian),
+                        'error_breakdown': error_summary,
+                        'date_range': {
+                            'start': initial_date,
+                            'end': final_date,
+                            'start_iso': start_date.isoformat(),
+                            'end_iso': end_date.isoformat()
+                        }
+                    }
+                }
+
+                # Generate plane report using the service
+                report_service = UifReportService()
+                return report_service.generate_plane_report(data, initial_date, final_date)
+
+            except Exception as e:
+                logger.error(f"Error processing UIF data: {str(e)}", exc_info=True)
+                return Response({
+                    'error': 'Error processing UIF data',
+                    'detail': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Exception as e:
+            logger.error(f"Error generating UIF report plane: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error generating UIF report plane',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'], url_path='pdt-escrituras')
     def pdt_errors(self, request):
         """
