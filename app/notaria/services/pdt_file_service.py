@@ -539,6 +539,110 @@ class OtorgantesFormatter(BasePdtFormatter):
             self.logger.error(f"Error formatting otorgante line: {str(e)}")
             raise
 
+class MediosPagoFormatter(BasePdtFormatter):
+    """Formatter for .mpa files (Medios de Pago)."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extension = 'mpa'
+
+    def load_data(self):
+        """Load medios de pago data following the PHP implementation."""
+        start_date, end_date = self.get_formatted_dates()
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT 
+                    k.idkardex,
+                    k.kardex,
+                    k.idtipkar,
+                    k.numescritura,
+                    k.fechaescritura,
+                    p.itemmp,
+                    p.idmon,
+                    p.importetrans,
+                    mp.codmepag,
+                    mp.fpago,
+                    mp.idbancos,
+                    mp.importemp,
+                    mp.foperacion,
+                    mp.documentos,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY k.kardex, p.itemmp
+                        ORDER BY mp.detmp
+                    ) as secuencial_pago
+                FROM kardex k
+                INNER JOIN patrimonial p ON p.kardex = k.kardex
+                INNER JOIN detallemediopago mp ON mp.itemmp = p.itemmp
+                WHERE k.idtipkar = %s
+                AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
+                BETWEEN %s AND %s
+                ORDER BY 
+                    CAST(k.numescritura AS UNSIGNED),
+                    p.itemmp,
+                    mp.detmp
+            """, [self.type_kardex, start_date, end_date])
+            
+            columns = [col[0] for col in cursor.description]
+            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def format_line(self, record: Dict) -> str:
+        """Format a single line for the .mpa file."""
+        try:
+            # Get tipo kardex code
+            tipo_kardex = {
+                1: '1',  # Escritura
+                3: '2',  # Transferencia
+                4: '5',  # Otros
+            }.get(record['idtipkar'], '')
+
+            # Format date
+            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+            fecha_operacion = record['foperacion'] if record['foperacion'] else ''
+
+            # Format moneda
+            moneda = {
+                1: '2',  # Soles
+                2: '1',  # Dólares
+            }.get(record['idmon'], '')
+
+            # Format medio de pago
+            medio_pago = {
+                1: '01',  # Depósito en cuenta
+                2: '02',  # Giro
+                3: '03',  # Transferencia de fondos
+                4: '04',  # Orden de pago
+                5: '05',  # Tarjeta de débito
+                6: '06',  # Tarjeta de crédito
+                7: '07',  # Cheques con la cláusula de "no negociable", "intransferibles", "no a la orden" u otra equivalente
+                8: '08',  # Efectivo, por operaciones en las que no existe obligación de utilizar medio de pago
+                9: '09',  # Efectivo, en los demás casos
+                10: '10', # Medios de pago usados en comercio exterior
+                11: '11', # Documentos emitidos por las EDPYMES y las cooperativas de ahorro y crédito no autorizadas a captar depósitos del público
+                12: '12', # Tarjeta de crédito emitida en el país o en el exterior por una empresa no perteneciente al sistema financiero, cuyo objeto principal sea la emisión y administración de tarjetas de crédito
+                99: '99'  # Otros medios de pago
+            }.get(record['codmepag'], '99')
+
+            # Format fields
+            fields = [
+                str(tipo_kardex).ljust(1),  # Tipo kardex
+                str(record['numescritura']).ljust(5),  # Numero escritura
+                fecha_escritura.ljust(10),  # Fecha escritura
+                str(1).rjust(5),  # Secuencial acto (always 1 in PHP)
+                str(record['secuencial_pago']).rjust(5),  # Secuencial pago
+                str(medio_pago).ljust(2),  # Codigo medio de pago
+                str(moneda).ljust(1),  # Moneda
+                str(record['importemp']).rjust(15),  # Importe
+                fecha_operacion.ljust(10),  # Fecha operacion
+                self.replace_string_pdt(record['documentos'] or '').ljust(20)  # Numero operacion
+            ]
+
+            return '|'.join(fields)
+
+        except Exception as e:
+            self.logger.error(f"Error formatting medio pago line: {str(e)}")
+            raise
+
 class PdtFileService:
     """Service for generating PDT files."""
     
@@ -553,7 +657,8 @@ class PdtFileService:
     FILE_TYPE_FORMATTERS = {
         FILE_TYPE_ACT: ActosFormatter,
         FILE_TYPE_BIE: BienesFormatter,
-        FILE_TYPE_OTG: OtorgantesFormatter,  # Add the new formatter
+        FILE_TYPE_OTG: OtorgantesFormatter,
+        FILE_TYPE_MPA: MediosPagoFormatter,  # Add the new formatter
         # Other formatters will be added as we implement them
     }
 
