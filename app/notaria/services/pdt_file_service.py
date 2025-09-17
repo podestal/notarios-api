@@ -236,6 +236,196 @@ class ActosFormatter(BasePdtFormatter):
             self.logger.error(f"Error formatting act line: {str(e)}")
             raise
 
+class BienesFormatter(BasePdtFormatter):
+    """Formatter for .bie files."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extension = 'bie'
+
+    def load_data(self):
+        """Load bienes data efficiently without temporary tables."""
+        start_date, end_date = self.get_formatted_dates()
+
+        with connection.cursor() as cursor:
+            # First get all kardex records with their acts
+            cursor.execute("""
+                WITH kardex_actos AS (
+                    -- Same CTE as ActosFormatter to get kardex records
+                    SELECT 
+                        k.idkardex,
+                        k.kardex,
+                        k.idtipkar,
+                        k.numescritura,
+                        k.fechaescritura,
+                        k.fechaconclusion,
+                        SUBSTRING(codactos, n.n, 3) as acto_code
+                    FROM kardex k
+                    CROSS JOIN (
+                        SELECT 1 + (3 * (a.n-1)) as n
+                        FROM (
+                            SELECT 1 as n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 
+                            UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8
+                        ) a
+                        WHERE 1 + (3 * (a.n-1)) <= (
+                            SELECT MAX(LENGTH(codactos)) FROM kardex
+                        )
+                    ) n
+                    WHERE k.idtipkar = %s
+                    AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
+                    BETWEEN %s AND %s
+                    AND SUBSTRING(codactos, n.n, 3) != ''
+                ),
+                actos_data AS (
+                    -- Get base actos data
+                    SELECT 
+                        ka.*,
+                        t.actosunat,
+                        t.desacto,
+                        p.itemmp,
+                        ROW_NUMBER() OVER (PARTITION BY ka.kardex ORDER BY ka.numescritura) as secuencial_acto
+                    FROM kardex_actos ka
+                    INNER JOIN tiposdeacto t ON t.idtipoacto = ka.acto_code
+                    LEFT JOIN patrimonial p ON p.kardex = ka.kardex AND p.idtipoacto = ka.acto_code
+                    WHERE t.actosunat != ''
+                    AND t.actosunat NOT IN ('10')  -- Exclude actos without bienes
+                )
+                SELECT 
+                    -- Common fields
+                    a.idkardex,
+                    a.kardex,
+                    a.idtipkar,
+                    a.numescritura,
+                    a.fechaescritura,
+                    a.actosunat,
+                    a.secuencial_acto,
+                    -- Vehicle specific fields
+                    v.detveh,
+                    v.numplaca,
+                    v.numserie as serie_vehiculo,
+                    v.motor,
+                    v.fecinsc as fecha_adquisicion_vehiculo,
+                    -- Regular property fields
+                    b.detbien,
+                    b.itemmp,
+                    b.tipob,
+                    b.idtipbien,
+                    b.coddis,
+                    b.fechaconst as fecha_adquisicion,
+                    b.oespecific,
+                    b.smaquiequipo,
+                    b.tpsm,
+                    b.npsm,
+                    -- Tipo bien data
+                    tb.codbien,
+                    -- Row number for bien secuencial
+                    ROW_NUMBER() OVER (
+                        PARTITION BY a.kardex, a.acto_code 
+                        ORDER BY COALESCE(v.detveh, b.detbien)
+                    ) as secuencial_bien
+                FROM actos_data a
+                -- Left join both vehicle and regular property data
+                LEFT JOIN detallevehicular v ON 
+                    v.kardex = a.kardex AND 
+                    a.idtipkar = 3  -- Only for vehicle type
+                LEFT JOIN detallebienes b ON 
+                    b.itemmp = a.itemmp AND
+                    a.idtipkar != 3  -- For non-vehicle types
+                LEFT JOIN tipobien tb ON tb.idtipbien = COALESCE(b.idtipbien, '8')  -- 8 for vehicles
+                WHERE (v.detveh IS NOT NULL OR b.detbien IS NOT NULL)  -- Only records with bienes
+                ORDER BY 
+                    CAST(a.numescritura AS UNSIGNED),
+                    a.secuencial_acto,
+                    COALESCE(v.detveh, b.detbien)
+            """, [self.type_kardex, start_date, end_date])
+            
+            columns = [col[0] for col in cursor.description]
+            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def format_line(self, record: Dict) -> str:
+        """Format a single line for the .bie file."""
+        try:
+            # Get tipo kardex code
+            tipo_kardex = {
+                1: '1',  # Escritura
+                3: '2',  # Transferencia
+                4: '5',  # Otros
+            }.get(record['idtipkar'], '')
+
+            # Format date
+            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+
+            # Determine tipo bien and related fields
+            if record['idtipkar'] == 3:  # Vehicle
+                tipo_bien = 'B'
+                codigo_bien = '08'  # Fixed for vehicles
+                
+                # Determine placa/serie/motor option and value
+                if record['numplaca']:
+                    opcion_psm = '1'
+                    numero_psm = record['numplaca']
+                elif record['serie_vehiculo']:
+                    opcion_psm = '2'
+                    numero_psm = record['serie_vehiculo']
+                else:
+                    opcion_psm = '3'
+                    numero_psm = record['motor']
+                
+                numero_serie = ''
+                origen_bien = ''
+                codigo_ubicacion = ''
+                fecha_adquisicion = record['fecha_adquisicion_vehiculo'] or ''
+                descripcion_otros = ''
+                
+            else:  # Regular property
+                tipo_bien = 'B' if record['tipob'] == 'BIENES' else 'A'
+                codigo_bien = record['codbien']
+                
+                # Handle placa/serie/motor based on tpsm
+                opcion_psm = {
+                    'P': '1',
+                    'S': '2',
+                    'M': '3',
+                    '': ''
+                }.get(record['tpsm'], '')
+                
+                numero_psm = record['npsm'] or ''
+                numero_serie = record['smaquiequipo'] or ''
+                
+                # Handle special cases
+                if codigo_bien in ['04', '99']:
+                    origen_bien = '1' if record['coddis'] else ''
+                else:
+                    origen_bien = ''
+                
+                codigo_ubicacion = record['coddis'] if codigo_bien == '04' else ''
+                fecha_adquisicion = record['fecha_adquisicion'] or ''
+                descripcion_otros = record['oespecific'] if codigo_bien == '99' else ''
+
+            # Format fields
+            fields = [
+                str(tipo_kardex).ljust(1),  # Tipo kardex
+                str(record['numescritura']).ljust(5),  # Numero escritura
+                fecha_escritura.ljust(10),  # Fecha escritura
+                str(record['secuencial_acto']).rjust(5),  # Secuencial acto
+                str(record['secuencial_bien']).rjust(5),  # Secuencial bien
+                tipo_bien.ljust(1),  # Tipo bien (B/A)
+                str(codigo_bien).ljust(2),  # Codigo bien
+                str(opcion_psm).ljust(1),  # Opcion placa/serie/motor
+                self.replace_string_pdt(numero_psm).ljust(20),  # Numero placa/serie/motor
+                self.replace_string_pdt(numero_serie).ljust(20),  # Numero serie
+                str(origen_bien).ljust(1),  # Origen bien
+                str(codigo_ubicacion).ljust(6),  # Codigo ubicacion
+                str(fecha_adquisicion).ljust(10),  # Fecha adquisicion
+                self.replace_string_pdt(descripcion_otros).ljust(30)  # Descripcion otros
+            ]
+
+            return '|'.join(fields)
+
+        except Exception as e:
+            self.logger.error(f"Error formatting bien line: {str(e)}")
+            raise
+
 class PdtFileService:
     """Service for generating PDT files."""
     
@@ -249,6 +439,7 @@ class PdtFileService:
 
     FILE_TYPE_FORMATTERS = {
         FILE_TYPE_ACT: ActosFormatter,
+        FILE_TYPE_BIE: BienesFormatter,  # Add the new formatter
         # Other formatters will be added as we implement them
     }
 
