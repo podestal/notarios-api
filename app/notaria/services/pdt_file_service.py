@@ -643,6 +643,190 @@ class MediosPagoFormatter(BasePdtFormatter):
             self.logger.error(f"Error formatting medio pago line: {str(e)}")
             raise
 
+class FormularioFormatter(BasePdtFormatter):
+    """Formatter for .for files (Formularios)."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extension = 'for'
+
+    def load_data(self):
+        """Load formulario data following the PHP implementation."""
+        start_date, end_date = self.get_formatted_dates()
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT 
+                    k.idkardex,
+                    k.kardex,
+                    k.idtipkar,
+                    k.numescritura,
+                    k.fechaescritura,
+                    r.idrenta,
+                    r.idcontratante,
+                    f.numformu,
+                    f.monto,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY k.kardex, r.idrenta
+                        ORDER BY f.idformulario
+                    ) as secuencial_formulario
+                FROM kardex k
+                INNER JOIN renta r ON r.kardex = k.kardex
+                INNER JOIN formulario f ON f.idrenta = r.idrenta
+                WHERE k.idtipkar = %s
+                AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
+                BETWEEN %s AND %s
+                ORDER BY 
+                    CAST(k.numescritura AS UNSIGNED),
+                    r.idrenta,
+                    f.idformulario
+            """, [self.type_kardex, start_date, end_date])
+            
+            columns = [col[0] for col in cursor.description]
+            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def format_line(self, record: Dict) -> str:
+        """Format a single line for the .for file."""
+        try:
+            # Get tipo kardex code
+            tipo_kardex = {
+                1: '1',  # Escritura
+                3: '2',  # Transferencia
+                4: '5',  # Otros
+            }.get(record['idtipkar'], '')
+
+            # Format date
+            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+
+            # Format fields
+            fields = [
+                str(tipo_kardex).ljust(1),  # Tipo kardex
+                str(record['numescritura']).ljust(5),  # Numero escritura
+                fecha_escritura.ljust(10),  # Fecha escritura
+                str(1).rjust(5),  # Secuencial acto (always 1 in PHP)
+                str(record['secuencial_formulario']).rjust(5),  # Secuencial formulario
+                str(record['idcontratante']).ljust(12),  # ID Contratante
+                self.replace_string_pdt(record['numformu']).ljust(10),  # Numero formulario
+                str(record['monto']).rjust(15)  # Monto
+            ]
+
+            return '|'.join(fields)
+
+        except Exception as e:
+            self.logger.error(f"Error formatting formulario line: {str(e)}")
+            raise
+
+class LibrosFormatter(BasePdtFormatter):
+    """Formatter for .lib files (Libros)."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extension = 'lib'
+
+    def load_data(self):
+        """Load libros data following the PHP implementation."""
+        start_date, end_date = self.get_formatted_dates()
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT 
+                    l.numlibro,
+                    l.ano,
+                    l.fecing,
+                    l.tipper,
+                    l.apepat,
+                    l.apemat,
+                    l.prinom,
+                    l.segnom,
+                    l.ruc,
+                    l.empresa,
+                    l.domfiscal,
+                    l.coddis,
+                    l.idtiplib,
+                    tl.coddlib,
+                    tl.destiplib,
+                    l.folio,
+                    l.feclegal,
+                    u.coddist,
+                    u.codprov,
+                    u.codpto,
+                    ROW_NUMBER() OVER (
+                        ORDER BY l.fecing, l.numlibro
+                    ) as secuencial_libro
+                FROM libros l
+                INNER JOIN tipolibro tl ON tl.idtiplib = l.idtiplib
+                LEFT JOIN ubigeo u ON u.coddis = l.coddis
+                WHERE STR_TO_DATE(l.fecing, '%%Y-%%m-%%d') 
+                BETWEEN %s AND %s
+                ORDER BY 
+                    l.fecing,
+                    l.numlibro
+            """, [start_date, end_date])
+            
+            columns = [col[0] for col in cursor.description]
+            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def format_line(self, record: Dict) -> str:
+        """Format a single line for the .lib file."""
+        try:
+            # Format dates
+            fecha_ingreso = datetime.strptime(str(record['fecing']), '%Y-%m-%d').strftime('%d/%m/%Y')
+            fecha_legal = record['feclegal'] if record['feclegal'] else ''
+
+            # Format tipo persona
+            tipo_persona = '1' if record['tipper'] == 'N' else '2'  # 1=Natural, 2=Juridica
+
+            # Format document type and number
+            if record['tipper'] == 'N':
+                tipo_documento = '1'  # DNI
+                numero_documento = record['ruc'] or ''  # Using RUC field for both types
+            else:
+                tipo_documento = '6'  # RUC
+                numero_documento = record['ruc'] or ''
+
+            # Format names/razon social
+            if record['tipper'] == 'N':
+                nombres = record['prinom'] or ''
+                if record['segnom']:
+                    nombres = f"{nombres} {record['segnom']}"
+                apellido_paterno = record['apepat'] or ''
+                apellido_materno = record['apemat'] or ''
+                razon_social = ''
+            else:
+                nombres = ''
+                apellido_paterno = ''
+                apellido_materno = ''
+                razon_social = record['empresa'] or ''
+
+            # Format ubigeo
+            ubigeo = ''
+            if record['codpto'] and record['codprov'] and record['coddist']:
+                ubigeo = f"{record['codpto']}{record['codprov']}{record['coddist']}"
+
+            # Format fields
+            fields = [
+                str(record['secuencial_libro']).rjust(5),  # Secuencial
+                str(record['coddlib']).ljust(2),  # Codigo libro
+                fecha_ingreso.ljust(10),  # Fecha ingreso
+                str(tipo_persona).ljust(1),  # Tipo persona
+                str(tipo_documento).ljust(1),  # Tipo documento
+                self.replace_string_pdt(numero_documento).ljust(12),  # Numero documento
+                self.replace_string_pdt(apellido_paterno).ljust(40),  # Apellido paterno
+                self.replace_string_pdt(apellido_materno).ljust(40),  # Apellido materno
+                self.replace_string_pdt(nombres).ljust(40),  # Nombres
+                self.replace_string_pdt(razon_social).ljust(100),  # Razon social
+                self.replace_string_pdt(record['domfiscal'] or '').ljust(150),  # Domicilio fiscal
+                str(ubigeo).ljust(6),  # Ubigeo
+                str(record['folio'] or '').ljust(10),  # Folio
+                fecha_legal.ljust(10)  # Fecha legalizacion
+            ]
+
+            return '|'.join(fields)
+
+        except Exception as e:
+            self.logger.error(f"Error formatting libro line: {str(e)}")
+            raise
+
 class PdtFileService:
     """Service for generating PDT files."""
     
@@ -658,8 +842,9 @@ class PdtFileService:
         FILE_TYPE_ACT: ActosFormatter,
         FILE_TYPE_BIE: BienesFormatter,
         FILE_TYPE_OTG: OtorgantesFormatter,
-        FILE_TYPE_MPA: MediosPagoFormatter,  # Add the new formatter
-        # Other formatters will be added as we implement them
+        FILE_TYPE_MPA: MediosPagoFormatter,
+        FILE_TYPE_FORM: FormularioFormatter,
+        FILE_TYPE_LIB: LibrosFormatter,
     }
 
     def __init__(self, initial_date: str, final_date: str, file_type: int, type_kardex: Optional[int] = None):
