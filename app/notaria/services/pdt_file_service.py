@@ -426,6 +426,119 @@ class BienesFormatter(BasePdtFormatter):
             self.logger.error(f"Error formatting bien line: {str(e)}")
             raise
 
+class OtorgantesFormatter(BasePdtFormatter):
+    """Formatter for .otg files."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extension = 'otg'
+
+    def load_data(self):
+        """Load otorgantes data following the PHP implementation."""
+        start_date, end_date = self.get_formatted_dates()
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT 
+                    k.idkardex,
+                    k.kardex,
+                    k.idtipkar,
+                    k.numescritura,
+                    k.fechaescritura,
+                    k.codactos,
+                    c.idcontratante,
+                    c2.idtipdoc,
+                    c2.numdoc,
+                    c2.apepat,
+                    c2.apemat,
+                    c2.prinom as nombres,
+                    c2.razonsocial,  # Changed from razsoc to razonsocial
+                    c2.tipper as tipopersona,
+                    c.condicion as idcondicion,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY k.kardex 
+                        ORDER BY c.idcontratante
+                    ) as secuencial_otorgante
+                FROM kardex k
+                INNER JOIN contratantesxacto ca ON ca.kardex = k.kardex
+                INNER JOIN contratantes c ON c.idcontratante = ca.idcontratante
+                INNER JOIN cliente2 c2 ON c2.idcontratante = c.idcontratante
+                WHERE k.idtipkar = %s
+                AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
+                BETWEEN %s AND %s
+                ORDER BY 
+                    CAST(k.numescritura AS UNSIGNED),
+                    c.idcontratante
+            """, [self.type_kardex, start_date, end_date])
+            
+            columns = [col[0] for col in cursor.description]
+            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def format_line(self, record: Dict) -> str:
+        """Format a single line for the .otg file."""
+        try:
+            # Get tipo kardex code
+            tipo_kardex = {
+                1: '1',  # Escritura
+                3: '2',  # Transferencia
+                4: '5',  # Otros
+            }.get(record['idtipkar'], '')
+
+            # Format date
+            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+
+            # Format tipo documento based on idtipdoc
+            tipo_documento = {
+                1: '1',  # DNI
+                4: '4',  # Carnet de Extranjeria
+                6: '6',  # RUC
+                7: '7',  # Pasaporte
+            }.get(record['idtipdoc'], '9')  # Default to '9' (OTROS)
+
+            # Format condicion
+            condicion = {
+                'COMPRADOR': '1',
+                'VENDEDOR': '2',
+                'REPRESENTANTE': '3',
+                'TESTIGO': '4',
+                'INTERPRETE': '5',
+                'OTROS': '9'
+            }.get(record['idcondicion'], '9')
+
+            # Handle name/razon social based on tipo persona
+            if record['tipopersona'] == 'N':  # Natural
+                nombres = record['nombres'] or ''
+                apellido_paterno = record['apepat'] or ''
+                apellido_materno = record['apemat'] or ''
+                razon_social = ''
+            else:  # Juridica
+                nombres = ''
+                apellido_paterno = ''
+                apellido_materno = ''
+                razon_social = record['razonsocial'] or ''  # Changed from razsoc to razonsocial
+
+            # Format fields
+            fields = [
+                str(tipo_kardex).ljust(1),  # Tipo kardex
+                str(record['numescritura']).ljust(5),  # Numero escritura
+                fecha_escritura.ljust(10),  # Fecha escritura
+                str(1).rjust(5),  # Secuencial acto (always 1 in PHP)
+                str(record['secuencial_otorgante']).rjust(5),  # Secuencial otorgante
+                str(tipo_documento).ljust(1),  # Tipo documento
+                self.replace_string_pdt(record['numdoc']).ljust(12),  # Numero documento
+                self.replace_string_pdt(apellido_paterno).ljust(40),  # Apellido paterno
+                self.replace_string_pdt(apellido_materno).ljust(40),  # Apellido materno
+                self.replace_string_pdt(nombres).ljust(40),  # Nombres
+                self.replace_string_pdt(razon_social).ljust(100),  # Razon social
+                str(condicion).ljust(1)  # Condicion
+            ]
+
+            return '|'.join(fields)
+
+        except Exception as e:
+            self.logger.error(f"Error formatting otorgante line: {str(e)}")
+            raise
+
 class PdtFileService:
     """Service for generating PDT files."""
     
@@ -439,7 +552,8 @@ class PdtFileService:
 
     FILE_TYPE_FORMATTERS = {
         FILE_TYPE_ACT: ActosFormatter,
-        FILE_TYPE_BIE: BienesFormatter,  # Add the new formatter
+        FILE_TYPE_BIE: BienesFormatter,
+        FILE_TYPE_OTG: OtorgantesFormatter,  # Add the new formatter
         # Other formatters will be added as we implement them
     }
 

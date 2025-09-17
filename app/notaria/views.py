@@ -1788,6 +1788,7 @@ class KardexViewSet(ModelViewSet):
             1 = Escritura
             3 = Transferencia
             4 = Garantía
+            logger
         """
         try:
             # Get and validate parameters
@@ -1880,14 +1881,14 @@ class KardexViewSet(ModelViewSet):
                 }, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 # Log unexpected errors
-                self.logger.error(f"Error generating PDT file: {str(e)}", exc_info=True)
+                print(f"Error generating PDT file: {str(e)}")
                 return Response({
                     'error': 'Error generating PDT file',
                     'detail': str(e)
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
         except Exception as e:
-            self.logger.error(f"Error in generate_pdt_file: {str(e)}", exc_info=True)
+            print(f"Error in generate_pdt_file: {str(e)}")
             return Response({
                 'error': 'Internal server error',
                 'detail': str(e)
