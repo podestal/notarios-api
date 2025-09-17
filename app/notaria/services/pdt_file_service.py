@@ -1,12 +1,244 @@
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from django.db import connection
 from django.http import HttpResponse
 import logging
 
-class PdtFileService:
-    """Service for generating PDT files (.lib, .act, .bie, etc.)"""
+class BasePdtFormatter(ABC):
+    """Base class for PDT file formatters."""
+    
+    def __init__(self, initial_date: str, final_date: str, type_kardex: Optional[int] = None):
+        self.initial_date = initial_date
+        self.final_date = final_date
+        self.type_kardex = type_kardex
+        self.logger = logging.getLogger(__name__)
+        self.data = []
+        self.extension = ''  # Will be set by child classes
+        self.prefix = '3520'  # Common prefix for all PDT files
 
+    @abstractmethod
+    def load_data(self):
+        """Load data from database."""
+        pass
+
+    @abstractmethod
+    def format_line(self, record: Dict) -> str:
+        """Format a single line according to PDT specifications."""
+        pass
+
+    def get_formatted_dates(self) -> tuple:
+        """Convert and validate dates."""
+        try:
+            start_date = datetime.strptime(self.initial_date, '%d/%m/%Y').date()
+            end_date = datetime.strptime(self.final_date, '%d/%m/%Y').date()
+        except ValueError:
+            start_date = datetime.strptime(self.initial_date, '%Y-%m-%d').date()
+            end_date = datetime.strptime(self.final_date, '%Y-%m-%d').date()
+        return start_date, end_date
+
+    def get_notary_data(self) -> Dict:
+        """Get notary configuration data."""
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    idnotar AS idNotario,
+                    nombre AS nombreNotario, 
+                    apellido AS apellidosNotario,
+                    CONCAT(nombre,' ',apellido) AS notario,
+                    telefono AS telefonoNotario,
+                    correo AS correoNotario, 
+                    ruc AS rucNotario, 
+                    direccion AS direccionNotario, 
+                    distrito AS distritoNotario, 
+                    codnotario AS codigoNotario,
+                    codoficial AS codigoOficial, 
+                    coduif AS codigoUif 
+                FROM confinotario
+            """)
+            columns = [col[0] for col in cursor.description]
+            result = cursor.fetchone()
+            
+            if not result:
+                raise ValueError("No notary configuration found")
+                
+            return dict(zip(columns, result))
+
+    def generate_file(self) -> HttpResponse:
+        """Generate PDT file."""
+        try:
+            self.load_data()
+            
+            # Format lines
+            content_lines = []
+            for record in self.data:
+                line = self.format_line(record)
+                content_lines.append(line)
+
+            # Join lines with newline and carriage return
+            content = '\r\n'.join(content_lines)
+
+            # Create response
+            response = HttpResponse(content, content_type='text/plain')
+            
+            # Generate filename
+            notary_data = self.get_notary_data()
+            year = self.initial_date.split('/')[-1] if '/' in self.initial_date else self.initial_date.split('-')[0]
+            filename = f"{self.prefix}{year[2:]}{notary_data['rucNotario']}.{self.extension}"
+            
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response['Content-Transfer-Encoding'] = 'binary'
+            
+            return response
+
+        except Exception as e:
+            self.logger.error(f"Error generating {self.extension} file: {str(e)}")
+            raise
+
+    def replace_string_pdt(self, text: str) -> str:
+        """Clean text according to PDT specifications."""
+        if not text:
+            return ''
+            
+        replacements = {
+            '?': ' ', '*': ' ', 'QQ11QQ': ' ',
+            'Ñ': 'N', 'ñ': 'n', '°': ' ',
+            '#': ' ', 'é': 'e', 'á': 'a',
+            'í': 'i', 'ó': 'o', 'ú': 'u',
+            "'": ' ', '&': ' ', 'É': 'E',
+            'Á': 'A', 'Ó': 'O', 'Ú': 'U',
+            'Í': 'I', ',': ' ', 'QQ22KK': ' '
+        }
+        
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        
+        return text
+
+class ActosFormatter(BasePdtFormatter):
+    """Formatter for .act files."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extension = 'act'
+
+    def load_data(self):
+        """Load actos data efficiently without temporary tables."""
+        start_date, end_date = self.get_formatted_dates()
+
+        with connection.cursor() as cursor:
+            # Get all required data in a single query
+            cursor.execute("""
+                WITH kardex_actos AS (
+                    SELECT 
+                        k.idkardex,
+                        k.kardex,
+                        k.idtipkar,
+                        k.numescritura,
+                        k.fechaescritura,
+                        k.fechaconclusion,
+                        SUBSTRING(codactos, n.n, 3) as acto_code
+                    FROM kardex k
+                    CROSS JOIN (
+                        SELECT 1 + (3 * (a.n-1)) as n
+                        FROM (
+                            SELECT 1 as n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 
+                            UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8
+                        ) a
+                        WHERE 1 + (3 * (a.n-1)) <= (
+                            SELECT MAX(LENGTH(codactos)) FROM kardex
+                        )
+                    ) n
+                    WHERE k.idtipkar = %s
+                    AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
+                    BETWEEN %s AND %s
+                    AND SUBSTRING(codactos, n.n, 3) != ''
+                )
+                SELECT 
+                    ka.idkardex,
+                    ka.kardex,
+                    ka.idtipkar,
+                    ka.numescritura,
+                    ka.fechaescritura,
+                    ka.fechaconclusion,
+                    t.idtipoacto,
+                    t.actosunat,
+                    t.desacto,
+                    p.itemmp,
+                    p.idmon,
+                    p.nminuta,
+                    p.importetrans,
+                    p.exhibiomp,
+                    p.tipocambio
+                FROM kardex_actos ka
+                INNER JOIN tiposdeacto t ON t.idtipoacto = ka.acto_code
+                LEFT JOIN patrimonial p ON p.kardex = ka.kardex AND p.idtipoacto = ka.acto_code
+                WHERE t.actosunat != ''
+                AND t.actosunat IN (
+                    '01', '02', '03', '04', '06', '07', '08', '09', '10',
+                    '11', '12', '13', '14', '15', '16', '17', '18', '19',
+                    '20', '21', '22', '23', '24', '25', '26'
+                )
+                ORDER BY CAST(ka.numescritura AS UNSIGNED) ASC
+            """, [self.type_kardex, start_date, end_date])
+            
+            columns = [col[0] for col in cursor.description]
+            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def format_line(self, record: Dict) -> str:
+        """Format a single line for the .act file."""
+        try:
+            # Get tipo kardex code
+            tipo_kardex = {
+                1: '1',  # Escritura
+                3: '2',  # Transferencia
+                4: '5',  # Otros
+            }.get(record['idtipkar'], '')
+
+            # Format dates
+            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+            fecha_conclusion = record['fechaconclusion']  # Already in DD/MM/YYYY format
+            fecha_legalizacion = ''  # Empty for actos
+
+            # Format moneda and importe
+            if record['idmon'] == 1:
+                codigo_moneda = '2'  # Soles
+            elif record['idmon'] == 2:
+                codigo_moneda = '1'  # Dólares
+            elif record['idmon'] == 3:
+                # Handle foreign currency with exchange rate
+                codigo_moneda = '1'
+                record['importetrans'] = float(record['importetrans']) * float(record['tipocambio'])
+            else:
+                codigo_moneda = ''
+
+            # Format fields
+            fields = [
+                str(tipo_kardex).ljust(1),  # Tipo kardex
+                str(record['numescritura']).ljust(5),  # Numero escritura
+                fecha_escritura.ljust(10),  # Fecha escritura
+                fecha_conclusion.ljust(10),  # Fecha conclusion
+                fecha_legalizacion.ljust(10),  # Fecha legalizacion
+                str(record['actosunat']).ljust(2),  # Acto sunat
+                str(record.get('secuencial', 1)).rjust(5),  # Secuencial
+                codigo_moneda.ljust(1),  # Moneda
+                str(record['importetrans']).rjust(15),  # Importe
+                ''.ljust(10),  # Plazo inicial
+                ''.ljust(11),  # Plazo final
+                self.replace_string_pdt(record['desacto'] if record['actosunat'] == '14' else '').ljust(30),  # Nombre contrato
+                (record.get('nminuta', '') or '').ljust(10),  # Fecha inscripcion minuta
+                ('1' if record['exhibiomp'] == 'SI' else '0').ljust(1)  # Exhibio medio pago
+            ]
+
+            return '|'.join(fields)
+
+        except Exception as e:
+            self.logger.error(f"Error formatting act line: {str(e)}")
+            raise
+
+class PdtFileService:
+    """Service for generating PDT files."""
+    
     # File type constants
     FILE_TYPE_ACT = 1  # Actos
     FILE_TYPE_BIE = 2  # Bienes
@@ -15,180 +247,18 @@ class PdtFileService:
     FILE_TYPE_FORM = 5  # Formulario
     FILE_TYPE_LIB = 6  # Libros
 
+    FILE_TYPE_FORMATTERS = {
+        FILE_TYPE_ACT: ActosFormatter,
+        # Other formatters will be added as we implement them
+    }
+
     def __init__(self, initial_date: str, final_date: str, file_type: int, type_kardex: Optional[int] = None):
-        """Initialize PDT file service."""
-        self.logger = logging.getLogger(__name__)
-        self.initial_date = initial_date
-        self.final_date = final_date
-        self.file_type = file_type
-        self.type_kardex = type_kardex
-        self.data = []
+        self.formatter_class = self.FILE_TYPE_FORMATTERS.get(file_type)
+        if not self.formatter_class:
+            raise ValueError(f"Invalid file type: {file_type}")
+            
+        self.formatter = self.formatter_class(initial_date, final_date, type_kardex)
 
     def generate_file(self) -> HttpResponse:
-        """Generate PDT file based on file type."""
-        try:
-            # Load appropriate data based on file type
-            if self.file_type == self.FILE_TYPE_ACT:
-                self._load_data_act()
-                return self._generate_file_act()
-            elif self.file_type == self.FILE_TYPE_BIE:
-                self._load_data_act()
-                self._load_data_bien()
-                return self._generate_file_bien()
-            elif self.file_type == self.FILE_TYPE_OTG:
-                self._load_data_act()
-                self._load_data_bien()
-                self._load_data_otorgante()
-                return self._generate_file_otorgante()
-            elif self.file_type == self.FILE_TYPE_MPA:
-                self._load_data_act()
-                self._load_data_bien()
-                self._load_data_otorgante()
-                self._load_data_medio_pago()
-                return self._generate_file_medio()
-            elif self.file_type == self.FILE_TYPE_FORM:
-                self._load_data_act()
-                self._load_data_bien()
-                self._load_data_otorgante()
-                self._load_data_medio_pago()
-                self._load_data_formulario()
-                return self._generate_file_form()
-            elif self.file_type == self.FILE_TYPE_LIB:
-                self._load_data_libro()
-                return self._generate_file_libro()
-            else:
-                raise ValueError(f"Invalid file type: {self.file_type}")
-
-        except Exception as e:
-            self.logger.error(f"Error generating PDT file: {str(e)}")
-            raise
-
-    def _load_data_libro(self):
-        """Load libro data for PDT file."""
-        try:
-            # Convert dates - support both DD/MM/YYYY and YYYY-MM-DD formats
-            try:
-                # Try DD/MM/YYYY format first (like PHP)
-                start_date = datetime.strptime(self.initial_date, '%d/%m/%Y').date()
-                end_date = datetime.strptime(self.final_date, '%d/%m/%Y').date()
-            except ValueError:
-                # Try YYYY-MM-DD format as fallback
-                start_date = datetime.strptime(self.initial_date, '%Y-%m-%d').date()
-                end_date = datetime.strptime(self.final_date, '%Y-%m-%d').date()
-
-            # Get libro data
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT 
-                        l.numlibro,
-                        l.fecing,
-                        l.empresa,
-                        l.descritiplib,
-                        l.dni,
-                        l.ruc,
-                        l.folio,
-                        l.idtipfol,
-                        l.idnlibro,
-                        l.solicitante,
-                        l.numdoc_plantilla,
-                        l.tipper,
-                        l.prinom,
-                        l.segnom,
-                        l.apepat,
-                        l.apemat,
-                        l.domfiscal
-                    FROM libros l
-                    WHERE STR_TO_DATE(fecing, '%%Y-%%m-%%d') BETWEEN %s AND %s
-                    ORDER BY numlibro
-                """, [start_date, end_date])
-                
-                columns = [col[0] for col in cursor.description]
-                self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-        except Exception as e:
-            self.logger.error(f"Error loading libro data: {str(e)}")
-            raise
-
-    def _generate_file_libro(self) -> HttpResponse:
-        """Generate .lib file for PDT."""
-        try:
-            # Initialize content list
-            content_lines = []
-
-            # Process each libro
-            for libro in self.data:
-                # Format data according to PDT specifications
-                line = self._format_libro_line(libro)
-                content_lines.append(line)
-
-            # Join lines with newline
-            content = '\n'.join(content_lines)
-
-            # Create response with .lib file
-            response = HttpResponse(content, content_type='text/plain')
-            
-            # Format dates for filename
-            try:
-                start_date = datetime.strptime(self.initial_date, '%d/%m/%Y')
-                end_date = datetime.strptime(self.final_date, '%d/%m/%Y')
-            except ValueError:
-                start_date = datetime.strptime(self.initial_date, '%Y-%m-%d')
-                end_date = datetime.strptime(self.final_date, '%Y-%m-%d')
-                
-            # Format filename: LE_YYYYMMDD_YYYYMMDD.lib
-            filename = f"LE_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.lib"
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
-
-        except Exception as e:
-            self.logger.error(f"Error generating .lib file: {str(e)}")
-            raise
-
-    def _format_libro_line(self, libro: Dict) -> str:
-        """Format a single line for the .lib file according to PDT specifications."""
-        try:
-            # Get person name based on type
-            if libro['tipper'] == 'N':  # Natural person
-                nombre = f"{libro['prinom']} {libro['segnom']} {libro['apepat']} {libro['apemat']}".strip()
-            else:  # Juridical person
-                nombre = libro['empresa'] if libro['empresa'] else ''
-
-            # Format date - handle both string and datetime.date objects
-            fecha = ''
-            if libro['fecing']:
-                if isinstance(libro['fecing'], str):
-                    fecha = datetime.strptime(libro['fecing'], '%Y-%m-%d').strftime('%d/%m/%Y')
-                else:
-                    fecha = libro['fecing'].strftime('%d/%m/%Y')
-
-            # Build line with fixed width fields
-            # Note: Adjust field widths according to actual PDT specifications
-            fields = [
-                str(libro['numlibro']).ljust(15),  # Numero de libro
-                fecha.ljust(10),  # Fecha
-                (libro['dni'] or '').ljust(8),  # DNI
-                (libro['ruc'] or '').ljust(11),  # RUC
-                nombre.ljust(100),  # Nombre/Razon social
-                (libro['domfiscal'] or '').ljust(100),  # Domicilio fiscal
-                (libro['descritiplib'] or '').ljust(50),  # Descripcion tipo libro
-                str(libro['folio'] or '').ljust(10),  # Folio
-            ]
-
-            return '|'.join(fields)
-
-        except Exception as e:
-            self.logger.error(f"Error formatting libro line: {str(e)}")
-            raise
-
-    # Placeholder methods for other file types
-    def _load_data_act(self): pass
-    def _load_data_bien(self): pass
-    def _load_data_otorgante(self): pass
-    def _load_data_medio_pago(self): pass
-    def _load_data_formulario(self): pass
-    def _generate_file_act(self): pass
-    def _generate_file_bien(self): pass
-    def _generate_file_otorgante(self): pass
-    def _generate_file_medio(self): pass
-    def _generate_file_form(self): pass 
+        """Generate PDT file."""
+        return self.formatter.generate_file()

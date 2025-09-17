@@ -1769,7 +1769,129 @@ class KardexViewSet(ModelViewSet):
                 'errorDescription': f'Error ejecutando cálculo: {str(e)}'
             }, status=500)
 
+    @action(detail=False, methods=['get'], url_path='pdt-file')
+    def generate_pdt_file(self, request):
+        """
+        Generate PDT files (.lib, .act, .bie, etc.)
+        
+        Query Parameters:
+        - initialDate: Start date (DD/MM/YYYY)
+        - finalDate: End date (DD/MM/YYYY)
+        - fileType: Type of file to generate:
+            1 = Actos (.act)
+            2 = Bienes (.bie)
+            3 = Otorgantes (.otg)
+            4 = Medio de Pago (.mpa)
+            5 = Formulario (.for)
+            6 = Libros (.lib)
+        - typeKardex: (Optional) Type of kardex to filter by:
+            1 = Escritura
+            3 = Transferencia
+            4 = Garantía
+        """
+        try:
+            # Get and validate parameters
+            initial_date = request.query_params.get('initialDate')
+            final_date = request.query_params.get('finalDate')
+            file_type = request.query_params.get('fileType')
+            type_kardex = request.query_params.get('typeKardex')
+            
+            # Validate required parameters
+            if not all([initial_date, final_date, file_type]):
+                return Response({
+                    'error': 'initialDate, finalDate, and fileType are required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            # Validate file type
+            try:
+                file_type = int(file_type)
+                if file_type not in [
+                    PdtFileService.FILE_TYPE_ACT,
+                    PdtFileService.FILE_TYPE_BIE,
+                    PdtFileService.FILE_TYPE_OTG,
+                    PdtFileService.FILE_TYPE_MPA,
+                    PdtFileService.FILE_TYPE_FORM,
+                    PdtFileService.FILE_TYPE_LIB
+                ]:
+                    return Response({
+                        'error': 'Invalid fileType. Must be between 1 and 6'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            except ValueError:
+                return Response({
+                    'error': 'fileType must be a number'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            # Validate type_kardex if provided
+            if type_kardex:
+                try:
+                    type_kardex = int(type_kardex)
+                    if type_kardex not in [1, 3, 4]:  # Valid kardex types
+                        return Response({
+                            'error': 'Invalid typeKardex. Must be 1 (Escritura), 3 (Transferencia), or 4 (Garantía)'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                except ValueError:
+                    return Response({
+                        'error': 'typeKardex must be a number'
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
+            # Validate dates
+            try:
+                # Try DD/MM/YYYY format first
+                datetime.strptime(initial_date, '%d/%m/%Y')
+                datetime.strptime(final_date, '%d/%m/%Y')
+            except ValueError:
+                try:
+                    # Try YYYY-MM-DD format as fallback
+                    initial_date = datetime.strptime(initial_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+                    final_date = datetime.strptime(final_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+                except ValueError:
+                    return Response({
+                        'error': 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate date range
+            start_date = datetime.strptime(initial_date, '%d/%m/%Y')
+            end_date = datetime.strptime(final_date, '%d/%m/%Y')
+            if start_date > end_date:
+                return Response({
+                    'error': 'initialDate cannot be later than finalDate'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Generate PDT file
+            try:
+                pdt_service = PdtFileService(
+                    initial_date=initial_date,
+                    final_date=final_date,
+                    file_type=file_type,
+                    type_kardex=type_kardex
+                )
+                
+                response = pdt_service.generate_file()
+                
+                # Add CORS headers if needed
+                response["Access-Control-Expose-Headers"] = "Content-Disposition"
+                
+                return response
+                
+            except ValueError as e:
+                # Handle known validation errors
+                return Response({
+                    'error': str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                # Log unexpected errors
+                self.logger.error(f"Error generating PDT file: {str(e)}", exc_info=True)
+                return Response({
+                    'error': 'Error generating PDT file',
+                    'detail': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            self.logger.error(f"Error in generate_pdt_file: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Internal server error',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
