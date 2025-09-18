@@ -863,45 +863,65 @@ class LibrosFormatter(BasePdtFormatter):
     def load_data(self):
         """Load libros data following the PHP implementation."""
         start_date, end_date = self.get_formatted_dates()
+        print(f"\n=== LibrosFormatter Debug ===")
+        print(f"Loading data for dates: {start_date} to {end_date}")
+
+        # Convert dates to YYYY-MM-DD format for comparison
+        try:
+            start_date_db = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+            end_date_db = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            start_date_db = start_date
+            end_date_db = end_date
+
+        print(f"DB dates: start={start_date_db}, end={end_date_db}")
 
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT DISTINCT 
-                    l.numlibro,
-                    l.ano,
-                    l.fecing,
-                    l.tipper,
-                    l.apepat,
-                    l.apemat,
-                    l.prinom,
-                    l.segnom,
-                    l.ruc,
-                    l.empresa,
-                    l.domfiscal,
-                    l.coddis,
-                    l.idtiplib,
+                WITH filtered_libros AS (
+                    SELECT 
+                        l.numlibro,
+                        l.ano,
+                        l.fecing,
+                        l.tipper,
+                        l.apepat,
+                        l.apemat,
+                        l.prinom,
+                        l.segnom,
+                        l.ruc,
+                        l.empresa,
+                        l.domfiscal,
+                        l.coddis,
+                        l.idtiplib,
+                        l.folio,
+                        l.feclegal
+                    FROM libros l
+                    WHERE l.fecing BETWEEN %s AND %s
+                    AND l.fecing != '0000-00-00'
+                    AND l.fecing != ''
+                )
+                SELECT 
+                    l.*,
                     tl.coddlib,
                     tl.destiplib,
-                    l.folio,
-                    l.feclegal,
                     u.coddist,
                     u.codprov,
                     u.codpto,
                     ROW_NUMBER() OVER (
                         ORDER BY l.fecing, l.numlibro
                     ) as secuencial_libro
-                FROM libros l
+                FROM filtered_libros l
                 INNER JOIN tipolibro tl ON tl.idtiplib = l.idtiplib
                 LEFT JOIN ubigeo u ON u.coddis = l.coddis
-                WHERE STR_TO_DATE(l.fecing, '%%Y-%%m-%%d') 
-                BETWEEN %s AND %s
                 ORDER BY 
                     l.fecing,
                     l.numlibro
-            """, [start_date, end_date])
+            """, [start_date_db, end_date_db])
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            print(f"Found {len(self.data)} records")
+            print("=== End LibrosFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .lib file."""
