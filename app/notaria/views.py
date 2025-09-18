@@ -1796,6 +1796,9 @@ class KardexViewSet(ModelViewSet):
             final_date = request.query_params.get('finalDate')
             file_type = request.query_params.get('fileType')
             type_kardex = request.query_params.get('typeKardex')
+
+            print('initial_date', initial_date)
+            print('final_date', final_date)
             
             # Validate required parameters
             if not all([initial_date, final_date, file_type]):

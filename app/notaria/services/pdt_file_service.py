@@ -30,12 +30,19 @@ class BasePdtFormatter(ABC):
     def get_formatted_dates(self) -> tuple:
         """Convert and validate dates."""
         try:
-            start_date = datetime.strptime(self.initial_date, '%d/%m/%Y').date()
-            end_date = datetime.strptime(self.final_date, '%d/%m/%Y').date()
+            # First try DD/MM/YYYY format
+            start_date = datetime.strptime(self.initial_date, '%d/%m/%Y')
+            end_date = datetime.strptime(self.final_date, '%d/%m/%Y')
         except ValueError:
-            start_date = datetime.strptime(self.initial_date, '%Y-%m-%d').date()
-            end_date = datetime.strptime(self.final_date, '%Y-%m-%d').date()
-        return start_date, end_date
+            try:
+                # Then try YYYY-MM-DD format
+                start_date = datetime.strptime(self.initial_date, '%Y-%m-%d')
+                end_date = datetime.strptime(self.final_date, '%Y-%m-%d')
+            except ValueError as e:
+                raise ValueError(f"Invalid date format. Dates must be in DD/MM/YYYY or YYYY-MM-DD format")
+
+        # Return dates in the format they were provided
+        return self.initial_date, self.final_date
 
     def get_notary_data(self) -> Dict:
         """Get notary configuration data."""
@@ -115,6 +122,34 @@ class BasePdtFormatter(ABC):
         
         return text
 
+    def get_base_kardex_query(self) -> str:
+        """Get the base kardex query that all formatters should use."""
+        return """
+            WITH kardex_actos AS (
+                SELECT 
+                    k.idkardex,
+                    k.kardex,
+                    k.idtipkar,
+                    k.numescritura,
+                    k.fechaescritura,
+                    SUBSTRING(codactos, n.n, 3) as acto_code
+                FROM kardex k
+                CROSS JOIN (
+                    SELECT 1 + (3 * (a.n-1)) as n
+                    FROM (
+                        SELECT 1 as n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 
+                        UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8
+                    ) a
+                    WHERE 1 + (3 * (a.n-1)) <= (
+                        SELECT MAX(LENGTH(codactos)) FROM kardex
+                    )
+                ) n
+                WHERE k.idtipkar = %s
+                AND k.fechaescritura BETWEEN %s AND %s
+                AND SUBSTRING(codactos, n.n, 3) != ''
+            )
+        """
+
 class ActosFormatter(BasePdtFormatter):
     """Formatter for .act files."""
     
@@ -150,8 +185,11 @@ class ActosFormatter(BasePdtFormatter):
                         )
                     ) n
                     WHERE k.idtipkar = %s
-                    AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
-                    BETWEEN %s AND %s
+                    AND CASE 
+                        WHEN k.fechaconclusion = '0000-00-00' OR k.fechaconclusion IS NULL OR k.fechaconclusion = ''
+                        THEN STR_TO_DATE(k.fechaescritura, '%%Y-%%m-%%d') BETWEEN STR_TO_DATE(%s, '%%d/%%m/%%Y') AND STR_TO_DATE(%s, '%%d/%%m/%%Y')
+                        ELSE STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') BETWEEN STR_TO_DATE(%s, '%%d/%%m/%%Y') AND STR_TO_DATE(%s, '%%d/%%m/%%Y')
+                    END
                     AND SUBSTRING(codactos, n.n, 3) != ''
                 )
                 SELECT 
@@ -180,7 +218,7 @@ class ActosFormatter(BasePdtFormatter):
                     '20', '21', '22', '23', '24', '25', '26'
                 )
                 ORDER BY CAST(ka.numescritura AS UNSIGNED) ASC
-            """, [self.type_kardex, start_date, end_date])
+            """, [self.type_kardex, start_date, end_date, start_date, end_date])
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -195,9 +233,14 @@ class ActosFormatter(BasePdtFormatter):
                 4: '5',  # Otros
             }.get(record['idtipkar'], '')
 
-            # Format dates
-            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
-            fecha_conclusion = record['fechaconclusion']  # Already in DD/MM/YYYY format
+            # Format dates safely
+            try:
+                fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['fechaescritura'] else ''
+            except (ValueError, TypeError):
+                fecha_escritura = ''
+
+            # Use fechaconclusion as is since it's already in DD/MM/YYYY format
+            fecha_conclusion = record['fechaconclusion'] if record['fechaconclusion'] and record['fechaconclusion'] != '0000-00-00' else ''
             fecha_legalizacion = ''  # Empty for actos
 
             # Format moneda and importe
@@ -244,100 +287,63 @@ class BienesFormatter(BasePdtFormatter):
         self.extension = 'bie'
 
     def load_data(self):
-        """Load bienes data efficiently without temporary tables."""
+        """Load bienes data efficiently."""
         start_date, end_date = self.get_formatted_dates()
-
+        
+        query = f"""
+            {self.get_base_kardex_query()}
+            SELECT DISTINCT 
+                ka.idkardex,
+                ka.kardex,
+                ka.idtipkar,
+                ka.numescritura,
+                ka.fechaescritura,
+                ka.acto_code,
+                t.actosunat,
+                -- Add bienes specific fields
+                v.detveh,
+                v.numplaca,
+                v.numserie as serie_vehiculo,
+                v.motor,
+                v.fecinsc as fecha_adquisicion_vehiculo,
+                b.detbien,
+                b.itemmp,
+                b.tipob,
+                b.idtipbien,
+                b.coddis,
+                b.fechaconst as fecha_adquisicion,
+                b.oespecific,
+                b.smaquiequipo,
+                b.tpsm,
+                b.npsm,
+                tb.codbien,
+                ROW_NUMBER() OVER (
+                    PARTITION BY ka.kardex, ka.acto_code
+                    ORDER BY COALESCE(v.detveh, b.detbien)
+                ) as secuencial_bien
+            FROM kardex_actos ka
+            INNER JOIN tiposdeacto t ON t.idtipoacto = ka.acto_code
+            LEFT JOIN detallevehicular v ON 
+                v.kardex = ka.kardex AND ka.idtipkar = 3
+            LEFT JOIN patrimonial p ON 
+                p.kardex = ka.kardex AND 
+                p.idtipoacto = ka.acto_code
+            LEFT JOIN detallebienes b ON 
+                b.itemmp = p.itemmp AND 
+                ka.idtipkar != 3
+            LEFT JOIN tipobien tb ON 
+                tb.idtipbien = COALESCE(b.idtipbien, '8')
+            WHERE t.actosunat != ''
+            AND t.actosunat NOT IN ('10')
+            AND (v.detveh IS NOT NULL OR b.detbien IS NOT NULL)
+            ORDER BY 
+                CAST(ka.numescritura AS UNSIGNED),
+                ka.acto_code,
+                COALESCE(v.detveh, b.detbien)
+        """
+        
         with connection.cursor() as cursor:
-            # First get all kardex records with their acts
-            cursor.execute("""
-                WITH kardex_actos AS (
-                    -- Same CTE as ActosFormatter to get kardex records
-                    SELECT 
-                        k.idkardex,
-                        k.kardex,
-                        k.idtipkar,
-                        k.numescritura,
-                        k.fechaescritura,
-                        k.fechaconclusion,
-                        SUBSTRING(codactos, n.n, 3) as acto_code
-                    FROM kardex k
-                    CROSS JOIN (
-                        SELECT 1 + (3 * (a.n-1)) as n
-                        FROM (
-                            SELECT 1 as n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 
-                            UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8
-                        ) a
-                        WHERE 1 + (3 * (a.n-1)) <= (
-                            SELECT MAX(LENGTH(codactos)) FROM kardex
-                        )
-                    ) n
-                    WHERE k.idtipkar = %s
-                    AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
-                    BETWEEN %s AND %s
-                    AND SUBSTRING(codactos, n.n, 3) != ''
-                ),
-                actos_data AS (
-                    -- Get base actos data
-                    SELECT 
-                        ka.*,
-                        t.actosunat,
-                        t.desacto,
-                        p.itemmp,
-                        ROW_NUMBER() OVER (PARTITION BY ka.kardex ORDER BY ka.numescritura) as secuencial_acto
-                    FROM kardex_actos ka
-                    INNER JOIN tiposdeacto t ON t.idtipoacto = ka.acto_code
-                    LEFT JOIN patrimonial p ON p.kardex = ka.kardex AND p.idtipoacto = ka.acto_code
-                    WHERE t.actosunat != ''
-                    AND t.actosunat NOT IN ('10')  -- Exclude actos without bienes
-                )
-                SELECT 
-                    -- Common fields
-                    a.idkardex,
-                    a.kardex,
-                    a.idtipkar,
-                    a.numescritura,
-                    a.fechaescritura,
-                    a.actosunat,
-                    a.secuencial_acto,
-                    -- Vehicle specific fields
-                    v.detveh,
-                    v.numplaca,
-                    v.numserie as serie_vehiculo,
-                    v.motor,
-                    v.fecinsc as fecha_adquisicion_vehiculo,
-                    -- Regular property fields
-                    b.detbien,
-                    b.itemmp,
-                    b.tipob,
-                    b.idtipbien,
-                    b.coddis,
-                    b.fechaconst as fecha_adquisicion,
-                    b.oespecific,
-                    b.smaquiequipo,
-                    b.tpsm,
-                    b.npsm,
-                    -- Tipo bien data
-                    tb.codbien,
-                    -- Row number for bien secuencial
-                    ROW_NUMBER() OVER (
-                        PARTITION BY a.kardex, a.acto_code 
-                        ORDER BY COALESCE(v.detveh, b.detbien)
-                    ) as secuencial_bien
-                FROM actos_data a
-                -- Left join both vehicle and regular property data
-                LEFT JOIN detallevehicular v ON 
-                    v.kardex = a.kardex AND 
-                    a.idtipkar = 3  -- Only for vehicle type
-                LEFT JOIN detallebienes b ON 
-                    b.itemmp = a.itemmp AND
-                    a.idtipkar != 3  -- For non-vehicle types
-                LEFT JOIN tipobien tb ON tb.idtipbien = COALESCE(b.idtipbien, '8')  -- 8 for vehicles
-                WHERE (v.detveh IS NOT NULL OR b.detbien IS NOT NULL)  -- Only records with bienes
-                ORDER BY 
-                    CAST(a.numescritura AS UNSIGNED),
-                    a.secuencial_acto,
-                    COALESCE(v.detveh, b.detbien)
-            """, [self.type_kardex, start_date, end_date])
+            cursor.execute(query, [self.type_kardex, start_date, end_date])
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -352,8 +358,11 @@ class BienesFormatter(BasePdtFormatter):
                 4: '5',  # Otros
             }.get(record['idtipkar'], '')
 
-            # Format date
-            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+            # Format date safely
+            try:
+                fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['fechaescritura'] else ''
+            except (ValueError, TypeError):
+                fecha_escritura = ''
 
             # Determine tipo bien and related fields
             if record['idtipkar'] == 3:  # Vehicle
@@ -434,7 +443,7 @@ class OtorgantesFormatter(BasePdtFormatter):
         self.extension = 'otg'
 
     def load_data(self):
-        """Load otorgantes data following the PHP implementation."""
+        """Load otorgantes data efficiently."""
         start_date, end_date = self.get_formatted_dates()
 
         with connection.cursor() as cursor:
@@ -445,29 +454,32 @@ class OtorgantesFormatter(BasePdtFormatter):
                     k.idtipkar,
                     k.numescritura,
                     k.fechaescritura,
-                    k.codactos,
+                    t.actosunat,  -- Added back
+                    1 as secuencial_acto,  -- Added back
                     c.idcontratante,
                     c2.idtipdoc,
                     c2.numdoc,
                     c2.apepat,
                     c2.apemat,
                     c2.prinom as nombres,
-                    c2.razonsocial,  # Changed from razsoc to razonsocial
+                    c2.razonsocial,
                     c2.tipper as tipopersona,
                     c.condicion as idcondicion,
                     ROW_NUMBER() OVER (
-                        PARTITION BY k.kardex 
+                        PARTITION BY k.kardex, ca.idtipoacto
                         ORDER BY c.idcontratante
                     ) as secuencial_otorgante
                 FROM kardex k
                 INNER JOIN contratantesxacto ca ON ca.kardex = k.kardex
+                INNER JOIN tiposdeacto t ON t.idtipoacto = ca.idtipoacto  -- Added back
                 INNER JOIN contratantes c ON c.idcontratante = ca.idcontratante
                 INNER JOIN cliente2 c2 ON c2.idcontratante = c.idcontratante
                 WHERE k.idtipkar = %s
-                AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
-                BETWEEN %s AND %s
+                AND k.fechaescritura BETWEEN %s AND %s
+                AND t.actosunat != ''  -- Added back
                 ORDER BY 
                     CAST(k.numescritura AS UNSIGNED),
+                    t.idtipoacto,
                     c.idcontratante
             """, [self.type_kardex, start_date, end_date])
             
@@ -484,8 +496,11 @@ class OtorgantesFormatter(BasePdtFormatter):
                 4: '5',  # Otros
             }.get(record['idtipkar'], '')
 
-            # Format date
-            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+            # Format date safely
+            try:
+                fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['fechaescritura'] else ''
+            except (ValueError, TypeError):
+                fecha_escritura = ''
 
             # Format tipo documento based on idtipdoc
             tipo_documento = {
@@ -547,7 +562,7 @@ class MediosPagoFormatter(BasePdtFormatter):
         self.extension = 'mpa'
 
     def load_data(self):
-        """Load medios de pago data following the PHP implementation."""
+        """Load medios de pago data efficiently."""
         start_date, end_date = self.get_formatted_dates()
 
         with connection.cursor() as cursor:
@@ -558,6 +573,8 @@ class MediosPagoFormatter(BasePdtFormatter):
                     k.idtipkar,
                     k.numescritura,
                     k.fechaescritura,
+                    t.actosunat,  -- Added back
+                    1 as secuencial_acto,  -- Added back
                     p.itemmp,
                     p.idmon,
                     p.importetrans,
@@ -568,17 +585,20 @@ class MediosPagoFormatter(BasePdtFormatter):
                     mp.foperacion,
                     mp.documentos,
                     ROW_NUMBER() OVER (
-                        PARTITION BY k.kardex, p.itemmp
+                        PARTITION BY k.kardex, ca.idtipoacto
                         ORDER BY mp.detmp
                     ) as secuencial_pago
                 FROM kardex k
-                INNER JOIN patrimonial p ON p.kardex = k.kardex
+                INNER JOIN contratantesxacto ca ON ca.kardex = k.kardex  -- Added back
+                INNER JOIN tiposdeacto t ON t.idtipoacto = ca.idtipoacto  -- Added back
+                INNER JOIN patrimonial p ON p.kardex = k.kardex AND p.idtipoacto = ca.idtipoacto  -- Modified join
                 INNER JOIN detallemediopago mp ON mp.itemmp = p.itemmp
                 WHERE k.idtipkar = %s
-                AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
-                BETWEEN %s AND %s
+                AND k.fechaescritura BETWEEN %s AND %s
+                AND t.actosunat != ''  -- Added back
                 ORDER BY 
                     CAST(k.numescritura AS UNSIGNED),
+                    t.idtipoacto,
                     p.itemmp,
                     mp.detmp
             """, [self.type_kardex, start_date, end_date])
@@ -596,9 +616,17 @@ class MediosPagoFormatter(BasePdtFormatter):
                 4: '5',  # Otros
             }.get(record['idtipkar'], '')
 
-            # Format date
-            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
-            fecha_operacion = record['foperacion'] if record['foperacion'] else ''
+            # Format date safely
+            try:
+                fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['fechaescritura'] else ''
+            except (ValueError, TypeError):
+                fecha_escritura = ''
+
+            # Format date safely
+            try:
+                fecha_operacion = datetime.strptime(record['foperacion'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['foperacion'] else ''
+            except (ValueError, TypeError):
+                fecha_operacion = ''
 
             # Format moneda
             moneda = {
@@ -674,8 +702,10 @@ class FormularioFormatter(BasePdtFormatter):
                 INNER JOIN renta r ON r.kardex = k.kardex
                 INNER JOIN formulario f ON f.idrenta = r.idrenta
                 WHERE k.idtipkar = %s
-                AND STR_TO_DATE(k.fechaconclusion, '%%d/%%m/%%Y') 
-                BETWEEN %s AND %s
+                AND k.fechaconclusion IS NOT NULL
+                AND k.fechaconclusion != '0000-00-00'
+                AND k.fechaconclusion != ''
+                AND k.fechaconclusion BETWEEN %s AND %s
                 ORDER BY 
                     CAST(k.numescritura AS UNSIGNED),
                     r.idrenta,
@@ -695,8 +725,11 @@ class FormularioFormatter(BasePdtFormatter):
                 4: '5',  # Otros
             }.get(record['idtipkar'], '')
 
-            # Format date
-            fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y')
+            # Format date safely
+            try:
+                fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['fechaescritura'] else ''
+            except (ValueError, TypeError):
+                fecha_escritura = ''
 
             # Format fields
             fields = [
