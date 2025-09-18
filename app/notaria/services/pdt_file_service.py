@@ -287,129 +287,186 @@ class BienesFormatter(BasePdtFormatter):
         self.extension = 'bie'
 
     def load_data(self):
-        """Load bienes data efficiently."""
+        """Load bienes data following the PHP implementation."""
         start_date, end_date = self.get_formatted_dates()
         
-        query = f"""
-            {self.get_base_kardex_query()}
-            SELECT DISTINCT 
-                ka.idkardex,
-                ka.kardex,
-                ka.idtipkar,
-                ka.numescritura,
-                ka.fechaescritura,
-                ka.acto_code,
-                t.actosunat,
-                -- Add bienes specific fields
-                v.detveh,
-                v.numplaca,
-                v.numserie as serie_vehiculo,
-                v.motor,
-                v.fecinsc as fecha_adquisicion_vehiculo,
-                b.detbien,
-                b.itemmp,
-                b.tipob,
-                b.idtipbien,
-                b.coddis,
-                b.fechaconst as fecha_adquisicion,
-                b.oespecific,
-                b.smaquiequipo,
-                b.tpsm,
-                b.npsm,
-                tb.codbien,
-                ROW_NUMBER() OVER (
-                    PARTITION BY ka.kardex, ka.acto_code
-                    ORDER BY COALESCE(v.detveh, b.detbien)
-                ) as secuencial_bien
-            FROM kardex_actos ka
-            INNER JOIN tiposdeacto t ON t.idtipoacto = ka.acto_code
-            LEFT JOIN detallevehicular v ON 
-                v.kardex = ka.kardex AND ka.idtipkar = 3
-            LEFT JOIN patrimonial p ON 
-                p.kardex = ka.kardex AND 
-                p.idtipoacto = ka.acto_code
-            LEFT JOIN detallebienes b ON 
-                b.itemmp = p.itemmp AND 
-                ka.idtipkar != 3
-            LEFT JOIN tipobien tb ON 
-                tb.idtipbien = COALESCE(b.idtipbien, '8')
-            WHERE t.actosunat != ''
-            AND t.actosunat NOT IN ('10')
-            AND (v.detveh IS NOT NULL OR b.detbien IS NOT NULL)
-            ORDER BY 
-                CAST(ka.numescritura AS UNSIGNED),
-                ka.acto_code,
-                COALESCE(v.detveh, b.detbien)
-        """
-        
+        # Convert dates to YYYY-MM-DD format for comparison
+        try:
+            start_date_db = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+            end_date_db = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            start_date_db = start_date
+            end_date_db = end_date
+
+        print(f"\n=== BienesFormatter Debug ===")
+        print(f"Initial date: {self.initial_date}")
+        print(f"Final date: {self.final_date}")
+        print(f"Type kardex: {self.type_kardex}")
+        print(f"DB dates: start={start_date_db}, end={end_date_db}")
+
         with connection.cursor() as cursor:
-            cursor.execute(query, [self.type_kardex, start_date, end_date])
-            
+            # Vehicle records query
+            vehicle_query = """
+                SELECT DISTINCT 
+                    k.idkardex,
+                    k.kardex,
+                    k.idtipkar,
+                    k.numescritura,
+                    k.fechaescritura,
+                    t.actosunat,
+                    1 as secuencial_acto,
+                    v.detveh as detalle,
+                    v.numplaca,
+                    v.numserie,
+                    v.motor,
+                    v.fecinsc as fecha_adquisicion,
+                    'B' as tipob,
+                    '08' as codbien,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY k.kardex
+                        ORDER BY v.detveh
+                    ) as secuencial_bien
+                FROM kardex k
+                INNER JOIN detallevehicular v ON v.kardex = k.kardex
+                INNER JOIN tiposdeacto t ON t.idtipoacto = v.idtipacto
+                WHERE k.idtipkar = %s
+                AND k.fechaescritura != ''
+                AND k.fechaescritura != '0000-00-00'
+                AND k.fechaescritura BETWEEN %s AND %s
+                AND t.actosunat != ''
+            """
+            print("\nExecuting vehicle query...")
+            cursor.execute(vehicle_query, [self.type_kardex, start_date_db, end_date_db])
+            vehicle_rows = cursor.fetchall()
+            print(f"Found {len(vehicle_rows)} vehicle records")
+
+            # Property records query
+            property_query = """
+                SELECT DISTINCT 
+                    k.idkardex,
+                    k.kardex,
+                    k.idtipkar,
+                    k.numescritura,
+                    k.fechaescritura,
+                    t.actosunat,
+                    1 as secuencial_acto,
+                    b.detbien as detalle,
+                    b.tipob,
+                    b.idtipbien,
+                    b.coddis,
+                    b.fechaconst as fecha_adquisicion,
+                    b.oespecific,
+                    b.smaquiequipo,
+                    b.tpsm,
+                    b.npsm,
+                    tb.codbien,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY k.kardex
+                        ORDER BY b.detbien
+                    ) as secuencial_bien
+                FROM kardex k
+                INNER JOIN patrimonial p ON p.kardex = k.kardex
+                INNER JOIN detallebienes b ON b.itemmp = p.itemmp
+                INNER JOIN tiposdeacto t ON t.idtipoacto = p.idtipoacto
+                INNER JOIN tipobien tb ON tb.idtipbien = b.idtipbien
+                WHERE k.idtipkar = %s
+                AND k.fechaescritura != ''
+                AND k.fechaescritura != '0000-00-00'
+                AND k.fechaescritura BETWEEN %s AND %s
+                AND t.actosunat != ''
+            """
+            print("\nExecuting property query...")
+            cursor.execute(property_query, [self.type_kardex, start_date_db, end_date_db])
+            property_rows = cursor.fetchall()
+            print(f"Found {len(property_rows)} property records")
+
+            # Combine and process results
             columns = [col[0] for col in cursor.description]
-            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            vehicle_data = [dict(zip(columns, row)) for row in vehicle_rows]
+            property_data = [dict(zip(columns, row)) for row in property_rows]
+            self.data = vehicle_data + property_data
+            
+            print(f"\nTotal records: {len(self.data)}")
+            print("=== End BienesFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .bie file."""
         try:
+            print(f"\nFormatting line for record: {record['kardex']}")
+            
             # Get tipo kardex code
             tipo_kardex = {
                 1: '1',  # Escritura
                 3: '2',  # Transferencia
                 4: '5',  # Otros
             }.get(record['idtipkar'], '')
+            print(f"Tipo kardex: {tipo_kardex}")
 
             # Format date safely
             try:
                 fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['fechaescritura'] else ''
-            except (ValueError, TypeError):
+                print(f"Fecha escritura: {fecha_escritura}")
+            except (ValueError, TypeError) as e:
+                print(f"Error formatting fecha_escritura: {e}")
                 fecha_escritura = ''
 
-            # Determine tipo bien and related fields
-            if record['idtipkar'] == 3:  # Vehicle
+            # Handle vehicle records
+            if record.get('codbien') == '08':
+                print("Processing vehicle record")
                 tipo_bien = 'B'
-                codigo_bien = '08'  # Fixed for vehicles
+                codigo_bien = '08'
                 
-                # Determine placa/serie/motor option and value
-                if record['numplaca']:
+                if record.get('numplaca'):
                     opcion_psm = '1'
                     numero_psm = record['numplaca']
-                elif record['serie_vehiculo']:
+                elif record.get('numserie'):
                     opcion_psm = '2'
-                    numero_psm = record['serie_vehiculo']
+                    numero_psm = record['numserie']
                 else:
                     opcion_psm = '3'
-                    numero_psm = record['motor']
+                    numero_psm = record.get('motor', '')
                 
                 numero_serie = ''
                 origen_bien = ''
                 codigo_ubicacion = ''
-                fecha_adquisicion = record['fecha_adquisicion_vehiculo'] or ''
+                fecha_adquisicion = record.get('fecha_adquisicion', '')
                 descripcion_otros = ''
                 
-            else:  # Regular property
-                tipo_bien = 'B' if record['tipob'] == 'BIENES' else 'A'
-                codigo_bien = record['codbien']
+            # Handle property records
+            else:
+                print("Processing property record")
+                tipo_bien = 'B' if record.get('tipob') == 'BIENES' else 'A'
+                codigo_bien = record.get('codbien', '')
                 
-                # Handle placa/serie/motor based on tpsm
                 opcion_psm = {
                     'P': '1',
                     'S': '2',
                     'M': '3',
                     '': ''
-                }.get(record['tpsm'], '')
+                }.get(record.get('tpsm', ''), '')
                 
-                numero_psm = record['npsm'] or ''
-                numero_serie = record['smaquiequipo'] or ''
+                numero_psm = record.get('npsm', '')
+                numero_serie = record.get('smaquiequipo', '')
                 
-                # Handle special cases
                 if codigo_bien in ['04', '99']:
-                    origen_bien = '1' if record['coddis'] else ''
+                    origen_bien = '1' if record.get('coddis') else ''
                 else:
                     origen_bien = ''
                 
                 codigo_ubicacion = record['coddis'] if codigo_bien == '04' else ''
-                fecha_adquisicion = record['fecha_adquisicion'] or ''
+                fecha_adquisicion = record.get('fecha_adquisicion', '')
                 descripcion_otros = record['oespecific'] if codigo_bien == '99' else ''
+
+            print(f"Final field values:")
+            print(f"tipo_bien: {tipo_bien}")
+            print(f"codigo_bien: {codigo_bien}")
+            print(f"opcion_psm: {opcion_psm}")
+            print(f"numero_psm: {numero_psm}")
+            print(f"numero_serie: {numero_serie}")
+            print(f"origen_bien: {origen_bien}")
+            print(f"codigo_ubicacion: {codigo_ubicacion}")
+            print(f"fecha_adquisicion: {fecha_adquisicion}")
+            print(f"descripcion_otros: {descripcion_otros}")
 
             # Format fields
             fields = [
@@ -429,10 +486,12 @@ class BienesFormatter(BasePdtFormatter):
                 self.replace_string_pdt(descripcion_otros).ljust(30)  # Descripcion otros
             ]
 
-            return '|'.join(fields)
+            result = '|'.join(fields)
+            print(f"Formatted line: {result}")
+            return result
 
         except Exception as e:
-            self.logger.error(f"Error formatting bien line: {str(e)}")
+            print(f"Error formatting line: {str(e)}")
             raise
 
 class OtorgantesFormatter(BasePdtFormatter):
