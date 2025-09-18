@@ -305,88 +305,91 @@ class BienesFormatter(BasePdtFormatter):
         print(f"DB dates: start={start_date_db}, end={end_date_db}")
 
         with connection.cursor() as cursor:
-            # Vehicle records query
-            vehicle_query = """
-                SELECT DISTINCT 
-                    k.idkardex,
-                    k.kardex,
-                    k.idtipkar,
-                    k.numescritura,
-                    k.fechaescritura,
-                    t.actosunat,
-                    1 as secuencial_acto,
-                    v.detveh as detalle,
-                    v.numplaca,
-                    v.numserie,
-                    v.motor,
-                    v.fecinsc as fecha_adquisicion,
-                    'B' as tipob,
-                    '08' as codbien,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY k.kardex
-                        ORDER BY v.detveh
-                    ) as secuencial_bien
-                FROM kardex k
-                INNER JOIN detallevehicular v ON v.kardex = k.kardex
-                INNER JOIN tiposdeacto t ON t.idtipoacto = v.idtipacto
-                WHERE k.idtipkar = %s
-                AND k.fechaescritura != ''
-                AND k.fechaescritura != '0000-00-00'
-                AND k.fechaescritura BETWEEN %s AND %s
-                AND t.actosunat != ''
+            # Combined query for both vehicles and properties
+            query = """
+                -- Vehicle records
+                (
+                    SELECT 
+                        k.idkardex,
+                        k.kardex,
+                        k.idtipkar,
+                        k.numescritura,
+                        k.fechaescritura,
+                        t.actosunat,
+                        1 as secuencial_acto,
+                        v.detveh as detalle,
+                        v.numplaca,
+                        v.numserie,
+                        v.motor,
+                        v.fecinsc as fecha_adquisicion,
+                        'B' as tipob,
+                        '08' as codbien,
+                        NULL as tpsm,
+                        NULL as npsm,
+                        NULL as smaquiequipo,
+                        NULL as coddis,
+                        NULL as oespecific,
+                        @rn1 := IF(@prev1 = k.kardex, @rn1 + 1, 1) as secuencial_bien,
+                        @prev1 := k.kardex
+                    FROM (SELECT @rn1 := 0, @prev1 := NULL) as vars,
+                        kardex k
+                        INNER JOIN detallevehicular v ON v.kardex = k.kardex
+                        INNER JOIN tiposdeacto t ON t.idtipoacto = v.idtipacto
+                    WHERE k.idtipkar = %s
+                    AND k.fechaescritura != ''
+                    AND k.fechaescritura != '0000-00-00'
+                    AND k.fechaescritura BETWEEN %s AND %s
+                    AND t.actosunat != ''
+                )
+                UNION ALL
+                -- Property records
+                (
+                    SELECT 
+                        k.idkardex,
+                        k.kardex,
+                        k.idtipkar,
+                        k.numescritura,
+                        k.fechaescritura,
+                        t.actosunat,
+                        1 as secuencial_acto,
+                        b.detbien as detalle,
+                        NULL as numplaca,
+                        NULL as numserie,
+                        NULL as motor,
+                        b.fechaconst as fecha_adquisicion,
+                        b.tipob,
+                        tb.codbien,
+                        b.tpsm,
+                        b.npsm,
+                        b.smaquiequipo,
+                        b.coddis,
+                        b.oespecific,
+                        @rn2 := IF(@prev2 = k.kardex, @rn2 + 1, 1) as secuencial_bien,
+                        @prev2 := k.kardex
+                    FROM (SELECT @rn2 := 0, @prev2 := NULL) as vars,
+                        kardex k
+                        INNER JOIN patrimonial p ON p.kardex = k.kardex
+                        INNER JOIN detallebienes b ON b.itemmp = p.itemmp
+                        INNER JOIN tiposdeacto t ON t.idtipoacto = p.idtipoacto
+                        INNER JOIN tipobien tb ON tb.idtipbien = b.idtipbien
+                    WHERE k.idtipkar = %s
+                    AND k.fechaescritura != ''
+                    AND k.fechaescritura != '0000-00-00'
+                    AND k.fechaescritura BETWEEN %s AND %s
+                    AND t.actosunat != ''
+                )
+                ORDER BY kardex, secuencial_bien
             """
-            print("\nExecuting vehicle query...")
-            cursor.execute(vehicle_query, [self.type_kardex, start_date_db, end_date_db])
-            vehicle_rows = cursor.fetchall()
-            print(f"Found {len(vehicle_rows)} vehicle records")
 
-            # Property records query
-            property_query = """
-                SELECT DISTINCT 
-                    k.idkardex,
-                    k.kardex,
-                    k.idtipkar,
-                    k.numescritura,
-                    k.fechaescritura,
-                    t.actosunat,
-                    1 as secuencial_acto,
-                    b.detbien as detalle,
-                    b.tipob,
-                    b.idtipbien,
-                    b.coddis,
-                    b.fechaconst as fecha_adquisicion,
-                    b.oespecific,
-                    b.smaquiequipo,
-                    b.tpsm,
-                    b.npsm,
-                    tb.codbien,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY k.kardex
-                        ORDER BY b.detbien
-                    ) as secuencial_bien
-                FROM kardex k
-                INNER JOIN patrimonial p ON p.kardex = k.kardex
-                INNER JOIN detallebienes b ON b.itemmp = p.itemmp
-                INNER JOIN tiposdeacto t ON t.idtipoacto = p.idtipoacto
-                INNER JOIN tipobien tb ON tb.idtipbien = b.idtipbien
-                WHERE k.idtipkar = %s
-                AND k.fechaescritura != ''
-                AND k.fechaescritura != '0000-00-00'
-                AND k.fechaescritura BETWEEN %s AND %s
-                AND t.actosunat != ''
-            """
-            print("\nExecuting property query...")
-            cursor.execute(property_query, [self.type_kardex, start_date_db, end_date_db])
-            property_rows = cursor.fetchall()
-            print(f"Found {len(property_rows)} property records")
-
-            # Combine and process results
-            columns = [col[0] for col in cursor.description]
-            vehicle_data = [dict(zip(columns, row)) for row in vehicle_rows]
-            property_data = [dict(zip(columns, row)) for row in property_rows]
-            self.data = vehicle_data + property_data
+            print("\nExecuting combined query...")
+            cursor.execute(query, [
+                self.type_kardex, start_date_db, end_date_db,  # For vehicles
+                self.type_kardex, start_date_db, end_date_db   # For properties
+            ])
             
-            print(f"\nTotal records: {len(self.data)}")
+            columns = [col[0] for col in cursor.description]
+            self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            print(f"Found {len(self.data)} total records")
             print("=== End BienesFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
@@ -504,46 +507,70 @@ class OtorgantesFormatter(BasePdtFormatter):
     def load_data(self):
         """Load otorgantes data efficiently."""
         start_date, end_date = self.get_formatted_dates()
+        print(f"\n=== OtorgantesFormatter Debug ===")
+        print(f"Loading data for dates: {start_date} to {end_date}")
+
+        # Convert dates to YYYY-MM-DD format for comparison
+        try:
+            start_date_db = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+            end_date_db = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            start_date_db = start_date
+            end_date_db = end_date
+
+        print(f"DB dates: start={start_date_db}, end={end_date_db}")
 
         with connection.cursor() as cursor:
+            # First get valid kardex records to improve performance
             cursor.execute("""
-                SELECT DISTINCT 
-                    k.idkardex,
-                    k.kardex,
-                    k.idtipkar,
-                    k.numescritura,
-                    k.fechaescritura,
-                    t.actosunat,  -- Added back
-                    1 as secuencial_acto,  -- Added back
-                    c.idcontratante,
-                    c2.idtipdoc,
-                    c2.numdoc,
-                    c2.apepat,
-                    c2.apemat,
-                    c2.prinom as nombres,
-                    c2.razonsocial,
-                    c2.tipper as tipopersona,
-                    c.condicion as idcondicion,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY k.kardex, ca.idtipoacto
-                        ORDER BY c.idcontratante
-                    ) as secuencial_otorgante
-                FROM kardex k
-                INNER JOIN contratantesxacto ca ON ca.kardex = k.kardex
-                INNER JOIN tiposdeacto t ON t.idtipoacto = ca.idtipoacto  -- Added back
-                INNER JOIN contratantes c ON c.idcontratante = ca.idcontratante
-                INNER JOIN cliente2 c2 ON c2.idcontratante = c.idcontratante
-                WHERE k.idtipkar = %s
-                AND k.fechaescritura BETWEEN %s AND %s
-                AND t.actosunat != ''  -- Added back
+                WITH filtered_kardex AS (
+                    SELECT 
+                        k.idkardex,
+                        k.kardex,
+                        k.idtipkar,
+                        k.numescritura,
+                        k.fechaescritura
+                    FROM kardex k
+                    WHERE k.idtipkar = %s
+                    AND k.fechaescritura BETWEEN %s AND %s
+                    AND k.fechaescritura != '0000-00-00'
+                ),
+                otorgantes AS (
+                    SELECT 
+                        k.*,
+                        ca.idtipoacto,
+                        t.actosunat,
+                        c.idcontratante,
+                        c.condicion,
+                        c2.idtipdoc,
+                        c2.numdoc,
+                        c2.apepat,
+                        c2.apemat,
+                        c2.prinom,
+                        c2.razonsocial,
+                        c2.tipper,
+                        DENSE_RANK() OVER (
+                            PARTITION BY k.kardex
+                            ORDER BY c.idcontratante
+                        ) as secuencial_otorgante
+                    FROM filtered_kardex k
+                    INNER JOIN contratantesxacto ca ON ca.kardex = k.kardex
+                    INNER JOIN tiposdeacto t ON t.idtipoacto = ca.idtipoacto
+                    INNER JOIN contratantes c ON c.idcontratante = ca.idcontratante
+                    INNER JOIN cliente2 c2 ON c2.idcontratante = c.idcontratante
+                    WHERE t.actosunat != ''
+                )
+                SELECT *
+                FROM otorgantes
                 ORDER BY 
-                    CAST(k.numescritura AS UNSIGNED),
-                    t.idtipoacto,
-                    c.idcontratante
-            """, [self.type_kardex, start_date, end_date])
+                    CAST(numescritura AS UNSIGNED),
+                    idcontratante
+            """, [self.type_kardex, start_date_db, end_date_db])
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            print(f"Found {len(self.data)} records")
+            print("=== End OtorgantesFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .otg file."""
@@ -577,11 +604,11 @@ class OtorgantesFormatter(BasePdtFormatter):
                 'TESTIGO': '4',
                 'INTERPRETE': '5',
                 'OTROS': '9'
-            }.get(record['idcondicion'], '9')
+            }.get(record['condicion'], '9')
 
             # Handle name/razon social based on tipo persona
-            if record['tipopersona'] == 'N':  # Natural
-                nombres = record['nombres'] or ''
+            if record['tipper'] == 'N':  # Natural
+                nombres = record['prinom'] or ''
                 apellido_paterno = record['apepat'] or ''
                 apellido_materno = record['apemat'] or ''
                 razon_social = ''
@@ -589,7 +616,7 @@ class OtorgantesFormatter(BasePdtFormatter):
                 nombres = ''
                 apellido_paterno = ''
                 apellido_materno = ''
-                razon_social = record['razonsocial'] or ''  # Changed from razsoc to razonsocial
+                razon_social = record['razonsocial'] or ''
 
             # Format fields
             fields = [
