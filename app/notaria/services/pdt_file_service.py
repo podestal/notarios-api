@@ -650,47 +650,65 @@ class MediosPagoFormatter(BasePdtFormatter):
     def load_data(self):
         """Load medios de pago data efficiently."""
         start_date, end_date = self.get_formatted_dates()
+        print(f"\n=== MediosPagoFormatter Debug ===")
+        print(f"Loading data for dates: {start_date} to {end_date}")
+
+        # Convert dates to YYYY-MM-DD format for comparison
+        try:
+            start_date_db = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+            end_date_db = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+        except ValueError:
+            start_date_db = start_date
+            end_date_db = end_date
+
+        print(f"DB dates: start={start_date_db}, end={end_date_db}")
 
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT DISTINCT 
-                    k.idkardex,
-                    k.kardex,
-                    k.idtipkar,
-                    k.numescritura,
-                    k.fechaescritura,
-                    t.actosunat,  -- Added back
-                    1 as secuencial_acto,  -- Added back
-                    p.itemmp,
-                    p.idmon,
-                    p.importetrans,
-                    mp.codmepag,
-                    mp.fpago,
-                    mp.idbancos,
-                    mp.importemp,
-                    mp.foperacion,
-                    mp.documentos,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY k.kardex, ca.idtipoacto
-                        ORDER BY mp.detmp
-                    ) as secuencial_pago
-                FROM kardex k
-                INNER JOIN contratantesxacto ca ON ca.kardex = k.kardex  -- Added back
-                INNER JOIN tiposdeacto t ON t.idtipoacto = ca.idtipoacto  -- Added back
-                INNER JOIN patrimonial p ON p.kardex = k.kardex AND p.idtipoacto = ca.idtipoacto  -- Modified join
-                INNER JOIN detallemediopago mp ON mp.itemmp = p.itemmp
-                WHERE k.idtipkar = %s
-                AND k.fechaescritura BETWEEN %s AND %s
-                AND t.actosunat != ''  -- Added back
+                WITH filtered_kardex AS (
+                    SELECT 
+                        k.idkardex,
+                        k.kardex,
+                        k.idtipkar,
+                        k.numescritura,
+                        k.fechaescritura
+                    FROM kardex k
+                    WHERE k.idtipkar = %s
+                    AND k.fechaescritura BETWEEN %s AND %s
+                    AND k.fechaescritura != '0000-00-00'
+                ),
+                medios_pago AS (
+                    SELECT 
+                        k.*,
+                        p.itemmp,
+                        p.idmon,
+                        p.importetrans,
+                        mp.codmepag,
+                        mp.fpago,
+                        mp.idbancos,
+                        mp.importemp,
+                        mp.foperacion,
+                        mp.documentos,
+                        DENSE_RANK() OVER (
+                            PARTITION BY k.kardex
+                            ORDER BY mp.detmp
+                        ) as secuencial_pago
+                    FROM filtered_kardex k
+                    INNER JOIN patrimonial p ON p.kardex = k.kardex
+                    INNER JOIN detallemediopago mp ON mp.itemmp = p.itemmp
+                )
+                SELECT *
+                FROM medios_pago
                 ORDER BY 
-                    CAST(k.numescritura AS UNSIGNED),
-                    t.idtipoacto,
-                    p.itemmp,
-                    mp.detmp
-            """, [self.type_kardex, start_date, end_date])
+                    CAST(numescritura AS UNSIGNED),
+                    itemmp,
+                    secuencial_pago
+            """, [self.type_kardex, start_date_db, end_date_db])
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            print(f"Found {len(self.data)} records")
+            print("=== End MediosPagoFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .mpa file."""
