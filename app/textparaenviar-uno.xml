@@ -9,31 +9,31 @@
 	<Documento>
 		<CodNotario>19010409</CodNotario>
 		<CodNotaria>10020487866</CodNotaria>
-		<NumKardex>KAR712-2022</NumKardex>
-		<FechaIngreso>2022-05-02</FechaIngreso>
+		<NumKardex>KAR189-2021</NumKardex>
+		<FechaIngreso>2021-01-27</FechaIngreso>
 		<TipoInstrumento>E</TipoInstrumento>
-		<NumDocumento>712</NumDocumento>
-		<FechaInstrumento>2022-05-02</FechaInstrumento>
-		<NumFolios>2</NumFolios>
-		<FechaConclusion>2022-05-02</FechaConclusion>
+		<NumDocumento>189</NumDocumento>
+		<FechaInstrumento>2021-01-27</FechaInstrumento>
+		<NumFolios>3</NumFolios>
+		<FechaConclusion>2021-01-27</FechaConclusion>
 	</Documento>
 	<Maestros>
 		<PersonasNaturales>
-			<PersonaNatural id="0000006889">
+			<PersonaNatural id="0000012948">
 			<DocsIdentificativos>
 				<DocIdentificativo>
 					<TipoDocIdentidad>01</TipoDocIdentidad>
-					<NumDocIdentificativo>01787197</NumDocIdentificativo>
+					<NumDocIdentificativo>01797231</NumDocIdentificativo>
 				</DocIdentificativo>
 			</DocsIdentificativos>
-				<Nombre>AURELIANO</Nombre>
-				<PrimerApellido>BUTRON</PrimerApellido>
-				<SegundoApellido>MAMANI</SegundoApellido>
+				<Nombre>AGUSTIN</Nombre>
+				<PrimerApellido>CATACHURA</PrimerApellido>
+				<SegundoApellido>CEVANTES</SegundoApellido>
 				<Genero>V</Genero>
 				<EstadoCivil>2</EstadoCivil>
 				<PaisNacionalidad>PE</PaisNacionalidad>
-				<FechaNacimiento>1948-06-14</FechaNacimiento>
-				<Profesion>036</Profesion>
+				<FechaNacimiento>1952-08-31</FechaNacimiento>
+				<Profesion>012</Profesion>
 				<Cargo>998</Cargo>
 				<Direccion>
 					<ResidePeru>1</ResidePeru>
@@ -41,26 +41,26 @@
 				<DireccionNacional>
 					<CodDepartamento>21</CodDepartamento>
 					<CodProvincia>05</CodProvincia>
-					<CodDistrito>01</CodDistrito>
-					<RestoDireccion>JR. NICOLáS DE PIéROLA N° 1184</RestoDireccion>
+					<CodDistrito>03</CodDistrito>
+					<RestoDireccion>QUETY</RestoDireccion>
 				</DireccionNacional>
 				</Direccion>
 			</PersonaNatural>
-			<PersonaNatural id="0000006890">
+			<PersonaNatural id="0000012950">
 			<DocsIdentificativos>
 				<DocIdentificativo>
 					<TipoDocIdentidad>01</TipoDocIdentidad>
-					<NumDocIdentificativo>01788076</NumDocIdentificativo>
+					<NumDocIdentificativo>01795908</NumDocIdentificativo>
 				</DocIdentificativo>
 			</DocsIdentificativos>
-				<Nombre>INOCENCIA</Nombre>
-				<PrimerApellido>CHOQUE</PrimerApellido>
-				<SegundoApellido>MAMANI</SegundoApellido>
+				<Nombre>LUISA</Nombre>
+				<PrimerApellido>VILCA</PrimerApellido>
+				<SegundoApellido>CHATA DE CATACHURA</SegundoApellido>
 				<Genero>M</Genero>
 				<EstadoCivil>2</EstadoCivil>
 				<PaisNacionalidad>PE</PaisNacionalidad>
-				<FechaNacimiento>1962-07-27</FechaNacimiento>
-				<Profesion>036</Profesion>
+				<FechaNacimiento>1954-01-05</FechaNacimiento>
+				<Profesion>014</Profesion>
 				<Cargo>998</Cargo>
 				<Direccion>
 					<ResidePeru>1</ResidePeru>
@@ -68,61 +68,54 @@
 				<DireccionNacional>
 					<CodDepartamento>21</CodDepartamento>
 					<CodProvincia>05</CodProvincia>
-					<CodDistrito>01</CodDistrito>
-					<RestoDireccion>JR. NICOLáS DE PIéROLA N° 1184</RestoDireccion>
+					<CodDistrito>03</CodDistrito>
+					<RestoDireccion>QUETY</RestoDireccion>
 				</DireccionNacional>
 				</Direccion>
 			</PersonaNatural>
-			<PersonaNatural id="0000017464">
+			<PersonaNatural id="0000012951">
 			<DocsIdentificativos>
 				<DocIdentificativo>
 					<TipoDocIdentidad>01</TipoDocIdentidad>
-					<NumDocIdentificativo>41144290</NumDocIdentificativo>
+					<NumDocIdentificativo>41047935</NumDocIdentificativo>
 				</DocIdentificativo>
 			</DocsIdentificativos>
-				<Nombre>SONIA</Nombre>
-				<PrimerApellido>FLORES</PrimerApellido>
-				<SegundoApellido>CENTON</SegundoApellido>
+				<Nombre>MARIA</Nombre>
+				<PrimerApellido>CATACHURA</PrimerApellido>
+				<SegundoApellido>VILCA</SegundoApellido>
 				<Genero>M</Genero>
 				<EstadoCivil>1</EstadoCivil>
 				<PaisNacionalidad>PE</PaisNacionalidad>
-				<FechaNacimiento>1976-02-08</FechaNacimiento>
-				<Profesion>036</Profesion>
+				<FechaNacimiento>1981-10-14</FechaNacimiento>
+				<Profesion>012</Profesion>
 				<Cargo>998</Cargo>
 				<Direccion>
 					<ResidePeru>1</ResidePeru>
 					<PaisResidencia>PE</PaisResidencia>
 				<DireccionNacional>
 					<CodDepartamento>21</CodDepartamento>
-					<CodProvincia>01</CodProvincia>
-					<CodDistrito>02</CodDistrito>
-					<RestoDireccion>COM. CCOPAMAYA</RestoDireccion>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>03</CodDistrito>
+					<RestoDireccion>COMUNIDAD QUETY</RestoDireccion>
 				</DireccionNacional>
 				</Direccion>
 			</PersonaNatural>
 		</PersonasNaturales>
 	</Maestros>
 	<Operaciones>
-		<Operacion id="984">
-			<CodActoJuridico>0912</CodActoJuridico>
+		<Operacion id="991">
+			<CodActoJuridico>0909</CodActoJuridico>
 		<Operantes>
 			<Objetos>
 			</Objetos>
 			<Intervenciones>
 				<Intervencion>
 					<TipoIntervencion>1</TipoIntervencion>
-					<DescripcionIntervencion>001</DescripcionIntervencion>
+					<DescripcionIntervencion>084</DescripcionIntervencion>
 					<RolRepresentante>O</RolRepresentante>
 					<Sujetos>
 						<Sujeto>
-							<IdMaestro>0000006889</IdMaestro>
-							<OrigenFondos>
-								<OrigenFondo>
-									<Origen>AHORROS</Origen>
-									<CuantiaOrigen>0.00</CuantiaOrigen>
-									<TipoMonedaPago>01</TipoMonedaPago>
-								</OrigenFondo>
-							</OrigenFondos>
+							<IdMaestro>0000012948</IdMaestro>
 							<Derecho>
 								<PorcentajeDerecho>50.00</PorcentajeDerecho>
 							</Derecho>
@@ -131,17 +124,10 @@
 							<ImpuestoCero>0</ImpuestoCero>
 							<Representantes>
 							</Representantes>
-							<FechaFirma>2022-05-02</FechaFirma>
+							<FechaFirma>2021-01-27</FechaFirma>
 						</Sujeto>
 						<Sujeto>
-							<IdMaestro>0000006890</IdMaestro>
-							<OrigenFondos>
-								<OrigenFondo>
-									<Origen>AHORROS</Origen>
-									<CuantiaOrigen>0.00</CuantiaOrigen>
-									<TipoMonedaPago>01</TipoMonedaPago>
-								</OrigenFondo>
-							</OrigenFondos>
+							<IdMaestro>0000012950</IdMaestro>
 							<Derecho>
 								<PorcentajeDerecho>50.00</PorcentajeDerecho>
 							</Derecho>
@@ -150,26 +136,23 @@
 							<ImpuestoCero>0</ImpuestoCero>
 							<Representantes>
 							</Representantes>
-							<FechaFirma>2022-05-02</FechaFirma>
+							<FechaFirma>2021-01-27</FechaFirma>
 						</Sujeto>
+					</Sujetos>
+				</Intervencion>
+				<Intervencion>
+					<TipoIntervencion>2</TipoIntervencion>
+					<DescripcionIntervencion>011</DescripcionIntervencion>
+					<RolRepresentante>B</RolRepresentante>
+					<Sujetos>
 						<Sujeto>
-							<IdMaestro>0000017464</IdMaestro>
-							<OrigenFondos>
-								<OrigenFondo>
-									<Origen>AHORROS</Origen>
-									<CuantiaOrigen>0.00</CuantiaOrigen>
-									<TipoMonedaPago>01</TipoMonedaPago>
-								</OrigenFondo>
-							</OrigenFondos>
+							<IdMaestro>0000012951</IdMaestro>
 							<Derecho>
 								<PorcentajeDerecho>100.00</PorcentajeDerecho>
 							</Derecho>
-							<Renta3Cat>0</Renta3Cat>
-							<CasaEnajenante>0</CasaEnajenante>
-							<ImpuestoCero>0</ImpuestoCero>
 							<Representantes>
 							</Representantes>
-							<FechaFirma>2022-05-02</FechaFirma>
+							<FechaFirma>2021-01-27</FechaFirma>
 						</Sujeto>
 					</Sujetos>
 				</Intervencion>
@@ -189,13 +172,13 @@
 			<CuantiaPago>0.00</CuantiaPago>
 			<TipoMonedaPago>01</TipoMonedaPago>
 			<JustificadoManifestado>1</JustificadoManifestado>
-			<FechaPago>2022-05-02</FechaPago>
+			<FechaPago>2021-01-27</FechaPago>
 			<IdPago>0746978</IdPago>
 			<EntidadFinanciera>00002</EntidadFinanciera>
 		</MediosPago>
 		</MediosPagos>
-			<NombreContrato>ACLARACION, RECTIFICACION Y RATIFICACION</NombreContrato>
-			<FechaMinuta>2022-05-02</FechaMinuta>
+			<NombreContrato>ACLARACION DE DONACION</NombreContrato>
+			<FechaMinuta>2021-01-27</FechaMinuta>
 		</Operacion>
 	</Operaciones>
 	</DocumentoNotarial>

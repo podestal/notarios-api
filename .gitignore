@@ -14,3 +14,7 @@ redis-data/
 *.sql
 *.dump
 notarios-ve
+response-search.xml
+response.xml
+textparaenviar-uno.xml
+response_batch_*.xml
