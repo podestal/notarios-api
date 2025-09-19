@@ -13,7 +13,54 @@ logger = logging.getLogger(__name__)
 class DataProcessorService:
     def __init__(self):
         self.logger = logger
-    
+
+    def process_documents_batch(self, documents: List[Dict[str, str]]) -> Dict:
+        """
+        Process multiple documents for SISGEN in a single batch.
+        Args:
+            documents: List of {'kardex': str, 'idkardex': str}
+        """
+        try:
+            # Clear previous data
+            self._clear_temp_tables()
+            
+            # Process each document and collect data
+            processed_docs = []
+            for doc in documents:
+                # Get document data
+                doc_data = self._get_document_data(doc['kardex'], doc['idkardex'])
+                if not doc_data:
+                    self.logger.warning(f"Document not found: {doc['kardex']}")
+                    continue
+                
+                # Get notary data (same for all docs)
+                if not processed_docs:  # Only get once
+                    notary_data = self._get_notary_data()
+                    if not notary_data:
+                        raise Exception("Notary data not found")
+                
+                # Get participants data
+                participants = self._get_participants_data(doc['kardex'])
+                
+                # Add to processed docs
+                processed_docs.append({
+                    **doc_data,
+                    'notary_data': notary_data,
+                    'participants': participants
+                })
+            
+            # Return combined result
+            return {
+                'documents': processed_docs,
+                'errores': [],
+                'observaciones': [],
+                'personas': []
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error processing document batch: {str(e)}")
+            raise
+        
     def process_document(self, kardex: str, idkardex: str) -> Dict:
         """
         Process a single document for SISGEN.

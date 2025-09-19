@@ -151,9 +151,11 @@ class SendToSISGENView(APIView):
     Send documents to SISGEN service.
     
     POST Parameters:
-    - idkardex: ID of the kardex to send (required if all=0)
-    - kardex: Kardex number to send (required if all=0)
-    - all: 0 for single document, 1 for all documents in temp tables
+    - idkardex: ID of the kardex to send (required if all=0 and batch=0)
+    - kardex: Kardex number to send (required if all=0 and batch=0)
+    - all: 0 for single/batch documents, 1 for all documents in temp tables
+    - batch: 0 for single document (default), 1 for batch processing
+    - documents: List of {'kardex': str, 'idkardex': str} (required if batch=1)
     """
     def post(self, request):
         try:
@@ -161,58 +163,121 @@ class SendToSISGENView(APIView):
             idkardex = request.data.get('idkardex')
             kardex = request.data.get('kardex')
             all_docs = request.data.get('all', 0)
+            batch_mode = request.data.get('batch', 0)
+            documents = request.data.get('documents', [])
             
             print('DEBUG: SendToSISGEN request data:', request.data)
-            print('DEBUG: idkardex:', idkardex, 'kardex:', kardex, 'all:', all_docs)
+            print('DEBUG: idkardex:', idkardex, 'kardex:', kardex, 'all:', all_docs, 'batch:', batch_mode)
             
-            # Validate parameters
-            if not all_docs and (not idkardex or not kardex):
-                return Response({
-                    'error': 1,
-                    'message': 'idkardex and kardex are required when all=0'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Process data
+            # Initialize services
             data_processor = DataProcessorService()
-            result = data_processor.process_document(kardex, idkardex)
-            
-            # Generate XML
             xml_generator = SISGENXmlGenerator()
-            xml_content = xml_generator.generate_document_xml(result['documents'])
-            if not xml_content:
-                print('DEBUG: Failed to generate XML - no content')
+            soap_client = SoapClientService()
+
+            # Validate parameters based on mode
+            if batch_mode:
+                if not documents:
+                    return Response({
+                        'error': 1,
+                        'message': 'documents list is required when batch=1'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            elif not all_docs and (not idkardex or not kardex):
                 return Response({
                     'error': 1,
-                    'message': 'Failed to generate XML - missing required data'
+                    'message': 'idkardex and kardex are required when all=0 and batch=0'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Send to SISGEN
-            soap_client = SoapClientService()
-            response = soap_client.send_documents(xml_content)
-            
-            # Write response to file
-            with open('response.xml', 'w') as f:
-                f.write(response.text)
-            
-            # Process SISGEN response
-            data_processor.update_document_statuses(response.text)
-            
-            # Get final status
-            final_status = data_processor.get_final_status()
-            
-            return Response({
-                'error': 0,
-                'messageDescription': '',
-                'data': final_status.get('data', []),
-                'kardex': kardex,
-                'idKardex': idkardex,
-                'errores': result.get('errores', []),
-                'observaciones': result.get('observaciones', []),
-                'personas': result.get('personas', []),
-                'guardados': final_status.get('guardados', 0),
-                'fallidos': final_status.get('fallidos', 0),
-                'observados': final_status.get('observados', 0)
-            })
+
+            # Process in appropriate mode
+            if batch_mode:
+                # Process in batches of 10
+                batch_size = 10
+                combined_result = {
+                    'error': 0,
+                    'messageDescription': '',
+                    'data': [],
+                    'errores': [],
+                    'observaciones': [],
+                    'personas': [],
+                    'guardados': 0,
+                    'fallidos': 0,
+                    'observados': 0,
+                    'processed_kardex': []  # Track processed kardex numbers
+                }
+
+                for i in range(0, len(documents), batch_size):
+                    batch = documents[i:i + batch_size]
+                    try:
+                        # Process batch
+                        result = data_processor.process_documents_batch(batch)
+                        
+                        # Generate XML
+                        xml_content = xml_generator.generate_document_xml(result['documents'])
+                        if not xml_content:
+                            print(f'DEBUG: Failed to generate XML for batch {i//batch_size + 1}')
+                            continue
+
+                        # Send to SISGEN
+                        response = soap_client.send_documents(xml_content)
+                        
+                        # Process SISGEN response
+                        data_processor.update_document_statuses(response.text)
+                        
+                        # Get status for this batch
+                        batch_status = data_processor.get_final_status()
+                        
+                        # Combine results
+                        combined_result['data'].extend(batch_status.get('data', []))
+                        combined_result['guardados'] += batch_status.get('guardados', 0)
+                        combined_result['fallidos'] += batch_status.get('fallidos', 0)
+                        combined_result['observados'] += batch_status.get('observados', 0)
+                        combined_result['processed_kardex'].extend([doc['kardex'] for doc in batch])
+                        
+                    except Exception as e:
+                        print(f'DEBUG: Error processing batch {i//batch_size + 1}:', str(e))
+                        # Continue with next batch instead of failing completely
+                        continue
+
+                return Response(combined_result)
+
+            else:
+                # Original single document processing
+                result = data_processor.process_document(kardex, idkardex)
+                
+                # Generate XML
+                xml_content = xml_generator.generate_document_xml(result['documents'])
+                if not xml_content:
+                    print('DEBUG: Failed to generate XML - no content')
+                    return Response({
+                        'error': 1,
+                        'message': 'Failed to generate XML - missing required data'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Send to SISGEN
+                response = soap_client.send_documents(xml_content)
+                
+                # Write response to file
+                with open('response.xml', 'w') as f:
+                    f.write(response.text)
+                
+                # Process SISGEN response
+                data_processor.update_document_statuses(response.text)
+                
+                # Get final status
+                final_status = data_processor.get_final_status()
+                
+                return Response({
+                    'error': 0,
+                    'messageDescription': '',
+                    'data': final_status.get('data', []),
+                    'kardex': kardex,
+                    'idKardex': idkardex,
+                    'errores': result.get('errores', []),
+                    'observaciones': result.get('observaciones', []),
+                    'personas': result.get('personas', []),
+                    'guardados': final_status.get('guardados', 0),
+                    'fallidos': final_status.get('fallidos', 0),
+                    'observados': final_status.get('observados', 0)
+                })
             
         except Exception as e:
             print('DEBUG: Unexpected error in SISGEN send:', str(e))

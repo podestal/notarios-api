@@ -298,12 +298,6 @@ class BienesFormatter(BasePdtFormatter):
             start_date_db = start_date
             end_date_db = end_date
 
-        print(f"\n=== BienesFormatter Debug ===")
-        print(f"Initial date: {self.initial_date}")
-        print(f"Final date: {self.final_date}")
-        print(f"Type kardex: {self.type_kardex}")
-        print(f"DB dates: start={start_date_db}, end={end_date_db}")
-
         with connection.cursor() as cursor:
             # Combined query for both vehicles and properties
             query = """
@@ -381,7 +375,6 @@ class BienesFormatter(BasePdtFormatter):
                 ORDER BY kardex, secuencial_bien
             """
 
-            print("\nExecuting combined query...")
             cursor.execute(query, [
                 self.type_kardex, start_date_db, end_date_db,  # For vehicles
                 self.type_kardex, start_date_db, end_date_db   # For properties
@@ -389,13 +382,10 @@ class BienesFormatter(BasePdtFormatter):
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            print(f"Found {len(self.data)} total records")
-            print("=== End BienesFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .bie file."""
         try:
-            print(f"\nFormatting line for record: {record['kardex']}")
             
             # Get tipo kardex code
             tipo_kardex = {
@@ -403,19 +393,15 @@ class BienesFormatter(BasePdtFormatter):
                 3: '2',  # Transferencia
                 4: '5',  # Otros
             }.get(record['idtipkar'], '')
-            print(f"Tipo kardex: {tipo_kardex}")
 
             # Format date safely
             try:
                 fecha_escritura = datetime.strptime(record['fechaescritura'], '%Y-%m-%d').strftime('%d/%m/%Y') if record['fechaescritura'] else ''
-                print(f"Fecha escritura: {fecha_escritura}")
             except (ValueError, TypeError) as e:
-                print(f"Error formatting fecha_escritura: {e}")
                 fecha_escritura = ''
 
             # Handle vehicle records
             if record.get('codbien') == '08':
-                print("Processing vehicle record")
                 tipo_bien = 'B'
                 codigo_bien = '08'
                 
@@ -437,7 +423,6 @@ class BienesFormatter(BasePdtFormatter):
                 
             # Handle property records
             else:
-                print("Processing property record")
                 tipo_bien = 'B' if record.get('tipob') == 'BIENES' else 'A'
                 codigo_bien = record.get('codbien', '')
                 
@@ -460,17 +445,6 @@ class BienesFormatter(BasePdtFormatter):
                 fecha_adquisicion = record.get('fecha_adquisicion', '')
                 descripcion_otros = record['oespecific'] if codigo_bien == '99' else ''
 
-            print(f"Final field values:")
-            print(f"tipo_bien: {tipo_bien}")
-            print(f"codigo_bien: {codigo_bien}")
-            print(f"opcion_psm: {opcion_psm}")
-            print(f"numero_psm: {numero_psm}")
-            print(f"numero_serie: {numero_serie}")
-            print(f"origen_bien: {origen_bien}")
-            print(f"codigo_ubicacion: {codigo_ubicacion}")
-            print(f"fecha_adquisicion: {fecha_adquisicion}")
-            print(f"descripcion_otros: {descripcion_otros}")
-
             # Format fields
             fields = [
                 str(tipo_kardex).ljust(1),  # Tipo kardex
@@ -490,11 +464,9 @@ class BienesFormatter(BasePdtFormatter):
             ]
 
             result = '|'.join(fields)
-            print(f"Formatted line: {result}")
             return result
 
         except Exception as e:
-            print(f"Error formatting line: {str(e)}")
             raise
 
 class OtorgantesFormatter(BasePdtFormatter):
@@ -507,8 +479,6 @@ class OtorgantesFormatter(BasePdtFormatter):
     def load_data(self):
         """Load otorgantes data efficiently."""
         start_date, end_date = self.get_formatted_dates()
-        print(f"\n=== OtorgantesFormatter Debug ===")
-        print(f"Loading data for dates: {start_date} to {end_date}")
 
         # Convert dates to YYYY-MM-DD format for comparison
         try:
@@ -517,8 +487,6 @@ class OtorgantesFormatter(BasePdtFormatter):
         except ValueError:
             start_date_db = start_date
             end_date_db = end_date
-
-        print(f"DB dates: start={start_date_db}, end={end_date_db}")
 
         with connection.cursor() as cursor:
             # First get valid kardex records to improve performance
@@ -569,8 +537,6 @@ class OtorgantesFormatter(BasePdtFormatter):
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            print(f"Found {len(self.data)} records")
-            print("=== End OtorgantesFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .otg file."""
@@ -650,8 +616,6 @@ class MediosPagoFormatter(BasePdtFormatter):
     def load_data(self):
         """Load medios de pago data efficiently."""
         start_date, end_date = self.get_formatted_dates()
-        print(f"\n=== MediosPagoFormatter Debug ===")
-        print(f"Loading data for dates: {start_date} to {end_date}")
 
         # Convert dates to YYYY-MM-DD format for comparison
         try:
@@ -660,8 +624,6 @@ class MediosPagoFormatter(BasePdtFormatter):
         except ValueError:
             start_date_db = start_date
             end_date_db = end_date
-
-        print(f"DB dates: start={start_date_db}, end={end_date_db}")
 
         with connection.cursor() as cursor:
             cursor.execute("""
@@ -707,8 +669,6 @@ class MediosPagoFormatter(BasePdtFormatter):
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            print(f"Found {len(self.data)} records")
-            print("=== End MediosPagoFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .mpa file."""
@@ -863,8 +823,6 @@ class LibrosFormatter(BasePdtFormatter):
     def load_data(self):
         """Load libros data following the PHP implementation."""
         start_date, end_date = self.get_formatted_dates()
-        print(f"\n=== LibrosFormatter Debug ===")
-        print(f"Loading data for dates: {start_date} to {end_date}")
 
         # Convert dates to YYYY-MM-DD format for comparison
         try:
@@ -873,8 +831,6 @@ class LibrosFormatter(BasePdtFormatter):
         except ValueError:
             start_date_db = start_date
             end_date_db = end_date
-
-        print(f"DB dates: start={start_date_db}, end={end_date_db}")
 
         with connection.cursor() as cursor:
             cursor.execute("""
@@ -920,8 +876,6 @@ class LibrosFormatter(BasePdtFormatter):
             
             columns = [col[0] for col in cursor.description]
             self.data = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            print(f"Found {len(self.data)} records")
-            print("=== End LibrosFormatter Debug ===\n")
 
     def format_line(self, record: Dict) -> str:
         """Format a single line for the .lib file."""
