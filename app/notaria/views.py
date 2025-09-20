@@ -1,5 +1,6 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from .services.pdt_libros_service import PdtLibrosService
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
@@ -51,6 +52,7 @@ class UsuariosViewSet(ModelViewSet):
     serializer_class = serializers.UsuariosSerializer
 
 
+
 class PermisosUsuariosViewSet(ModelViewSet):
     """
     ViewSet for the PermisosUsuarios model.
@@ -73,6 +75,7 @@ class KardexViewSet(ModelViewSet):
     """
     serializer_class = serializers.KardexSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """

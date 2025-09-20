@@ -9,85 +9,31 @@
 	<Documento>
 		<CodNotario>19010409</CodNotario>
 		<CodNotaria>10020487866</CodNotaria>
-		<NumKardex>KAR189-2021</NumKardex>
-		<FechaIngreso>2021-01-27</FechaIngreso>
+		<NumKardex>KAR40-2021</NumKardex>
+		<FechaIngreso>2021-01-07</FechaIngreso>
 		<TipoInstrumento>E</TipoInstrumento>
-		<NumDocumento>189</NumDocumento>
-		<FechaInstrumento>2021-01-27</FechaInstrumento>
-		<NumFolios>3</NumFolios>
-		<FechaConclusion>2021-01-27</FechaConclusion>
+		<NumDocumento>40</NumDocumento>
+		<FechaInstrumento>2021-01-07</FechaInstrumento>
+		<NumFolios>2</NumFolios>
+		<FechaConclusion>2021-01-07</FechaConclusion>
 	</Documento>
 	<Maestros>
 		<PersonasNaturales>
-			<PersonaNatural id="0000012948">
+			<PersonaNatural id="0000014323">
 			<DocsIdentificativos>
 				<DocIdentificativo>
 					<TipoDocIdentidad>01</TipoDocIdentidad>
-					<NumDocIdentificativo>01797231</NumDocIdentificativo>
+					<NumDocIdentificativo>40396986</NumDocIdentificativo>
 				</DocIdentificativo>
 			</DocsIdentificativos>
-				<Nombre>AGUSTIN</Nombre>
-				<PrimerApellido>CATACHURA</PrimerApellido>
-				<SegundoApellido>CEVANTES</SegundoApellido>
+				<Nombre>NESTOR</Nombre>
+				<PrimerApellido>APAZA</PrimerApellido>
+				<SegundoApellido>CALISAYA</SegundoApellido>
 				<Genero>V</Genero>
-				<EstadoCivil>2</EstadoCivil>
-				<PaisNacionalidad>PE</PaisNacionalidad>
-				<FechaNacimiento>1952-08-31</FechaNacimiento>
-				<Profesion>012</Profesion>
-				<Cargo>998</Cargo>
-				<Direccion>
-					<ResidePeru>1</ResidePeru>
-					<PaisResidencia>PE</PaisResidencia>
-				<DireccionNacional>
-					<CodDepartamento>21</CodDepartamento>
-					<CodProvincia>05</CodProvincia>
-					<CodDistrito>03</CodDistrito>
-					<RestoDireccion>QUETY</RestoDireccion>
-				</DireccionNacional>
-				</Direccion>
-			</PersonaNatural>
-			<PersonaNatural id="0000012950">
-			<DocsIdentificativos>
-				<DocIdentificativo>
-					<TipoDocIdentidad>01</TipoDocIdentidad>
-					<NumDocIdentificativo>01795908</NumDocIdentificativo>
-				</DocIdentificativo>
-			</DocsIdentificativos>
-				<Nombre>LUISA</Nombre>
-				<PrimerApellido>VILCA</PrimerApellido>
-				<SegundoApellido>CHATA DE CATACHURA</SegundoApellido>
-				<Genero>M</Genero>
-				<EstadoCivil>2</EstadoCivil>
-				<PaisNacionalidad>PE</PaisNacionalidad>
-				<FechaNacimiento>1954-01-05</FechaNacimiento>
-				<Profesion>014</Profesion>
-				<Cargo>998</Cargo>
-				<Direccion>
-					<ResidePeru>1</ResidePeru>
-					<PaisResidencia>PE</PaisResidencia>
-				<DireccionNacional>
-					<CodDepartamento>21</CodDepartamento>
-					<CodProvincia>05</CodProvincia>
-					<CodDistrito>03</CodDistrito>
-					<RestoDireccion>QUETY</RestoDireccion>
-				</DireccionNacional>
-				</Direccion>
-			</PersonaNatural>
-			<PersonaNatural id="0000012951">
-			<DocsIdentificativos>
-				<DocIdentificativo>
-					<TipoDocIdentidad>01</TipoDocIdentidad>
-					<NumDocIdentificativo>41047935</NumDocIdentificativo>
-				</DocIdentificativo>
-			</DocsIdentificativos>
-				<Nombre>MARIA</Nombre>
-				<PrimerApellido>CATACHURA</PrimerApellido>
-				<SegundoApellido>VILCA</SegundoApellido>
-				<Genero>M</Genero>
 				<EstadoCivil>1</EstadoCivil>
 				<PaisNacionalidad>PE</PaisNacionalidad>
-				<FechaNacimiento>1981-10-14</FechaNacimiento>
-				<Profesion>012</Profesion>
+				<FechaNacimiento>1974-02-26</FechaNacimiento>
+				<Profesion>999</Profesion>
 				<Cargo>998</Cargo>
 				<Direccion>
 					<ResidePeru>1</ResidePeru>
@@ -95,15 +41,38 @@
 				<DireccionNacional>
 					<CodDepartamento>21</CodDepartamento>
 					<CodProvincia>05</CodProvincia>
-					<CodDistrito>03</CodDistrito>
-					<RestoDireccion>COMUNIDAD QUETY</RestoDireccion>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>JIRóN AMAZONAS 1031 B.B. DEL RIO BLANCO</RestoDireccion>
 				</DireccionNacional>
 				</Direccion>
 			</PersonaNatural>
 		</PersonasNaturales>
+		<PersonasJuridicas>
+			<PersonaJuridica id="0000014322">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>10</TipoDocIdentidad>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<RegistroFacultades>
+				</RegistroFacultades>
+				<RazonSocial>CALI NAC EMPRESA INDIVIDUAL DE RESPONSABILIDAD LIMITADA</RazonSocial>
+				<OtraActividad>CONSTRUCCION</OtraActividad>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>JIRóN AMAZONAS 1031 B.B. DEL RIO BLANCO</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaJuridica>
+		</PersonasJuridicas>
 	</Maestros>
 	<Operaciones>
-		<Operacion id="991">
+		<Operacion id="934">
 			<CodActoJuridico>0909</CodActoJuridico>
 		<Operantes>
 			<Objetos>
@@ -115,44 +84,34 @@
 					<RolRepresentante>O</RolRepresentante>
 					<Sujetos>
 						<Sujeto>
-							<IdMaestro>0000012948</IdMaestro>
+							<IdMaestro>0000014322</IdMaestro>
 							<Derecho>
-								<PorcentajeDerecho>50.00</PorcentajeDerecho>
+								<PorcentajeDerecho>100.00</PorcentajeDerecho>
 							</Derecho>
 							<Renta3Cat>0</Renta3Cat>
 							<CasaEnajenante>0</CasaEnajenante>
 							<ImpuestoCero>0</ImpuestoCero>
 							<Representantes>
+								<Representante>
+									<IdMaestro>0000014323</IdMaestro>
+									<FechaFirma>2021-01-07</FechaFirma>
+								</Representante>
 							</Representantes>
-							<FechaFirma>2021-01-27</FechaFirma>
-						</Sujeto>
-						<Sujeto>
-							<IdMaestro>0000012950</IdMaestro>
-							<Derecho>
-								<PorcentajeDerecho>50.00</PorcentajeDerecho>
-							</Derecho>
-							<Renta3Cat>0</Renta3Cat>
-							<CasaEnajenante>0</CasaEnajenante>
-							<ImpuestoCero>0</ImpuestoCero>
-							<Representantes>
-							</Representantes>
-							<FechaFirma>2021-01-27</FechaFirma>
 						</Sujeto>
 					</Sujetos>
 				</Intervencion>
 				<Intervencion>
-					<TipoIntervencion>2</TipoIntervencion>
-					<DescripcionIntervencion>011</DescripcionIntervencion>
-					<RolRepresentante>B</RolRepresentante>
+					<TipoIntervencion>3</TipoIntervencion>
+					<DescripcionIntervencion>006</DescripcionIntervencion>
+					<RolRepresentante>R</RolRepresentante>
 					<Sujetos>
 						<Sujeto>
-							<IdMaestro>0000012951</IdMaestro>
+							<IdMaestro>0000014323</IdMaestro>
 							<Derecho>
-								<PorcentajeDerecho>100.00</PorcentajeDerecho>
 							</Derecho>
 							<Representantes>
 							</Representantes>
-							<FechaFirma>2021-01-27</FechaFirma>
+							<FechaFirma>2021-01-07</FechaFirma>
 						</Sujeto>
 					</Sujetos>
 				</Intervencion>
@@ -172,13 +131,680 @@
 			<CuantiaPago>0.00</CuantiaPago>
 			<TipoMonedaPago>01</TipoMonedaPago>
 			<JustificadoManifestado>1</JustificadoManifestado>
-			<FechaPago>2021-01-27</FechaPago>
+			<FechaPago>2021-01-07</FechaPago>
+			<IdPago>0746978</IdPago>
+			<EntidadFinanciera>00002</EntidadFinanciera>
+		</MediosPago>
+		</MediosPagos>
+			<NombreContrato>ACLARACION Y MODIFICACION PARCIAL DE CONSTITUCION E.I.R.L.</NombreContrato>
+			<FechaMinuta>2021-01-07</FechaMinuta>
+		</Operacion>
+	</Operaciones>
+	</DocumentoNotarial>
+	<DocumentoNotarial>
+	<Documento>
+		<CodNotario>19010409</CodNotario>
+		<CodNotaria>10020487866</CodNotaria>
+		<NumKardex>KAR322-2021</NumKardex>
+		<FechaIngreso>2021-02-11</FechaIngreso>
+		<TipoInstrumento>E</TipoInstrumento>
+		<NumDocumento>322</NumDocumento>
+		<FechaInstrumento>2021-02-11</FechaInstrumento>
+		<NumFolios>3</NumFolios>
+		<FechaConclusion>2021-02-11</FechaConclusion>
+	</Documento>
+	<Maestros>
+		<PersonasNaturales>
+			<PersonaNatural id="0000007302">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>01776890</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>JUAN</Nombre>
+				<PrimerApellido>NINA</PrimerApellido>
+				<SegundoApellido>MAMANI</SegundoApellido>
+				<Genero>V</Genero>
+				<EstadoCivil>1</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1969-07-16</FechaNacimiento>
+				<Profesion>037</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>04</CodDepartamento>
+					<CodProvincia>01</CodProvincia>
+					<CodDistrito>04</CodDistrito>
+					<RestoDireccion>AV. NICOLáS DE PIéROLA 202 P.J. MARISCAL CASTILLA</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000007298">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>01223224</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>FELIX</Nombre>
+				<PrimerApellido>MAQUERA</PrimerApellido>
+				<SegundoApellido>CASTRO</SegundoApellido>
+				<Genero>V</Genero>
+				<EstadoCivil>3</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1955-06-11</FechaNacimiento>
+				<Profesion>999</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>03</CodDistrito>
+					<RestoDireccion>COMUNIDAD VILLA MAQUERCOTA</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000007299">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>44428367</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>LIZETH</Nombre>
+				<PrimerApellido>MAQUERA</PrimerApellido>
+				<SegundoApellido>CERVANTES</SegundoApellido>
+				<Genero>M</Genero>
+				<EstadoCivil>2</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1987-08-18</FechaNacimiento>
+				<Profesion>045</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>JR. 28 DE NOVIEMBRE N° 128</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000007300">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>42164274</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>MILY</Nombre>
+				<PrimerApellido>MAQUERA</PrimerApellido>
+				<SegundoApellido>CERVANTES</SegundoApellido>
+				<Genero>M</Genero>
+				<EstadoCivil>2</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1983-10-31</FechaNacimiento>
+				<Profesion>045</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>08</CodDepartamento>
+					<CodProvincia>01</CodProvincia>
+					<CodDistrito>06</CodDistrito>
+					<RestoDireccion>CCORIPATA SUR C-2 PP.JJ.</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+		</PersonasNaturales>
+	</Maestros>
+	<Operaciones>
+		<Operacion id="030">
+			<CodActoJuridico>0101</CodActoJuridico>
+		<Operantes>
+			<Objetos>
+			</Objetos>
+			<Intervenciones>
+				<Intervencion>
+					<TipoIntervencion>2</TipoIntervencion>
+					<DescripcionIntervencion>017</DescripcionIntervencion>
+					<RolRepresentante>B</RolRepresentante>
+					<Sujetos>
+						<Sujeto>
+							<IdMaestro>0000007302</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>PRESTAMO-MI BANCO</Origen>
+									<CuantiaOrigen>1700.00</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>100.00</PorcentajeDerecho>
+							</Derecho>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-02-11</FechaFirma>
+						</Sujeto>
+					</Sujetos>
+				</Intervencion>
+				<Intervencion>
+					<TipoIntervencion>1</TipoIntervencion>
+					<DescripcionIntervencion>001</DescripcionIntervencion>
+					<RolRepresentante>O</RolRepresentante>
+					<Sujetos>
+						<Sujeto>
+							<IdMaestro>0000007298</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS</Origen>
+									<CuantiaOrigen>566.67</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>33.33</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-02-11</FechaFirma>
+						</Sujeto>
+						<Sujeto>
+							<IdMaestro>0000007299</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS</Origen>
+									<CuantiaOrigen>566.67</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>33.33</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-02-11</FechaFirma>
+						</Sujeto>
+						<Sujeto>
+							<IdMaestro>0000007300</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS</Origen>
+									<CuantiaOrigen>566.67</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>33.33</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-02-11</FechaFirma>
+						</Sujeto>
+					</Sujetos>
+				</Intervencion>
+			</Intervenciones>
+			<NoIntervinientes>
+			</NoIntervinientes>
+		</Operantes>
+		<CuantiaOperacion>
+			<Cuantia>3400.01</Cuantia>
+			<TipoMoneda>01</TipoMoneda>
+		</CuantiaOperacion>
+		<MediosPagos>
+		<MediosPago>
+			<MedioPago>001</MedioPago>
+			<FormaPago>C</FormaPago>
+			<MomentoPago>1</MomentoPago>
+			<CuantiaPago>3400.01</CuantiaPago>
+			<TipoMonedaPago>01</TipoMonedaPago>
+			<JustificadoManifestado>1</JustificadoManifestado>
+			<FechaPago>2021-02-11</FechaPago>
+			<IdPago>0746978</IdPago>
+			<EntidadFinanciera>00002</EntidadFinanciera>
+		</MediosPago>
+		</MediosPagos>
+			<NombreContrato>COMPRA VENTA DE INMUEBLE</NombreContrato>
+			<FechaMinuta>2021-02-11</FechaMinuta>
+		</Operacion>
+	</Operaciones>
+	</DocumentoNotarial>
+	<DocumentoNotarial>
+	<Documento>
+		<CodNotario>19010409</CodNotario>
+		<CodNotaria>10020487866</CodNotaria>
+		<NumKardex>KAR600-2021</NumKardex>
+		<FechaIngreso>2021-03-12</FechaIngreso>
+		<TipoInstrumento>E</TipoInstrumento>
+		<NumDocumento>600</NumDocumento>
+		<FechaInstrumento>2021-03-12</FechaInstrumento>
+		<NumFolios>4</NumFolios>
+		<FechaConclusion>2021-03-12</FechaConclusion>
+	</Documento>
+	<Maestros>
+		<PersonasNaturales>
+			<PersonaNatural id="0000006423">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>00400238</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>HUGO</Nombre>
+				<PrimerApellido>RAMOS</PrimerApellido>
+				<SegundoApellido>MAQUERA</SegundoApellido>
+				<Genero>V</Genero>
+				<EstadoCivil>2</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1951-08-05</FechaNacimiento>
+				<Profesion>037</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>JR. ILAVE 434</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000006424">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>01791330</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>SILVESTRA</Nombre>
+				<PrimerApellido>MAQUERA</PrimerApellido>
+				<SegundoApellido>DE RAMOS</SegundoApellido>
+				<Genero>M</Genero>
+				<EstadoCivil>2</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1953-12-31</FechaNacimiento>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>JR. ILAVE 434</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000014152">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>01285632</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>CEVERIANO</Nombre>
+				<PrimerApellido>RAMOS</PrimerApellido>
+				<SegundoApellido>MAQUERA</SegundoApellido>
+				<Genero>V</Genero>
+				<EstadoCivil>1</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1960-04-25</FechaNacimiento>
+				<Profesion>036</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>JIRóN ILAVE Nº 444</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000010470">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>01865326</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>EDGAR</Nombre>
+				<PrimerApellido>ORTEGA</PrimerApellido>
+				<SegundoApellido>RAMOS</SegundoApellido>
+				<Genero>V</Genero>
+				<EstadoCivil>1</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1974-12-12</FechaNacimiento>
+				<Profesion>037</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>JR. ILAVE 444</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000014154">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>44774222</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>JOSE</Nombre>
+				<PrimerApellido>RAMOS</PrimerApellido>
+				<SegundoApellido>RODRIGUEZ</SegundoApellido>
+				<Genero>V</Genero>
+				<EstadoCivil>1</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1987-04-12</FechaNacimiento>
+				<Profesion>036</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>01</CodDistrito>
+					<RestoDireccion>AVENIDA PRIMAVERA Nº 278, BARRIO ALTO ALIANZA</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+		</PersonasNaturales>
+	</Maestros>
+	<Operaciones>
+		<Operacion id="984">
+			<CodActoJuridico>0912</CodActoJuridico>
+		<Operantes>
+			<Objetos>
+			</Objetos>
+			<Intervenciones>
+				<Intervencion>
+					<TipoIntervencion>1</TipoIntervencion>
+					<DescripcionIntervencion>001</DescripcionIntervencion>
+					<RolRepresentante>O</RolRepresentante>
+					<Sujetos>
+						<Sujeto>
+							<IdMaestro>0000006423</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS </Origen>
+									<CuantiaOrigen>1600.00</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>20.00</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-03-12</FechaFirma>
+						</Sujeto>
+						<Sujeto>
+							<IdMaestro>0000006424</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS </Origen>
+									<CuantiaOrigen>1600.00</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>20.00</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-03-12</FechaFirma>
+						</Sujeto>
+						<Sujeto>
+							<IdMaestro>0000014152</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS </Origen>
+									<CuantiaOrigen>1600.00</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>20.00</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-03-12</FechaFirma>
+						</Sujeto>
+						<Sujeto>
+							<IdMaestro>0000010470</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS </Origen>
+									<CuantiaOrigen>1600.00</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>20.00</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-03-12</FechaFirma>
+						</Sujeto>
+						<Sujeto>
+							<IdMaestro>0000014154</IdMaestro>
+							<OrigenFondos>
+								<OrigenFondo>
+									<Origen>AHORROS </Origen>
+									<CuantiaOrigen>1600.00</CuantiaOrigen>
+									<TipoMonedaPago>01</TipoMonedaPago>
+								</OrigenFondo>
+							</OrigenFondos>
+							<Derecho>
+								<PorcentajeDerecho>20.00</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-03-12</FechaFirma>
+						</Sujeto>
+					</Sujetos>
+				</Intervencion>
+			</Intervenciones>
+			<NoIntervinientes>
+			</NoIntervinientes>
+		</Operantes>
+		<CuantiaOperacion>
+			<Cuantia>8000.00</Cuantia>
+			<TipoMoneda>01</TipoMoneda>
+		</CuantiaOperacion>
+		<MediosPagos>
+		<MediosPago>
+			<MedioPago>001</MedioPago>
+			<FormaPago>C</FormaPago>
+			<MomentoPago>1</MomentoPago>
+			<CuantiaPago>8000.00</CuantiaPago>
+			<TipoMonedaPago>01</TipoMonedaPago>
+			<JustificadoManifestado>1</JustificadoManifestado>
+			<FechaPago>2021-03-12</FechaPago>
+			<IdPago>0746978</IdPago>
+			<EntidadFinanciera>00002</EntidadFinanciera>
+		</MediosPago>
+		</MediosPagos>
+			<NombreContrato>ACLARACION, RECTIFICACION Y RATIFICACION</NombreContrato>
+			<FechaMinuta>2021-03-12</FechaMinuta>
+		</Operacion>
+	</Operaciones>
+	</DocumentoNotarial>
+	<DocumentoNotarial>
+	<Documento>
+		<CodNotario>19010409</CodNotario>
+		<CodNotaria>10020487866</CodNotaria>
+		<NumKardex>KAR959-2021</NumKardex>
+		<FechaIngreso>2021-05-06</FechaIngreso>
+		<TipoInstrumento>E</TipoInstrumento>
+		<NumDocumento>959</NumDocumento>
+		<FechaInstrumento>2021-05-06</FechaInstrumento>
+		<NumFolios>2</NumFolios>
+		<FechaConclusion>2021-05-06</FechaConclusion>
+	</Documento>
+	<Maestros>
+		<PersonasNaturales>
+			<PersonaNatural id="0000014313">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>01847850</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>ESTEFA</Nombre>
+				<PrimerApellido>VILCA</PrimerApellido>
+				<SegundoApellido>DE ARO</SegundoApellido>
+				<Genero>M</Genero>
+				<EstadoCivil>3</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1943-12-28</FechaNacimiento>
+				<Profesion>014</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>21</CodDepartamento>
+					<CodProvincia>05</CodProvincia>
+					<CodDistrito>03</CodDistrito>
+					<RestoDireccion>COMUNIDAD VILLA MAQUERCOTA</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+			<PersonaNatural id="0000014314">
+			<DocsIdentificativos>
+				<DocIdentificativo>
+					<TipoDocIdentidad>01</TipoDocIdentidad>
+					<NumDocIdentificativo>00683784</NumDocIdentificativo>
+				</DocIdentificativo>
+			</DocsIdentificativos>
+				<Nombre>IRMA</Nombre>
+				<PrimerApellido>ARO</PrimerApellido>
+				<SegundoApellido>VILCA</SegundoApellido>
+				<Genero>M</Genero>
+				<EstadoCivil>1</EstadoCivil>
+				<PaisNacionalidad>PE</PaisNacionalidad>
+				<FechaNacimiento>1977-11-30</FechaNacimiento>
+				<Profesion>036</Profesion>
+				<Cargo>998</Cargo>
+				<Direccion>
+					<ResidePeru>1</ResidePeru>
+					<PaisResidencia>PE</PaisResidencia>
+				<DireccionNacional>
+					<CodDepartamento>23</CodDepartamento>
+					<CodProvincia>01</CodProvincia>
+					<CodDistrito>10</CodDistrito>
+					<RestoDireccion>PROMUVI VIÑANI AMP. I, MZ. 579, LOTE 06</RestoDireccion>
+				</DireccionNacional>
+				</Direccion>
+			</PersonaNatural>
+		</PersonasNaturales>
+	</Maestros>
+	<Operaciones>
+		<Operacion id="991">
+			<CodActoJuridico>0909</CodActoJuridico>
+		<Operantes>
+			<Objetos>
+			</Objetos>
+			<Intervenciones>
+				<Intervencion>
+					<TipoIntervencion>1</TipoIntervencion>
+					<DescripcionIntervencion>084</DescripcionIntervencion>
+					<RolRepresentante>O</RolRepresentante>
+					<Sujetos>
+						<Sujeto>
+							<IdMaestro>0000014313</IdMaestro>
+							<Derecho>
+								<PorcentajeDerecho>100.00</PorcentajeDerecho>
+							</Derecho>
+							<Renta3Cat>0</Renta3Cat>
+							<CasaEnajenante>0</CasaEnajenante>
+							<ImpuestoCero>0</ImpuestoCero>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-05-06</FechaFirma>
+						</Sujeto>
+					</Sujetos>
+				</Intervencion>
+				<Intervencion>
+					<TipoIntervencion>2</TipoIntervencion>
+					<DescripcionIntervencion>011</DescripcionIntervencion>
+					<RolRepresentante>B</RolRepresentante>
+					<Sujetos>
+						<Sujeto>
+							<IdMaestro>0000014314</IdMaestro>
+							<Derecho>
+								<PorcentajeDerecho>100.00</PorcentajeDerecho>
+							</Derecho>
+							<Representantes>
+							</Representantes>
+							<FechaFirma>2021-05-06</FechaFirma>
+						</Sujeto>
+					</Sujetos>
+				</Intervencion>
+			</Intervenciones>
+			<NoIntervinientes>
+			</NoIntervinientes>
+		</Operantes>
+		<CuantiaOperacion>
+			<Cuantia>0.00</Cuantia>
+			<TipoMoneda>01</TipoMoneda>
+		</CuantiaOperacion>
+		<MediosPagos>
+		<MediosPago>
+			<MedioPago>001</MedioPago>
+			<FormaPago>C</FormaPago>
+			<MomentoPago>1</MomentoPago>
+			<CuantiaPago>0.00</CuantiaPago>
+			<TipoMonedaPago>01</TipoMonedaPago>
+			<JustificadoManifestado>1</JustificadoManifestado>
+			<FechaPago>2021-05-06</FechaPago>
 			<IdPago>0746978</IdPago>
 			<EntidadFinanciera>00002</EntidadFinanciera>
 		</MediosPago>
 		</MediosPagos>
 			<NombreContrato>ACLARACION DE DONACION</NombreContrato>
-			<FechaMinuta>2021-01-27</FechaMinuta>
+			<FechaMinuta>2021-05-06</FechaMinuta>
 		</Operacion>
 	</Operaciones>
 	</DocumentoNotarial>

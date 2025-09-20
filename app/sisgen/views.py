@@ -26,6 +26,7 @@ class DocumentSearchView(APIView):
         try:
             # Get filters and page from request
             filters = request.data
+            print('DEBUG: filters:', filters)
             page = int(filters.pop('page', 1))
             search_id = filters.pop('search_id', None)
             original_filters = filters.copy()  # Keep a copy of original filters
