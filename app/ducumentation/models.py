@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
-
+import sys
 
 class Documentogenerados(models.Model):
     observacion = models.TextField(blank=True, null=True)
@@ -39,6 +39,7 @@ class APIToken(models.Model):
         db_table = 'api_tokens'
         verbose_name = 'API Token'
         verbose_name_plural = 'API Tokens'
+        managed = False
     
     def __str__(self):
         return f"{self.name} (expires: {self.expires_at.strftime('%Y-%m-%d')})"

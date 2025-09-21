@@ -50,6 +50,7 @@ class UsuariosViewSet(ModelViewSet):
     """
     queryset = models.Usuarios.objects.all()
     serializer_class = serializers.UsuariosSerializer
+    permission_classes = [IsAuthenticated]
 
 
 
@@ -59,6 +60,7 @@ class PermisosUsuariosViewSet(ModelViewSet):
     """
     queryset = models.PermisosUsuarios.objects.all()
     serializer_class = serializers.PermisosUsuariosSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class KardexViewSet(ModelViewSet):
@@ -2486,6 +2488,7 @@ class TbAbogadoViewSet(ModelViewSet):
     """
     queryset = models.TbAbogado.objects.all()
     serializer_class = serializers.TbAbogadoSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class NacionalidadesViewSet(ModelViewSet):
@@ -2494,6 +2497,7 @@ class NacionalidadesViewSet(ModelViewSet):
     """
     queryset = models.Nacionalidades.objects.all()
     serializer_class = serializers.NacionalidadesSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class ProfesionesViewSet(ModelViewSet):
@@ -2502,6 +2506,7 @@ class ProfesionesViewSet(ModelViewSet):
     """
     queryset = models.Profesiones.objects.all()
     serializer_class = serializers.ProfesionesSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class CargoprofeViewSet(ModelViewSet):
@@ -2510,6 +2515,7 @@ class CargoprofeViewSet(ModelViewSet):
     """
     queryset = models.Cargoprofe.objects.all()
     serializer_class = serializers.CargoprofeSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class UbigeoViewSet(ModelViewSet):
@@ -2518,6 +2524,7 @@ class UbigeoViewSet(ModelViewSet):
     """
     queryset = models.Ubigeo.objects.all()
     serializer_class = serializers.UbigeoSerializer
+    permission_classes = [IsAuthenticated]
     # pagination_class = pagination.KardexPagination
 
 class SedesRegistralesViewSet(ModelViewSet):
