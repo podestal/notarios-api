@@ -2280,6 +2280,7 @@ class ClienteViewSet(ModelViewSet):
     queryset = models.Cliente.objects.all()
     serializer_class = serializers.ClienteSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -2362,6 +2363,7 @@ class Cliente2ViewSet(ModelViewSet):
     queryset = models.Cliente2.objects.all()
     serializer_class = serializers.Cliente2Serializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -2410,6 +2412,7 @@ class TiposDeActosViewSet(ModelViewSet):
     """
     queryset = models.Tiposdeacto.objects.all()
     serializer_class = serializers.TiposDeActosSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class ActoCondicionViewSet(ModelViewSet):
@@ -2450,6 +2453,7 @@ class DetalleActosKardexViewSet(ModelViewSet):
     queryset = models.DetalleActosKardex.objects.all()
     serializer_class = serializers.DetalleActosKardexSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def by_kardex_tipoacto(self, request):
@@ -2533,6 +2537,7 @@ class SedesRegistralesViewSet(ModelViewSet):
     """
     queryset = models.Sedesregistrales.objects.all()
     serializer_class = serializers.SedesregistralesSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class RepresentantesViewSet(ModelViewSet):
@@ -2542,6 +2547,7 @@ class RepresentantesViewSet(ModelViewSet):
     queryset = models.Representantes.objects.all()
     serializer_class = serializers.RepresentantesSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
 
 class PatrimonialViewSet(ModelViewSet):
