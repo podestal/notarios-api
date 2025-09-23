@@ -118,6 +118,8 @@ class KardexSerializer(serializers.ModelSerializer):
             'papelfin',
             'responsable',
             'referencia',
+            'papeltrasladoini',
+            'papeltrasladofin',
         ]
 
     def get_usuario(self, obj):
