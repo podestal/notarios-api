@@ -2280,12 +2280,36 @@ class ClienteViewSet(ModelViewSet):
     queryset = models.Cliente.objects.all()
     serializer_class = serializers.ClienteSerializer
     pagination_class = pagination.KardexPagination
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return serializers.CreateClienteSerializer
         return serializers.ClienteSerializer
+
+
+    @action(detail=False, methods=['get'])
+    def by_name(self, request):
+        """
+        Get Cliente records by name or razonsocial.
+        """
+        name = request.query_params.get('name')
+        if not name:
+            return Response(
+                {"error": "name parameter is required."},
+                status=400
+            )
+        # filter by nombre and razonsocial
+        clientes = models.Cliente.objects.filter(
+            Q(nombre__icontains=name) | Q(razonsocial__icontains=name)
+        )
+        if not clientes.exists():
+            return Response({}, status=200)
+
+        paginator = pagination.KardexPagination()
+        result = paginator.paginate_queryset(clientes, request)
+        serializer = serializers.ClienteSerializer(result, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def by_dni(self, request):
