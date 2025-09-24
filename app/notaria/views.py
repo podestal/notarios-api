@@ -3484,6 +3484,7 @@ class SellosViewSet(ModelViewSet):
 
     queryset = models.Selloscartas.objects.all()
     serializer_class = serializers.SelloscartasSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class LibrosViewSet(ModelViewSet):

@@ -72,6 +72,7 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             'foliofin',
             'fechaescritura',
             'responsable',
+            'recepcion'
         ]
 
 
@@ -120,6 +121,7 @@ class KardexSerializer(serializers.ModelSerializer):
             'referencia',
             'papeltrasladoini',
             'papeltrasladofin',
+            'recepcion'
         ]
 
     def get_usuario(self, obj):
