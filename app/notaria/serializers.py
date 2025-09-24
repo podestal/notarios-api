@@ -935,6 +935,14 @@ class IngresoCartasSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class SelloscartasSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Selloscartas model.
+    """
+    class Meta:
+        model = models.Selloscartas
+        fields = '__all__'
+
 class LibrosSerializer(serializers.ModelSerializer):
     """
     Serializer for the Libros model.

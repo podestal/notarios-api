@@ -48,6 +48,7 @@ router.register('poderes_fuerareg', views.PoderesFueraregViewSet, basename='pode
 router.register('poderes_pension', views.PoderesPensionViewSet, basename='poderes_pension')
 router.register('poderes_contratantes', views.PoderesContratantesViewSet, basename='poderes_contratantes')
 router.register('ingreso_cartas', views.IngresoCartasViewSet, basename='ingreso_cartas')
+router.register('sellos-cartas', views.SellosViewSet)
 router.register('libros', views.LibrosViewSet, basename='libros')
 router.register('tipolibro', views.TipolibroViewSet, basename='tipolibro')
 router.register('cert_domiciliario', views.CertDomiciliarioViewSet, basename='cert_domiciliario')

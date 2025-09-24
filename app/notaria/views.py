@@ -3480,6 +3480,12 @@ class IngresoCartasViewSet(ModelViewSet):
             return report_service.generate_word_report(desde, hasta)
 
 
+class SellosViewSet(ModelViewSet):
+
+    queryset = models.Selloscartas.objects.all()
+    serializer_class = serializers.SelloscartasSerializer
+
+
 class LibrosViewSet(ModelViewSet):
     """
     ViewSet for the Libros model.

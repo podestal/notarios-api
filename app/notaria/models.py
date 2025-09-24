@@ -855,6 +855,16 @@ class IngresoCartas(models.Model):
         db_table = 'ingreso_cartas'
 
 
+class Selloscartas(models.Model):
+    idsello = models.AutoField(primary_key=True)
+    dessello = models.TextField()
+    contenido = models.TextField()
+
+    class Meta:
+        managed = False
+        db_table = 'selloscartas'
+
+
 class Libros(models.Model):
     numlibro = models.CharField(max_length=10)
     ano = models.CharField(max_length=4)
