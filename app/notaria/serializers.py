@@ -3,39 +3,42 @@ from . import models
 from django.db import IntegrityError
 from .constants import MONEDAS
 
-'''
+"""
 Serializers for the Notaria app.
 These serializers are used to convert complex data types,
 such as querysets and model instances, into native Python datatypes
 that can then be easily rendered into JSON, XML or other content types.
-'''
+"""
 
 
 class UsuariosSerializer(serializers.ModelSerializer):
     """
     Serializer for the Usuarios model.
     """
+
     class Meta:
         model = models.Usuarios
-        fields = '__all__'
+        fields = "__all__"
 
 
 class PermisosUsuariosSerializer(serializers.ModelSerializer):
     """
     Serializer for the PermisosUsuarios model.
     """
+
     class Meta:
         model = models.PermisosUsuarios
-        fields = '__all__'
+        fields = "__all__"
 
 
 class TipoKarSerializer(serializers.ModelSerializer):
     """
     Serializer for the TipoKar model.
     """
+
     class Meta:
         model = models.Tipokar
-        fields = '__all__'
+        fields = "__all__"
 
 
 class CreateKardexSerializer(serializers.ModelSerializer):
@@ -47,32 +50,32 @@ class CreateKardexSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Kardex
         fields = [
-            'idkardex',
-            'kardex',
-            'idtipkar',
-            'fechaingreso',
-            'idtipkar',
-            'referencia',
-            'codactos',
-            'contrato',
-            'idusuario',
-            'responsable',
-            'retenido',
-            'desistido',
-            'autorizado',
-            'idrecogio',
-            'pagado',
-            'visita',
-            'idnotario',
-            'numescritura',
-            'fktemplate',
-            'papelini',
-            'papelfin',
-            'folioini',
-            'foliofin',
-            'fechaescritura',
-            'responsable',
-            'recepcion'
+            "idkardex",
+            "kardex",
+            "idtipkar",
+            "fechaingreso",
+            "idtipkar",
+            "referencia",
+            "codactos",
+            "contrato",
+            "idusuario",
+            "responsable",
+            "retenido",
+            "desistido",
+            "autorizado",
+            "idrecogio",
+            "pagado",
+            "visita",
+            "idnotario",
+            "numescritura",
+            "fktemplate",
+            "papelini",
+            "papelfin",
+            "folioini",
+            "foliofin",
+            "fechaescritura",
+            "responsable",
+            "recepcion",
         ]
 
 
@@ -80,6 +83,7 @@ class KardexSerializer(serializers.ModelSerializer):
     """
     Serializer for the Kardex model.
     """
+
     # class Meta:
     #     model = models.Kardex
     #     fields = '__all__'
@@ -91,57 +95,54 @@ class KardexSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Kardex
         fields = [
-            'idkardex',
-            'kardex',
-            'fechaingreso',
-            'contrato',
-            'codactos',
-            'fechaescritura',
-            'numescritura',
-            'numminuta',
-            'folioini',
-            'foliofin',
-            'numinstrmento',
-            'txa_minuta',
-            'idusuario',
-            'usuario',
-            'idtipkar',
+            "idkardex",
+            "kardex",
+            "fechaingreso",
+            "contrato",
+            "codactos",
+            "fechaescritura",
+            "numescritura",
+            "numminuta",
+            "folioini",
+            "foliofin",
+            "numinstrmento",
+            "txa_minuta",
+            "idusuario",
+            "usuario",
+            "idtipkar",
             # 'contratantes',
-            'cliente',
-            'retenido',
-            'desistido',
-            'autorizado',
-            'idrecogio',
-            'pagado',
-            'visita',
-            'fktemplate',
-            'papelini',
-            'papelfin',
-            'responsable',
-            'referencia',
-            'papeltrasladoini',
-            'papeltrasladofin',
-            'recepcion'
+            "cliente",
+            "retenido",
+            "desistido",
+            "autorizado",
+            "idrecogio",
+            "pagado",
+            "visita",
+            "fktemplate",
+            "papelini",
+            "papelfin",
+            "responsable",
+            "referencia",
+            "papeltrasladoini",
+            "papeltrasladofin",
+            "recepcion",
         ]
 
     def get_usuario(self, obj):
-        usuarios_map = self.context.get('usuarios_map', {})
+        usuarios_map = self.context.get("usuarios_map", {})
         usuario = usuarios_map.get(obj.idusuario)
         if usuario:
-            return (
-                f"{usuario.prinom} {usuario.segnom} "
-                f"{usuario.apepat} {usuario.apemat}"
-            )
-        return ''
+            return f"{usuario.prinom} {usuario.segnom} " f"{usuario.apepat} {usuario.apemat}"
+        return ""
 
     def get_cliente(self, obj):
-        contratantes_map = self.context.get('contratantes_map', {})
-        clientes_map = self.context.get('clientes_map', {})
+        contratantes_map = self.context.get("contratantes_map", {})
+        clientes_map = self.context.get("clientes_map", {})
 
         idscontratante = contratantes_map.get(obj.kardex)
 
         if not idscontratante:
-            return ''
+            return ""
 
         clientes = []
         for idcontratante in idscontratante:
@@ -154,39 +155,40 @@ class KardexSerializer(serializers.ModelSerializer):
             return (
                 # f"{cliente['nombre']}"
                 # ', '.join(f"{c['nombre'] if c['nombre'] else c['razonsocial']}" for c in clientes)
-                ', '.join(
-                    f"{c['razonsocial'] if c['razonsocial'] else c['nombre']}"
-                    for c in clientes
+                ", ".join(
+                    f"{c['razonsocial'] if c['razonsocial'] else c['nombre']}" for c in clientes
                 )
             )
 
-        return ''
+        return ""
 
 
 class ContratantesSerializer(serializers.ModelSerializer):
     """
     Serializer for the Contratantes model.
     """
+
     class Meta:
         model = models.Contratantes
-        fields = '__all__'
+        fields = "__all__"
 
-            # "idcontratante": "0000147215",
-            # "idtipkar": 1,
-            # "kardex": "KAR2315-2025",
-            # "condicion": "044.57535/",
-            # "firma": "1",
-            # "fechafirma": "",
-            # "resfirma": 0,
-            # "tiporepresentacion": "0",
-            # "idcontratanterp": "",
-            # "idsedereg": "",
-            # "numpartida": "",
-            # "facultades": "",
-            # "indice": "1",
-            # "visita": "0",
-            # "inscrito": "0",
-            # "plantilla": null
+        # "idcontratante": "0000147215",
+        # "idtipkar": 1,
+        # "kardex": "KAR2315-2025",
+        # "condicion": "044.57535/",
+        # "firma": "1",
+        # "fechafirma": "",
+        # "resfirma": 0,
+        # "tiporepresentacion": "0",
+        # "idcontratanterp": "",
+        # "idsedereg": "",
+        # "numpartida": "",
+        # "facultades": "",
+        # "indice": "1",
+        # "visita": "0",
+        # "inscrito": "0",
+        # "plantilla": null
+
 
 class CreateContratantesSerializer(serializers.ModelSerializer):
     """
@@ -199,18 +201,18 @@ class CreateContratantesSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Contratantes
         fields = [
-            'idcontratante',
-            'idtipkar',
-            'kardex',
-            'condicion',
-            'firma',
-            'fechafirma',
-            'resfirma',
-            'tiporepresentacion',
-            'indice',
-            'visita',
-            'inscrito',
-            'idcontratanterp',
+            "idcontratante",
+            "idtipkar",
+            "kardex",
+            "condicion",
+            "firma",
+            "fechafirma",
+            "resfirma",
+            "tiporepresentacion",
+            "indice",
+            "visita",
+            "inscrito",
+            "idcontratanterp",
         ]
 
 
@@ -228,50 +230,42 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Contratantes
         fields = [
-            'idcontratante',
-            'idtipkar',
-            'kardex',
-            'condicion',
-            'condicion_str',
-            'firma',
-            'fechafirma',
-            'cliente',
-            'cliente_id',
-            'idcontratanterp'
+            "idcontratante",
+            "idtipkar",
+            "kardex",
+            "condicion",
+            "condicion_str",
+            "firma",
+            "fechafirma",
+            "cliente",
+            "cliente_id",
+            "idcontratanterp",
         ]
 
     def get_cliente(self, obj):
-        clientes_map = self.context.get('clientes_map', {})
+        clientes_map = self.context.get("clientes_map", {})
         cliente = clientes_map.get(obj.idcontratante)
         if cliente:
-            if cliente.get('razonsocial'):
-                return (
-                    f"{cliente['razonsocial']}"
-                )
-            elif cliente.get('nombre'):
-                return (
-                    f"{cliente['nombre']}"
-                )
-        return ''
-    
+            if cliente.get("razonsocial"):
+                return f"{cliente['razonsocial']}"
+            elif cliente.get("nombre"):
+                return f"{cliente['nombre']}"
+        return ""
+
     def get_cliente_id(self, obj):
-        clientes_map = self.context.get('clientes_map', {})
+        clientes_map = self.context.get("clientes_map", {})
         cliente = clientes_map.get(obj.idcontratante)
         if cliente:
-            return (
-                f"{cliente['idcliente']}"
-            )
-        return ''
-    
+            return f"{cliente['idcliente']}"
+        return ""
+
     def get_condicion_str(self, obj):
-        condicion_map = self.context.get('condicion_map', {})
-        condicion = condicion_map.get(obj.condicion.split('.')[0])
+        condicion_map = self.context.get("condicion_map", {})
+        condicion = condicion_map.get(obj.condicion.split(".")[0])
         if condicion:
-            return (
-                f"{condicion['condicion']}"
-            )
-        return ''
-    
+            return f"{condicion['condicion']}"
+        return ""
+
 
 class ContratantesxactoSerializer(serializers.ModelSerializer):
     """
@@ -281,7 +275,7 @@ class ContratantesxactoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Contratantesxacto
-        fields = '__all__'
+        fields = "__all__"
 
 
 class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
@@ -290,7 +284,6 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
     This serializer is used to validate and serialize the GetContratantesxactoSerializerByKardex data.
     """
 
-    
     cliente = serializers.SerializerMethodField()
     cliente_id = serializers.SerializerMethodField()
     condicion_str = serializers.SerializerMethodField()
@@ -299,72 +292,65 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
     class Meta:
         model = models.Contratantesxacto
         fields = [
-            'id',
-            'idtipkar',
-            'kardex',
-            'idtipoacto',
-            'idcontratante',
-            'item',
-            'idcondicion',
-            'parte',
-            'porcentaje',
-            'uif',
-            'formulario',
-            'monto',
-            'opago',
-            'ofondo',
-            'montop',
-            'cliente',
-            'cliente_id',
-            'condicion_str',
-            'renta'
+            "id",
+            "idtipkar",
+            "kardex",
+            "idtipoacto",
+            "idcontratante",
+            "item",
+            "idcondicion",
+            "parte",
+            "porcentaje",
+            "uif",
+            "formulario",
+            "monto",
+            "opago",
+            "ofondo",
+            "montop",
+            "cliente",
+            "cliente_id",
+            "condicion_str",
+            "renta",
         ]
 
     def get_cliente(self, obj):
-        clientes_map = self.context.get('clientes_map', {})
+        clientes_map = self.context.get("clientes_map", {})
         cliente = clientes_map.get(obj.idcontratante)
         if cliente:
-            if cliente.get('razonsocial'):
-                return (
-                    f"{cliente['razonsocial']}"
-                )
-            elif cliente.get('nombre'):
-                return (
-                    f"{cliente['nombre']}"
-                )
-        return ''
-    
+            if cliente.get("razonsocial"):
+                return f"{cliente['razonsocial']}"
+            elif cliente.get("nombre"):
+                return f"{cliente['nombre']}"
+        return ""
+
     def get_cliente_id(self, obj):
-        clientes_map = self.context.get('clientes_map', {})
+        clientes_map = self.context.get("clientes_map", {})
         cliente = clientes_map.get(obj.idcontratante)
         if cliente:
-            return (
-                f"{cliente['idcliente']}"
-            )
-        return ''
-    
+            return f"{cliente['idcliente']}"
+        return ""
+
     def get_condicion_str(self, obj):
-        condicion_map = self.context.get('condicion_map', {})
+        condicion_map = self.context.get("condicion_map", {})
         condicion = condicion_map.get(obj.idcondicion)
         if condicion:
-            return (
-                f"{condicion['condicion']}"
-            )
-        return ''
+            return f"{condicion['condicion']}"
+        return ""
 
     def get_renta(self, obj):
-        renta_map = self.context.get('renta_map', {})
+        renta_map = self.context.get("renta_map", {})
         renta = renta_map.get(obj.idcontratante)
         if renta:
             return {
-                'idrenta': renta['idrenta'],
-                'kardex': renta['kardex'],
-                'pregu1': renta['pregu1'],
-                'pregu2': renta['pregu2'],
-                'pregu3': renta['pregu3'],
-                'idcontratante': renta['idcontratante'],
+                "idrenta": renta["idrenta"],
+                "kardex": renta["kardex"],
+                "pregu1": renta["pregu1"],
+                "pregu2": renta["pregu2"],
+                "pregu3": renta["pregu3"],
+                "idcontratante": renta["idcontratante"],
             }
         return {}
+
 
 class ClienteSerializer(serializers.ModelSerializer):
     """
@@ -372,18 +358,82 @@ class ClienteSerializer(serializers.ModelSerializer):
     This serializer is used to validate and serialize the Cliente data.
     """
 
+    conyugue_name = serializers.SerializerMethodField()
+
     class Meta:
         model = models.Cliente
-        fields = '__all__'
+        fields = [
+            "idcliente",
+            "tipper",
+            "apepat",
+            "apemat",
+            "prinom",
+            "segnom",
+            "nombre",
+            "direccion",
+            "idtipdoc",
+            "numdoc",
+            "email",
+            "telfijo",
+            "telcel",
+            "telofi",
+            "sexo",
+            "idestcivil",
+            "natper",
+            "conyuge",
+            "conyugue_name",
+            "nacionalidad",
+            "idprofesion",
+            "detaprofesion",
+            "idcargoprofe",
+            "profocupa",
+            "dirfer",
+            "idubigeo",
+            "cumpclie",
+            "fechaing",
+            "razonsocial",
+            "domfiscal",
+            "idsedereg",
+            "numpartida",
+            "telempresa",
+            "actmunicipal",
+            "contacempresa",
+            "fechaconstitu",
+            "numdoc_plantilla",
+            "profesion_plantilla",
+            "ubigeo_plantilla",
+            "docpaisemi",
+            "partidaconyuge",
+            "separaciondebienes",
+            "idsedeconyuge",
+            "residente",
+            "impmotivo",
+            "impremite",
+            "impentidad",
+            "impeorigen",
+            "impnumof",
+            "impeingre",
+            "numregistro",
+            "mailempresa",
+            "contacempresa",
+        ]
+
+    def get_conyugue_name(self, obj):
+        if obj.conyuge:
+            conyuge = models.Cliente.objects.get(idcliente=obj.conyuge)
+            return conyuge.nombre
+        return ""
 
 
 class Cliente2Serializer(serializers.ModelSerializer):
     """
     Serializer for the Cliente2 model.
     """
+
     class Meta:
         model = models.Cliente2
-        fields = '__all__'
+        fields = "__all__"
+
 
 class CreateCliente2Serializer(serializers.ModelSerializer):
     """
@@ -396,49 +446,49 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
     class Meta:
         model = models.Cliente2
         fields = [
-            'idcliente',
-            'idcontratante',
-            'tipper',
-            'apepat',
-            'apemat',
-            'prinom',
-            'segnom',
-            'nombre',
-            'direccion',
-            'idtipdoc',
-            'numdoc',
-            'email',
-            'telfijo',
-            'telcel',
-            'telofi',
-            'sexo',
-            'idestcivil',
-            'natper',
-            'conyuge',
-            'nacionalidad',
-            'idprofesion',
-            'detaprofesion',
-            'idcargoprofe',
-            'profocupa',
-            'dirfer',
-            'idubigeo',
-            'cumpclie',
-            'razonsocial',
-            'fechaing',
-            'residente',
-            'tipocli',
-            'profesion_plantilla',
-            'ubigeo_plantilla',
-            'fechaconstitu',
-            'idsedereg',
-            'razonsocial',
-            'domfiscal',
-            'idsedereg',
-            'numpartida',
-            'telempresa',
-            'actmunicipal',
-            'contacempresa',
-            'fechaconstitu',
+            "idcliente",
+            "idcontratante",
+            "tipper",
+            "apepat",
+            "apemat",
+            "prinom",
+            "segnom",
+            "nombre",
+            "direccion",
+            "idtipdoc",
+            "numdoc",
+            "email",
+            "telfijo",
+            "telcel",
+            "telofi",
+            "sexo",
+            "idestcivil",
+            "natper",
+            "conyuge",
+            "nacionalidad",
+            "idprofesion",
+            "detaprofesion",
+            "idcargoprofe",
+            "profocupa",
+            "dirfer",
+            "idubigeo",
+            "cumpclie",
+            "razonsocial",
+            "fechaing",
+            "residente",
+            "tipocli",
+            "profesion_plantilla",
+            "ubigeo_plantilla",
+            "fechaconstitu",
+            "idsedereg",
+            "razonsocial",
+            "domfiscal",
+            "idsedereg",
+            "numpartida",
+            "telempresa",
+            "actmunicipal",
+            "contacempresa",
+            "fechaconstitu",
         ]
 
     # def create(self, validated_data):
@@ -461,7 +511,6 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
     #             attempts += 1
 
     #     raise serializers.ValidationError("Could not generate a unique client ID after several attempts.")
-        
 
 
 class CreateClienteSerializer(serializers.ModelSerializer):
@@ -471,81 +520,80 @@ class CreateClienteSerializer(serializers.ModelSerializer):
     """
 
     idcliente = serializers.CharField(read_only=True)
-                #   razonsocial: razonSocial,
-                #     domfiscal: domFiscal,
-                #     idsedereg: selectedSedeRegistral ? parseInt(selectedSedeRegistral.id) : 0,
-                #     numpartida: numeroPartida,
-                #     telempresa: teleEmpresa,
-                #     actmunicipal: ciiu,
-                #     contacempresa: contacEmpresa,
-                #     fechaconstitu: fechaConstitucion,
+
+    #   razonsocial: razonSocial,
+    #     domfiscal: domFiscal,
+    #     idsedereg: selectedSedeRegistral ? parseInt(selectedSedeRegistral.id) : 0,
+    #     numpartida: numeroPartida,
+    #     telempresa: teleEmpresa,
+    #     actmunicipal: ciiu,
+    #     contacempresa: contacEmpresa,
+    #     fechaconstitu: fechaConstitucion,
     class Meta:
         model = models.Cliente
         fields = [
-            'idcliente',
-            'tipper',
-            'apepat',
-            'apemat',
-            'prinom',
-            'segnom',
-            'nombre',
-            'direccion',
-            'idtipdoc',
-            'numdoc',
-            'email',
-            'telfijo',
-            'telcel',
-            'telofi',
-            'sexo',
-            'idestcivil',
-            'natper',
-            'conyuge',
-            'nacionalidad',
-            'idprofesion',
-            'detaprofesion',
-            'idcargoprofe',
-            'profocupa',
-            'dirfer',
-            'idubigeo',
-            'cumpclie',
-            'razonsocial',
-            'domfiscal',
-            'idsedereg',
-            'numpartida',
-            'telempresa',
-            'actmunicipal',
-            'contacempresa',
-            'fechaconstitu',
-            'numdoc_plantilla',
+            "idcliente",
+            "tipper",
+            "apepat",
+            "apemat",
+            "prinom",
+            "segnom",
+            "nombre",
+            "direccion",
+            "idtipdoc",
+            "numdoc",
+            "email",
+            "telfijo",
+            "telcel",
+            "telofi",
+            "sexo",
+            "idestcivil",
+            "natper",
+            "conyuge",
+            "nacionalidad",
+            "idprofesion",
+            "detaprofesion",
+            "idcargoprofe",
+            "profocupa",
+            "dirfer",
+            "idubigeo",
+            "cumpclie",
+            "razonsocial",
+            "domfiscal",
+            "idsedereg",
+            "numpartida",
+            "telempresa",
+            "actmunicipal",
+            "contacempresa",
+            "fechaconstitu",
+            "numdoc_plantilla",
         ]
 
     def create(self, validated_data):
         # Generate new idcliente
-        last_cliente = models.Cliente.objects.order_by('-idcliente').first()
+        last_cliente = models.Cliente.objects.order_by("-idcliente").first()
         if last_cliente and last_cliente.idcliente.isdigit():
             new_id = str(int(last_cliente.idcliente) + 1).zfill(10)
         else:
-            new_id = '0000000001'
-        return models.Cliente.objects.create(
-            idcliente=new_id,
-            **validated_data
-        )
+            new_id = "0000000001"
+        return models.Cliente.objects.create(idcliente=new_id, **validated_data)
 
 
 class TiposDeActosSerializer(serializers.ModelSerializer):
     """
     Serializer for the TiposDeActos model.
     """
+
     class Meta:
         model = models.Tiposdeacto
         fields = [
-            'idtipoacto',
-            'actosunat',
-            'actouif',
-            'idtipkar',
-            'desacto',
-            'umbral',
-            'impuestos'
+            "idtipoacto",
+            "actosunat",
+            "actouif",
+            "idtipkar",
+            "desacto",
+            "umbral",
+            "impuestos",
         ]
 
 
@@ -553,54 +601,60 @@ class ActoCondicionSerializer(serializers.ModelSerializer):
     """
     Serializer for the ActoCondicion model.
     """
+
     class Meta:
         model = models.Actocondicion
-        fields = '__all__'
+        fields = "__all__"
 
 
 class DetalleActosKardexSerializer(serializers.ModelSerializer):
     """
     Serializer for the DetalleActosKardex model.
     """
+
     class Meta:
         model = models.DetalleActosKardex
-        fields = '__all__'
+        fields = "__all__"
 
 
 class TbAbogadoSerializer(serializers.ModelSerializer):
     """
     Serializer for the TbAbogado model.
     """
+
     class Meta:
         model = models.TbAbogado
-        fields = '__all__'
+        fields = "__all__"
 
 
 class NacionalidadesSerializer(serializers.ModelSerializer):
     """
     Serializer for the Nacionalidades model.
     """
+
     class Meta:
         model = models.Nacionalidades
-        fields = '__all__'
+        fields = "__all__"
 
 
 class ProfesionesSerializer(serializers.ModelSerializer):
     """
     Serializer for the Profesion model.
     """
+
     class Meta:
         model = models.Profesiones
-        fields = '__all__'
+        fields = "__all__"
 
 
 class CargoprofeSerializer(serializers.ModelSerializer):
     """
     Serializer for the Cargoprofe model.
     """
+
     class Meta:
         model = models.Cargoprofe
-        fields = '__all__'
+        fields = "__all__"
 
 
 class UbigeoSerializer(serializers.ModelSerializer):
@@ -611,7 +665,7 @@ class UbigeoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Ubigeo
-        fields = '__all__'
+        fields = "__all__"
 
 
 class SedesregistralesSerializer(serializers.ModelSerializer):
@@ -619,9 +673,10 @@ class SedesregistralesSerializer(serializers.ModelSerializer):
     Serializer for the Sedesregistrales model.
     This serializer is used to validate and serialize the Sedesregistrales data.
     """
+
     class Meta:
         model = models.Sedesregistrales
-        fields = ['idsedereg', 'dessede', 'num_zona', 'zona_depar']
+        fields = ["idsedereg", "dessede", "num_zona", "zona_depar"]
 
 
 class RepresentantesSerializer(serializers.ModelSerializer):
@@ -632,7 +687,7 @@ class RepresentantesSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Representantes
-        fields = '__all__'
+        fields = "__all__"
 
 
 class PatrimonialSerializer(serializers.ModelSerializer):
@@ -646,18 +701,34 @@ class PatrimonialSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Patrimonial
-        fields = ['itemmp', 'kardex', 'idtipoacto', 'nminuta', 'idmon',
-                  'tipocambio', 'importetrans', 'exhibiomp', 'presgistral',
-                  'nregistral', 'idsedereg', 'fpago', 'idoppago', 'ofondos',
-                  'item', 'des_idoppago', 'moneda', 'medios_pago_sum']
-        
+        fields = [
+            "itemmp",
+            "kardex",
+            "idtipoacto",
+            "nminuta",
+            "idmon",
+            "tipocambio",
+            "importetrans",
+            "exhibiomp",
+            "presgistral",
+            "nregistral",
+            "idsedereg",
+            "fpago",
+            "idoppago",
+            "ofondos",
+            "item",
+            "des_idoppago",
+            "moneda",
+            "medios_pago_sum",
+        ]
+
     def get_moneda(self, obj):
         """
         Returns the currency associated with the Patrimonial instance.
         """
-        moneda_des = MONEDAS[obj.idmon]['desmon']
+        moneda_des = MONEDAS[obj.idmon]["desmon"]
         return moneda_des
-    
+
     def get_medios_pago_sum(self, obj):
         """
         Returns the sum of medios de pago for the Patrimonial instance.
@@ -665,23 +736,25 @@ class PatrimonialSerializer(serializers.ModelSerializer):
         medios_pago = models.Detallemediopago.objects.filter(itemmp=obj.itemmp)
         return sum(medio.importemp for medio in medios_pago)
 
-    
+
 class DetallevehicularSerializer(serializers.ModelSerializer):
     """
     Serializer for the Detallevehicular model.
     """
+
     class Meta:
         model = models.Detallevehicular
-        fields = '__all__'
+        fields = "__all__"
 
 
 class DetallebienesSerializer(serializers.ModelSerializer):
     """
     Serializer for the Detallebienes model.
     """
+
     class Meta:
         model = models.Detallebienes
-        fields = '__all__'
+        fields = "__all__"
 
 
 class DetallemediopagoSerializer(serializers.ModelSerializer):
@@ -692,16 +765,17 @@ class DetallemediopagoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Detallemediopago
-        fields = '__all__'
+        fields = "__all__"
 
 
 class PrediosSerializer(serializers.ModelSerializer):
     """
     Serializer for the Predios model.
     """
+
     class Meta:
         model = models.Predios
-        fields = '__all__'
+        fields = "__all__"
 
 
 class TemplateSerializer(serializers.ModelSerializer):
@@ -712,16 +786,17 @@ class TemplateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.TplTemplate
-        fields = '__all__'
+        fields = "__all__"
 
 
 class LegalizacionSerializer(serializers.ModelSerializer):
     """
     Serializer for the Legalizacion model.
     """
+
     class Meta:
         model = models.Legalizacion
-        fields = '__all__'
+        fields = "__all__"
 
 
 class PermiViajeSerializer(serializers.ModelSerializer):
@@ -734,48 +809,50 @@ class PermiViajeSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PermiViaje
         fields = [
-            'id_viaje',
-            'num_kardex',
-            'asunto',
-            'fec_ingreso',
-            'nom_recep',
-            'hora_recep',
-            'referencia',
-            'nom_comu',
-            'tel_comu',
-            'email_comu',
-            'documento',
-            'num_crono',
-            'fecha_crono',
-            'num_formu',
-            'lugar_formu',
-            'observacion',
-            'swt_est',
-            'partida_e',
-            'sede_regis',
-            'qr',
-            'via',
-            'fecha_desde',
-            'fecha_hasta',
-            'contratantes',
+            "id_viaje",
+            "num_kardex",
+            "asunto",
+            "fec_ingreso",
+            "nom_recep",
+            "hora_recep",
+            "referencia",
+            "nom_comu",
+            "tel_comu",
+            "email_comu",
+            "documento",
+            "num_crono",
+            "fecha_crono",
+            "num_formu",
+            "lugar_formu",
+            "observacion",
+            "swt_est",
+            "partida_e",
+            "sede_regis",
+            "qr",
+            "via",
+            "fecha_desde",
+            "fecha_hasta",
+            "contratantes",
         ]
 
-    
     def get_contratantes(self, obj):
         context = self.context
-        contratantes_map = context.get('contratantes_map', {})
-        
+        contratantes_map = context.get("contratantes_map", {})
+
         # Get contratantes for this specific viaje object
         contratantes = contratantes_map.get(obj.id_viaje, [])
-        
+
         if not contratantes:
             return []
-        
-        result = [{
-            'id_contratante': contratante['id_contratante'],
-            'c_descontrat': contratante['c_descontrat'],
-            'c_condicontrat': contratante['c_condicontrat']
-        } for contratante in contratantes]
+
+        result = [
+            {
+                "id_contratante": contratante["id_contratante"],
+                "c_descontrat": contratante["c_descontrat"],
+                "c_condicontrat": contratante["c_condicontrat"],
+            }
+            for contratante in contratantes
+        ]
 
         return result
 
@@ -784,32 +861,33 @@ class CreatePermiViajeSerializer(serializers.ModelSerializer):
     """
     Serializer for creating a PermiViaje instance.
     """
+
     class Meta:
         model = models.PermiViaje
         fields = [
-            'id_viaje',
-            'num_kardex',
-            'num_formu',
-            'asunto',
-            'fec_ingreso',
-            'nom_recep',
-            'hora_recep',
-            'referencia',
-            'nom_comu',
-            'tel_comu',
-            'email_comu',
-            'documento',
-            'num_crono',
-            'fecha_crono',
-            'lugar_formu',
-            'observacion',
-            'swt_est',
-            'partida_e',
-            'sede_regis',
-            'qr',
-            'via',
-            'fecha_desde',
-            'fecha_hasta',
+            "id_viaje",
+            "num_kardex",
+            "num_formu",
+            "asunto",
+            "fec_ingreso",
+            "nom_recep",
+            "hora_recep",
+            "referencia",
+            "nom_comu",
+            "tel_comu",
+            "email_comu",
+            "documento",
+            "num_crono",
+            "fecha_crono",
+            "lugar_formu",
+            "observacion",
+            "swt_est",
+            "partida_e",
+            "sede_regis",
+            "qr",
+            "via",
+            "fecha_desde",
+            "fecha_hasta",
         ]
 
 
@@ -817,9 +895,10 @@ class ViajeContratantesSerializer(serializers.ModelSerializer):
     """
     Serializer for the ViajeContratantes model.
     """
+
     class Meta:
         model = models.ViajeContratantes
-        fields = '__all__'
+        fields = "__all__"
 
 
 class IngresoPoderesSerializer(serializers.ModelSerializer):
@@ -832,31 +911,31 @@ class IngresoPoderesSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.IngresoPoderes
         fields = [
-            'id_poder',
-            'num_kardex',
-            'nom_recep',
-            'hora_recep',
-            'id_asunto',
-            'fec_ingreso',
-            'referencia',
-            'nom_comuni',
-            'telf_comuni',
-            'email_comuni',
-            'documento',
-            'id_respon',
-            'des_respon',
-            'doc_presen',
-            'fec_ofre',
-            'hora_ofre',
-            'num_formu',
-            'fec_crono',
-            'swt_est',
-            'contratantes',
+            "id_poder",
+            "num_kardex",
+            "nom_recep",
+            "hora_recep",
+            "id_asunto",
+            "fec_ingreso",
+            "referencia",
+            "nom_comuni",
+            "telf_comuni",
+            "email_comuni",
+            "documento",
+            "id_respon",
+            "des_respon",
+            "doc_presen",
+            "fec_ofre",
+            "hora_ofre",
+            "num_formu",
+            "fec_crono",
+            "swt_est",
+            "contratantes",
         ]
 
     def get_contratantes(self, obj):
         context = self.context
-        contratantes_map = context.get('contratantes_map', {})
+        contratantes_map = context.get("contratantes_map", {})
 
         # Get contratantes for this specific poder object
         contratantes = contratantes_map.get(obj.id_poder, [])
@@ -864,11 +943,14 @@ class IngresoPoderesSerializer(serializers.ModelSerializer):
         if not contratantes:
             return []
 
-        result = [{
-            'id_contrata': contratante['id_contrata'],
-            'c_descontrat': contratante['c_descontrat'],
-            'c_condicontrat': contratante['c_condicontrat']
-        } for contratante in contratantes]
+        result = [
+            {
+                "id_contrata": contratante["id_contrata"],
+                "c_descontrat": contratante["c_descontrat"],
+                "c_condicontrat": contratante["c_condicontrat"],
+            }
+            for contratante in contratantes
+        ]
 
         return result
 
@@ -877,28 +959,29 @@ class CreateIngresoPoderesSerializer(serializers.ModelSerializer):
     """
     Serializer for creating a IngresoPoderes instance.
     """
+
     class Meta:
         model = models.IngresoPoderes
         fields = [
-            'id_poder',
-            'num_kardex',
-            'nom_recep',
-            'hora_recep',
-            'id_asunto',
-            'fec_ingreso',
-            'referencia',
-            'nom_comuni',
-            'telf_comuni',
-            'email_comuni',
-            'documento',
-            'id_respon',
-            'des_respon',
-            'doc_presen',
-            'fec_ofre',
-            'hora_ofre',
-            'num_formu',
-            'fec_crono',
-            'swt_est',
+            "id_poder",
+            "num_kardex",
+            "nom_recep",
+            "hora_recep",
+            "id_asunto",
+            "fec_ingreso",
+            "referencia",
+            "nom_comuni",
+            "telf_comuni",
+            "email_comuni",
+            "documento",
+            "id_respon",
+            "des_respon",
+            "doc_presen",
+            "fec_ofre",
+            "hora_ofre",
+            "num_formu",
+            "fec_crono",
+            "swt_est",
         ]
 
 
@@ -906,44 +989,51 @@ class PoderesFueraregSerializer(serializers.ModelSerializer):
     """
     Serializer for the PoderesFuerareg model.
     """
+
     class Meta:
         model = models.PoderesFuerareg
-        fields = '__all__'
+        fields = "__all__"
 
 
 class PoderesPensionSerializer(serializers.ModelSerializer):
     """
     Serializer for the PoderesPension model.
     """
+
     class Meta:
         model = models.PoderesPension
-        fields = '__all__'
+        fields = "__all__"
+
 
 class PoderesContratantesSerializer(serializers.ModelSerializer):
     """
     Serializer for the PoderesContratantes model.
     """
+
     class Meta:
         model = models.PoderesContratantes
-        fields = '__all__'
+        fields = "__all__"
 
 
 class IngresoCartasSerializer(serializers.ModelSerializer):
     """
     Serializer for the IngresoCartas model.
     """
+
     class Meta:
         model = models.IngresoCartas
-        fields = '__all__'
+        fields = "__all__"
 
 
 class SelloscartasSerializer(serializers.ModelSerializer):
     """
     Serializer for the Selloscartas model.
     """
+
     class Meta:
         model = models.Selloscartas
-        fields = '__all__'
+        fields = "__all__"
+
 
 class LibrosSerializer(serializers.ModelSerializer):
     """
@@ -953,38 +1043,38 @@ class LibrosSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Libros
         fields = [
-            'id',
-            'numlibro',
-            'ano',
-            'fecing',
-            'tipper',
-            'apepat',
-            'apemat',
-            'prinom',
-            'segnom',
-            'ruc',
-            'domicilio',
-            'coddis',
-            'empresa',
-            'domfiscal',
-            'idtiplib',
-            'descritiplib',
-            'idlegal',
-            'folio',
-            'idtipfol',
-            'detalle',
-            'idnotario',
-            'solicitante',
-            'comentario',
-            'feclegal',
-            'comentario2',
-            'dni',
-            'idusuario',
-            'idnlibro',
-            'codclie',
-            'flag',
-            'numdoc_plantilla',
-            'estadosisgen',
+            "id",
+            "numlibro",
+            "ano",
+            "fecing",
+            "tipper",
+            "apepat",
+            "apemat",
+            "prinom",
+            "segnom",
+            "ruc",
+            "domicilio",
+            "coddis",
+            "empresa",
+            "domfiscal",
+            "idtiplib",
+            "descritiplib",
+            "idlegal",
+            "folio",
+            "idtipfol",
+            "detalle",
+            "idnotario",
+            "solicitante",
+            "comentario",
+            "feclegal",
+            "comentario2",
+            "dni",
+            "idusuario",
+            "idnlibro",
+            "codclie",
+            "flag",
+            "numdoc_plantilla",
+            "estadosisgen",
         ]
 
 
@@ -992,34 +1082,36 @@ class TipolibroSerializer(serializers.ModelSerializer):
     """
     Serializer for the Tipolibro model.
     """
+
     class Meta:
         model = models.Tipolibro
-        fields = '__all__'
+        fields = "__all__"
 
 
 class CertDomiciliarioSerializer(serializers.ModelSerializer):
     """
     Serializer for the CertDomiciliario model.
     """
+
     class Meta:
         model = models.CertDomiciliario
-        fields = '__all__'
-
+        fields = "__all__"
 
 
 class RentaSerializer(serializers.ModelSerializer):
     """
     Serializer for the Renta model.
     """
+
     class Meta:
         model = models.Renta
         fields = [
-            'idrenta',
-            'idcontratante',
-            'kardex',
-            'pregu1',
-            'pregu2',
-            'pregu3',
+            "idrenta",
+            "idcontratante",
+            "kardex",
+            "pregu1",
+            "pregu2",
+            "pregu3",
         ]
 
 
@@ -1027,6 +1119,7 @@ class FormularioSerializer(serializers.ModelSerializer):
     """
     Serializer for the Formulario model.
     """
+
     class Meta:
         model = models.Formulario
-        fields = '__all__'
+        fields = "__all__"

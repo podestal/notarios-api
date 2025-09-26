@@ -2385,6 +2385,12 @@ class ClienteViewSet(ModelViewSet):
             return serializers.CreateClienteSerializer
         return serializers.ClienteSerializer
 
+    def list(self, request, *args, **kwargs):
+        """
+        List all Cliente records.
+        """
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"])
     def by_name(self, request):
         """
