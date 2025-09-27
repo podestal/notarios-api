@@ -2385,12 +2385,6 @@ class ClienteViewSet(ModelViewSet):
             return serializers.CreateClienteSerializer
         return serializers.ClienteSerializer
 
-    def list(self, request, *args, **kwargs):
-        """
-        List all Cliente records.
-        """
-        return super().list(request, *args, **kwargs)
-
     @action(detail=False, methods=["get"])
     def by_name(self, request):
         """
@@ -2479,19 +2473,39 @@ class ClienteViewSet(ModelViewSet):
         Update a Cliente record.
         """
         idestcivil = request.data.get("idestcivil")
+        conyuge_data = request.data.get("conyuge")
         instance = self.get_object()
+        conyuge_instance = instance.conyuge
 
-        update_civil = idestcivil != instance.idestcivil
-        from_married_to_any = instance.idestcivil == 2
-        from_any_to_married = idestcivil == 2
+        update_civil = idestcivil != instance.idestcivil or idestcivil == 2 or idestcivil == 4
+        # from_married_to_any = instance.idestcivil == 2 and idestcivil != 2
+        from_any_to_married = idestcivil == 2 or idestcivil == 4
 
-        if update_civil:
+        print("update_civil", update_civil)
+        # print("from_married_to_any", from_married_to_any)
+        print("from_any_to_married", from_any_to_married)
+
+        # I am single getting married or conviviente
+        # status = 2
+        # check the conyuge is married or conviviente
+        #  if married or conviviente dont do anything, return error
+        #  else change the status to 2 and update the conyuge
+        print("idestcivil from data", idestcivil)
+        change_conyuge = conyuge_data != conyuge_instance
+        if update_civil and change_conyuge:
             # update conyugue
             if from_any_to_married:
-                conyuge = request.data.get("conyuge")
-                if conyuge:
-                    conyuge_client = models.Cliente.objects.get(idcliente=conyuge)
+                print("conyuge_data", conyuge_data)
+                if conyuge_data:
+                    # print("conyuge", conyuge)
+                    conyuge_client = models.Cliente.objects.get(idcliente=conyuge_data)
+
+                    print("instance.conyuge", instance.conyuge)
                     if conyuge_client.conyuge != "":
+                        print("conyuge_client already associated", conyuge_client.conyuge)
+                        instance.idestcivil = idestcivil
+                        instance.conyuge = ""
+                        instance.save()
                         return Response(
                             {
                                 "error": "No se puede cambiar el estado civil a casado si ya existe un conyugue asociado.",
@@ -2501,21 +2515,21 @@ class ClienteViewSet(ModelViewSet):
                         )
                     else:
                         conyuge_client.conyuge = instance.idcliente
-                        conyuge_client.idestcivil = 2
+                        conyuge_client.idestcivil = idestcivil
                         conyuge_client.save()
-            elif from_married_to_any:
-                conyuge = instance.conyuge
-                if conyuge:
-                    conyuge_client = models.Cliente.objects.get(idcliente=conyuge)
-                    conyuge_client.conyuge = ""
-                    conyuge_client.idestcivil = idestcivil
-                    conyuge_client.save()
-                    # update instance
-                    instance.conyuge = ""
-                    instance.idestcivil = idestcivil
-                    instance.save()
-                    serializer = serializers.ClienteSerializer(instance)
-                    return Response(serializer.data, status=status.HTTP_200_OK)
+            # elif from_married_to_any:
+            #     conyuge = instance.conyuge
+            #     if conyuge:
+            #         conyuge_client = models.Cliente.objects.get(idcliente=conyuge)
+            #         conyuge_client.conyuge = ""
+            #         conyuge_client.idestcivil = idestcivil
+            #         conyuge_client.save()
+            #         # update instance
+            #         instance.conyuge = ""
+            #         instance.idestcivil = idestcivil
+            #         instance.save()
+            #         serializer = serializers.ClienteSerializer(instance)
+            #         return Response(serializer.data, status=status.HTTP_200_OK)
 
         return super().update(request, *args, **kwargs)
 
