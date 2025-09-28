@@ -829,133 +829,133 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         print(f"DEBUG: getting doc: ")
         documentogenerados = models.Documentogenerados.objects.filter(kardex=kardex).first()
         print(f"DEBUG: documentogenerados: {documentogenerados}")
-        if not documentogenerados:
-            documentogenerados = models.Documentogenerados.objects.create(
-                kardex=kardex,
-                usuario=user.idusuario,
-                fecha=todayTimeDate)
-            print(f"DEBUG: creating doc: {documentogenerados}")
-            try:
-                template_id = int(template_id)
-            except ValueError:
-                return HttpResponse({"error": "Invalid template_id format."}, status=400)
-            print(f"DEBUG: template_id: {template_id}")
-            # Get the kardex record to determine the tipkar
-            kardex_obj = Kardex.objects.filter(kardex=kardex).first()
-            print(f"DEBUG: kardex_obj: {kardex_obj}")
-            if not kardex_obj:
-                return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
-            
-            tipkar = kardex_obj.idtipkar
+        # if not documentogenerados:
+        documentogenerados = models.Documentogenerados.objects.create(
+            kardex=kardex,
+            usuario=user.idusuario,
+            fecha=todayTimeDate)
+        print(f"DEBUG: creating doc: {documentogenerados}")
+        try:
+            template_id = int(template_id)
+        except ValueError:
+            return HttpResponse({"error": "Invalid template_id format."}, status=400)
+        print(f"DEBUG: template_id: {template_id}")
+        # Get the kardex record to determine the tipkar
+        kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+        print(f"DEBUG: kardex_obj: {kardex_obj}")
+        if not kardex_obj:
+            return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
+        
+        tipkar = kardex_obj.idtipkar
 
-            if tipkar == 5:
-                print(f"DEBUG: Using TestamentDocumentService for tipkar {tipkar}")
-                service = TestamentoDocumentService()
-                if mode == "open":
-                    # Return the download URL for Windows users - force HTTPS
-                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                    response = JsonResponse({
-                        'status': 'success',
-                        'mode': 'open',
-                        'filename': f"__PROY__{kardex}.docx",
-                        'kardex': kardex,
-                        'url': download_url,
-                        'message': 'Document ready to open in Word'
-                    })
-                    response['Access-Control-Allow-Origin'] = '*'
-                    return response
-                else:
-                    return service.generate_testamento_document(template_id, kardex, action, mode)
-
-            if tipkar == 4:  # GARANTIAS MOBILIARIAS
-                print(f"DEBUG: Using GarantiasMobiliariasDocumentService for tipkar {tipkar}")
-                service = GarantiasMobiliariasDocumentService()
-                if mode == "open":
-                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                    response = JsonResponse({
-                        'status': 'success',
-                        'mode': 'open',
-                        'filename': f"__PROY__{kardex}.docx",
-                        'kardex': kardex,
-                        'url': download_url,
-                        'message': 'Document ready to open in Word'
-                    })
-                    response['Access-Control-Allow-Origin'] = '*'
-                    return response
-                else:
-                    return service.generate_garantias_mobiliarias_document(template_id, kardex, action, mode)
-            
-            # Route to appropriate service based on tipkar
-            if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
-                print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
-                service = VehicleTransferDocumentService()
-                if mode == "open":
-                    # Return the download URL for Windows users - force HTTPS
-                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                    response = JsonResponse({
-                        'status': 'success',
-                        'mode': 'open',
-                        'filename': f"__PROY__{kardex}.docx",
-                        'kardex': kardex,
-                        'url': download_url,
-                        'message': 'Document ready to open in Word'
-                    })
-                    response['Access-Control-Allow-Origin'] = '*'
-                    return response
-                else:
-                    return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
-            elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
-                print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
-                # For non-contentious, we need idtipoacto from the request or from kardex
-                idtipoacto = request.query_params.get('idtipoacto', "013")
-                if not idtipoacto:
-                    # Try to get from kardex codactos
-                    if kardex_obj.codactos:
-                        idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
-                    else:
-                        return HttpResponse({
-                            'error': 'idtipoacto is required for non-contentious documents'
-                        }, status=400)
-                
-                service = NonContentiousDocumentService()
-                if mode == "open":
-                    # Return the download URL for Windows users - force HTTPS
-                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                    response = JsonResponse({
-                        'status': 'success',
-                        'mode': 'open',
-                        'filename': f"__PROY__{kardex}.docx",
-                        'kardex': kardex,
-                        'url': download_url,
-                        'message': 'Document ready to open in Word'
-                    })
-                    response['Access-Control-Allow-Origin'] = '*'
-                    return response
-                else:
-                    return service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
-
-            elif tipkar == 1:  # ESCRITURA PUBLICA
-                print(f"DEBUG: Using EscrituraPublicaDocumentService for tipkar {tipkar}")
-                service = EscrituraPublicaDocumentService()
-                if mode == "open":
-                    # Return the download URL for Windows users - force HTTPS
-                    download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                    response = JsonResponse({
-                        'status': 'success',
-                        'mode': 'open',
-                        'filename': f"__PROY__{kardex}.docx",
-                        'kardex': kardex,
-                        'url': download_url,
-                        'message': 'Document ready to open in Word'
-                    })
-                    response['Access-Control-Allow-Origin'] = '*'
-                    return response
-                else:
-                    return service.generate_escritura_publica_document(template_id, kardex, action, mode)
+        if tipkar == 5:
+            print(f"DEBUG: Using TestamentDocumentService for tipkar {tipkar}")
+            service = TestamentoDocumentService()
+            if mode == "open":
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
             else:
-                return HttpResponse({
-                    'error': f'Document generation not implemented for tipkar {tipkar}'
-                }, status=501)
+                return service.generate_testamento_document(template_id, kardex, action, mode)
+
+        if tipkar == 4:  # GARANTIAS MOBILIARIAS
+            print(f"DEBUG: Using GarantiasMobiliariasDocumentService for tipkar {tipkar}")
+            service = GarantiasMobiliariasDocumentService()
+            if mode == "open":
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                return service.generate_garantias_mobiliarias_document(template_id, kardex, action, mode)
+        
+        # Route to appropriate service based on tipkar
+        if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+            print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
+            service = VehicleTransferDocumentService()
+            if mode == "open":
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+        elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
+            print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
+            # For non-contentious, we need idtipoacto from the request or from kardex
+            idtipoacto = request.query_params.get('idtipoacto', "013")
+            if not idtipoacto:
+                # Try to get from kardex codactos
+                if kardex_obj.codactos:
+                    idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
+                else:
+                    return HttpResponse({
+                        'error': 'idtipoacto is required for non-contentious documents'
+                    }, status=400)
+            
+            service = NonContentiousDocumentService()
+            if mode == "open":
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                return service.generate_non_contentious_document(template_id, kardex, idtipoacto, action, mode)
+
+        elif tipkar == 1:  # ESCRITURA PUBLICA
+            print(f"DEBUG: Using EscrituraPublicaDocumentService for tipkar {tipkar}")
+            service = EscrituraPublicaDocumentService()
+            if mode == "open":
+                # Return the download URL for Windows users - force HTTPS
+                download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                response = JsonResponse({
+                    'status': 'success',
+                    'mode': 'open',
+                    'filename': f"__PROY__{kardex}.docx",
+                    'kardex': kardex,
+                    'url': download_url,
+                    'message': 'Document ready to open in Word'
+                })
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            else:
+                return service.generate_escritura_publica_document(template_id, kardex, action, mode)
+        else:
+            return HttpResponse({
+                'error': f'Document generation not implemented for tipkar {tipkar}'
+            }, status=501)
         return HttpResponse({"error": "Documentogenerados already exists."}, status=400)
 
     @action(detail=False, methods=['get'], url_path='open-document')
