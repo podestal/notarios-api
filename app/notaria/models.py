@@ -1,10 +1,12 @@
 from django.db import models
-'''
+
+"""
 Models for the Notaria app.
 These models define the database tables for the Notaria app.
 They are used to define the fields and relationships between the tables.
 They are also used to define the database constraints and indexes.
-'''
+"""
+
 
 class Tipodocumento(models.Model):
     idtipdoc = models.AutoField(primary_key=True)
@@ -15,7 +17,7 @@ class Tipodocumento(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'tipodocumento'
+        db_table = "tipodocumento"
 
 
 class Tipoestacivil(models.Model):
@@ -25,13 +27,14 @@ class Tipoestacivil(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'tipoestacivil'
+        db_table = "tipoestacivil"
 
 
 class Usuarios(models.Model):
     """
     Model representing a user in the system.
     """
+
     idusuario = models.AutoField(primary_key=True)
     loginusuario = models.CharField(max_length=50)
     password = models.CharField(max_length=50)
@@ -49,13 +52,14 @@ class Usuarios(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'usuarios'
+        db_table = "usuarios"
 
 
 class PermisosUsuarios(models.Model):
     """
     Model representing the permissions of a user in the system.
     """
+
     idusuario = models.CharField(primary_key=True, max_length=9)
     kardex = models.CharField(max_length=30, blank=True, null=True)
     newkar = models.CharField(max_length=1, blank=True, null=True)
@@ -143,7 +147,7 @@ class PermisosUsuarios(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'permisos_usuarios'
+        db_table = "permisos_usuarios"
 
 
 class Kardex(models.Model):
@@ -152,6 +156,7 @@ class Kardex(models.Model):
     This table stores information about the documents and their
     status in the system.
     """
+
     idkardex = models.AutoField(primary_key=True)
     kardex = models.CharField(max_length=30, blank=True, null=True)
     idtipkar = models.IntegerField()
@@ -205,19 +210,19 @@ class Kardex(models.Model):
     funcionario_new = models.CharField(max_length=3000, blank=True, null=True)
     nc = models.CharField(max_length=30, blank=True, null=True)
     fecha_modificacion = models.CharField(max_length=10, blank=True, null=True)
-    idpresentante = models.IntegerField(db_column='idPresentante', blank=True,
-                                        null=True)
-    papeltrasladoini = models.CharField(db_column='papelTrasladoIni',
-                                        max_length=30, blank=True, null=True)
-    papeltrasladofin = models.CharField(db_column='papelTrasladoFin',
-                                        max_length=30, blank=True, null=True)
-    fktemplate = models.IntegerField(db_column='fkTemplate', blank=True,
-                                     null=True)
+    idpresentante = models.IntegerField(db_column="idPresentante", blank=True, null=True)
+    papeltrasladoini = models.CharField(
+        db_column="papelTrasladoIni", max_length=30, blank=True, null=True
+    )
+    papeltrasladofin = models.CharField(
+        db_column="papelTrasladoFin", max_length=30, blank=True, null=True
+    )
+    fktemplate = models.IntegerField(db_column="fkTemplate", blank=True, null=True)
     estado_sisgen = models.IntegerField(blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'kardex'
+        db_table = "kardex"
 
 
 class Tipokar(models.Model):
@@ -232,7 +237,7 @@ class Tipokar(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'tipokar'
+        db_table = "tipokar"
 
 
 class Contratantes(models.Model):
@@ -260,7 +265,7 @@ class Contratantes(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'contratantes'
+        db_table = "contratantes"
 
 
 class Contratantesxacto(models.Model):
@@ -282,7 +287,7 @@ class Contratantesxacto(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'contratantesxacto'
+        db_table = "contratantesxacto"
 
 
 class Cliente(models.Model):
@@ -293,7 +298,9 @@ class Cliente(models.Model):
     prinom = models.CharField(max_length=100, blank=True, null=True)
     segnom = models.CharField(max_length=100, blank=True, null=True)
     nombre = models.CharField(max_length=1000, blank=True, null=True)
-    direccion = models.CharField(max_length=3000, db_collation='utf8_general_ci', blank=True, null=True)
+    direccion = models.CharField(
+        max_length=3000, db_collation="utf8_general_ci", blank=True, null=True
+    )
     idtipdoc = models.IntegerField(blank=True, null=True)
     numdoc = models.CharField(max_length=50, blank=True, null=True)
     email = models.CharField(max_length=300, blank=True, null=True)
@@ -313,8 +320,12 @@ class Cliente(models.Model):
     idubigeo = models.CharField(max_length=6, blank=True, null=True)
     cumpclie = models.CharField(max_length=15, blank=True, null=True)
     fechaing = models.CharField(max_length=10, blank=True, null=True)
-    razonsocial = models.CharField(max_length=3000, db_collation='utf8_general_ci', blank=True, null=True)
-    domfiscal = models.CharField(max_length=3000, db_collation='utf8_general_ci', blank=True, null=True)
+    razonsocial = models.CharField(
+        max_length=3000, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    domfiscal = models.CharField(
+        max_length=3000, db_collation="utf8_general_ci", blank=True, null=True
+    )
     telempresa = models.CharField(max_length=12, blank=True, null=True)
     mailempresa = models.CharField(max_length=200, blank=True, null=True)
     contacempresa = models.CharField(max_length=1000, blank=True, null=True)
@@ -341,7 +352,7 @@ class Cliente(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'cliente'
+        db_table = "cliente"
 
 
 class Cliente2(models.Model):
@@ -400,14 +411,12 @@ class Cliente2(models.Model):
     partidaconyuge = models.CharField(max_length=15, blank=True, null=True)
     separaciondebienes = models.CharField(max_length=1, blank=True, null=True)
     idsedeconyuge = models.CharField(max_length=11, blank=True, null=True)
-    profesion_plantilla = models.CharField(
-        max_length=200, blank=True, null=True
-    )
+    profesion_plantilla = models.CharField(max_length=200, blank=True, null=True)
     ubigeo_plantilla = models.CharField(max_length=100, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'cliente2'
+        db_table = "cliente2"
 
 
 class Tiposdeacto(models.Model):
@@ -427,7 +436,7 @@ class Tiposdeacto(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'tiposdeacto'
+        db_table = "tiposdeacto"
 
 
 class Actocondicion(models.Model):
@@ -445,7 +454,7 @@ class Actocondicion(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'actocondicion'
+        db_table = "actocondicion"
 
 
 class DetalleActosKardex(models.Model):
@@ -459,7 +468,7 @@ class DetalleActosKardex(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'detalle_actos_kardex'
+        db_table = "detalle_actos_kardex"
 
 
 class TbAbogado(models.Model):
@@ -475,7 +484,7 @@ class TbAbogado(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'tb_abogado'
+        db_table = "tb_abogado"
 
 
 class Nacionalidades(models.Model):
@@ -486,7 +495,7 @@ class Nacionalidades(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'nacionalidades'
+        db_table = "nacionalidades"
 
 
 class Profesiones(models.Model):
@@ -496,7 +505,7 @@ class Profesiones(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'profesiones'
+        db_table = "profesiones"
 
 
 class Cargoprofe(models.Model):
@@ -506,31 +515,32 @@ class Cargoprofe(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'cargoprofe'
+        db_table = "cargoprofe"
 
 
 class Ubigeo(models.Model):
-    coddis = models.CharField(primary_key=True, max_length=6, db_collation='latin1_swedish_ci')
-    nomdis = models.CharField(max_length=50, db_collation='latin1_swedish_ci')
-    nomprov = models.CharField(max_length=50, db_collation='latin1_swedish_ci')
-    nomdpto = models.CharField(max_length=50, db_collation='latin1_swedish_ci')
-    coddist = models.CharField(max_length=2, db_collation='latin1_swedish_ci')
-    codprov = models.CharField(max_length=2, db_collation='latin1_swedish_ci')
-    codpto = models.CharField(max_length=2, db_collation='latin1_swedish_ci')
+    coddis = models.CharField(primary_key=True, max_length=6, db_collation="latin1_swedish_ci")
+    nomdis = models.CharField(max_length=50, db_collation="latin1_swedish_ci")
+    nomprov = models.CharField(max_length=50, db_collation="latin1_swedish_ci")
+    nomdpto = models.CharField(max_length=50, db_collation="latin1_swedish_ci")
+    coddist = models.CharField(max_length=2, db_collation="latin1_swedish_ci")
+    codprov = models.CharField(max_length=2, db_collation="latin1_swedish_ci")
+    codpto = models.CharField(max_length=2, db_collation="latin1_swedish_ci")
 
     class Meta:
         managed = False
-        db_table = 'ubigeo'
+        db_table = "ubigeo"
+
 
 class Sedesregistrales(models.Model):
-    idsedereg = models.CharField(primary_key=True ,max_length=3)
+    idsedereg = models.CharField(primary_key=True, max_length=3)
     dessede = models.CharField(max_length=50)
     num_zona = models.CharField(max_length=10, blank=True, null=True)
     zona_depar = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'sedesregistrales'
+        db_table = "sedesregistrales"
 
 
 class Representantes(models.Model):
@@ -544,12 +554,16 @@ class Representantes(models.Model):
     partida = models.CharField(max_length=50, blank=True, null=True)
     idcontratante_r = models.CharField(max_length=15, blank=True, null=True)
     id_ro_repre = models.CharField(max_length=50, blank=True, null=True)
-    ido = models.CharField(db_column='idO', max_length=5, blank=True, null=True)  # Field name made lowercase.
-    odb = models.CharField(db_column='odB', max_length=5, blank=True, null=True)  # Field name made lowercase.
+    ido = models.CharField(
+        db_column="idO", max_length=5, blank=True, null=True
+    )  # Field name made lowercase.
+    odb = models.CharField(
+        db_column="odB", max_length=5, blank=True, null=True
+    )  # Field name made lowercase.
 
     class Meta:
         managed = False
-        db_table = 'representantes'
+        db_table = "representantes"
 
 
 class Patrimonial(models.Model):
@@ -573,7 +587,7 @@ class Patrimonial(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'patrimonial'
+        db_table = "patrimonial"
 
 
 class Detallevehicular(models.Model):
@@ -602,7 +616,7 @@ class Detallevehicular(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'detallevehicular'
+        db_table = "detallevehicular"
 
 
 class Detallebienes(models.Model):
@@ -623,7 +637,7 @@ class Detallebienes(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'detallebienes'
+        db_table = "detallebienes"
 
 
 class Detallemediopago(models.Model):
@@ -641,7 +655,7 @@ class Detallemediopago(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'detallemediopago'
+        db_table = "detallemediopago"
 
 
 class Predios(models.Model):
@@ -660,39 +674,70 @@ class Predios(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'predios'
-        unique_together = (('tipo_zona', 'zona', 'denominacion', 'tipo_via', 'nombre_via', 'numero', 'manzana', 'lote'),)
-
+        db_table = "predios"
+        unique_together = (
+            (
+                "tipo_zona",
+                "zona",
+                "denominacion",
+                "tipo_via",
+                "nombre_via",
+                "numero",
+                "manzana",
+                "lote",
+            ),
+        )
 
 
 class TplTemplate(models.Model):
-    pktemplate = models.AutoField(db_column='pkTemplate', primary_key=True)  # Field name made lowercase.
-    nametemplate = models.CharField(db_column='nameTemplate', max_length=250, blank=True, null=True)  # Field name made lowercase.
-    fktypekardex = models.IntegerField(db_column='fkTypeKardex', blank=True, null=True)  # Field name made lowercase.
-    codeacts = models.CharField(db_column='codeActs', max_length=50, blank=True, null=True)  # Field name made lowercase.
+    pktemplate = models.AutoField(
+        db_column="pkTemplate", primary_key=True
+    )  # Field name made lowercase.
+    nametemplate = models.CharField(
+        db_column="nameTemplate", max_length=250, blank=True, null=True
+    )  # Field name made lowercase.
+    fktypekardex = models.IntegerField(
+        db_column="fkTypeKardex", blank=True, null=True
+    )  # Field name made lowercase.
+    codeacts = models.CharField(
+        db_column="codeActs", max_length=50, blank=True, null=True
+    )  # Field name made lowercase.
     contract = models.CharField(max_length=3000, blank=True, null=True)
-    urltemplate = models.CharField(db_column='urlTemplate', max_length=250, blank=True, null=True)  # Field name made lowercase.
-    filename = models.CharField(db_column='fileName', max_length=250, blank=True, null=True)  # Field name made lowercase.
-    registrationdate = models.DateTimeField(db_column='registrationDate', blank=True, null=True)  # Field name made lowercase.
-    statusregister = models.IntegerField(db_column='statusRegister', blank=True, null=True)  # Field name made lowercase.
+    urltemplate = models.CharField(
+        db_column="urlTemplate", max_length=250, blank=True, null=True
+    )  # Field name made lowercase.
+    filename = models.CharField(
+        db_column="fileName", max_length=250, blank=True, null=True
+    )  # Field name made lowercase.
+    registrationdate = models.DateTimeField(
+        db_column="registrationDate", blank=True, null=True
+    )  # Field name made lowercase.
+    statusregister = models.IntegerField(
+        db_column="statusRegister", blank=True, null=True
+    )  # Field name made lowercase.
 
     class Meta:
         managed = False
-        db_table = 'tpl_template'
+        db_table = "tpl_template"
 
 
 # EXTRAPROTOCOLARES
 
+
 class Legalizacion(models.Model):
-    idlegalizacion = models.AutoField(db_column='idLegalizacion', primary_key=True)  # Field name made lowercase.
-    fechaingreso = models.DateField(db_column='fechaIngreso')  # Field name made lowercase.
-    direccioncertificado = models.CharField(db_column='direccionCertificado', max_length=250)  # Field name made lowercase.
+    idlegalizacion = models.AutoField(
+        db_column="idLegalizacion", primary_key=True
+    )  # Field name made lowercase.
+    fechaingreso = models.DateField(db_column="fechaIngreso")  # Field name made lowercase.
+    direccioncertificado = models.CharField(
+        db_column="direccionCertificado", max_length=250
+    )  # Field name made lowercase.
     documento = models.TextField()
     dni = models.CharField(max_length=11, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'legalizacion'
+        db_table = "legalizacion"
 
 
 class PermiViaje(models.Model):
@@ -722,7 +767,7 @@ class PermiViaje(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'permi_viaje'
+        db_table = "permi_viaje"
 
 
 class ViajeContratantes(models.Model):
@@ -742,7 +787,7 @@ class ViajeContratantes(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'viaje_contratantes'
+        db_table = "viaje_contratantes"
 
 
 class IngresoPoderes(models.Model):
@@ -768,7 +813,7 @@ class IngresoPoderes(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'ingreso_poderes'
+        db_table = "ingreso_poderes"
 
 
 class PoderesFuerareg(models.Model):
@@ -784,7 +829,7 @@ class PoderesFuerareg(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'poderes_fuerareg'
+        db_table = "poderes_fuerareg"
 
 
 class PoderesPension(models.Model):
@@ -805,7 +850,7 @@ class PoderesPension(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'poderes_pension'
+        db_table = "poderes_pension"
 
 
 class PoderesContratantes(models.Model):
@@ -821,38 +866,72 @@ class PoderesContratantes(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'poderes_contratantes'
+        db_table = "poderes_contratantes"
 
 
 class IngresoCartas(models.Model):
     id_carta = models.AutoField(primary_key=True)
-    num_carta = models.CharField(max_length=10, db_collation='utf8_general_ci')
-    fec_ingreso = models.CharField(max_length=20, db_collation='utf8_general_ci', blank=True, null=True)
-    id_remitente = models.CharField(max_length=20, db_collation='utf8_general_ci', blank=True, null=True)
-    nom_remitente = models.CharField(max_length=800, db_collation='utf8_general_ci', blank=True, null=True)
-    dir_remitente = models.CharField(max_length=3000, db_collation='utf8_general_ci', blank=True, null=True)
-    telf_remitente = models.CharField(max_length=500, db_collation='utf8_general_ci', blank=True, null=True)
-    nom_destinatario = models.CharField(max_length=500, db_collation='utf8_general_ci', blank=True, null=True)
-    dir_destinatario = models.CharField(max_length=3000, db_collation='utf8_general_ci', blank=True, null=True)
-    zona_destinatario = models.CharField(max_length=10, db_collation='utf8_general_ci', blank=True, null=True)
-    costo = models.CharField(max_length=50, db_collation='utf8_general_ci', blank=True, null=True)
-    id_encargado = models.CharField(max_length=800, db_collation='utf8_general_ci', blank=True, null=True)
-    des_encargado = models.CharField(max_length=500, db_collation='utf8_general_ci', blank=True, null=True)
-    fec_entrega = models.CharField(max_length=20, db_collation='utf8_general_ci', blank=True, null=True)
-    hora_entrega = models.CharField(max_length=20, db_collation='utf8_general_ci', blank=True, null=True)
-    emple_entrega = models.CharField(max_length=500, db_collation='utf8_general_ci', blank=True, null=True)
-    conte_carta = models.TextField(db_collation='utf8_general_ci', blank=True, null=True)
-    nom_regogio = models.CharField(max_length=800, db_collation='utf8_general_ci', blank=True, null=True)
-    doc_recogio = models.CharField(max_length=50, db_collation='utf8_general_ci', blank=True, null=True)
-    fec_recogio = models.CharField(max_length=20, db_collation='utf8_general_ci', blank=True, null=True)
-    fact_recogio = models.CharField(max_length=500, db_collation='utf8_general_ci', blank=True, null=True)
+    num_carta = models.CharField(max_length=10, db_collation="utf8_general_ci")
+    fec_ingreso = models.CharField(
+        max_length=20, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    id_remitente = models.CharField(
+        max_length=20, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    nom_remitente = models.CharField(
+        max_length=800, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    dir_remitente = models.CharField(
+        max_length=3000, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    telf_remitente = models.CharField(
+        max_length=500, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    nom_destinatario = models.CharField(
+        max_length=500, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    dir_destinatario = models.CharField(
+        max_length=3000, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    zona_destinatario = models.CharField(
+        max_length=10, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    costo = models.CharField(max_length=50, db_collation="utf8_general_ci", blank=True, null=True)
+    id_encargado = models.CharField(
+        max_length=800, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    des_encargado = models.CharField(
+        max_length=500, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    fec_entrega = models.CharField(
+        max_length=20, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    hora_entrega = models.CharField(
+        max_length=20, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    emple_entrega = models.CharField(
+        max_length=500, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    conte_carta = models.TextField(db_collation="utf8_general_ci", blank=True, null=True)
+    nom_regogio = models.CharField(
+        max_length=800, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    doc_recogio = models.CharField(
+        max_length=50, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    fec_recogio = models.CharField(
+        max_length=20, db_collation="utf8_general_ci", blank=True, null=True
+    )
+    fact_recogio = models.CharField(
+        max_length=500, db_collation="utf8_general_ci", blank=True, null=True
+    )
     dni_destinatario = models.CharField(max_length=30, blank=True, null=True)
     recepcion = models.CharField(max_length=250, blank=True, null=True)
     firmo = models.CharField(max_length=2, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'ingreso_cartas'
+        db_table = "ingreso_cartas"
 
 
 class Selloscartas(models.Model):
@@ -862,7 +941,7 @@ class Selloscartas(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'selloscartas'
+        db_table = "selloscartas"
 
 
 class Libros(models.Model):
@@ -896,12 +975,14 @@ class Libros(models.Model):
     codclie = models.CharField(max_length=10, blank=True, null=True)
     flag = models.IntegerField(blank=True, null=True)
     numdoc_plantilla = models.CharField(max_length=11, blank=True, null=True)
-    estadosisgen = models.IntegerField(db_column='estadoSisgen', blank=True, null=True)  # Field name made lowercase.
+    estadosisgen = models.IntegerField(
+        db_column="estadoSisgen", blank=True, null=True
+    )  # Field name made lowercase.
 
     class Meta:
         managed = False
-        db_table = 'libros'
-        unique_together = (('numlibro', 'ano'),)
+        db_table = "libros"
+        unique_together = (("numlibro", "ano"),)
 
 
 class Nlibro(models.Model):
@@ -911,7 +992,7 @@ class Nlibro(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'nlibro'
+        db_table = "nlibro"
 
 
 class Tipofolio(models.Model):
@@ -920,7 +1001,7 @@ class Tipofolio(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'tipofolio'
+        db_table = "tipofolio"
 
 
 class Tipolibro(models.Model):
@@ -930,7 +1011,7 @@ class Tipolibro(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'tipolibro'
+        db_table = "tipolibro"
 
 
 class CertDomiciliario(models.Model):
@@ -965,7 +1046,7 @@ class CertDomiciliario(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'cert_domiciliario'
+        db_table = "cert_domiciliario"
 
 
 class Renta(models.Model):
@@ -978,7 +1059,7 @@ class Renta(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'renta'
+        db_table = "renta"
 
 
 class Formulario(models.Model):
@@ -989,4 +1070,4 @@ class Formulario(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'formulario'
+        db_table = "formulario"
