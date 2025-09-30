@@ -68,6 +68,7 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             "visita",
             "idnotario",
             "numescritura",
+            "fechaminuta",
             "fktemplate",
             "papelini",
             "papelfin",
@@ -76,6 +77,7 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             "fechaescritura",
             "responsable",
             "recepcion",
+            "estado_sisgen",
         ]
 
 
@@ -126,6 +128,8 @@ class KardexSerializer(serializers.ModelSerializer):
             "papeltrasladoini",
             "papeltrasladofin",
             "recepcion",
+            "estado_sisgen",
+            "fechaminuta",
         ]
 
     def get_usuario(self, obj):

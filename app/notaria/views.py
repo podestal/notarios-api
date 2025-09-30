@@ -79,7 +79,7 @@ class KardexViewSet(ModelViewSet):
 
     serializer_class = serializers.KardexSerializer
     pagination_class = pagination.KardexPagination
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """
@@ -2378,7 +2378,7 @@ class ClienteViewSet(ModelViewSet):
     queryset = models.Cliente.objects.all()
     serializer_class = serializers.ClienteSerializer
     pagination_class = pagination.KardexPagination
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
