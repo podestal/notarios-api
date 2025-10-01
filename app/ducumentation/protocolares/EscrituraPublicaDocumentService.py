@@ -458,39 +458,42 @@ class EscrituraDocumentService:
                 return None
             return dict(zip([col[0] for col in desc], row))
 
-    # ========================================
-    # PHASE 2: DATA PROCESSING METHODS
-    # ========================================
-
     def _get_data_documento(self, raw_data):
         """
         Process basic document data
-        Mirrors: PHP get_data_documento()
-
-        TASK:
-        - Extract kardex number, date, user info
-        - Convert numbers to letters (NRO_ESC)
-        - Convert dates to letters (F, F_IMPRESION)
-        - Handle sede colegio (CAP., CAA.)
-
-        RETURNS: Dictionary with keys like:
-        - NRO_ESC: "123(CIENTO VEINTITRES)"
-        - K: "KAR6508-2025"
-        - F: "DIEZ DE ENERO DEL DOS MIL VEINTICINCO"
-        - USUARIO: "Juan Perez"
-        - etc.
-
-        SOLUTION: See app/ducumentation/services.py line 3166-3201
+        Return a dictionary with the document data
         """
         print(f"DEBUG: Processing document data")
+        numero_escritura = raw_data.get("numero_escritura") or ""
+        fecha_escritura = raw_data.get("fecha_escritura")
+        numero_minuta = raw_data.get("numero_minuta") or ""
 
-        # TODO: Extract numero_escritura, fecha_escritura from raw_data
-        # TODO: Use self.letras.number_to_letters() for numbers
-        # TODO: Use self.letras.date_to_letters() for dates
-        # TODO: Handle sede_colegio logic
-        # TODO: Return dictionary
+        numero_acta = (
+            f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})"
+            if numero_escritura
+            else "{{NRO_ESC}}"
+        )
+        fecha_impresion = (
+            self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F_IMPRESION}}"
+        )
+        fecha_acta = self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F}}"
+        numero_minuta_formatted = numero_minuta if numero_minuta else "{{NRO_MIN}}"
 
-        pass  # Remove and implement
+        return {
+            "NRO_ESC": numero_acta,
+            "K": raw_data.get("kardex", ""),
+            "NUM_REG": "1",
+            "FEC_LET": self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "",
+            "F_IMPRESION": fecha_impresion,
+            "USUARIO": raw_data.get("usuario", ""),
+            "USUARIO_DNI": raw_data.get("dni_usuario", ""),
+            "NRO_MIN": numero_minuta_formatted,
+            "COMPROBANTE": "sin",
+            "O_S": raw_data.get("kardex", ""),
+            "ORDEN_SERVICIO": raw_data.get("kardex", ""),
+            "F": fecha_acta,
+            "DESCRIPCION_SELLO": f"{raw_data.get('abogado', '')} PUNO {raw_data.get('matricula', '')}",
+        }
 
     def _get_data_vehiculos(self, raw_data):
         """
@@ -639,7 +642,7 @@ class EscrituraDocumentService:
         # TODO: Merge all dictionaries
         # HINT: final_data = {**data_documento, **data_vehiculos, ...}
 
-        pass  # Remove and implement
+        return {**data_documento}
 
     # ========================================
     # PHASE 4: TEMPLATE PROCESSING
@@ -647,48 +650,79 @@ class EscrituraDocumentService:
 
     def _replace_placeholders(self, template_bytes, final_data):
         """
-        Replace {{PLACEHOLDERS}} in the Word template
-
-        TASK:
-        - Load template as Document
-        - Loop through paragraphs and replace {{KEY}} with final_data[KEY]
-        - Loop through tables and replace placeholders
-        - Return modified Document object (python-docx Document)
-
-        RETURNS: Document object (NOT bytes, NOT buffer, but the Document itself)
-
-        NOTE: We're NOT using TinyButStrong (PHP library)
-        We're using python-docx directly
+        Replace {{PLACEHOLDERS}} while preserving formatting
         """
         print(f"DEBUG: Replacing placeholders")
 
-        # STEP 1: Load Document from bytes
         buffer = io.BytesIO(template_bytes)
         doc = Document(buffer)
-        print(f"DEBUG: Document loaded, ready for placeholder replacement")
+        print(f"DEBUG: Document loaded")
 
-        # STEP 2: Loop through paragraphs and replace (commented for now)
-        # TODO: Uncomment when you have final_data ready
-        # for paragraph in doc.paragraphs:
-        #     for key, value in final_data.items():
-        #         placeholder = f"{{{{{key}}}}}"  # Creates {{KEY}}
-        #         if placeholder in paragraph.text:
-        #             paragraph.text = paragraph.text.replace(placeholder, str(value))
+        # Replace in paragraphs
+        for paragraph in doc.paragraphs:
+            self._replace_in_paragraph(paragraph, final_data)
 
-        # STEP 3: Loop through tables and replace (commented for now)
-        # TODO: Uncomment when you have final_data ready
-        # for table in doc.tables:
-        #     for row in table.rows:
-        #         for cell in row.cells:
-        #             for paragraph in cell.paragraphs:
-        #                 for key, value in final_data.items():
-        #                     placeholder = f"{{{{{key}}}}}"
-        #                     if placeholder in paragraph.text:
-        #                         paragraph.text = paragraph.text.replace(placeholder, str(value))
+        # Replace in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        self._replace_in_paragraph(paragraph, final_data)
 
-        # RETURN: Document object
-        # This is what gets passed to _clean_unfilled_placeholders() and _upload_to_r2()
         return doc
+
+    def _replace_in_paragraph(self, paragraph, final_data):
+        """
+        Replace placeholders in a paragraph while preserving formatting
+
+        STRATEGY:
+        1. Get full paragraph text
+        2. Find all {{PLACEHOLDERS}}
+        3. Replace in runs that contain them
+        4. Handle placeholders split across multiple runs
+        """
+        full_text = paragraph.text
+
+        # Quick check - if no placeholders, skip
+        if "{{" not in full_text or "}}" not in full_text:
+            return
+
+        # Try simple replacement first (works if placeholder is in one run)
+        for key, value in final_data.items():
+            placeholder = f"{{{{{key}}}}}"
+
+            if placeholder in full_text:
+                # Try to find and replace in individual runs
+                for run in paragraph.runs:
+                    if placeholder in run.text:
+                        run.text = run.text.replace(placeholder, str(value))
+                        return  # Success!
+
+        # If we get here, placeholder is split across runs
+        # Fall back to paragraph-level replacement (loses formatting)
+        for key, value in final_data.items():
+            placeholder = f"{{{{{key}}}}}"
+            if placeholder in full_text:
+                # Get the formatting from the first run
+                if paragraph.runs:
+                    first_run_font = paragraph.runs[0].font
+
+                # Clear all runs and create one new run
+                for run in paragraph.runs:
+                    run.text = ""
+
+                # Create new run with replaced text
+                new_run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
+                new_run.text = full_text.replace(placeholder, str(value))
+
+                # Try to preserve some formatting from first run
+                if paragraph.runs and first_run_font:
+                    try:
+                        new_run.font.color.rgb = first_run_font.color.rgb
+                        new_run.font.bold = first_run_font.bold
+                        new_run.font.italic = first_run_font.italic
+                    except:
+                        pass  # Ignore if formatting can't be copied
 
     def _clean_unfilled_placeholders(self, doc):
         """
