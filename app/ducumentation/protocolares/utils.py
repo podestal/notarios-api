@@ -67,11 +67,6 @@ class NumberToLetterConverter:
             "NOVECIENTOS",
         ]
 
-        THOUSANDS = [
-            "",
-            "MIL",
-        ]
-
         if number == 0:
             return "CERO"
 
@@ -98,9 +93,14 @@ class NumberToLetterConverter:
         if number < 1000000:
             thousands = number // 1000
             rest = number % 1000
+            if thousands == 1:
+                thousands_text = "MIL"
+            else:
+                thousands_text = self.number_to_letters(thousands) + " MIL"
+
             if rest == 0:
-                return THOUSANDS[thousands]
-            return f"{THOUSANDS[thousands]} {self.number_to_letters(rest)}"
+                return thousands_text
+            return f"{thousands_text} {self.number_to_letters(rest)}"
 
         return str(number)
 
@@ -155,6 +155,43 @@ class DocumentFormatter:
     def __init__(self, letras_converter):
         self.letras = letras_converter
 
+    def format_document_data(self, raw_data):
+        """
+        Format basic document data
+        """
+        print(f"DEBUG: Processing document data")
+
+        numero_escritura = raw_data.get("numero_escritura") or ""
+        fecha_escritura = raw_data.get("fecha_escritura")
+        numero_minuta = raw_data.get("numero_minuta") or ""
+
+        numero_acta = (
+            f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})"
+            if numero_escritura
+            else "{{NRO_ESC}}"
+        )
+        fecha_impresion = (
+            self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F_IMPRESION}}"
+        )
+        fecha_acta = self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F}}"
+        numero_minuta_formatted = numero_minuta if numero_minuta else "{{NRO_MIN}}"
+
+        return {
+            "NRO_ESC": numero_acta,
+            "K": raw_data.get("kardex", ""),
+            "NUM_REG": "1",
+            "FEC_LET": self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "",
+            "F_IMPRESION": fecha_impresion,
+            "USUARIO": raw_data.get("usuario", ""),
+            "USUARIO_DNI": raw_data.get("dni_usuario", ""),
+            "NRO_MIN": numero_minuta_formatted,
+            "COMPROBANTE": "sin",
+            "O_S": raw_data.get("kardex", ""),
+            "ORDEN_SERVICIO": raw_data.get("kardex", ""),
+            "F": fecha_acta,
+            "DESCRIPCION_SELLO": f"{raw_data.get('abogado', '')} PUNO {raw_data.get('matricula', '')}",
+        }
+
     def format_contractor_data(self, raw_data):
         """
         Format contractor data into template-ready format
@@ -176,35 +213,91 @@ class DocumentFormatter:
         """
         Format payment data with sunat logic
         Mirrors: PHP get_data_pagos() switch statement
-
-        SOLUTION:
-        - Handle sunat_medio_pago logic (008, 009, etc.)
-        - Generate payment text based on method
-        - Convert amounts to letters
-        - Return MONTO, MONTO_LETRAS, MED_PAGO, etc.
         """
-        # TODO: Implement payment formatting logic
-        # TODO: Handle sunat_medio_pago switch
-        # TODO: Generate payment method text
-        # TODO: Return payment placeholders
-        pass
+        print(f"DEBUG: Processing payment data")
+
+        # Extract payment data
+        precio = raw_data.get("precio") or 0
+        moneda = raw_data.get("descripcion_moneda") or "SOLES"
+        simbolo_moneda = raw_data.get("simbolo_moneda") or "S/."
+        sunat_medio_pago = raw_data.get("sunat_medio_pago") or "008"
+
+        # Convert amount to letters
+        monto_letras = self.letras.money_to_letters(moneda, Decimal(str(precio)))
+
+        # Handle sunat_medio_pago logic (switch statement from PHP)
+        if sunat_medio_pago == "008":
+            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            exhibio_medio_pago = "SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE."
+            fin_medio_pago = "EN DINERO EN EFECTIVO"
+            forma_pago = "AL CONTADO CON DINERO EN EFECTIVO"
+        elif sunat_medio_pago == "009":
+            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            exhibio_medio_pago = "SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE."
+            fin_medio_pago = "EN DINERO EN EFECTIVO"
+            forma_pago = "AL CONTADO CON DINERO EN EFECTIVO"
+        else:
+            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO CON CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018 EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "CHEQUE -001" '
+            exhibio_medio_pago = "EN APLICACIÓN DE LA LEY 30730, SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES ME HAN EXHIBIDO EL SIGUIENTE MEDIO DE PAGO: ……… CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018. DOY FE."
+            fin_medio_pago = "EN DINERO EN EFECTIVO"
+            forma_pago = "AL CONTADO CON DINERO EN EFECTIVO"
+
+        return {
+            "MONTO": str(precio),
+            "MON_VEHI": moneda,
+            "MONTO_LETRAS": monto_letras,
+            "MONEDA_C": f"{simbolo_moneda} ",
+            "SUNAT_MED_PAGO": sunat_medio_pago,
+            "DES_PRE_VEHI": monto_letras,
+            "EXH_MED_PAGO": exhibio_medio_pago,
+            "MED_PAGO": medio_pago,
+            "FIN_MED_PAGO": fin_medio_pago,
+            "FORMA_PAGO": forma_pago,
+            "C_INICIO_MP": "",
+            "TIPO_PAGO_E": "",
+            "TIPO_PAGO_C": "",
+            "MONTO_MP": "",
+            "CONSTANCIA": "",
+            "DETALLE_MP": "",
+            "FORMA_PAGO_S": "",
+            "MONEDA_C_MP": "",
+            "MEDIO_PAGO_C": "",
+            "MP_MEDIO_PAGO": "",
+            "MP_COMPLETO": "",
+            "USO": "",
+        }
 
     def format_vehicle_data(self, raw_data):
         """
         Format vehicle data
         Mirrors: PHP get_data_vehiculos()
-
-        SOLUTION:
-        - Extract vehicle fields
-        - Convert to uppercase
-        - Parse sede registral
-        - Return PLACA, MARCA, MODELO, etc.
         """
-        # TODO: Implement vehicle formatting logic
-        # TODO: Handle sede registral parsing
-        # TODO: Convert all to uppercase
-        # TODO: Return vehicle placeholders
-        pass
+        print(f"DEBUG: Processing vehicle data")
+
+        # Extract sede registral and parse it
+        sede = raw_data.get("sede") or ""
+        sede_parts = sede.split("-") if sede else ["", ""]
+        sede_name = sede_parts[1].strip() if len(sede_parts) > 1 else ""
+
+        return {
+            "PLACA": str(raw_data.get("placa") or "").upper(),
+            "CLASE": str(raw_data.get("clase") or "").upper(),
+            "MARCA": str(raw_data.get("marca") or "").upper(),
+            "MODELO": str(raw_data.get("modelo") or "").upper(),
+            "AÑO_FABRICACION": str(raw_data.get("anio") or "").upper(),
+            "CARROCERIA": str(raw_data.get("carroceria") or "").upper(),
+            "COLOR": str(raw_data.get("color") or "").upper(),
+            "NRO_MOTOR": str(raw_data.get("motor") or "").upper(),
+            "NRO_SERIE": str(raw_data.get("serie") or "").upper(),
+            "FEC_INS": str(raw_data.get("fecha_inscripcion") or "").upper(),
+            "FECHA_INSCRIPCION": str(raw_data.get("fecha_inscripcion") or "").upper(),
+            "ZONA_REGISTRAL": str(sede).upper(),
+            "NUM_ZONA_REG": str(raw_data.get("numero_zona") or "").upper(),
+            "SEDE": str(sede_name).upper(),
+            "INSTRUIDO": " ",
+            "COMBUSTIBLE": " ",
+            "NRO_TARJETA": " ",
+        }
 
     def format_escrituracion_data(self, raw_data):
         """
@@ -224,6 +317,35 @@ class DocumentFormatter:
             "S_FN": papel_final if papel_final else "{{S_FN}}",
         }
 
+    def combine_all_data(
+        self,
+        # data_documento,
+        # data_vehiculos,
+        data_pagos,
+        # data_contratantes,
+        # data_escrituracion,
+    ):
+        """
+        Combine all data dictionaries into one
+        Mirrors: PHP array merging with +=
+        """
+        print(f"DEBUG: Combining all data")
+
+        print(f"DEBUG: data_pagos = {data_pagos}")
+        # Merge all dictionaries
+        final_data = {
+            # **data_documento,
+            # **data_vehiculos,
+            **data_pagos
+            # **data_escrituracion,
+        }
+
+        # TODO: Add contractor data when implemented
+        # if data_contratantes:
+        #     final_data.update(data_contratantes)
+
+        return final_data
+
 
 # In utils.py - Add this class
 class PlaceholderProcessor:
@@ -236,18 +358,85 @@ class PlaceholderProcessor:
         """
         Replace {{PLACEHOLDERS}} in Word document
         Mirrors: PHP template processing
-
-        SOLUTION:
-        - Process all paragraphs
-        - Process all tables
-        - Use run-level replacement when possible
-        - Fall back to paragraph-level when needed
         """
-        # TODO: Implement placeholder replacement
-        # TODO: Handle run-level replacement
-        # TODO: Handle split placeholders
-        # TODO: Preserve formatting
-        pass
+        print(f"DEBUG: Replacing placeholders")
+
+        # Replace in paragraphs
+        for i, paragraph in enumerate(doc.paragraphs):
+            if "{{" in paragraph.text and "}}" in paragraph.text:
+                self._replace_in_paragraph(paragraph, final_data)
+
+        # Replace in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        if "{{" in paragraph.text and "}}" in paragraph.text:
+                            self._replace_in_paragraph(paragraph, final_data)
+
+        print(f"DEBUG: Placeholder replacement completed")
+
+    def _replace_in_paragraph(self, paragraph, final_data):
+        """
+        Replace placeholders in a paragraph while preserving formatting
+        """
+        full_text = paragraph.text
+
+        # Quick check - if no placeholders, skip
+        if "{{" not in full_text or "}}" not in full_text:
+            return
+
+        # Track which placeholders we've already replaced
+        replaced_placeholders = set()
+
+        # Try simple replacement first (works if placeholder is in one run)
+        for key, value in final_data.items():
+            placeholder = f"{{{{{key}}}}}"
+
+            if placeholder in full_text and placeholder not in replaced_placeholders:
+                # Try to find and replace in individual runs
+                for run in paragraph.runs:
+                    if placeholder in run.text:
+                        run.text = run.text.replace(placeholder, str(value))
+                        replaced_placeholders.add(placeholder)
+                        break  # Move to next placeholder, don't return!
+
+        # If we get here, some placeholders might be split across runs
+        # Fall back to paragraph-level replacement for remaining placeholders
+        remaining_placeholders = []
+        for key, value in final_data.items():
+            placeholder = f"{{{{{key}}}}}"
+            if placeholder in full_text and placeholder not in replaced_placeholders:
+                remaining_placeholders.append((placeholder, str(value)))
+
+        if remaining_placeholders:
+            # Get the formatting from the first run
+            first_run_font = None
+            if paragraph.runs:
+                first_run_font = paragraph.runs[0].font
+
+            # Clear all runs and create one new run
+            for run in paragraph.runs:
+                run.text = ""
+
+            # Create new run with replaced text
+            new_run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
+
+            # Replace ALL remaining placeholders in the text
+            new_text = full_text
+            for placeholder, value in remaining_placeholders:
+                new_text = new_text.replace(placeholder, value)
+
+            new_run.text = new_text
+
+            # Try to preserve some formatting from first run
+            if first_run_font:
+                try:
+                    new_run.font.color.rgb = first_run_font.color.rgb
+                    new_run.font.bold = first_run_font.bold
+                    new_run.font.italic = first_run_font.italic
+                except:
+                    pass  # Ignore if formatting can't be copied
 
     def clean_unfilled_placeholders(self, doc):
         """
