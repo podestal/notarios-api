@@ -1,6 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 import locale
+import boto3
+from botocore.config import Config
+import os
 
 
 class NumberToLetterConverter:
@@ -203,6 +206,24 @@ class DocumentFormatter:
         # TODO: Return vehicle placeholders
         pass
 
+    def format_escrituracion_data(self, raw_data):
+        """
+        Format escrituracion data (folio and papel numbers)
+        """
+        print(f"DEBUG: Processing escrituracion data")
+
+        folio_inicial = raw_data.get("folio_inicial") or ""
+        folio_final = raw_data.get("folio_final") or ""
+        papel_inicial = raw_data.get("papel_inicial") or ""
+        papel_final = raw_data.get("papel_final") or ""
+
+        return {
+            "FI": folio_inicial if folio_inicial else "{{FI}}",
+            "S_IN": papel_inicial if papel_inicial else "{{S_IN}}",
+            "FF": folio_final if folio_final else "{{FF}}",
+            "S_FN": papel_final if papel_final else "{{S_FN}}",
+        }
+
 
 # In utils.py - Add this class
 class PlaceholderProcessor:
@@ -300,18 +321,28 @@ class TemplateManager:
         """
         Download template from R2 storage
         Mirrors: PHP template download
-
-        SOLUTION:
-        - Create S3 client
-        - Download template bytes
-        - Handle errors gracefully
-        - Return template bytes
         """
-        # TODO: Implement template download
-        # TODO: Create S3 client
-        # TODO: Download template bytes
-        # TODO: Handle errors
-        pass
+        print(f"DEBUG: Downloading template from R2: {filename}")
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("CLOUDFLARE_R2_ENDPOINT"),
+            aws_access_key_id=os.environ.get("CLOUDFLARE_R2_ACCESS_KEY"),
+            aws_secret_access_key=os.environ.get("CLOUDFLARE_R2_SECRET_KEY"),
+            config=Config(signature_version="s3v4"),
+            region_name="auto",
+        )
+
+        object_key = f"rodriguez-zea/plantillas/{filename}"
+
+        try:
+            response = s3.get_object(Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"), Key=object_key)
+            template_bytes = response["Body"].read()
+            print(f"DEBUG: Template downloaded successfully: {len(template_bytes)} bytes")
+            return template_bytes
+        except Exception as e:
+            print(f"ERROR: Failed to download template from R2: {e}")
+            raise
 
     def upload_document_to_r2(self, doc, kardex):
         """
