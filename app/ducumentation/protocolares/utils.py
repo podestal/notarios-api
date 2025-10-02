@@ -215,18 +215,238 @@ class DocumentFormatter:
         """
         Format contractor data into template-ready format
         Mirrors: PHP get_data_contratantes() complex logic
-
-        SOLUTION:
-        - Process transferentes and adquirientes
-        - Handle gender-specific formatting
-        - Generate P_NOM, C_NOM, etc. placeholders
-        - Return flat dictionary for template replacement
         """
-        # TODO: Implement contractor formatting logic
-        # TODO: Handle married couples logic
-        # TODO: Generate gender-specific text
-        # TODO: Return flat dictionary with P_NOM, C_NOM, etc.
-        pass
+        print(f"DEBUG: Processing contractor data")
+
+        # Define role classifications
+        TRANSFEROR_ROLES = {
+            "VENDEDOR",
+            "DONANTE",
+            "PODERDANTE",
+            "OTORGANTE",
+            "REPRESENTANTE",
+            "ANTICIPANTE",
+            "ADJUDICANTE",
+            "USUFRUCTUANTE",
+            "TRANSFERENTE",
+            "TITULAR",
+            "MUTUANTE",
+            "PROPIETARIO",
+            "DEUDOR",
+            "ASOCIANTE",
+            "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
+            "APODERADO",
+        }
+
+        ACQUIRER_ROLES = {
+            "COMPRADOR",
+            "DONATARIO",
+            "APODERADO",
+            "ANTICIPADO",
+            "ADJUDICATARIO",
+            "USUFRUCTUARIO",
+            "TESTIGO A RUEGO",
+            "ADQUIRIENTE",
+            "ACREEDOR",
+            "OTORGADO",
+            "MUTUATARIO",
+            "BENEFICIARIA",
+            "ASOCIADO",
+            "ADQUIRENTE / BENEFICIARIO (COMPRADOR)",
+            "REPRESENTANTE",
+        }
+
+        REPRESENTATIVE_ROLES = {"APODERADO", "REPRESENTANTE"}
+
+        # Parse contractor data from raw_data
+        contractors = self._parse_contractor_data(raw_data)
+
+        # Classify contractors
+        transferors = []
+        acquirers = []
+        companies = []
+
+        for contractor in contractors:
+            if contractor["tipper"] == "J":  # Company
+                companies.append(contractor)
+            elif contractor["condicion_str"] in TRANSFEROR_ROLES:
+                transferors.append(contractor)
+            elif contractor["condicion_str"] in ACQUIRER_ROLES:
+                acquirers.append(contractor)
+
+        # Generate contractor placeholders
+        contractor_data = {}
+
+        # Process transferors (P_ prefix)
+        for idx, t in enumerate(transferors, 1):
+            contractor_data[f"P_NOM_{idx}"] = t["nombres"] + ", "
+            contractor_data[f"P_NACIONALIDAD_{idx}"] = t["nacionalidad"] + ", "
+            contractor_data[f"P_DOC_{idx}"] = self._get_identification_phrase(
+                t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
+            )
+            contractor_data[f"P_IDE_{idx}"] = " "
+            contractor_data[f"P_OCUPACION_{idx}"] = t["ocupacion"]
+            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = t["estadoCivil"]
+            contractor_data[f"P_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + t["direccion"]
+
+            # Add unnumbered versions for first person
+            if idx == 1:
+                contractor_data["P_NOM"] = t["nombres"] + ", "
+                contractor_data["P_NACIONALIDAD"] = t["nacionalidad"] + ", "
+                contractor_data["P_DOC"] = self._get_identification_phrase(
+                    t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
+                )
+                contractor_data["P_IDE"] = " "
+                contractor_data["P_OCUPACION"] = t["ocupacion"]
+                contractor_data["P_ESTADO_CIVIL"] = t["estadoCivil"]
+                contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"]
+
+        # Process acquirers (C_ prefix)
+        for idx, c in enumerate(acquirers, 1):
+            contractor_data[f"C_NOM_{idx}"] = c["nombres"] + ", "
+            contractor_data[f"C_NACIONALIDAD_{idx}"] = c["nacionalidad"] + ", "
+            contractor_data[f"C_DOC_{idx}"] = self._get_identification_phrase(
+                c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
+            )
+            contractor_data[f"C_IDE_{idx}"] = " "
+            contractor_data[f"C_OCUPACION_{idx}"] = c["ocupacion"]
+            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = c["estadoCivil"]
+            contractor_data[f"C_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + c["direccion"]
+
+            # Add unnumbered versions for first person
+            if idx == 1:
+                contractor_data["C_NOM"] = c["nombres"] + ", "
+                contractor_data["C_NACIONALIDAD"] = c["nacionalidad"] + ", "
+                contractor_data["C_DOC"] = self._get_identification_phrase(
+                    c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
+                )
+                contractor_data["C_IDE"] = c["numeroDocumento"] or " "
+                contractor_data["C_OCUPACION"] = c["ocupacion"]
+                contractor_data["C_ESTADO_CIVIL"] = c["estadoCivil"]
+                contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"]
+
+        # Fill empty placeholders for unused slots
+        self._fill_empty_contractor_placeholders(contractor_data, len(transferors), len(acquirers))
+
+        # Add gender-based articles and grammar
+        contractor_data.update(self._get_articles_and_grammar(transferors, "P"))
+        contractor_data.update(self._get_articles_and_grammar(acquirers, "C"))
+
+        return contractor_data
+
+    def _parse_contractor_data(self, raw_data):
+        """
+        Parse contractor data from raw SQL query result
+        """
+
+        # Split comma-separated values from raw_data
+        def split_if_not_none(value, separator=","):
+            return value.split(separator) if value else []
+
+        # Extract arrays from raw_data
+        condiciones = split_if_not_none(raw_data.get("condicion"))
+        nombres = split_if_not_none(raw_data.get("nombres"))
+        nacionalidades = split_if_not_none(raw_data.get("nacionalidad"))
+        tipos_documento = split_if_not_none(raw_data.get("tipo_documento"))
+        numeros_documento = split_if_not_none(raw_data.get("numero_documento"))
+        ocupaciones = split_if_not_none(raw_data.get("ocupacion"))
+        estados_civil = split_if_not_none(raw_data.get("estado_civil"))
+        direcciones = raw_data.get("direccion", "").split(",,") if raw_data.get("direccion") else []
+        distritos = split_if_not_none(raw_data.get("distrito"))
+        provincias = split_if_not_none(raw_data.get("provincia"))
+        departamentos = split_if_not_none(raw_data.get("departamento"))
+        sexos = split_if_not_none(raw_data.get("sexo"))
+        id_clientes = split_if_not_none(raw_data.get("id_cliente"))
+        id_conyuges = split_if_not_none(raw_data.get("id_conyuge"))
+
+        contractors = []
+
+        # Process each contractor
+        for k, condicion in enumerate(condiciones):
+            if not condicion:
+                continue
+
+            # Get data for this contractor
+            nombre = nombres[k] if k < len(nombres) else ""
+            nacionalidad = nacionalidades[k] if k < len(nacionalidades) else ""
+            tipo_doc = tipos_documento[k] if k < len(tipos_documento) else ""
+            num_doc = numeros_documento[k] if k < len(numeros_documento) else ""
+            ocupacion = ocupaciones[k] if k < len(ocupaciones) else ""
+            estado_civil = estados_civil[k] if k < len(estados_civil) else ""
+            direccion = direcciones[k] if k < len(direcciones) else ""
+            distrito = distritos[k] if k < len(distritos) else ""
+            provincia = provincias[k] if k < len(provincias) else ""
+            departamento = departamentos[k] if k < len(departamentos) else ""
+            sexo = sexos[k] if k < len(sexos) else "M"
+            id_cliente = id_clientes[k] if k < len(id_clientes) else ""
+            id_conyuge = id_conyuges[k] if k < len(id_conyuges) else "NO"
+
+            contractor = {
+                "condiciones": condicion,
+                "condicion_str": condicion,  # For role checking
+                "nombres": nombre,
+                "nacionalidad": nacionalidad,
+                "tipoDocumento": tipo_doc,
+                "numeroDocumento": num_doc,
+                "ocupacion": ocupacion,
+                "estadoCivil": estado_civil,
+                "direccion": direccion,
+                "distrito": distrito,
+                "provincia": provincia,
+                "departamento": departamento,
+                "sexo": sexo,
+                "idCliente": id_cliente,
+                "idConyuge": id_conyuge,
+                "tipper": "N",  # Assume natural person for now
+            }
+
+            contractors.append(contractor)
+
+        return contractors
+
+    def _get_identification_phrase(self, gender, doc_type, doc_number):
+        """
+        Generate identification phrase based on gender and document type
+        """
+        if not doc_number:
+            return ""
+
+        if gender == "F":
+            return f"IDENTIFICADA CON {doc_type} N° {doc_number}"
+        else:
+            return f"IDENTIFICADO CON {doc_type} N° {doc_number}"
+
+    def _fill_empty_contractor_placeholders(self, contractor_data, num_transferors, num_acquirers):
+        """
+        Fill empty placeholders for unused contractor slots
+        """
+        # Fill empty transferor slots (P_ prefix)
+        for idx in range(num_transferors + 1, 11):
+            contractor_data[f"P_NOM_{idx}"] = f"[E.P_NOM_{idx}]"
+            contractor_data[f"P_NACIONALIDAD_{idx}"] = f"[E.P_NACIONALIDAD_{idx}]"
+            contractor_data[f"P_DOC_{idx}"] = f"[E.P_DOC_{idx}]"
+            contractor_data[f"P_IDE_{idx}"] = f"[E.P_IDE_{idx}]"
+            contractor_data[f"P_OCUPACION_{idx}"] = f"[E.P_OCUPACION_{idx}]"
+            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = f"[E.P_ESTADO_CIVIL_{idx}]"
+            contractor_data[f"P_DOMICILIO_{idx}"] = f"[E.P_DOMICILIO_{idx}]"
+
+        # Fill empty acquirer slots (C_ prefix)
+        for idx in range(num_acquirers + 1, 11):
+            contractor_data[f"C_NOM_{idx}"] = f"[E.C_NOM_{idx}]"
+            contractor_data[f"C_NACIONALIDAD_{idx}"] = f"[E.C_NACIONALIDAD_{idx}]"
+            contractor_data[f"C_DOC_{idx}"] = f"[E.C_DOC_{idx}]"
+            contractor_data[f"C_IDE_{idx}"] = f"[E.C_IDE_{idx}]"
+            contractor_data[f"C_OCUPACION_{idx}"] = f"[E.C_OCUPACION_{idx}]"
+            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = f"[E.C_ESTADO_CIVIL_{idx}]"
+            contractor_data[f"C_DOMICILIO_{idx}"] = f"[E.C_DOMICILIO_{idx}]"
+
+    def _get_articles_and_grammar(self, contractors, role_prefix):
+        """
+        Generate gender-based articles and grammar
+        """
+        # TODO: Implement gender-based articles
+        # This will handle EL_P, LA_P, ES_P, SON_P, etc.
+        return {}
 
     def format_payment_data(self, raw_data):
         """
@@ -342,7 +562,7 @@ class DocumentFormatter:
         data_vehiculos,
         data_pagos,
         data_escrituracion,
-        # data_contratantes,
+        data_contratantes,
     ):
         """
         Combine all data dictionaries into one
@@ -355,6 +575,7 @@ class DocumentFormatter:
             **data_vehiculos,
             **data_pagos,
             **data_escrituracion,
+            **data_contratantes,
         }
 
         # TODO: Add contractor data when implemented

@@ -97,9 +97,14 @@ class EscrituraDocumentService:
         data_vehiculos = self.formatter.format_vehicle_data(raw_data)
         data_pagos = self.formatter.format_payment_data(raw_data)
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
+        data_contratantes = self.formatter.format_contractor_data(raw_data)
 
         final_data = self.formatter.combine_all_data(
-            data_documento, data_vehiculos, data_pagos, data_escrituracion
+            data_documento,
+            data_vehiculos,
+            data_pagos,
+            data_escrituracion,
+            data_contratantes,
         )
 
         buffer = io.BytesIO(template_bytes)
