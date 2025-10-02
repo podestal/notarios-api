@@ -15,138 +15,8 @@ import os
 from rest_framework.response import Response
 import boto3
 from botocore.config import Config
-
 from notaria import models
-
-# from .utils import get_s3_client
-from jinja2 import Template
-
-
-class NumberToLetterConverter:
-    """
-    Utility class to convert numbers and dates to letter format in Spanish
-    """
-
-    def __init__(self):
-        # Set locale for Spanish date formatting
-        try:
-            locale.setlocale(locale.LC_TIME, "es_ES.UTF-8")
-        except:
-            try:
-                locale.setlocale(locale.LC_TIME, "es_ES")
-            except:
-                print("WARNING: Spanish locale not available, falling back to default")
-
-    def number_to_letters(self, number) -> str:
-        """Convert number to words in Spanish"""
-        try:
-            number = int(number)
-        except (ValueError, TypeError):
-            print(f"WARNING: Invalid number value: {number}")
-            return str(number)
-
-        UNITS = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"]
-        TENS = [
-            "",
-            "DIEZ",
-            "VEINTE",
-            "TREINTA",
-            "CUARENTA",
-            "CINCUENTA",
-            "SESENTA",
-            "SETENTA",
-            "OCHENTA",
-            "NOVENTA",
-        ]
-        TEENS = [
-            "DIEZ",
-            "ONCE",
-            "DOCE",
-            "TRECE",
-            "CATORCE",
-            "QUINCE",
-            "DIECISEIS",
-            "DIECISIETE",
-            "DIECIOCHO",
-            "DIECINUEVE",
-        ]
-        HUNDREDS = [
-            "",
-            "CIENTO",
-            "DOSCIENTOS",
-            "TRESCIENTOS",
-            "CUATROCIENTOS",
-            "QUINIENTOS",
-            "SEISCIENTOS",
-            "SETECIENTOS",
-            "OCHOCIENTOS",
-            "NOVECIENTOS",
-        ]
-
-        if number == 0:
-            return "CERO"
-
-        if number < 10:
-            return UNITS[number]
-
-        if number < 20:
-            return TEENS[number - 10]
-
-        if number < 100:
-            tens = number // 10
-            units = number % 10
-            if units == 0:
-                return TENS[tens]
-            return f"{TENS[tens]} Y {UNITS[units]}"
-
-        if number < 1000:
-            hundreds = number // 100
-            rest = number % 100
-            if rest == 0:
-                return HUNDREDS[hundreds]
-            return f"{HUNDREDS[hundreds]} {self.number_to_letters(rest)}"
-
-        return str(number)
-
-    def date_to_letters(self, date_str) -> str:
-        """Convert date to words in Spanish"""
-        if not date_str:
-            print(f"WARNING: Empty date value")
-            return ""
-
-        try:
-            if isinstance(date_str, str):
-                date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            else:
-                date_obj = date_str
-
-            day = self.number_to_letters(date_obj.day)
-            month = date_obj.strftime("%B").upper()
-            year = self.number_to_letters(date_obj.year)
-
-            return f"{day} DE {month} DEL {year}"
-        except Exception as e:
-            print(f"ERROR: Failed to convert date to letters: {e}")
-            return str(date_str)
-
-    def money_to_letters(self, currency: str, amount: Decimal) -> str:
-        """Convert money amount to words in Spanish"""
-        try:
-            integer_part = int(amount)
-            decimal_part = int((amount % 1) * 100)
-
-            integer_text = self.number_to_letters(integer_part)
-            decimal_text = self.number_to_letters(decimal_part)
-
-            if currency == "SOLES":
-                return f"{integer_text} SOLES CON {decimal_text} CÉNTIMOS"
-            elif currency == "DOLARES N.A.":
-                return f"{integer_text} DÓLARES AMERICANOS CON {decimal_text} CENTAVOS"
-            else:
-                return f"{integer_text} {currency} CON {decimal_text} CENTAVOS"
-        except Exception as e:
-            print(f"ERROR: Failed to convert money to letters: {e}")
-            return f"{amount} {currency}"
+from .utils import NumberToLetterConverter
 
 
 class EscrituraDocumentService:
@@ -552,38 +422,186 @@ class EscrituraDocumentService:
 
     def _get_data_contratantes(self, raw_data):
         """
-        Process contractors data - MOST COMPLEX PART!
-        Mirrors: PHP get_data_contratantes()
-
-        TASK:
-        - Split comma-separated data into arrays
-        - Separate transferentes (sellers) from adquirientes (buyers)
-        - Handle married couples logic (casados)
-        - Handle gender-specific text (F/M)
-        - Handle empresa (company) data
-        - Generate grammatical articles (EL/LA, LOS/LAS, etc.)
-
-        RETURNS: Dictionary with contractor data for up to 10 people:
-        - P_NOM, P_NOM_2, P_NOM_3... (transferentes names)
-        - C_NOM, C_NOM_2, C_NOM_3... (adquirientes names)
-        - P_DOC, C_DOC (documents)
-        - EL_P, EL_C (articles)
-        - etc.
-
-        SOLUTION: See app/ducumentation/services.py line 3301-3670
+        Get contractors data - mirrors get_data_contratantes PHP function with complex spouse logic
         """
         print(f"DEBUG: Processing contractors data")
 
-        # TODO: Split comma-separated data
-        # TODO: Loop through condiciones and separate P vs C
-        # TODO: Check for married couples
-        # TODO: Generate text with gender logic
-        # TODO: Handle empresas
-        # TODO: Fill empty placeholders (P_NOM_3 to P_NOM_10)
-        # TODO: Generate articles (EL_P, INICIO_P, etc.)
-        # TODO: Return dictionary
+        def split_if_not_none(value, separator=","):
+            return value.split(separator) if value else []
 
-        pass  # Remove and implement
+        # Extract data from raw query result
+        condiciones = split_if_not_none(raw_data.get("condicion"))
+        nombres = split_if_not_none(raw_data.get("nombres"))
+        nacionalidades = split_if_not_none(raw_data.get("nacionalidad"))
+        tipos_documento = split_if_not_none(raw_data.get("tipo_documento"))
+        numeros_documento = split_if_not_none(raw_data.get("numero_documento"))
+        ocupaciones = split_if_not_none(raw_data.get("ocupacion"))
+        estados_civil = split_if_not_none(raw_data.get("estado_civil"))
+        direcciones = raw_data.get("direccion", "").split(",,") if raw_data.get("direccion") else []
+        distritos = split_if_not_none(raw_data.get("distrito"))
+        provincias = split_if_not_none(raw_data.get("provincia"))
+        departamentos = split_if_not_none(raw_data.get("departamento"))
+        sexos = split_if_not_none(raw_data.get("sexo"))
+        id_clientes = split_if_not_none(raw_data.get("id_cliente"))
+        id_conyuges = split_if_not_none(raw_data.get("id_conyuge"))
+
+        # Company data
+        nombres_empresa = split_if_not_none(raw_data.get("nombre_empresa"))
+        numeros_documento_empresa = split_if_not_none(raw_data.get("numero_documento_empresa"))
+        direcciones_empresa = split_if_not_none(raw_data.get("domicilio_empresa"))
+        distritos_empresa = split_if_not_none(raw_data.get("distrito_empresa"))
+        provincias_empresa = split_if_not_none(raw_data.get("provincia_empresa"))
+        departamentos_empresa = split_if_not_none(raw_data.get("departamento_empresa"))
+        condiciones_empresa = split_if_not_none(raw_data.get("condicion_empresa"))
+        oficinas_registrales = (
+            raw_data.get("oficina_registral", "").split(",,")
+            if raw_data.get("oficina_registral")
+            else []
+        )
+        numeros_partida = split_if_not_none(raw_data.get("numero_partida"))
+
+        transferentes = []
+        adquirientes = []
+        sexo_transferentes = []
+        sexo_adquirientes = []
+
+        # Process each contractor
+        for k, condicion in enumerate(condiciones):
+            if not condicion:
+                continue
+
+            # Get data for this contractor
+            nombre = nombres[k] if k < len(nombres) else ""
+            nacionalidad = nacionalidades[k] if k < len(nacionalidades) else ""
+            tipo_doc = tipos_documento[k] if k < len(tipos_documento) else ""
+            num_doc = numeros_documento[k] if k < len(numeros_documento) else ""
+            ocupacion = ocupaciones[k] if k < len(ocupaciones) else ""
+            estado_civil = estados_civil[k] if k < len(estados_civil) else ""
+            direccion = direcciones[k] if k < len(direcciones) else ""
+            distrito = distritos[k] if k < len(distritos) else ""
+            provincia = provincias[k] if k < len(provincias) else ""
+            departamento = departamentos[k] if k < len(departamentos) else ""
+            sexo = sexos[k] if k < len(sexos) else "M"
+            id_cliente = id_clientes[k] if k < len(id_clientes) else ""
+            id_conyuge = id_conyuges[k] if k < len(id_conyuges) else "NO"
+
+            # Company data
+            nombre_empresa = nombres_empresa[k] if k < len(nombres_empresa) else ""
+            num_doc_empresa = (
+                numeros_documento_empresa[k] if k < len(numeros_documento_empresa) else ""
+            )
+            direccion_empresa = direcciones_empresa[k] if k < len(direcciones_empresa) else ""
+            distrito_empresa = distritos_empresa[k] if k < len(distritos_empresa) else ""
+            provincia_empresa = provincias_empresa[k] if k < len(provincias_empresa) else ""
+            departamento_empresa = (
+                departamentos_empresa[k] if k < len(departamentos_empresa) else ""
+            )
+            condicion_empresa = condiciones_empresa[k] if k < len(condiciones_empresa) else ""
+            oficina_registral = oficinas_registrales[k] if k < len(oficinas_registrales) else ""
+            numero_partida = numeros_partida[k] if k < len(numeros_partida) else ""
+
+            contractor_data = {
+                "condiciones": condicion,
+                "nombres": nombre,
+                "nacionalidad": nacionalidad,
+                "tipoDocumento": tipo_doc,
+                "numeroDocumento": num_doc,
+                "ocupacion": ocupacion,
+                "estadoCivil": estado_civil,
+                "direccion": direccion,
+                "distrito": distrito,
+                "provincia": provincia,
+                "departamento": departamento,
+                "sexo": sexo,
+                "idCliente": id_cliente,
+                "idConyuge": id_conyuge,
+                "nombreEmpresa": nombre_empresa,
+                "numeroDocumentoEmpresa": num_doc_empresa,
+                "direccionEmpresa": direccion_empresa,
+                "distritoEmpresa": distrito_empresa,
+                "provinciaEmpresa": provincia_empresa,
+                "departamentoEmpresa": departamento_empresa,
+                "oficinaRegistral": oficina_registral,
+                "numeroPartida": numero_partida,
+                "condicionEmpresa": condicion_empresa,
+            }
+
+            # TRANSFERENTES (VENDEDOR, PODERDANTE, etc.)
+            if condicion in [
+                "VENDEDOR",
+                "PODERDANTE",
+                "OTORGANTE",
+                "REPRESENTANTE",
+                "ANTICIPANTE",
+                "ADJUDICANTE",
+                "DONANTE",
+                "USUFRUCTUANTE",
+                "TRANSFERENTE",
+                "TITULAR",
+                "MUTUANTE",
+                "PROPIETARIO",
+                "DEUDOR",
+                "ASOCIANTE",
+                "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
+            ]:
+                transferentes.append(contractor_data)
+                sexo_transferentes.append(sexo)
+
+            # ADQUIRIENTES (COMPRADOR, APODERADO, etc.)
+            elif condicion in [
+                "COMPRADOR",
+                "APODERADO",
+                "ANTICIPADO",
+                "ADJUDICATARIO",
+                "DONATARIO",
+                "USUFRUCTUARIO",
+                "TESTIGO A RUEGO",
+                "ADQUIRIENTE",
+                "ACREEDOR",
+                "OTORGADO",
+                "MUTUATARIO",
+                "BENEFICIARIA",
+                "ASOCIADO",
+                "ADQUIRENTE / BENEFICIARIO (COMPRADOR)",
+            ]:
+                adquirientes.append(contractor_data)
+                sexo_adquirientes.append(sexo)
+
+        # Determine gender classification for groups
+        sexo_transferentes_clasificado = self._classify_gender(sexo_transferentes)
+        sexo_adquirientes_clasificado = self._classify_gender(sexo_adquirientes)
+
+        # Sort by gender (DESC means males first)
+        transferentes = sorted(transferentes, key=lambda x: x["sexo"], reverse=True)
+        adquirientes = sorted(adquirientes, key=lambda x: x["sexo"], reverse=True)
+
+        return {
+            "transferentes": transferentes,
+            "adquirientes": adquirientes,
+            "sexoTransferentes": sexo_transferentes_clasificado,
+            "sexoAdquirientes": sexo_adquirientes_clasificado,
+        }
+
+    def _classify_gender(self, sexos: list) -> str:
+        """Helper method to classify gender groups"""
+        if not sexos:
+            return "MIXTO"
+
+        has_female = False
+        has_male = False
+
+        for sexo in sexos:
+            if sexo == "F":
+                has_female = True
+            elif sexo == "M":
+                has_male = True
+
+        if has_male:
+            return "MIXTO"
+        elif has_female:
+            return "MUJERES"
+        else:
+            return "MIXTO"
 
     def _get_data_escrituracion(self, raw_data):
         """
@@ -642,7 +660,7 @@ class EscrituraDocumentService:
         # TODO: Merge all dictionaries
         # HINT: final_data = {**data_documento, **data_vehiculos, ...}
 
-        return {**data_documento}
+        return {**data_documento, **data_contratantes}
 
     # ========================================
     # PHASE 4: TEMPLATE PROCESSING
