@@ -4,6 +4,8 @@ import locale
 import boto3
 from botocore.config import Config
 import os
+import re
+from docx.shared import RGBColor
 
 
 class NumberToLetterConverter:
@@ -379,6 +381,7 @@ class PlaceholderProcessor:
     def _replace_in_paragraph(self, paragraph, final_data):
         """
         Replace placeholders in a paragraph while preserving formatting
+        Only replaced values will be BOLD and RED, not the entire paragraph
         """
         full_text = paragraph.text
 
@@ -398,6 +401,11 @@ class PlaceholderProcessor:
                 for run in paragraph.runs:
                     if placeholder in run.text:
                         run.text = run.text.replace(placeholder, str(value))
+
+                        # Apply bold and red formatting to the replaced text
+                        run.font.bold = True
+                        run.font.color.rgb = RGBColor(255, 0, 0)  # Red color
+
                         replaced_placeholders.add(placeholder)
                         break  # Move to next placeholder, don't return!
 
@@ -415,28 +423,53 @@ class PlaceholderProcessor:
             if paragraph.runs:
                 first_run_font = paragraph.runs[0].font
 
-            # Clear all runs and create one new run
+            # Clear all runs
             for run in paragraph.runs:
                 run.text = ""
 
-            # Create new run with replaced text
-            new_run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
+            # Create a pattern to match all remaining placeholders
+            pattern_parts = []
+            replacements = {}
 
-            # Replace ALL remaining placeholders in the text
-            new_text = full_text
             for placeholder, value in remaining_placeholders:
-                new_text = new_text.replace(placeholder, value)
+                # Escape special regex characters in placeholder
+                escaped_placeholder = re.escape(placeholder)
+                pattern_parts.append(escaped_placeholder)
+                replacements[placeholder] = value
 
-            new_run.text = new_text
+            # Create regex pattern
+            pattern = "|".join(pattern_parts)
 
-            # Try to preserve some formatting from first run
-            if first_run_font:
-                try:
-                    new_run.font.color.rgb = first_run_font.color.rgb
-                    new_run.font.bold = first_run_font.bold
-                    new_run.font.italic = first_run_font.italic
-                except:
-                    pass  # Ignore if formatting can't be copied
+            # Split text by placeholders and create separate runs
+            parts = re.split(f"({pattern})", full_text)
+
+            for part in parts:
+                if part in replacements:
+                    # This is a placeholder - create formatted run
+                    new_run = paragraph.add_run(replacements[part])
+                    new_run.font.bold = True
+                    new_run.font.color.rgb = RGBColor(255, 0, 0)  # Red color
+
+                    # Preserve font size and name from original
+                    if first_run_font:
+                        try:
+                            new_run.font.size = first_run_font.size
+                            new_run.font.name = first_run_font.name
+                        except:
+                            pass
+
+                elif part:  # Only create run if text is not empty
+                    # This is regular text - preserve original formatting
+                    new_run = paragraph.add_run(part)
+                    if first_run_font:
+                        try:
+                            new_run.font.bold = first_run_font.bold
+                            new_run.font.italic = first_run_font.italic
+                            new_run.font.color.rgb = first_run_font.color.rgb
+                            new_run.font.size = first_run_font.size  # ADD THIS LINE!
+                            new_run.font.name = first_run_font.name  # ADD THIS LINE TOO!
+                        except:
+                            pass
 
     def clean_unfilled_placeholders(self, doc):
         """
