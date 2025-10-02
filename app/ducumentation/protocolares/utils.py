@@ -119,7 +119,24 @@ class NumberToLetterConverter:
                 date_obj = date_str
 
             day = self.number_to_letters(date_obj.day)
-            month = date_obj.strftime("%B").upper()
+
+            # Manual Spanish month names
+            spanish_months = {
+                1: "ENERO",
+                2: "FEBRERO",
+                3: "MARZO",
+                4: "ABRIL",
+                5: "MAYO",
+                6: "JUNIO",
+                7: "JULIO",
+                8: "AGOSTO",
+                9: "SEPTIEMBRE",
+                10: "OCTUBRE",
+                11: "NOVIEMBRE",
+                12: "DICIEMBRE",
+            }
+
+            month = spanish_months[date_obj.month]
             year = self.number_to_letters(date_obj.year)
 
             return f"{day} DE {month} DEL {year}"
@@ -321,25 +338,23 @@ class DocumentFormatter:
 
     def combine_all_data(
         self,
-        # data_documento,
-        # data_vehiculos,
+        data_documento,
+        data_vehiculos,
         data_pagos,
+        data_escrituracion,
         # data_contratantes,
-        # data_escrituracion,
     ):
         """
         Combine all data dictionaries into one
         Mirrors: PHP array merging with +=
         """
         print(f"DEBUG: Combining all data")
-
-        print(f"DEBUG: data_pagos = {data_pagos}")
         # Merge all dictionaries
         final_data = {
-            # **data_documento,
-            # **data_vehiculos,
-            **data_pagos
-            # **data_escrituracion,
+            **data_documento,
+            **data_vehiculos,
+            **data_pagos,
+            **data_escrituracion,
         }
 
         # TODO: Add contractor data when implemented
