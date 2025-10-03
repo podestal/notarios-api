@@ -1,6 +1,10 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+
+from ducumentation.protocolares.EscrituraPublicaDocumentService import (
+    EscriturasPublicasReportService,
+)
 from .services.pdt_libros_service import PdtLibrosService
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
@@ -356,6 +360,20 @@ class KardexViewSet(ModelViewSet):
             models.DetalleActosKardex.objects.create(**detalle_data)
 
         return Response(serializer.data, status=201)
+
+    @action(detail=False, methods=["get"], url_path="reporte-cronologico")
+    def reporte_cronologico(self, request):
+        """
+        Reporte Cronológico - generates a report of the kardex records.
+        parameters:
+        - initialDate
+        - finalDate
+        - idtipkar
+        """
+        print(f"DEBUG: Reporte Cronológico - generating report")
+        service = EscriturasPublicasReportService()
+        response = service.generate_word_report(desde="2025-01-01", hasta="2025-10-03")
+        return response
 
     @action(detail=False, methods=["get"], url_path="uif-errors")
     def uif_error_dashboard(self, request):

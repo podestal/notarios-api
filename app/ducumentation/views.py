@@ -1102,7 +1102,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                     }
                 )
                 response["Access-Control-Allow-Origin"] = "*"
-                return Response({}, status=200)
+                return response
             else:
                 return service.generate_escritura_publica_document(
                     template_id, kardex, action, mode
@@ -1332,7 +1332,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                         }
                     )
                     response["Access-Control-Allow-Origin"] = "*"
-                    return Response({}, status=200)
+                    return response
                 else:
                     return service.generate_escritura_publica_document(
                         template_id, kardex, action, mode

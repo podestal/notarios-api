@@ -446,6 +446,7 @@ class EscriturasPublicasReportService:
     def _get_report_data(self, desde, hasta):
         """Fetch data for the report matching PHP query"""
         try:
+            print(f"DEBUG: Starting _get_report_data with dates desde={desde}, hasta={hasta}")
             from django.db import connection
             from datetime import datetime
 
@@ -465,6 +466,8 @@ class EscriturasPublicasReportService:
                     hasta_dt = datetime.strptime(hasta, "%d/%m/%Y")
             else:
                 hasta_dt = hasta
+
+            print(f"DEBUG: Converted dates - desde_dt={desde_dt}, hasta_dt={hasta_dt}")
 
             query = """
                 SELECT 
@@ -488,12 +491,15 @@ class EscriturasPublicasReportService:
                 ORDER BY numescritura2 ASC, fechaescritura ASC
             """
 
+            print(f"DEBUG: Executing main query...")
             with connection.cursor() as cursor:
                 cursor.execute(
                     query, [desde_dt.strftime("%Y-%m-%d"), hasta_dt.strftime("%Y-%m-%d")]
                 )
                 escrituras = []
-                for row in cursor.fetchall():
+                rows = cursor.fetchall()
+                print(f"DEBUG: Found {len(rows)} escrituras")
+                for row in rows:
                     kardex = row[1]
                     # Get contractors data
                     contractors_query = """
@@ -514,8 +520,10 @@ class EscriturasPublicasReportService:
                         WHERE cxa.kardex = %s 
                         ORDER BY c2.tipper ASC
                     """
+                    print(f"DEBUG: Getting contractors for kardex {kardex}")
                     cursor.execute(contractors_query, [kardex, kardex])
                     contractors = cursor.fetchall()
+                    print(f"DEBUG: Found {len(contractors)} contractors for kardex {kardex}")
 
                     # Process contractors
                     otorgante = []
@@ -535,6 +543,9 @@ class EscriturasPublicasReportService:
                             if not (uif == "B" and parte_representada == 1):
                                 otorgado.append(empresa if tipper != "N" else nombre)
 
+                    print(
+                        f"DEBUG: Processing contractors - otorgantes: {len(otorgante)}, otorgados: {len(otorgado)}"
+                    )
                     escrituras.append(
                         {
                             "numero_escritura": row[3],
@@ -563,15 +574,23 @@ class EscriturasPublicasReportService:
     def generate_excel_report(self, desde, hasta):
         """Generate Excel report matching PHP script format"""
         try:
+            print(f"DEBUG: Starting Excel report generation for dates desde={desde}, hasta={hasta}")
             from openpyxl import Workbook
             from openpyxl.styles import Font, Alignment, Border, Side
             from openpyxl.utils import get_column_letter
             import io
 
             # Get data
+            print("DEBUG: Fetching report data...")
             report_data = self._get_report_data(desde, hasta)
+            print(f"DEBUG: Got {len(report_data)} records")
+
+            print("DEBUG: Getting notary info...")
             notary_info = self._get_notary_info()
+            print(f"DEBUG: Got notary info: {notary_info['nombre']}")
+
             anio = self._extract_year_from_date(hasta)
+            print(f"DEBUG: Using year: {anio}")
 
             # Create workbook and worksheet
             wb = Workbook()
@@ -696,7 +715,9 @@ class EscriturasPublicasReportService:
                 cell.border = thin_border
 
             # Data rows
-            for data_row in report_data:
+            print("DEBUG: Starting to write data rows...")
+            for i, data_row in enumerate(report_data, 1):
+                print(f"DEBUG: Processing row {i} of {len(report_data)}")
                 row += 1
 
                 # Row data
@@ -735,9 +756,11 @@ class EscriturasPublicasReportService:
                 ws.column_dimensions[column_letter].width = adjusted_width
 
             # Save to buffer
+            print("DEBUG: Saving Excel workbook to buffer...")
             buffer = io.BytesIO()
             wb.save(buffer)
             buffer.seek(0)
+            print("DEBUG: Excel file saved successfully")
 
             # Create response
             from django.http import HttpResponse
@@ -764,6 +787,7 @@ class EscriturasPublicasReportService:
     def generate_word_report(self, desde, hasta):
         """Generate Word report matching PHP script format"""
         try:
+            print(f"DEBUG: Starting Word report generation for dates desde={desde}, hasta={hasta}")
             from docx import Document
             from docx.shared import Inches
             from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -771,9 +795,16 @@ class EscriturasPublicasReportService:
             import io
 
             # Get data
+            print("DEBUG: Fetching report data for Word report...")
             report_data = self._get_report_data(desde, hasta)
+            print(f"DEBUG: Got {len(report_data)} records")
+
+            print("DEBUG: Getting notary info...")
             notary_info = self._get_notary_info()
+            print(f"DEBUG: Got notary info: {notary_info['nombre']}")
+
             anio = self._extract_year_from_date(hasta)
+            print(f"DEBUG: Using year: {anio}")
 
             # Create document
             doc = Document()
@@ -865,21 +896,25 @@ class EscriturasPublicasReportService:
                     header_row.cells[i].text = header
                     header_row.cells[i].paragraphs[0].runs[0].bold = True
 
-                # Data rows
-                for data_row in report_data:
-                    row = data_table.add_row()
-                    row.cells[0].text = str(data_row["numero_escritura"])
-                    row.cells[1].text = data_row["fecha"]
-                    row.cells[2].text = self._sanitize_cell_value(data_row["otorgante"])
-                    row.cells[3].text = self._sanitize_cell_value(data_row["otorgado"])
-                    row.cells[4].text = self._sanitize_cell_value(data_row["contrato"])
-                    row.cells[5].text = data_row["monto"]
-                    row.cells[6].text = str(data_row["folio"])
+            # Data rows
+            print("DEBUG: Starting to write Word data rows...")
+            for i, data_row in enumerate(report_data, 1):
+                print(f"DEBUG: Processing Word row {i} of {len(report_data)}")
+                row = data_table.add_row()
+                row.cells[0].text = str(data_row["numero_escritura"])
+                row.cells[1].text = data_row["fecha"]
+                row.cells[2].text = self._sanitize_cell_value(data_row["otorgante"])
+                row.cells[3].text = self._sanitize_cell_value(data_row["otorgado"])
+                row.cells[4].text = self._sanitize_cell_value(data_row["contrato"])
+                row.cells[5].text = data_row["monto"]
+                row.cells[6].text = str(data_row["folio"])
 
             # Save to buffer
+            print("DEBUG: Saving Word document to buffer...")
             buffer = io.BytesIO()
             doc.save(buffer)
             buffer.seek(0)
+            print("DEBUG: Word file saved successfully")
 
             # Create response
             from django.http import HttpResponse
