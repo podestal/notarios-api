@@ -5,6 +5,9 @@ from rest_framework.permissions import IsAuthenticated
 from ducumentation.protocolares.EscrituraPublicaDocumentService import (
     EscriturasPublicasReportService,
 )
+from ducumentation.protocolares.TransferenciasVehicularesService import (
+    TransferenciasVehicularesReportService,
+)
 from .services.pdt_libros_service import PdtLibrosService
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
@@ -373,6 +376,22 @@ class KardexViewSet(ModelViewSet):
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
         service = EscriturasPublicasReportService()
+        response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        # response = service.generate_word_report(desde='2025-01-01', hasta='2025-10-03')
+        return response
+
+    @action(detail=False, methods=["get"], url_path="transferencias-cronologico")
+    def transferencias_cronologico(self, request):
+        """
+        Reporte Cronológico - generates a report of the kardex records.
+        parameters:
+        - initialDate: YYYY-MM-DD
+        - finalDate: YYYY-MM-DD
+        """
+        print(f"DEBUG: Reporte Cronológico - generating report")
+        initialDate = request.query_params.get("initialDate")
+        finalDate = request.query_params.get("finalDate")
+        service = TransferenciasVehicularesReportService()
         # response = service.generate_word_report(desde=initialDate, hasta=finalDate)
         response = service.generate_word_report(desde='2025-01-01', hasta='2025-10-03')
         return response
