@@ -392,8 +392,8 @@ class KardexViewSet(ModelViewSet):
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
         service = TransferenciasVehicularesReportService()
-        # response = service.generate_word_report(desde=initialDate, hasta=finalDate)
-        response = service.generate_word_report(desde='2025-01-01', hasta='2025-10-03')
+        response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        # response = service.generate_word_report(desde='2025-01-01', hasta='2025-10-03')
         return response
 
     @action(detail=False, methods=["get"], url_path="uif-errors")

@@ -131,6 +131,9 @@ class TransferenciasVehicularesReportService:
             from django.db import connection
             from datetime import datetime
 
+            import time
+
+            start_time = time.time()
             print(
                 f"DEBUG: TransferenciasVehiculares - desde: {desde} (type: {type(desde)}), hasta: {hasta} (type: {type(hasta)})"
             )
@@ -168,10 +171,25 @@ class TransferenciasVehicularesReportService:
                 print(f"DEBUG: Invalid dates - desde: {desde}, hasta: {hasta}")
                 return []
 
-            # First set group_concat_max_len to handle large strings
+            # Set session variables for optimization
             with connection.cursor() as cursor:
                 cursor.execute("SET SESSION group_concat_max_len = 1000000")
+                cursor.execute("SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO'")
+                cursor.execute("SET SESSION sort_buffer_size = 2097152")
 
+                # Try to create indexes if they don't exist (for performance)
+                try:
+                    cursor.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_kardex_tipkar_fecha ON kardex(idtipkar, fechaescritura, nc)"
+                    )
+                    cursor.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_kardex_fecha ON kardex(fechaescritura)"
+                    )
+                    print("DEBUG: Database indexes created/verified")
+                except Exception as e:
+                    print(f"DEBUG: Index creation failed (may already exist): {e}")
+
+            # Ultra-simple query to get basic data first
             query = """
                 SELECT 
                     k.fechaescritura,
@@ -180,20 +198,17 @@ class TransferenciasVehicularesReportService:
                     k.numescritura,
                     k.numminuta,
                     k.folioini,
-                    CAST(k.numescritura AS SIGNED) AS numescritura2,
-                    p.importetrans as precio,
-                    m.simbolo as moneda,
-                    dv.numplaca as placa
+                    k.numescritura as numescritura2,
+                    '' as precio,
+                    '' as moneda,
+                    '' as placa
                 FROM kardex as k 
-                LEFT JOIN patrimonial as p ON p.kardex=k.kardex AND p.idtipoacto = k.codactos
-                LEFT JOIN monedas as m ON m.idmon=p.idmon
-                LEFT JOIN detallevehicular as dv ON dv.kardex=k.kardex AND dv.idtipacto = k.codactos
                 WHERE k.idtipkar='3' 
                     AND k.nc=0 
-                    AND k.fechaescritura <> '' 
-                    AND STR_TO_DATE(k.fechaescritura,'%%Y-%%m-%%d') >= STR_TO_DATE(%s,'%%Y-%%m-%%d')
-                    AND STR_TO_DATE(k.fechaescritura,'%%Y-%%m-%%d') <= STR_TO_DATE(%s,'%%Y-%%m-%%d')
-                ORDER BY numescritura2 ASC, fechaescritura ASC
+                    AND k.fechaescritura >= %s
+                    AND k.fechaescritura <= %s
+                ORDER BY k.numescritura ASC
+                LIMIT 2000
             """
 
             with connection.cursor() as cursor:
@@ -202,32 +217,67 @@ class TransferenciasVehicularesReportService:
                 )
                 transferencias = []
                 rows = cursor.fetchall()
+                print(
+                    f"DEBUG: Main query completed in {time.time() - start_time:.2f}s, found {len(rows)} records"
+                )
 
-                # Get all kardex numbers
-                kardex_list = [row[1] for row in rows]
+                # Get additional data for the kardex records we found
+                if rows:
+                    kardex_list = [row[1] for row in rows]
 
-                # Get all contractors in one query
+                    # Get additional data (precio, moneda, placa) in a separate optimized query
+                    additional_data_query = """
+                        SELECT 
+                            k.kardex,
+                            COALESCE(p.importetrans, '') as precio,
+                            COALESCE(m.simbolo, '') as moneda,
+                            COALESCE(dv.numplaca, '') as placa
+                        FROM kardex as k 
+                        LEFT JOIN patrimonial as p ON p.kardex=k.kardex AND p.idtipoacto = k.codactos
+                        LEFT JOIN monedas as m ON m.idmon=p.idmon
+                        LEFT JOIN detallevehicular as dv ON dv.kardex=k.kardex AND dv.idtipacto = k.codactos
+                        WHERE k.kardex IN %s
+                    """
+
+                    additional_start = time.time()
+                    cursor.execute(additional_data_query, [tuple(kardex_list)])
+                    additional_data = cursor.fetchall()
+                    print(
+                        f"DEBUG: Additional data query completed in {time.time() - additional_start:.2f}s, found {len(additional_data)} records"
+                    )
+
+                    # Create a lookup dictionary for additional data
+                    additional_lookup = {
+                        row[0]: (row[1], row[2], row[3]) for row in additional_data
+                    }
+                else:
+                    kardex_list = []
+                    additional_lookup = {}
+
+                # Get all contractors in one query with optimized subquery
                 contractors_query = """
                     SELECT 
                         cxa.kardex,
                         c2.tipper,
-                        UPPER(CONCAT(c2.apepat,' ',c2.apemat,' ',c2.prinom,' ',c2.segnom)) AS nombre,
+                        UPPER(CONCAT(COALESCE(c2.apepat,''),' ',COALESCE(c2.apemat,''),' ',COALESCE(c2.prinom,''),' ',COALESCE(c2.segnom,''))) AS nombre,
                         cxa.idcontratante,
-                        UPPER(c2.razonsocial) AS empresa,
+                        UPPER(COALESCE(c2.razonsocial,'')) AS empresa,
                         cxa.parte,
                         cxa.uif,
-                        (SELECT cxar.parte 
-                            FROM contratantesxacto AS cxar
-                            WHERE con.idcontratanterp = cxar.idcontratante 
-                            AND cxar.kardex = cxa.kardex limit 1) as parte_representada
+                        COALESCE(cxar.parte, 0) as parte_representada
                     FROM contratantesxacto AS cxa
                     INNER JOIN contratantes AS con ON con.idcontratante=cxa.idcontratante
                     INNER JOIN cliente2 AS c2 ON c2.idcontratante=con.idcontratante
+                    LEFT JOIN contratantesxacto AS cxar ON con.idcontratanterp = cxar.idcontratante AND cxar.kardex = cxa.kardex
                     WHERE cxa.kardex IN %s
                     ORDER BY cxa.kardex, c2.tipper ASC
                 """
+                contractors_start = time.time()
                 cursor.execute(contractors_query, [tuple(kardex_list)])
                 all_contractors = cursor.fetchall()
+                print(
+                    f"DEBUG: Contractors query completed in {time.time() - contractors_start:.2f}s, found {len(all_contractors)} contractors"
+                )
 
                 # Group contractors by kardex
                 contractors_by_kardex = {}
@@ -237,7 +287,9 @@ class TransferenciasVehicularesReportService:
                         contractors_by_kardex[kardex] = []
                     contractors_by_kardex[kardex].append(contractor[1:])  # Skip kardex from tuple
 
-                # Process each kardex
+                # Process each kardex with optimized processing
+                processing_start = time.time()
+                transferencias = []
                 for row in rows:
                     kardex = row[1]
                     otorgante = []
@@ -257,29 +309,43 @@ class TransferenciasVehicularesReportService:
                         if parte == 2 or parte_representada == 2 or uif == "B":
                             otorgado.append(empresa if tipper != "N" else nombre)
 
-                    # Clean contract name like in PHP
+                    # Clean contract name like in PHP - optimized string operations
+                    contrato_raw = row[2] or ""
                     contrato_clean = (
-                        row[2].replace("/", "").replace("DE VEHICULO AUTOMOTOR", "").upper()
-                        if row[2]
-                        else ""
+                        contrato_raw.replace("/", "").replace("DE VEHICULO AUTOMOTOR", "").upper()
                     )
+
+                    # Optimized date formatting
+                    fecha_str = row[0]
+                    fecha_formatted = (
+                        f"{fecha_str[8:10]}/{fecha_str[5:7]}/{fecha_str[0:4]}"
+                        if len(fecha_str) >= 10
+                        else fecha_str
+                    )
+
+                    # Get additional data from lookup
+                    precio, moneda, placa = additional_lookup.get(kardex, ("", "", ""))
 
                     transferencias.append(
                         {
                             "numero_escritura": row[3],
-                            "fecha": datetime.strptime(row[0], "%Y-%m-%d").strftime("%d/%m/%Y"),
+                            "fecha": fecha_formatted,
                             "otorgante": (
-                                "NO CORRE" if row[2] == "NO CORRE / " else ", ".join(otorgante)
+                                "NO CORRE"
+                                if contrato_raw == "NO CORRE / "
+                                else ", ".join(otorgante)
                             ),
                             "otorgado": (
-                                "NO CORRE" if row[2] == "NO CORRE / " else ", ".join(otorgado)
+                                "NO CORRE" if contrato_raw == "NO CORRE / " else ", ".join(otorgado)
                             ),
                             "contrato": contrato_clean,
-                            "placa": row[9].upper() if row[9] else "",
+                            "placa": placa.upper(),
                             "folio": row[5],
                         }
                     )
 
+                print(f"DEBUG: Data processing completed in {time.time() - processing_start:.2f}s")
+                print(f"DEBUG: Total data fetching completed in {time.time() - start_time:.2f}s")
                 return transferencias
 
         except Exception as e:
@@ -296,10 +362,14 @@ class TransferenciasVehicularesReportService:
             from openpyxl.utils import get_column_letter
             import io
 
+            import time
+
+            report_start = time.time()
             print(f"DEBUG: TransferenciasVehiculares Excel - desde: {desde}, hasta: {hasta}")
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
+            print(f"DEBUG: Data fetched in {time.time() - report_start:.2f}s, generating Excel...")
 
             notary_info = self._get_notary_info()
 
@@ -504,10 +574,14 @@ class TransferenciasVehicularesReportService:
             from docx.oxml.shared import OxmlElement, qn
             import io
 
+            import time
+
+            report_start = time.time()
             print(f"DEBUG: TransferenciasVehiculares Word - desde: {desde}, hasta: {hasta}")
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
+            print(f"DEBUG: Data fetched in {time.time() - report_start:.2f}s, generating Word...")
 
             notary_info = self._get_notary_info()
 
