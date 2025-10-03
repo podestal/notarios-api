@@ -361,18 +361,20 @@ class KardexViewSet(ModelViewSet):
 
         return Response(serializer.data, status=201)
 
-    @action(detail=False, methods=["get"], url_path="reporte-cronologico")
-    def reporte_cronologico(self, request):
+    @action(detail=False, methods=["get"], url_path="escrituras-cronologico")
+    def escrituras_cronologico(self, request):
         """
         Reporte Cronológico - generates a report of the kardex records.
         parameters:
-        - initialDate
-        - finalDate
-        - idtipkar
+        - initialDate: YYYY-MM-DD
+        - finalDate: YYYY-MM-DD
         """
         print(f"DEBUG: Reporte Cronológico - generating report")
+        initialDate = request.query_params.get("initialDate")
+        finalDate = request.query_params.get("finalDate")
         service = EscriturasPublicasReportService()
-        response = service.generate_word_report(desde="2025-01-01", hasta="2025-10-03")
+        # response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        response = service.generate_word_report(desde='2025-01-01', hasta='2025-10-03')
         return response
 
     @action(detail=False, methods=["get"], url_path="uif-errors")

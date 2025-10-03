@@ -446,7 +446,6 @@ class EscriturasPublicasReportService:
     def _get_report_data(self, desde, hasta):
         """Fetch data for the report matching PHP query"""
         try:
-            print(f"DEBUG: Starting _get_report_data with dates desde={desde}, hasta={hasta}")
             from django.db import connection
             from datetime import datetime
 
@@ -467,7 +466,9 @@ class EscriturasPublicasReportService:
             else:
                 hasta_dt = hasta
 
-            print(f"DEBUG: Converted dates - desde_dt={desde_dt}, hasta_dt={hasta_dt}")
+            # First set group_concat_max_len to handle large strings
+            with connection.cursor() as cursor:
+                cursor.execute("SET SESSION group_concat_max_len = 1000000")
 
             query = """
                 SELECT 
@@ -491,44 +492,55 @@ class EscriturasPublicasReportService:
                 ORDER BY numescritura2 ASC, fechaescritura ASC
             """
 
-            print(f"DEBUG: Executing main query...")
             with connection.cursor() as cursor:
                 cursor.execute(
                     query, [desde_dt.strftime("%Y-%m-%d"), hasta_dt.strftime("%Y-%m-%d")]
                 )
                 escrituras = []
                 rows = cursor.fetchall()
-                print(f"DEBUG: Found {len(rows)} escrituras")
+
+                # Get all kardex numbers
+                kardex_list = [row[1] for row in rows]
+
+                # Get all contractors in one query
+                contractors_query = """
+                    SELECT 
+                        cxa.kardex,
+                        c2.tipper,
+                        UPPER(CONCAT(c2.apepat,' ',c2.apemat,' ',c2.prinom,' ',c2.segnom)) AS nombre,
+                        cxa.idcontratante,
+                        UPPER(c2.razonsocial) AS empresa,
+                        cxa.parte,
+                        cxa.uif,
+                        (SELECT cxar.parte 
+                            FROM contratantesxacto AS cxar
+                            WHERE con.idcontratanterp = cxar.idcontratante 
+                            AND cxar.kardex = cxa.kardex limit 1) as parte_representada
+                    FROM contratantesxacto AS cxa
+                    INNER JOIN contratantes AS con ON con.idcontratante=cxa.idcontratante
+                    INNER JOIN cliente2 AS c2 ON c2.idcontratante=con.idcontratante
+                    WHERE cxa.kardex IN %s
+                    ORDER BY cxa.kardex, c2.tipper ASC
+                """
+                cursor.execute(contractors_query, [tuple(kardex_list)])
+                all_contractors = cursor.fetchall()
+
+                # Group contractors by kardex
+                contractors_by_kardex = {}
+                for contractor in all_contractors:
+                    kardex = contractor[0]
+                    if kardex not in contractors_by_kardex:
+                        contractors_by_kardex[kardex] = []
+                    contractors_by_kardex[kardex].append(contractor[1:])  # Skip kardex from tuple
+
+                # Process each kardex
                 for row in rows:
                     kardex = row[1]
-                    # Get contractors data
-                    contractors_query = """
-                        SELECT 
-                            c2.tipper,
-                            UPPER(CONCAT(c2.apepat,' ',c2.apemat,' ',c2.prinom,' ',c2.segnom)) AS nombre,
-                            cxa.idcontratante,
-                            UPPER(c2.razonsocial) AS empresa,
-                            cxa.parte,
-                            cxa.uif,
-                            (SELECT cxar.parte 
-                                FROM contratantesxacto AS cxar
-                                WHERE con.idcontratanterp = cxar.idcontratante 
-                                AND cxar.kardex = %s limit 1) as parte_representada
-                        FROM contratantesxacto AS cxa
-                        INNER JOIN contratantes AS con ON con.idcontratante=cxa.idcontratante
-                        INNER JOIN cliente2 AS c2 ON c2.idcontratante=con.idcontratante
-                        WHERE cxa.kardex = %s 
-                        ORDER BY c2.tipper ASC
-                    """
-                    print(f"DEBUG: Getting contractors for kardex {kardex}")
-                    cursor.execute(contractors_query, [kardex, kardex])
-                    contractors = cursor.fetchall()
-                    print(f"DEBUG: Found {len(contractors)} contractors for kardex {kardex}")
-
-                    # Process contractors
                     otorgante = []
                     otorgado = []
-                    for contractor in contractors:
+
+                    # Process contractors if any exist for this kardex
+                    for contractor in contractors_by_kardex.get(kardex, []):
                         tipper, nombre, idcontratante, empresa, parte, uif, parte_representada = (
                             contractor
                         )
@@ -543,9 +555,6 @@ class EscriturasPublicasReportService:
                             if not (uif == "B" and parte_representada == 1):
                                 otorgado.append(empresa if tipper != "N" else nombre)
 
-                    print(
-                        f"DEBUG: Processing contractors - otorgantes: {len(otorgante)}, otorgados: {len(otorgado)}"
-                    )
                     escrituras.append(
                         {
                             "numero_escritura": row[3],
@@ -565,7 +574,6 @@ class EscriturasPublicasReportService:
                 return escrituras
 
         except Exception as e:
-            print(f"ERROR in _get_report_data: {e}")
             import traceback
 
             traceback.print_exc()
@@ -574,23 +582,17 @@ class EscriturasPublicasReportService:
     def generate_excel_report(self, desde, hasta):
         """Generate Excel report matching PHP script format"""
         try:
-            print(f"DEBUG: Starting Excel report generation for dates desde={desde}, hasta={hasta}")
             from openpyxl import Workbook
             from openpyxl.styles import Font, Alignment, Border, Side
             from openpyxl.utils import get_column_letter
             import io
 
             # Get data
-            print("DEBUG: Fetching report data...")
             report_data = self._get_report_data(desde, hasta)
-            print(f"DEBUG: Got {len(report_data)} records")
 
-            print("DEBUG: Getting notary info...")
             notary_info = self._get_notary_info()
-            print(f"DEBUG: Got notary info: {notary_info['nombre']}")
 
             anio = self._extract_year_from_date(hasta)
-            print(f"DEBUG: Using year: {anio}")
 
             # Create workbook and worksheet
             wb = Workbook()
@@ -715,9 +717,7 @@ class EscriturasPublicasReportService:
                 cell.border = thin_border
 
             # Data rows
-            print("DEBUG: Starting to write data rows...")
             for i, data_row in enumerate(report_data, 1):
-                print(f"DEBUG: Processing row {i} of {len(report_data)}")
                 row += 1
 
                 # Row data
@@ -755,18 +755,18 @@ class EscriturasPublicasReportService:
                 adjusted_width = min(max_length + 2, 50)
                 ws.column_dimensions[column_letter].width = adjusted_width
 
-            # Save to buffer
-            print("DEBUG: Saving Excel workbook to buffer...")
-            buffer = io.BytesIO()
-            wb.save(buffer)
-            buffer.seek(0)
-            print("DEBUG: Excel file saved successfully")
-
             # Create response
-            from django.http import HttpResponse
+            from django.http import StreamingHttpResponse
 
-            response = HttpResponse(
-                buffer.getvalue(),
+            def file_iterator():
+                buffer = io.BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
+                yield buffer.getvalue()
+                buffer.close()
+
+            response = StreamingHttpResponse(
+                file_iterator(),
                 content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
             response["Content-Disposition"] = (
@@ -787,7 +787,6 @@ class EscriturasPublicasReportService:
     def generate_word_report(self, desde, hasta):
         """Generate Word report matching PHP script format"""
         try:
-            print(f"DEBUG: Starting Word report generation for dates desde={desde}, hasta={hasta}")
             from docx import Document
             from docx.shared import Inches
             from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -795,16 +794,11 @@ class EscriturasPublicasReportService:
             import io
 
             # Get data
-            print("DEBUG: Fetching report data for Word report...")
             report_data = self._get_report_data(desde, hasta)
-            print(f"DEBUG: Got {len(report_data)} records")
 
-            print("DEBUG: Getting notary info...")
             notary_info = self._get_notary_info()
-            print(f"DEBUG: Got notary info: {notary_info['nombre']}")
 
             anio = self._extract_year_from_date(hasta)
-            print(f"DEBUG: Using year: {anio}")
 
             # Create document
             doc = Document()
@@ -897,9 +891,7 @@ class EscriturasPublicasReportService:
                     header_row.cells[i].paragraphs[0].runs[0].bold = True
 
             # Data rows
-            print("DEBUG: Starting to write Word data rows...")
             for i, data_row in enumerate(report_data, 1):
-                print(f"DEBUG: Processing Word row {i} of {len(report_data)}")
                 row = data_table.add_row()
                 row.cells[0].text = str(data_row["numero_escritura"])
                 row.cells[1].text = data_row["fecha"]
@@ -909,18 +901,18 @@ class EscriturasPublicasReportService:
                 row.cells[5].text = data_row["monto"]
                 row.cells[6].text = str(data_row["folio"])
 
-            # Save to buffer
-            print("DEBUG: Saving Word document to buffer...")
-            buffer = io.BytesIO()
-            doc.save(buffer)
-            buffer.seek(0)
-            print("DEBUG: Word file saved successfully")
-
             # Create response
-            from django.http import HttpResponse
+            from django.http import StreamingHttpResponse
 
-            response = HttpResponse(
-                buffer.getvalue(),
+            def file_iterator():
+                buffer = io.BytesIO()
+                doc.save(buffer)
+                buffer.seek(0)
+                yield buffer.getvalue()
+                buffer.close()
+
+            response = StreamingHttpResponse(
+                file_iterator(),
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
             response["Content-Disposition"] = (
