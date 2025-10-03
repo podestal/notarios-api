@@ -420,25 +420,25 @@ class DocumentFormatter:
         """
         Fill empty placeholders for unused contractor slots
         """
-        # Fill empty transferor slots (P_ prefix)
+        # Fill empty transferor slots (P_ prefix) - use empty strings, not [E.PLACEHOLDER]
         for idx in range(num_transferors + 1, 11):
-            contractor_data[f"P_NOM_{idx}"] = f"[E.P_NOM_{idx}]"
-            contractor_data[f"P_NACIONALIDAD_{idx}"] = f"[E.P_NACIONALIDAD_{idx}]"
-            contractor_data[f"P_DOC_{idx}"] = f"[E.P_DOC_{idx}]"
-            contractor_data[f"P_IDE_{idx}"] = f"[E.P_IDE_{idx}]"
-            contractor_data[f"P_OCUPACION_{idx}"] = f"[E.P_OCUPACION_{idx}]"
-            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = f"[E.P_ESTADO_CIVIL_{idx}]"
-            contractor_data[f"P_DOMICILIO_{idx}"] = f"[E.P_DOMICILIO_{idx}]"
+            contractor_data[f"P_NOM_{idx}"] = ""  # Empty string instead of [E.P_NOM_X]
+            contractor_data[f"P_NACIONALIDAD_{idx}"] = ""
+            contractor_data[f"P_DOC_{idx}"] = ""
+            contractor_data[f"P_IDE_{idx}"] = ""
+            contractor_data[f"P_OCUPACION_{idx}"] = ""
+            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = ""
+            contractor_data[f"P_DOMICILIO_{idx}"] = ""
 
-        # Fill empty acquirer slots (C_ prefix)
+        # Fill empty acquirer slots (C_ prefix) - use empty strings, not [E.PLACEHOLDER]
         for idx in range(num_acquirers + 1, 11):
-            contractor_data[f"C_NOM_{idx}"] = f"[E.C_NOM_{idx}]"
-            contractor_data[f"C_NACIONALIDAD_{idx}"] = f"[E.C_NACIONALIDAD_{idx}]"
-            contractor_data[f"C_DOC_{idx}"] = f"[E.C_DOC_{idx}]"
-            contractor_data[f"C_IDE_{idx}"] = f"[E.C_IDE_{idx}]"
-            contractor_data[f"C_OCUPACION_{idx}"] = f"[E.C_OCUPACION_{idx}]"
-            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = f"[E.C_ESTADO_CIVIL_{idx}]"
-            contractor_data[f"C_DOMICILIO_{idx}"] = f"[E.C_DOMICILIO_{idx}]"
+            contractor_data[f"C_NOM_{idx}"] = ""  # Empty string instead of [E.C_NOM_X]
+            contractor_data[f"C_NACIONALIDAD_{idx}"] = ""
+            contractor_data[f"C_DOC_{idx}"] = ""
+            contractor_data[f"C_IDE_{idx}"] = ""
+            contractor_data[f"C_OCUPACION_{idx}"] = ""
+            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = ""
+            contractor_data[f"C_DOMICILIO_{idx}"] = ""
 
     def _get_articles_and_grammar(self, contractors, role_prefix):
         """
@@ -711,16 +711,197 @@ class PlaceholderProcessor:
         """
         Remove or hide unfilled placeholders
         Mirrors: PHP placeholder cleanup
-
-        SOLUTION:
-        - Find remaining {{PLACEHOLDERS}}
-        - Hide escrituracion placeholders (white color)
-        - Remove other placeholders completely
         """
-        # TODO: Implement placeholder cleanup
-        # TODO: Hide escrituracion placeholders
-        # TODO: Remove other placeholders
-        pass
+        print(f"DEBUG: Cleaning unfilled placeholders")
+
+        # Define placeholder categories
+        escrituracion_placeholders = {
+            "{{FI}}",
+            "{{FF}}",
+            "{{S_IN}}",
+            "{{S_FN}}",
+            "{{NRO_ESC}}",
+            "{{F}}",
+            "{{F_IMPRESION}}",
+        }
+
+        contractor_placeholders = {
+            "{{P_NOM}}",
+            "{{P_NOM_2}}",
+            "{{P_NOM_3}}",
+            "{{P_NOM_4}}",
+            "{{P_NOM_5}}",
+            "{{C_NOM}}",
+            "{{C_NOM_2}}",
+            "{{C_NOM_3}}",
+            "{{C_NOM_4}}",
+            "{{C_NOM_5}}",
+            "{{P_DOC}}",
+            "{{P_DOC_2}}",
+            "{{P_DOC_3}}",
+            "{{P_DOC_4}}",
+            "{{P_DOC_5}}",
+            "{{C_DOC}}",
+            "{{C_DOC_2}}",
+            "{{C_DOC_3}}",
+            "{{C_DOC_4}}",
+            "{{C_DOC_5}}",
+            "{{P_NACIONALIDAD}}",
+            "{{P_NACIONALIDAD_2}}",
+            "{{P_NACIONALIDAD_3}}",
+            "{{P_NACIONALIDAD_4}}",
+            "{{P_NACIONALIDAD_5}}",
+            "{{C_NACIONALIDAD}}",
+            "{{C_NACIONALIDAD_2}}",
+            "{{C_NACIONALIDAD_3}}",
+            "{{C_NACIONALIDAD_4}}",
+            "{{C_NACIONALIDAD_5}}",
+            "{{P_OCUPACION}}",
+            "{{P_OCUPACION_2}}",
+            "{{P_OCUPACION_3}}",
+            "{{P_OCUPACION_4}}",
+            "{{P_OCUPACION_5}}",
+            "{{C_OCUPACION}}",
+            "{{C_OCUPACION_2}}",
+            "{{C_OCUPACION_3}}",
+            "{{C_OCUPACION_4}}",
+            "{{C_OCUPACION_5}}",
+            "{{P_ESTADO_CIVIL}}",
+            "{{P_ESTADO_CIVIL_2}}",
+            "{{P_ESTADO_CIVIL_3}}",
+            "{{P_ESTADO_CIVIL_4}}",
+            "{{P_ESTADO_CIVIL_5}}",
+            "{{C_ESTADO_CIVIL}}",
+            "{{C_ESTADO_CIVIL_2}}",
+            "{{C_ESTADO_CIVIL_3}}",
+            "{{C_ESTADO_CIVIL_4}}",
+            "{{C_ESTADO_CIVIL_5}}",
+            "{{P_DOMICILIO}}",
+            "{{P_DOMICILIO_2}}",
+            "{{P_DOMICILIO_3}}",
+            "{{P_DOMICILIO_4}}",
+            "{{P_DOMICILIO_5}}",
+            "{{C_DOMICILIO}}",
+            "{{C_DOMICILIO_2}}",
+            "{{C_DOMICILIO_3}}",
+            "{{C_DOMICILIO_4}}",
+            "{{C_DOMICILIO_5}}",
+            "{{P_IDE}}",
+            "{{P_IDE_2}}",
+            "{{P_IDE_3}}",
+            "{{P_IDE_4}}",
+            "{{P_IDE_5}}",
+            "{{C_IDE}}",
+            "{{C_IDE_2}}",
+            "{{C_IDE_3}}",
+            "{{C_IDE_4}}",
+            "{{C_IDE_5}}",
+        }
+
+        # Clean paragraphs
+        for paragraph in doc.paragraphs:
+            self._clean_paragraph_placeholders(
+                paragraph, escrituracion_placeholders, contractor_placeholders
+            )
+
+        # Clean tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        self._clean_paragraph_placeholders(
+                            paragraph, escrituracion_placeholders, contractor_placeholders
+                        )
+
+        print(f"DEBUG: Placeholder cleanup completed")
+
+    def _clean_paragraph_placeholders(
+        self, paragraph, escrituracion_placeholders, contractor_placeholders
+    ):
+        """
+        Clean placeholders in a single paragraph - SIMPLIFIED VERSION
+        """
+        full_text = paragraph.text
+
+        # Quick check - if no placeholders, skip
+        if "{{" not in full_text and "[" not in full_text:
+            return
+
+        print(f"DEBUG: Processing paragraph: {full_text[:100]}...")
+
+        # Get original formatting
+        first_run_font = None
+        if paragraph.runs:
+            first_run_font = paragraph.runs[0].font
+
+        # Clear all runs
+        for run in paragraph.runs:
+            run.text = ""
+
+        # Simple string replacement approach
+        new_text = full_text
+
+        # Remove both {{PLACEHOLDER}} and [E.PLACEHOLDER] formats
+        import re
+
+        # Remove {{PLACEHOLDER}} format
+        new_text = re.sub(r"\{\{[^}]+\}\}", "", new_text)
+
+        # Remove [E.PLACEHOLDER] format
+        new_text = re.sub(r"\[E\.[^\]]+\]", "", new_text)
+
+        print(f"DEBUG: After placeholder removal: {new_text[:100]}...")
+
+        # Clean up extra spaces and punctuation
+        new_text = self._clean_text_formatting(new_text)
+        print(f"DEBUG: After text cleanup: {new_text[:100]}...")
+
+        # Create new run with cleaned text
+        if new_text.strip():
+            new_run = paragraph.add_run(new_text)
+
+            # Preserve original formatting
+            if first_run_font:
+                try:
+                    new_run.font.bold = first_run_font.bold
+                    new_run.font.italic = first_run_font.italic
+                    new_run.font.color.rgb = first_run_font.color.rgb
+                    new_run.font.size = first_run_font.size
+                    new_run.font.name = first_run_font.name
+                except:
+                    pass
+        else:
+            print(f"DEBUG: No text left after cleanup, skipping paragraph")
+
+    def _clean_text_formatting(self, text):
+        """
+        Clean up text formatting after placeholder removal
+        """
+        import re
+
+        # Remove extra spaces
+        text = re.sub(r"\s+", " ", text)
+
+        # Remove extra commas and semicolons
+        text = re.sub(r",\s*,", ",", text)
+        text = re.sub(r";\s*;", ";", text)
+
+        # Remove trailing commas and semicolons
+        text = re.sub(r",\s*$", "", text)
+        text = re.sub(r";\s*$", "", text)
+
+        # Remove extra spaces around punctuation
+        text = re.sub(r"\s+([,;.])", r"\1", text)
+
+        # Remove empty contractor slots (multiple commas in a row)
+        text = re.sub(r",\s*,", ",", text)  # Remove double commas
+        text = re.sub(r",\s*,", ",", text)  # Remove triple commas
+
+        # Remove leading/trailing commas
+        text = re.sub(r"^,\s*", "", text)
+        text = re.sub(r",\s*$", "", text)
+
+        return text.strip()
 
 
 # In utils.py - Add this class

@@ -111,6 +111,7 @@ class EscrituraDocumentService:
         doc = Document(buffer)
 
         self.placeholder_processor.replace_placeholders(doc, final_data)
+        self.placeholder_processor.clean_unfilled_placeholders(doc)
 
         buffer = io.BytesIO()
         doc.save(buffer)
