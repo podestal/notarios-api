@@ -2,8 +2,8 @@ from django.db import connection
 import io
 
 
-class TransferenciasVehicularesReportService:
-    """Service for generating transferencias vehiculares reports matching PHP script format"""
+class NoContenciososReportService:
+    """Service for generating no contenciosos reports matching PHP script format"""
 
     def _sanitize_cell_value(self, value):
         """Sanitize cell values to prevent Excel corruption"""
@@ -135,7 +135,7 @@ class TransferenciasVehicularesReportService:
 
             start_time = time.time()
             print(
-                f"DEBUG: TransferenciasVehiculares - desde: {desde} (type: {type(desde)}), hasta: {hasta} (type: {type(hasta)})"
+                f"DEBUG: NoContenciosos - desde: {desde} (type: {type(desde)}), hasta: {hasta} (type: {type(hasta)})"
             )
 
             # Convert dates to proper format for Django ORM
@@ -200,21 +200,21 @@ class TransferenciasVehicularesReportService:
                     k.folioini,
                     k.numescritura as numescritura2,
                     '' as precio,
-                    '' as moneda,
-                    '' as placa
+                    '' as moneda
                 FROM kardex as k 
-                WHERE k.idtipkar='3' 
+                WHERE k.idtipkar='2' 
                     AND k.nc=0 
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.numescritura ASC
+                LIMIT 2000
             """
 
             with connection.cursor() as cursor:
                 cursor.execute(
                     query, [desde_dt.strftime("%Y-%m-%d"), hasta_dt.strftime("%Y-%m-%d")]
                 )
-                transferencias = []
+                no_contenciosos = []
                 rows = cursor.fetchall()
                 print(
                     f"DEBUG: Main query completed in {time.time() - start_time:.2f}s, found {len(rows)} records"
@@ -224,17 +224,15 @@ class TransferenciasVehicularesReportService:
                 if rows:
                     kardex_list = [row[1] for row in rows]
 
-                    # Get additional data (precio, moneda, placa) in a separate optimized query
+                    # Get additional data (precio, moneda) in a separate optimized query
                     additional_data_query = """
                         SELECT 
                             k.kardex,
                             COALESCE(p.importetrans, '') as precio,
-                            COALESCE(m.simbolo, '') as moneda,
-                            COALESCE(dv.numplaca, '') as placa
+                            COALESCE(m.simbolo, '') as moneda
                         FROM kardex as k 
-                        LEFT JOIN patrimonial as p ON p.kardex=k.kardex AND p.idtipoacto = k.codactos
+                        LEFT JOIN patrimonial as p ON p.kardex=k.kardex
                         LEFT JOIN monedas as m ON m.idmon=p.idmon
-                        LEFT JOIN detallevehicular as dv ON dv.kardex=k.kardex AND dv.idtipacto = k.codactos
                         WHERE k.kardex IN %s
                     """
 
@@ -246,9 +244,7 @@ class TransferenciasVehicularesReportService:
                     )
 
                     # Create a lookup dictionary for additional data
-                    additional_lookup = {
-                        row[0]: (row[1], row[2], row[3]) for row in additional_data
-                    }
+                    additional_lookup = {row[0]: (row[1], row[2]) for row in additional_data}
                 else:
                     kardex_list = []
                     additional_lookup = {}
@@ -263,8 +259,10 @@ class TransferenciasVehicularesReportService:
                         UPPER(COALESCE(c2.razonsocial,'')) AS empresa,
                         cxa.parte,
                         cxa.uif,
-                        COALESCE(cxar.parte, 0) as parte_representada
+                        COALESCE(cxar.parte, 0) as parte_representada,
+                        COALESCE(ac.condicion, '') as condicion
                     FROM contratantesxacto AS cxa
+                    LEFT JOIN actocondicion as ac ON cxa.idcondicion=ac.idcondicion
                     INNER JOIN contratantes AS con ON con.idcontratante=cxa.idcontratante
                     INNER JOIN cliente2 AS c2 ON c2.idcontratante=con.idcontratante
                     LEFT JOIN contratantesxacto AS cxar ON con.idcontratanterp = cxar.idcontratante AND cxar.kardex = cxa.kardex
@@ -288,31 +286,45 @@ class TransferenciasVehicularesReportService:
 
                 # Process each kardex with optimized processing
                 processing_start = time.time()
-                transferencias = []
+                no_contenciosos = []
                 for row in rows:
                     kardex = row[1]
-                    otorgante = []
-                    otorgado = []
+                    solicitante = []
+                    causante_titular = []
 
                     # Process contractors if any exist for this kardex
                     for contractor in contractors_by_kardex.get(kardex, []):
-                        tipper, nombre, idcontratante, empresa, parte, uif, parte_representada = (
-                            contractor
-                        )
+                        (
+                            tipper,
+                            nombre,
+                            idcontratante,
+                            empresa,
+                            parte,
+                            uif,
+                            parte_representada,
+                            condicion,
+                        ) = contractor
 
-                        # Process otorgante (vendedor) - parte=1 or parte_representada=1 or uif='O'
-                        if parte == 1 or parte_representada == 1 or uif == "O":
-                            otorgante.append(empresa if tipper != "N" else nombre)
+                        # Process solicitante - parte_representada=1 OR condicion in ['SOLICITANTE/BENEFICIARIO', 'SOLICITANTE', 'OTORGANTE', 'ADOPTANTE']
+                        if parte_representada == 1 or condicion in [
+                            "SOLICITANTE/BENEFICIARIO",
+                            "SOLICITANTE",
+                            "OTORGANTE",
+                            "ADOPTANTE",
+                        ]:
+                            solicitante.append(empresa if tipper != "N" else nombre)
 
-                        # Process otorgado (comprador) - parte=2 or parte_representada=2 or uif='B'
-                        if parte == 2 or parte_representada == 2 or uif == "B":
-                            otorgado.append(empresa if tipper != "N" else nombre)
+                        # Process causante/titular - parte_representada=2 OR uif='N' OR condicion in ['CAUSANTE', 'INTERVINIENTE', 'ADOPTADO']
+                        if (
+                            parte_representada == 2
+                            or uif == "N"
+                            or condicion in ["CAUSANTE", "INTERVINIENTE", "ADOPTADO"]
+                        ):
+                            causante_titular.append(empresa if tipper != "N" else nombre)
 
                     # Clean contract name like in PHP - optimized string operations
                     contrato_raw = row[2] or ""
-                    contrato_clean = (
-                        contrato_raw.replace("/", "").replace("DE VEHICULO AUTOMOTOR", "").upper()
-                    )
+                    contrato_clean = contrato_raw.replace("/", "").upper()
 
                     # Optimized date formatting
                     fecha_str = row[0]
@@ -323,29 +335,31 @@ class TransferenciasVehicularesReportService:
                     )
 
                     # Get additional data from lookup
-                    precio, moneda, placa = additional_lookup.get(kardex, ("", "", ""))
+                    precio, moneda = additional_lookup.get(kardex, ("", ""))
 
-                    transferencias.append(
+                    no_contenciosos.append(
                         {
                             "numero_escritura": row[3],
                             "fecha": fecha_formatted,
-                            "otorgante": (
+                            "solicitante": (
                                 "NO CORRE"
                                 if contrato_raw == "NO CORRE / "
-                                else ", ".join(otorgante)
+                                else ", ".join(solicitante)
                             ),
-                            "otorgado": (
-                                "NO CORRE" if contrato_raw == "NO CORRE / " else ", ".join(otorgado)
+                            "causante_titular": (
+                                "NO CORRE"
+                                if contrato_raw == "NO CORRE / "
+                                else ", ".join(causante_titular)
                             ),
                             "contrato": contrato_clean,
-                            "placa": placa.upper(),
+                            "monto": f"{moneda} {precio}" if precio else "",
                             "folio": row[5],
                         }
                     )
 
                 print(f"DEBUG: Data processing completed in {time.time() - processing_start:.2f}s")
                 print(f"DEBUG: Total data fetching completed in {time.time() - start_time:.2f}s")
-                return transferencias
+                return no_contenciosos
 
         except Exception as e:
             import traceback
@@ -364,7 +378,7 @@ class TransferenciasVehicularesReportService:
             import time
 
             report_start = time.time()
-            print(f"DEBUG: TransferenciasVehiculares Excel - desde: {desde}, hasta: {hasta}")
+            print(f"DEBUG: NoContenciosos Excel - desde: {desde}, hasta: {hasta}")
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
@@ -377,7 +391,7 @@ class TransferenciasVehicularesReportService:
             # Create workbook and worksheet
             wb = Workbook()
             ws = wb.active
-            ws.title = "TRANSFERENCIAS VEHICULARES"
+            ws.title = "NO CONTENCIOSOS"
 
             # Styles
             title_font = Font(name="Arial", size=18.5, bold=True)
@@ -402,13 +416,13 @@ class TransferenciasVehicularesReportService:
             )
 
             # Title section
-            ws.merge_cells("A1:G1")
-            ws["A1"] = "INDICE CRONOLOGICO - REGISTRO DE TRANSFERENCIAS DE BIENES MUEBLES"
+            ws.merge_cells("A1:F1")
+            ws["A1"] = "INDICE CRONOLOGICO - REGISTRO DE PROCESOS NO CONTENCIOSOS"
             ws["A1"].font = title_font
             ws["A1"].alignment = center_alignment
             ws["A1"].border = no_border
 
-            ws.merge_cells("A2:G2")
+            ws.merge_cells("A2:F2")
             ws["A2"] = f"AÑO {anio}"
             ws["A2"].font = title_font
             ws["A2"].alignment = center_alignment
@@ -419,75 +433,74 @@ class TransferenciasVehicularesReportService:
             ws[f"A{row}"] = "NOTARIA"
             ws[f"A{row}"].font = header_font
             ws[f"A{row}"].border = no_border
-            ws[f"C{row}"] = f': {self._sanitize_cell_value(notary_info["nombre"])}'
-            ws[f"C{row}"].font = data_font
-            ws[f"C{row}"].border = no_border
+            ws[f"B{row}"] = f': {self._sanitize_cell_value(notary_info["nombre"])}'
+            ws[f"B{row}"].font = data_font
+            ws[f"B{row}"].border = no_border
 
             row += 1
             ws[f"A{row}"] = "DIRECCION"
             ws[f"A{row}"].font = header_font
             ws[f"A{row}"].border = no_border
-            ws[f"C{row}"] = f': {notary_info["direccion"]}'
-            ws[f"C{row}"].font = data_font
+            ws[f"B{row}"] = f': {notary_info["direccion"]}'
+            ws[f"B{row}"].font = data_font
+            ws[f"B{row}"].border = no_border
+            ws[f"C{row}"] = "TELEFONO"
+            ws[f"C{row}"].font = header_font
             ws[f"C{row}"].border = no_border
-            ws[f"F{row}"] = "TELEFONO"
-            ws[f"F{row}"].font = header_font
-            ws[f"F{row}"].border = no_border
-            ws[f"H{row}"] = f': {notary_info["telefono"]}'
-            ws[f"H{row}"].font = data_font
-            ws[f"H{row}"].border = no_border
+            ws[f"D{row}"] = f': {notary_info["telefono"]}'
+            ws[f"D{row}"].font = data_font
+            ws[f"D{row}"].border = no_border
 
             row += 1
             ws[f"A{row}"] = "DEPARTAMENTO"
             ws[f"A{row}"].font = header_font
             ws[f"A{row}"].border = no_border
-            ws[f"C{row}"] = ": PUNO"
-            ws[f"C{row}"].font = data_font
+            ws[f"B{row}"] = ": PUNO"
+            ws[f"B{row}"].font = data_font
+            ws[f"B{row}"].border = no_border
+            ws[f"C{row}"] = "RUC"
+            ws[f"C{row}"].font = header_font
             ws[f"C{row}"].border = no_border
-            ws[f"F{row}"] = "RUC"
-            ws[f"F{row}"].font = header_font
-            ws[f"F{row}"].border = no_border
-            ws[f"H{row}"] = f': {notary_info["ruc"]}'
-            ws[f"H{row}"].font = data_font
-            ws[f"H{row}"].border = no_border
+            ws[f"D{row}"] = f': {notary_info["ruc"]}'
+            ws[f"D{row}"].font = data_font
+            ws[f"D{row}"].border = no_border
 
             row += 1
             ws[f"A{row}"] = "PROVINCIA"
             ws[f"A{row}"].font = header_font
             ws[f"A{row}"].border = no_border
-            ws[f"C{row}"] = ": SAN ROMAN"
-            ws[f"C{row}"].font = data_font
+            ws[f"B{row}"] = ": SAN ROMAN"
+            ws[f"B{row}"].font = data_font
+            ws[f"B{row}"].border = no_border
+            ws[f"C{row}"] = "DESDE"
+            ws[f"C{row}"].font = header_font
             ws[f"C{row}"].border = no_border
-            ws[f"F{row}"] = "DESDE"
-            ws[f"F{row}"].font = header_font
-            ws[f"F{row}"].border = no_border
-            ws[f"H{row}"] = f": {self._format_date_in_spanish(desde).upper()}"
-            ws[f"H{row}"].font = data_font
-            ws[f"H{row}"].border = no_border
+            ws[f"D{row}"] = f": {self._format_date_in_spanish(desde).upper()}"
+            ws[f"D{row}"].font = data_font
+            ws[f"D{row}"].border = no_border
 
             row += 1
             ws[f"A{row}"] = "DISTRITO"
             ws[f"A{row}"].font = header_font
             ws[f"A{row}"].border = no_border
-            ws[f"C{row}"] = f': {notary_info["distrito"]}'
-            ws[f"C{row}"].font = data_font
+            ws[f"B{row}"] = f': {notary_info["distrito"]}'
+            ws[f"B{row}"].font = data_font
+            ws[f"B{row}"].border = no_border
+            ws[f"C{row}"] = "HASTA"
+            ws[f"C{row}"].font = header_font
             ws[f"C{row}"].border = no_border
-            ws[f"F{row}"] = "HASTA"
-            ws[f"F{row}"].font = header_font
-            ws[f"F{row}"].border = no_border
-            ws[f"H{row}"] = f": {self._format_date_in_spanish(hasta).upper()}"
-            ws[f"H{row}"].font = data_font
-            ws[f"H{row}"].border = no_border
+            ws[f"D{row}"] = f": {self._format_date_in_spanish(hasta).upper()}"
+            ws[f"D{row}"].font = data_font
+            ws[f"D{row}"].border = no_border
 
             # Data table headers
             row += 2
             headers = [
-                "ACTA",
-                "FECHA",
-                "VENDEDOR",
-                "COMPRADOR",
+                "ESCR.",
+                "FECH.ESCR.",
+                "SOLICITANTE",
+                "CAUSANTE/TITULAR",
                 "ACTO JURIDICO",
-                "PLACA",
                 "NUM.FOLIO",
             ]
             for col, header in enumerate(headers, 1):
@@ -504,10 +517,9 @@ class TransferenciasVehicularesReportService:
                 row_data = [
                     data_row["numero_escritura"],
                     data_row["fecha"],
-                    self._sanitize_cell_value(data_row["otorgante"]),
-                    self._sanitize_cell_value(data_row["otorgado"]),
+                    self._sanitize_cell_value(data_row["solicitante"]),
+                    self._sanitize_cell_value(data_row["causante_titular"]),
                     self._sanitize_cell_value(data_row["contrato"]),
-                    data_row["placa"],
                     data_row["folio"],
                 ]
 
@@ -517,7 +529,7 @@ class TransferenciasVehicularesReportService:
                     cell.border = thin_border
 
                     # Alignment based on column
-                    if col in [1, 2, 6, 7]:  # ACTA, FECHA, PLACA, FOLIO
+                    if col in [1, 2, 6]:  # ESCR., FECHA, FOLIO
                         cell.alignment = right_alignment
                     else:
                         cell.alignment = left_alignment
@@ -550,7 +562,7 @@ class TransferenciasVehicularesReportService:
                 content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
             response["Content-Disposition"] = (
-                f"attachment; filename=INDICE_CRONOLOGICO_VEHICULAR_{anio}.xlsx"
+                f"attachment; filename=INDICE_CRONOLOGICO_NO_CONTENCIOSOS_{anio}.xlsx"
             )
             response["Access-Control-Allow-Origin"] = "*"
 
@@ -576,7 +588,7 @@ class TransferenciasVehicularesReportService:
             import time
 
             report_start = time.time()
-            print(f"DEBUG: TransferenciasVehiculares Word - desde: {desde}, hasta: {hasta}")
+            print(f"DEBUG: NoContenciosos Word - desde: {desde}, hasta: {hasta}")
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
@@ -598,9 +610,7 @@ class TransferenciasVehicularesReportService:
                 section.right_margin = Inches(0.5)
 
             # Title
-            title = doc.add_heading(
-                "INDICE CRONOLOGICO - REGISTRO DE TRANSFERENCIAS DE BIENES MUEBLES", 0
-            )
+            title = doc.add_heading("INDICE CRONOLOGICO - REGISTRO DE PROCESOS NO CONTENCIOSOS", 0)
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             subtitle = doc.add_heading(f"AÑO {anio}", 0)
@@ -608,70 +618,70 @@ class TransferenciasVehicularesReportService:
 
             # Add spacing
             doc.add_paragraph()
+            doc.add_paragraph()
 
             # Notary info table
-            info_table = doc.add_table(rows=5, cols=9)
+            info_table = doc.add_table(rows=5, cols=4)
             info_table.style = "Table Grid"
 
             # Row 1: NOTARIA
             row1 = info_table.rows[0]
             row1.cells[0].text = "NOTARIA"
             row1.cells[0].paragraphs[0].runs[0].bold = True
-            row1.cells[2].text = f': {notary_info["nombre"]}'
+            row1.cells[1].text = f': {notary_info["nombre"]}'
 
             # Row 2: DIRECCION
             row2 = info_table.rows[1]
             row2.cells[0].text = "DIRECCION"
             row2.cells[0].paragraphs[0].runs[0].bold = True
-            row2.cells[2].text = f': {notary_info["direccion"]}'
-            row2.cells[4].text = "TELEFONO"
-            row2.cells[4].paragraphs[0].runs[0].bold = True
-            row2.cells[7].text = f': {notary_info["telefono"]}'
+            row2.cells[1].text = f': {notary_info["direccion"]}'
+            row2.cells[2].text = "TELEFONO"
+            row2.cells[2].paragraphs[0].runs[0].bold = True
+            row2.cells[3].text = f': {notary_info["telefono"]}'
 
             # Row 3: DEPARTAMENTO
             row3 = info_table.rows[2]
             row3.cells[0].text = "DEPARTAMENTO"
             row3.cells[0].paragraphs[0].runs[0].bold = True
-            row3.cells[2].text = ": PUNO"
-            row3.cells[4].text = "RUC"
-            row3.cells[4].paragraphs[0].runs[0].bold = True
-            row3.cells[7].text = f': {notary_info["ruc"]}'
+            row3.cells[1].text = ": PUNO"
+            row3.cells[2].text = "RUC"
+            row3.cells[2].paragraphs[0].runs[0].bold = True
+            row3.cells[3].text = f': {notary_info["ruc"]}'
 
             # Row 4: PROVINCIA
             row4 = info_table.rows[3]
             row4.cells[0].text = "PROVINCIA"
             row4.cells[0].paragraphs[0].runs[0].bold = True
-            row4.cells[2].text = ": SAN ROMAN"
-            row4.cells[4].text = "DESDE"
-            row4.cells[4].paragraphs[0].runs[0].bold = True
-            row4.cells[7].text = f": {self._format_date_in_spanish(desde).upper()}"
+            row4.cells[1].text = ": SAN ROMAN"
+            row4.cells[2].text = "DESDE"
+            row4.cells[2].paragraphs[0].runs[0].bold = True
+            row4.cells[3].text = f": {self._format_date_in_spanish(desde).upper()}"
 
             # Row 5: DISTRITO
             row5 = info_table.rows[4]
             row5.cells[0].text = "DISTRITO"
             row5.cells[0].paragraphs[0].runs[0].bold = True
-            row5.cells[2].text = f': {notary_info["distrito"]}'
-            row5.cells[4].text = "HASTA"
-            row5.cells[4].paragraphs[0].runs[0].bold = True
-            row5.cells[7].text = f": {self._format_date_in_spanish(hasta).upper()}"
+            row5.cells[1].text = f': {notary_info["distrito"]}'
+            row5.cells[2].text = "HASTA"
+            row5.cells[2].paragraphs[0].runs[0].bold = True
+            row5.cells[3].text = f": {self._format_date_in_spanish(hasta).upper()}"
 
             # Add spacing
             doc.add_paragraph()
 
             # Data table
             if report_data:
-                data_table = doc.add_table(rows=1, cols=7)
+                data_table = doc.add_table(rows=1, cols=6)
                 data_table.style = "Table Grid"
 
                 # Headers
                 header_row = data_table.rows[0]
                 headers = [
-                    "ACTA",
-                    "FECHA",
-                    "VENDEDOR",
-                    "COMPRADOR",
+                    "ESCR.",
+                    "FECH.ESCR.",
+                    "SOLICITANTE",
+                    "CAUSANTE/TITULAR",
                     "ACTO JURIDICO",
-                    "PLACA",
                     "NUM.FOLIO",
                 ]
                 for i, header in enumerate(headers):
@@ -683,11 +693,10 @@ class TransferenciasVehicularesReportService:
                 row = data_table.add_row()
                 row.cells[0].text = str(data_row["numero_escritura"])
                 row.cells[1].text = data_row["fecha"]
-                row.cells[2].text = self._sanitize_cell_value(data_row["otorgante"])
-                row.cells[3].text = self._sanitize_cell_value(data_row["otorgado"])
+                row.cells[2].text = self._sanitize_cell_value(data_row["solicitante"])
+                row.cells[3].text = self._sanitize_cell_value(data_row["causante_titular"])
                 row.cells[4].text = self._sanitize_cell_value(data_row["contrato"])
-                row.cells[5].text = data_row["placa"]
-                row.cells[6].text = str(data_row["folio"])
+                row.cells[5].text = str(data_row["folio"])
 
             # Create response
             from django.http import StreamingHttpResponse
@@ -704,7 +713,7 @@ class TransferenciasVehicularesReportService:
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
             response["Content-Disposition"] = (
-                f"attachment; filename=INDICE_CRONOLOGICO_VEHICULAR_{anio}.docx"
+                f"attachment; filename=INDICE_CRONOLOGICO_NO_CONTENCIOSOS_{anio}.docx"
             )
             response["Access-Control-Allow-Origin"] = "*"
 
