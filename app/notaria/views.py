@@ -14,6 +14,9 @@ from ducumentation.protocolares.NoContenciososService import (
 from ducumentation.protocolares.GarantiasService import (
     GarantiasReportService,
 )
+from ducumentation.protocolares.TestamentosService import (
+    TestamentosReportService,
+)
 from .services.pdt_libros_service import PdtLibrosService
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
@@ -427,7 +430,29 @@ class KardexViewSet(ModelViewSet):
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
         service = GarantiasReportService()
-        response = service.generate_word_report(desde="2025-01-01", hasta="2025-10-03")
+        response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        return response
+
+    @action(detail=False, methods=["get"], url_path="testamentos-cronologico")
+    def testamentos_cronologico(self, request):
+        """
+        Reporte Cronológico Testamentos - generates a report of the kardex records.
+        parameters:
+        - initialDate: YYYY-MM-DD
+        - finalDate: YYYY-MM-DD
+        """
+        print(f"DEBUG: View testamentos_cronologico called")
+        initialDate = request.query_params.get("initialDate")
+        finalDate = request.query_params.get("finalDate")
+        print(f"DEBUG: Request parameters - initialDate: {initialDate}, finalDate: {finalDate}")
+        print(f"DEBUG: Full query params: {request.query_params}")
+        
+        # Use the actual parameters instead of hardcoded dates
+        actualDesde = initialDate if initialDate else "2025-01-01"
+        actualHasta = finalDate if finalDate else "2025-10-03"
+        
+        service = TestamentosReportService()
+        response = service.generate_word_report(desde="2022-01-01", hasta="2022-12-31")
         return response
 
     @action(detail=False, methods=["get"], url_path="uif-errors")
