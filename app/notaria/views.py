@@ -11,6 +11,9 @@ from ducumentation.protocolares.TransferenciasVehicularesService import (
 from ducumentation.protocolares.NoContenciososService import (
     NoContenciososReportService,
 )
+from ducumentation.protocolares.GarantiasService import (
+    GarantiasReportService,
+)
 from .services.pdt_libros_service import PdtLibrosService
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
@@ -410,7 +413,21 @@ class KardexViewSet(ModelViewSet):
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
         service = NoContenciososReportService()
-        response = service.generate_word_report(desde='2025-01-01', hasta='2025-10-03')
+        response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        return response
+
+    @action(detail=False, methods=["get"], url_path="garantias-cronologico")
+    def garantias_cronologico(self, request):
+        """
+        Reporte Cronológico Garantias - generates a report of the kardex records.
+        parameters:
+        - initialDate: YYYY-MM-DD
+        - finalDate: YYYY-MM-DD
+        """
+        initialDate = request.query_params.get("initialDate")
+        finalDate = request.query_params.get("finalDate")
+        service = GarantiasReportService()
+        response = service.generate_word_report(desde="2025-01-01", hasta="2025-10-03")
         return response
 
     @action(detail=False, methods=["get"], url_path="uif-errors")
