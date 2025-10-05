@@ -78,6 +78,8 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             "responsable",
             "recepcion",
             "estado_sisgen",
+            "numminuta",
+            "nc",
         ]
 
 
@@ -85,10 +87,6 @@ class KardexSerializer(serializers.ModelSerializer):
     """
     Serializer for the Kardex model.
     """
-
-    # class Meta:
-    #     model = models.Kardex
-    #     fields = '__all__'
 
     usuario = serializers.SerializerMethodField()
     # contratantes = serializers.SerializerMethodField()
@@ -130,6 +128,7 @@ class KardexSerializer(serializers.ModelSerializer):
             "recepcion",
             "estado_sisgen",
             "fechaminuta",
+            "nc",
         ]
 
     def get_usuario(self, obj):
@@ -156,12 +155,8 @@ class KardexSerializer(serializers.ModelSerializer):
         # print('clientes',clientes)
         if cliente:
 
-            return (
-                # f"{cliente['nombre']}"
-                # ', '.join(f"{c['nombre'] if c['nombre'] else c['razonsocial']}" for c in clientes)
-                ", ".join(
-                    f"{c['razonsocial'] if c['razonsocial'] else c['nombre']}" for c in clientes
-                )
+            return ", ".join(
+                f"{c['razonsocial'] if c['razonsocial'] else c['nombre']}" for c in clientes
             )
 
         return ""

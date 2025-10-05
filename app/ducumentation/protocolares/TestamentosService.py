@@ -134,9 +134,6 @@ class TestamentosReportService:
             import time
 
             start_time = time.time()
-            print(
-                f"DEBUG: Testamentos - desde: {desde} (type: {type(desde)}), hasta: {hasta} (type: {type(hasta)})"
-            )
 
             # Convert dates to proper format for Django ORM
             desde_dt = None
@@ -146,38 +143,27 @@ class TestamentosReportService:
                 if isinstance(desde, str):
                     if "-" in desde and len(desde.split("-")[0]) == 4:
                         desde_dt = datetime.strptime(desde, "%Y-%m-%d")
-                        print(f"DEBUG: Parsed desde as YYYY-MM-DD: {desde_dt}")
                     else:
                         desde_dt = datetime.strptime(desde, "%d/%m/%Y")
-                        print(f"DEBUG: Parsed desde as DD/MM/YYYY: {desde_dt}")
                 else:
                     desde_dt = desde
-                    print(f"DEBUG: Using desde as datetime object: {desde_dt}")
             except (ValueError, TypeError) as e:
-                print(f"DEBUG: Error parsing desde date '{desde}': {e}")
                 return []
 
             try:
                 if isinstance(hasta, str):
                     if "-" in hasta and len(hasta.split("-")[0]) == 4:
                         hasta_dt = datetime.strptime(hasta, "%Y-%m-%d")
-                        print(f"DEBUG: Parsed hasta as YYYY-MM-DD: {hasta_dt}")
                     else:
                         hasta_dt = datetime.strptime(hasta, "%d/%m/%Y")
-                        print(f"DEBUG: Parsed hasta as DD/MM/YYYY: {hasta_dt}")
                 else:
                     hasta_dt = hasta
-                    print(f"DEBUG: Using hasta as datetime object: {hasta_dt}")
             except (ValueError, TypeError) as e:
-                print(f"DEBUG: Error parsing hasta date '{hasta}': {e}")
                 return []
 
             # Validate dates are not None
             if desde_dt is None or hasta_dt is None:
-                print(f"DEBUG: Invalid dates - desde: {desde}, hasta: {hasta}")
                 return []
-
-            print(f"DEBUG: Final dates - desde_dt: {desde_dt}, hasta_dt: {hasta_dt}")
 
             # Set session variables for optimization
             with connection.cursor() as cursor:
@@ -193,9 +179,8 @@ class TestamentosReportService:
                     cursor.execute(
                         "CREATE INDEX IF NOT EXISTS idx_kardex_fecha ON kardex(fechaescritura)"
                     )
-                    print("DEBUG: Database indexes created/verified")
                 except Exception as e:
-                    print(f"DEBUG: Index creation failed (may already exist): {e}")
+                    pass
 
             # Ultra-simple query to get basic data first
             query = """
@@ -209,17 +194,12 @@ class TestamentosReportService:
                     k.numescritura as numescritura2
                 FROM kardex as k 
                 WHERE k.idtipkar='5' 
-                    AND k.nc=0 
+                    AND k.nc=0
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.fechaescritura ASC, k.numescritura ASC, k.numminuta ASC
                 LIMIT 2000
             """
-
-            print(
-                f"DEBUG: About to execute main query with dates: {desde_dt.strftime('%Y-%m-%d')} to {hasta_dt.strftime('%Y-%m-%d')}"
-            )
-            print(f"DEBUG: Query: {query}")
 
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -227,34 +207,22 @@ class TestamentosReportService:
                 )
                 testamentos = []
                 rows = cursor.fetchall()
-                print(
-                    f"DEBUG: Main query completed in {time.time() - start_time:.2f}s, found {len(rows)} records"
-                )
 
                 if len(rows) > 0:
                     print(f"DEBUG: Sample row: {rows[0]}")
                 else:
-                    print("DEBUG: No rows returned from main query!")
+
                     # Let's check if there are any testamentos at all
                     cursor.execute("SELECT COUNT(*) FROM kardex WHERE idtipkar='5'")
                     count_result = cursor.fetchone()
-                    print(
-                        f"DEBUG: Total testamentos in database: {count_result[0] if count_result else 'Unknown'}"
-                    )
 
                     # Let's also check what idtipkar values exist
                     cursor.execute("SELECT DISTINCT idtipkar FROM kardex ORDER BY idtipkar")
                     tipkar_results = cursor.fetchall()
-                    print(
-                        f"DEBUG: All idtipkar values in database: {[r[0] for r in tipkar_results]}"
-                    )
 
                     # Let's check testamentos without date filter
                     cursor.execute("SELECT COUNT(*) FROM kardex WHERE idtipkar='5' AND nc=0")
                     count_nc_result = cursor.fetchone()
-                    print(
-                        f"DEBUG: Testamentos with nc=0: {count_nc_result[0] if count_nc_result else 'Unknown'}"
-                    )
 
                     # Let's see what dates we actually have
                     cursor.execute(
@@ -271,11 +239,6 @@ class TestamentosReportService:
                     """
                     )
                     all_dates = cursor.fetchall()
-                    print("DEBUG: All testamentos dates:")
-                    for row in all_dates:
-                        print(
-                            f"DEBUG: Kardex: {row[1]}, Num: {row[2]}, Raw Date: {row[0]}, Parsed: {row[3]}, Year: {row[4]}"
-                        )
 
                     # Let's check the query with actual values
                     test_query = f"""
@@ -287,44 +250,32 @@ class TestamentosReportService:
                             AND DATE(fechaescritura) >= DATE('{desde_dt.strftime("%Y-%m-%d")}')
                             AND DATE(fechaescritura) <= DATE('{hasta_dt.strftime("%Y-%m-%d")}')
                     """
-                    print(f"DEBUG: Testing query: {test_query}")
                     cursor.execute(test_query)
                     test_count = cursor.fetchone()
-                    print(
-                        f"DEBUG: Test query found {test_count[0] if test_count else 'Unknown'} records"
-                    )
 
                     # Let's see what dates the testamentos actually have
                     cursor.execute(
                         "SELECT fechaescritura, numescritura FROM kardex WHERE idtipkar='5' AND nc=0 ORDER BY fechaescritura LIMIT 10"
                     )
                     date_results = cursor.fetchall()
-                    print(
-                        f"DEBUG: Existing testamentos dates: {[f'{r[0]}:{r[1]}' for r in date_results]}"
-                    )
 
                     # Check specifically for 2022
                     cursor.execute(
                         "SELECT COUNT(*) FROM kardex WHERE idtipkar='5' AND nc=0 AND YEAR(fechaescritura) = 2022"
                     )
                     count_2022 = cursor.fetchone()
-                    print(
-                        f"DEBUG: Testamentos in year 2022: {count_2022[0] if count_2022 else 'Unknown'}"
-                    )
 
                     # Check date format issue - maybe fechaescritura is a string?
                     cursor.execute(
                         "SELECT DATE_FORMAT(fechaescritura, '%Y-%m-%d'), numescritura FROM kardex WHERE idtipkar='5' AND nc=0 AND YEAR(fechaescritura) = 2022"
                     )
                     date_2022_results = cursor.fetchall()
-                    print(f"DEBUG: 2022 testamentos formatted: {date_2022_results}")
 
                     # Let's see what years the testamentos actually have
                     cursor.execute(
                         "SELECT DISTINCT YEAR(fechaescritura) as year, COUNT(*) FROM kardex WHERE idtipkar='5' AND nc=0 GROUP BY YEAR(fechaescritura) ORDER BY year"
                     )
                     all_years = cursor.fetchall()
-                    print(f"DEBUG: Testamentos by year: {dict(all_years)}")
 
                 # Process each kardex with optimized processing
                 processing_start = time.time()
@@ -356,18 +307,11 @@ class TestamentosReportService:
                     """
 
                     # Execute queries
-                    print(f"DEBUG: Processing kardex {kardex}")
                     cursor.execute(testador_query, [kardex])
                     testadores = cursor.fetchall()
-                    print(
-                        f"DEBUG: Found {len(testadores)} testadores for kardex {kardex}: {[t[0] for t in testadores]}"
-                    )
 
                     cursor.execute(beneficiario_query, [kardex])
                     beneficiarios = cursor.fetchall()
-                    print(
-                        f"DEBUG: Found {len(beneficiarios)} beneficiarios for kardex {kardex}: {[b[0] for b in beneficiarios]}"
-                    )
 
                     # Process contractors based on PHP logic
                     conteo1 = len(testadores)
@@ -376,22 +320,17 @@ class TestamentosReportService:
                     testador_names = []
                     beneficiario_names = []
 
-                    print(f"DEBUG: Applying logic - conteo1={conteo1}, conteo2={conteo2}")
-
                     # PHP logic: if conteo1>0 && conteo2==0: show testadores
                     # if conteo2>0 && conteo1==0: show beneficiarios
                     # if conteo1>0 && conteo2>0: show testadores
                     if conteo1 > 0 and conteo2 == 0:
                         testador_names = [t[0] for t in testadores]
-                        print("DEBUG: Case 1 - showing testadores")
                     elif conteo2 > 0 and conteo1 == 0:
                         beneficiario_names = [b[0] for b in beneficiarios]
-                        print("DEBUG: Case 2 - showing beneficiarios")
                     elif conteo1 > 0 and conteo2 > 0:
                         testador_names = [t[0] for t in testadores]
-                        print("DEBUG: Case 3 - showing testadores (both exist)")
                     else:
-                        print("DEBUG: No contractors found - empty case")
+                        pass
 
                     # Clean contract name like in PHP - optimized string operations
                     contrato_raw = row[2] or ""
@@ -418,12 +357,8 @@ class TestamentosReportService:
                         "minuta": minuta,
                     }
 
-                    print(f"DEBUG: Final data for kardex {kardex}: {testament_data}")
                     testamentos.append(testament_data)
 
-                print(f"DEBUG: Data processing completed in {time.time() - processing_start:.2f}s")
-                print(f"DEBUG: Total data fetching completed in {time.time() - start_time:.2f}s")
-                print(f"DEBUG: Returning {len(testamentos)} testamentos records")
                 return testamentos
 
         except Exception as e:
@@ -443,11 +378,9 @@ class TestamentosReportService:
             import time
 
             report_start = time.time()
-            print(f"DEBUG: Testamentos Excel - desde: {desde}, hasta: {hasta}")
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
-            print(f"DEBUG: Data fetched in {time.time() - report_start:.2f}s, generating Excel...")
 
             notary_info = self._get_notary_info()
 
@@ -653,11 +586,9 @@ class TestamentosReportService:
             import time
 
             report_start = time.time()
-            print(f"DEBUG: Testamentos Word - desde: {desde}, hasta: {hasta}")
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
-            print(f"DEBUG: Data fetched in {time.time() - report_start:.2f}s, generating Word...")
 
             notary_info = self._get_notary_info()
 
