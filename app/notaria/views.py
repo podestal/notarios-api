@@ -446,13 +446,13 @@ class KardexViewSet(ModelViewSet):
         finalDate = request.query_params.get("finalDate")
         print(f"DEBUG: Request parameters - initialDate: {initialDate}, finalDate: {finalDate}")
         print(f"DEBUG: Full query params: {request.query_params}")
-        
+
         # Use the actual parameters instead of hardcoded dates
-        actualDesde = initialDate if initialDate else "2025-01-01"
-        actualHasta = finalDate if finalDate else "2025-10-03"
-        
+        actualDesde = initialDate if initialDate else "2023-01-01"
+        actualHasta = finalDate if finalDate else "2023-12-31"
+
         service = TestamentosReportService()
-        response = service.generate_word_report(desde="2022-01-01", hasta="2022-12-31")
+        response = service.generate_word_report(desde=actualDesde, hasta=actualHasta)
         return response
 
     @action(detail=False, methods=["get"], url_path="uif-errors")

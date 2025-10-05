@@ -176,7 +176,7 @@ class TestamentosReportService:
             if desde_dt is None or hasta_dt is None:
                 print(f"DEBUG: Invalid dates - desde: {desde}, hasta: {hasta}")
                 return []
-            
+
             print(f"DEBUG: Final dates - desde_dt: {desde_dt}, hasta_dt: {hasta_dt}")
 
             # Set session variables for optimization
@@ -216,7 +216,9 @@ class TestamentosReportService:
                 LIMIT 2000
             """
 
-            print(f"DEBUG: About to execute main query with dates: {desde_dt.strftime('%Y-%m-%d')} to {hasta_dt.strftime('%Y-%m-%d')}")
+            print(
+                f"DEBUG: About to execute main query with dates: {desde_dt.strftime('%Y-%m-%d')} to {hasta_dt.strftime('%Y-%m-%d')}"
+            )
             print(f"DEBUG: Query: {query}")
 
             with connection.cursor() as cursor:
@@ -228,7 +230,7 @@ class TestamentosReportService:
                 print(
                     f"DEBUG: Main query completed in {time.time() - start_time:.2f}s, found {len(rows)} records"
                 )
-                
+
                 if len(rows) > 0:
                     print(f"DEBUG: Sample row: {rows[0]}")
                 else:
@@ -236,17 +238,93 @@ class TestamentosReportService:
                     # Let's check if there are any testamentos at all
                     cursor.execute("SELECT COUNT(*) FROM kardex WHERE idtipkar='5'")
                     count_result = cursor.fetchone()
-                    print(f"DEBUG: Total testamentos in database: {count_result[0] if count_result else 'Unknown'}")
-                    
+                    print(
+                        f"DEBUG: Total testamentos in database: {count_result[0] if count_result else 'Unknown'}"
+                    )
+
                     # Let's also check what idtipkar values exist
                     cursor.execute("SELECT DISTINCT idtipkar FROM kardex ORDER BY idtipkar")
                     tipkar_results = cursor.fetchall()
-                    print(f"DEBUG: All idtipkar values in database: {[r[0] for r in tipkar_results]}")
-                    
+                    print(
+                        f"DEBUG: All idtipkar values in database: {[r[0] for r in tipkar_results]}"
+                    )
+
                     # Let's check testamentos without date filter
                     cursor.execute("SELECT COUNT(*) FROM kardex WHERE idtipkar='5' AND nc=0")
                     count_nc_result = cursor.fetchone()
-                    print(f"DEBUG: Testamentos with nc=0: {count_nc_result[0] if count_nc_result else 'Unknown'}")
+                    print(
+                        f"DEBUG: Testamentos with nc=0: {count_nc_result[0] if count_nc_result else 'Unknown'}"
+                    )
+
+                    # Let's see what dates we actually have
+                    cursor.execute(
+                        """
+                        SELECT 
+                            fechaescritura,
+                            kardex,
+                            numescritura,
+                            DATE(fechaescritura) as fecha_parsed,
+                            YEAR(fechaescritura) as anio
+                        FROM kardex 
+                        WHERE idtipkar='5' AND nc=0 
+                        ORDER BY fechaescritura
+                    """
+                    )
+                    all_dates = cursor.fetchall()
+                    print("DEBUG: All testamentos dates:")
+                    for row in all_dates:
+                        print(
+                            f"DEBUG: Kardex: {row[1]}, Num: {row[2]}, Raw Date: {row[0]}, Parsed: {row[3]}, Year: {row[4]}"
+                        )
+
+                    # Let's check the query with actual values
+                    test_query = f"""
+                        SELECT COUNT(*) 
+                        FROM kardex 
+                        WHERE idtipkar='5' 
+                            AND nc=0 
+                            AND fechaescritura <> ''
+                            AND DATE(fechaescritura) >= DATE('{desde_dt.strftime("%Y-%m-%d")}')
+                            AND DATE(fechaescritura) <= DATE('{hasta_dt.strftime("%Y-%m-%d")}')
+                    """
+                    print(f"DEBUG: Testing query: {test_query}")
+                    cursor.execute(test_query)
+                    test_count = cursor.fetchone()
+                    print(
+                        f"DEBUG: Test query found {test_count[0] if test_count else 'Unknown'} records"
+                    )
+
+                    # Let's see what dates the testamentos actually have
+                    cursor.execute(
+                        "SELECT fechaescritura, numescritura FROM kardex WHERE idtipkar='5' AND nc=0 ORDER BY fechaescritura LIMIT 10"
+                    )
+                    date_results = cursor.fetchall()
+                    print(
+                        f"DEBUG: Existing testamentos dates: {[f'{r[0]}:{r[1]}' for r in date_results]}"
+                    )
+
+                    # Check specifically for 2022
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM kardex WHERE idtipkar='5' AND nc=0 AND YEAR(fechaescritura) = 2022"
+                    )
+                    count_2022 = cursor.fetchone()
+                    print(
+                        f"DEBUG: Testamentos in year 2022: {count_2022[0] if count_2022 else 'Unknown'}"
+                    )
+
+                    # Check date format issue - maybe fechaescritura is a string?
+                    cursor.execute(
+                        "SELECT DATE_FORMAT(fechaescritura, '%Y-%m-%d'), numescritura FROM kardex WHERE idtipkar='5' AND nc=0 AND YEAR(fechaescritura) = 2022"
+                    )
+                    date_2022_results = cursor.fetchall()
+                    print(f"DEBUG: 2022 testamentos formatted: {date_2022_results}")
+
+                    # Let's see what years the testamentos actually have
+                    cursor.execute(
+                        "SELECT DISTINCT YEAR(fechaescritura) as year, COUNT(*) FROM kardex WHERE idtipkar='5' AND nc=0 GROUP BY YEAR(fechaescritura) ORDER BY year"
+                    )
+                    all_years = cursor.fetchall()
+                    print(f"DEBUG: Testamentos by year: {dict(all_years)}")
 
                 # Process each kardex with optimized processing
                 processing_start = time.time()
@@ -281,11 +359,15 @@ class TestamentosReportService:
                     print(f"DEBUG: Processing kardex {kardex}")
                     cursor.execute(testador_query, [kardex])
                     testadores = cursor.fetchall()
-                    print(f"DEBUG: Found {len(testadores)} testadores for kardex {kardex}: {[t[0] for t in testadores]}")
+                    print(
+                        f"DEBUG: Found {len(testadores)} testadores for kardex {kardex}: {[t[0] for t in testadores]}"
+                    )
 
                     cursor.execute(beneficiario_query, [kardex])
                     beneficiarios = cursor.fetchall()
-                    print(f"DEBUG: Found {len(beneficiarios)} beneficiarios for kardex {kardex}: {[b[0] for b in beneficiarios]}")
+                    print(
+                        f"DEBUG: Found {len(beneficiarios)} beneficiarios for kardex {kardex}: {[b[0] for b in beneficiarios]}"
+                    )
 
                     # Process contractors based on PHP logic
                     conteo1 = len(testadores)
@@ -295,9 +377,9 @@ class TestamentosReportService:
                     beneficiario_names = []
 
                     print(f"DEBUG: Applying logic - conteo1={conteo1}, conteo2={conteo2}")
-                    
+
                     # PHP logic: if conteo1>0 && conteo2==0: show testadores
-                    # if conteo2>0 && conteo1==0: show beneficiarios  
+                    # if conteo2>0 && conteo1==0: show beneficiarios
                     # if conteo1>0 && conteo2>0: show testadores
                     if conteo1 > 0 and conteo2 == 0:
                         testador_names = [t[0] for t in testadores]
@@ -335,7 +417,7 @@ class TestamentosReportService:
                         "folio": row[5],
                         "minuta": minuta,
                     }
-                    
+
                     print(f"DEBUG: Final data for kardex {kardex}: {testament_data}")
                     testamentos.append(testament_data)
 
