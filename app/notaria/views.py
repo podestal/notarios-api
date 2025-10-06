@@ -130,6 +130,7 @@ class KardexViewSet(ModelViewSet):
         if idtipkar:
             queryset = queryset.filter(idtipkar=idtipkar)
 
+        print('index_report', index_report)
         if index_report:
             queryset = queryset.filter(numescritura__gt='')
 
@@ -141,6 +142,13 @@ class KardexViewSet(ModelViewSet):
                 queryset = queryset.filter(fechaingreso__gte=dateFrom)
             elif dateTo:
                 queryset = queryset.filter(fechaingreso__lte=dateTo)
+
+        if dateTo and dateFrom:
+            queryset = queryset.filter(fechaescritura__range=(dateFrom, dateTo))
+        elif dateFrom:
+            queryset = queryset.filter(fechaescritura__gte=dateFrom)
+        elif dateTo:
+            queryset = queryset.filter(fechaescritura__lte=dateTo)
 
         # Apply correlative filter (kardex__startswith)
         if correlative:
