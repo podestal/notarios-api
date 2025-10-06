@@ -400,13 +400,17 @@ class KardexViewSet(ModelViewSet):
         parameters:
         - initialDate: YYYY-MM-DD
         - finalDate: YYYY-MM-DD
+        - report_type: w or e (word or excel)
         """
         print(f"DEBUG: Reporte Cronológico - generating report")
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
+        report_type = request.query_params.get("report_type")
         service = TransferenciasVehicularesReportService()
-        response = service.generate_word_report(desde=initialDate, hasta=finalDate)
-        # response = service.generate_word_report(desde='2025-01-01', hasta='2025-10-03')
+        if report_type == "w":
+            response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        else:
+            response = service.generate_excel_report(desde=initialDate, hasta=finalDate)
         return response
 
     @action(detail=False, methods=["get"], url_path="no-contenciosos-cronologico")
@@ -416,11 +420,16 @@ class KardexViewSet(ModelViewSet):
         parameters:
         - initialDate: YYYY-MM-DD
         - finalDate: YYYY-MM-DD
+        - report_type: w or e (word or excel)
         """
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
+        report_type = request.query_params.get("report_type")
         service = NoContenciososReportService()
-        response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        if report_type == "w":
+            response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        else:
+            response = service.generate_excel_report(desde=initialDate, hasta=finalDate)
         return response
 
     @action(detail=False, methods=["get"], url_path="garantias-cronologico")
@@ -430,11 +439,16 @@ class KardexViewSet(ModelViewSet):
         parameters:
         - initialDate: YYYY-MM-DD
         - finalDate: YYYY-MM-DD
+        - report_type: w or e (word or excel)
         """
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
+        report_type = request.query_params.get("report_type")
         service = GarantiasReportService()
-        response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        if report_type == "w":
+            response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        else:
+            response = service.generate_excel_report(desde=initialDate, hasta=finalDate)
         return response
 
     @action(detail=False, methods=["get"], url_path="testamentos-cronologico")
@@ -444,19 +458,17 @@ class KardexViewSet(ModelViewSet):
         parameters:
         - initialDate: YYYY-MM-DD
         - finalDate: YYYY-MM-DD
+        - report_type: w or e (word or excel)
         """
-        print(f"DEBUG: View testamentos_cronologico called")
         initialDate = request.query_params.get("initialDate")
         finalDate = request.query_params.get("finalDate")
-        print(f"DEBUG: Request parameters - initialDate: {initialDate}, finalDate: {finalDate}")
-        print(f"DEBUG: Full query params: {request.query_params}")
-
-        # Use the actual parameters instead of hardcoded dates
-        actualDesde = initialDate if initialDate else "2022-01-01"
-        actualHasta = finalDate if finalDate else "2022-12-31"
+        report_type = request.query_params.get("report_type")
 
         service = TestamentosReportService()
-        response = service.generate_word_report(desde=actualDesde, hasta=actualHasta)
+        if report_type == "w":
+            response = service.generate_word_report(desde=initialDate, hasta=finalDate)
+        else:
+            response = service.generate_excel_report(desde=initialDate, hasta=finalDate)
         return response
 
     @action(detail=False, methods=["get"], url_path="uif-errors")

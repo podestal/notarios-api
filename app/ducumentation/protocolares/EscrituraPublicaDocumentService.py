@@ -485,7 +485,6 @@ class EscriturasPublicasReportService:
                 LEFT JOIN patrimonial as p ON p.kardex=k.kardex AND p.idtipoacto = k.codactos
                 LEFT JOIN monedas as m ON m.idmon=p.idmon
                 WHERE k.idtipkar='1' 
-                    AND k.nc=0 
                     AND k.fechaescritura <> '' 
                     AND STR_TO_DATE(k.fechaescritura,'%%Y-%%m-%%d') >= STR_TO_DATE(%s,'%%Y-%%m-%%d')
                     AND STR_TO_DATE(k.fechaescritura,'%%Y-%%m-%%d') <= STR_TO_DATE(%s,'%%Y-%%m-%%d')

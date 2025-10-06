@@ -203,7 +203,7 @@ class NoContenciososReportService:
                     '' as moneda
                 FROM kardex as k 
                 WHERE k.idtipkar='2' 
-                    AND k.nc=0 
+                    AND k.fechaescritura <> '' 
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.numescritura ASC

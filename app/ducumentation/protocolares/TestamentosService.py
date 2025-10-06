@@ -194,7 +194,7 @@ class TestamentosReportService:
                     k.numescritura as numescritura2
                 FROM kardex as k 
                 WHERE k.idtipkar='5' 
-                    AND k.nc=0
+                    AND k.fechaescritura <> '' 
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.fechaescritura ASC, k.numescritura ASC, k.numminuta ASC
