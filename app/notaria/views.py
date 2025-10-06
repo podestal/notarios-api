@@ -121,6 +121,7 @@ class KardexViewSet(ModelViewSet):
         dateFrom = request.query_params.get("dateFrom", "")
         dateTo = request.query_params.get("dateTo", "")
         dateType = request.query_params.get("dateType", "")
+        index_report = request.query_params.get("indexReport", "")
 
         # Start with base queryset
         queryset = self.get_queryset()
@@ -128,6 +129,9 @@ class KardexViewSet(ModelViewSet):
         # Apply idtipkar filter if provided
         if idtipkar:
             queryset = queryset.filter(idtipkar=idtipkar)
+
+        if index_report:
+            queryset = queryset.filter(numescritura__gt='')
 
         # Apply date filters
         if dateType == "fechaingreso":
