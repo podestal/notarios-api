@@ -321,7 +321,7 @@ class DocumentFormatter:
                 contractor_data["C_DOC"] = self._get_identification_phrase(
                     c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
                 ) + " "
-                contractor_data["C_IDE"] = (c["numeroDocumento"] or " ") + " "
+                contractor_data["C_IDE"] = " "
                 contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
                 contractor_data["C_ESTADO_CIVIL"] = c["estadoCivil"] + " "
                 contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
