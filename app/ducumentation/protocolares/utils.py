@@ -300,6 +300,7 @@ class DocumentFormatter:
                 contractor_data["P_OCUPACION"] = t["ocupacion"] + " "
                 contractor_data["P_ESTADO_CIVIL"] = t["estadoCivil"] + " "
                 contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"] + " "
+                contractor_data["CALIDAD_P"] = "VENDEDOR "  # Quality/status of transferor
 
         # Process acquirers (C_ prefix)
         for idx, c in enumerate(acquirers, 1):
@@ -324,6 +325,7 @@ class DocumentFormatter:
                 contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
                 contractor_data["C_ESTADO_CIVIL"] = c["estadoCivil"] + " "
                 contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
+                contractor_data["CALIDAD_C"] = "COMPRADOR "  # Quality/status of acquirer
 
         # Fill empty placeholders for unused slots
         self._fill_empty_contractor_placeholders(contractor_data, len(transferors), len(acquirers))
