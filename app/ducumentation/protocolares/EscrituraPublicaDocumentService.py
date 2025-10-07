@@ -18,6 +18,7 @@ from .utils import (
     NumberToLetterConverter,
     DocumentFormatter,
     PlaceholderProcessor,
+    DocxTemplateProcessor,
     DataValidator,
     TemplateManager,
 )
@@ -33,6 +34,7 @@ class EscrituraDocumentService:
         letras=None,
         formatter=None,
         placeholder_processor=None,
+        docx_template_processor=None,
         data_validator=None,
         template_manager=None,
     ):
@@ -43,6 +45,7 @@ class EscrituraDocumentService:
         - letras: NumberToLetterConverter instance (optional)
         - formatter: DocumentFormatter instance (optional)
         - processor: PlaceholderProcessor instance (optional)
+        - docx_template_processor: DocxTemplateProcessor instance (optional)
         - validator: DataValidator instance (optional)
         - template_manager: TemplateManager instance (optional)
 
@@ -52,6 +55,7 @@ class EscrituraDocumentService:
         self.letras = letras or NumberToLetterConverter()
         self.formatter = DocumentFormatter(self.letras)
         self.placeholder_processor = placeholder_processor or PlaceholderProcessor()
+        self.docx_template_processor = docx_template_processor or DocxTemplateProcessor()
         self.data_validator = data_validator or DataValidator()
         self.template_manager = template_manager or TemplateManager()
 
@@ -76,6 +80,7 @@ class EscrituraDocumentService:
         - action: Action type ("generate", "actualizar", "parte")
         - mode: Response mode ("download" or "open")
         """
+        print("DEBUG: Starting new implementation")
         print(f"DEBUG: Starting document generation for kardex: {kardex}")
 
         # STEP 1: Get template info
@@ -107,20 +112,32 @@ class EscrituraDocumentService:
             data_contratantes,
         )
 
-        buffer = io.BytesIO(template_bytes)
-        doc = Document(buffer)
+        # Try using python-docx-template first
+        try:
+            print("DEBUG: Trying python-docx-template approach")
+            processed_bytes = self.docx_template_processor.replace_placeholders(template_bytes, final_data)
+            if processed_bytes:
+                print("DEBUG: python-docx-template succeeded")
+                buffer = io.BytesIO(processed_bytes)
+            else:
+                raise Exception("DocxTemplateProcessor returned None")
+        except Exception as e:
+            print(f"DEBUG: python-docx-template failed: {e}, falling back to manual processing")
+            # Fallback to original method
+            buffer = io.BytesIO(template_bytes)
+            doc = Document(buffer)
 
-        self.placeholder_processor.replace_placeholders(doc, final_data)
-        self.placeholder_processor.clean_unfilled_placeholders(doc)
+            self.placeholder_processor.replace_placeholders(doc, final_data)
+            self.placeholder_processor.clean_unfilled_placeholders(doc)
 
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
 
         # STEP 9: Return HTTP response
         filename = f"__PROY__{kardex}.docx"
 
-        return self._create_response(doc, filename, kardex, mode)
+        return self._create_response_from_buffer(buffer, filename, kardex, mode)
 
     def _get_template_info(self, template_id):
         """
@@ -140,6 +157,34 @@ class EscrituraDocumentService:
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
+
+        if mode == "open":
+            response = JsonResponse(
+                {
+                    "status": "success",
+                    "mode": "open",
+                    "filename": filename,
+                    "kardex": kardex,
+                    "message": "Document generated and ready to open in Word",
+                }
+            )
+            response["Access-Control-Allow-Origin"] = "*"
+            return response
+        else:
+            response = HttpResponse(
+                buffer.read(),
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+            response["Content-Disposition"] = f'inline; filename="{filename}"'
+            response["Content-Length"] = str(buffer.getbuffer().nbytes)
+            response["Access-Control-Allow-Origin"] = "*"
+            return response
+
+    def _create_response_from_buffer(self, buffer, filename, kardex, mode):
+        """
+        Create HTTP response from buffer
+        """
+        print(f"DEBUG: Creating response from buffer with mode: {mode}")
 
         if mode == "open":
             response = JsonResponse(

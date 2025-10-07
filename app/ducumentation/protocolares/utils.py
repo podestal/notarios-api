@@ -5,7 +5,9 @@ import boto3
 from botocore.config import Config
 import os
 import re
+import io
 from docx.shared import RGBColor
+from docxtpl import DocxTemplate
 
 
 class NumberToLetterConverter:
@@ -178,7 +180,6 @@ class DocumentFormatter:
         """
         Format basic document data
         """
-        print(f"DEBUG: Processing document data")
 
         numero_escritura = raw_data.get("numero_escritura") or ""
         fecha_escritura = raw_data.get("fecha_escritura")
@@ -216,7 +217,6 @@ class DocumentFormatter:
         Format contractor data into template-ready format
         Mirrors: PHP get_data_contratantes() complex logic
         """
-        print(f"DEBUG: Processing contractor data")
 
         # Define role classifications
         TRANSFEROR_ROLES = {
@@ -279,8 +279,8 @@ class DocumentFormatter:
 
         # Process transferors (P_ prefix)
         for idx, t in enumerate(transferors, 1):
-            contractor_data[f"P_NOM_{idx}"] = t["nombres"] + ", "
-            contractor_data[f"P_NACIONALIDAD_{idx}"] = t["nacionalidad"] + ", "
+            contractor_data[f"P_NOM_{idx}"] = t["nombres"]
+            contractor_data[f"P_NACIONALIDAD_{idx}"] = t["nacionalidad"]
             contractor_data[f"P_DOC_{idx}"] = self._get_identification_phrase(
                 t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
             )
@@ -291,8 +291,8 @@ class DocumentFormatter:
 
             # Add unnumbered versions for first person
             if idx == 1:
-                contractor_data["P_NOM"] = t["nombres"] + ", "
-                contractor_data["P_NACIONALIDAD"] = t["nacionalidad"] + ", "
+                contractor_data["P_NOM"] = t["nombres"]
+                contractor_data["P_NACIONALIDAD"] = t["nacionalidad"]
                 contractor_data["P_DOC"] = self._get_identification_phrase(
                     t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
                 )
@@ -303,8 +303,8 @@ class DocumentFormatter:
 
         # Process acquirers (C_ prefix)
         for idx, c in enumerate(acquirers, 1):
-            contractor_data[f"C_NOM_{idx}"] = c["nombres"] + ", "
-            contractor_data[f"C_NACIONALIDAD_{idx}"] = c["nacionalidad"] + ", "
+            contractor_data[f"C_NOM_{idx}"] = c["nombres"]
+            contractor_data[f"C_NACIONALIDAD_{idx}"] = c["nacionalidad"]
             contractor_data[f"C_DOC_{idx}"] = self._get_identification_phrase(
                 c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
             )
@@ -315,8 +315,8 @@ class DocumentFormatter:
 
             # Add unnumbered versions for first person
             if idx == 1:
-                contractor_data["C_NOM"] = c["nombres"] + ", "
-                contractor_data["C_NACIONALIDAD"] = c["nacionalidad"] + ", "
+                contractor_data["C_NOM"] = c["nombres"]
+                contractor_data["C_NACIONALIDAD"] = c["nacionalidad"]
                 contractor_data["C_DOC"] = self._get_identification_phrase(
                     c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
                 )
@@ -453,7 +453,6 @@ class DocumentFormatter:
         Format payment data with sunat logic
         Mirrors: PHP get_data_pagos() switch statement
         """
-        print(f"DEBUG: Processing payment data")
 
         # Extract payment data
         precio = raw_data.get("precio") or 0
@@ -511,7 +510,6 @@ class DocumentFormatter:
         Format vehicle data
         Mirrors: PHP get_data_vehiculos()
         """
-        print(f"DEBUG: Processing vehicle data")
 
         # Extract sede registral and parse it
         sede = raw_data.get("sede") or ""
@@ -542,7 +540,6 @@ class DocumentFormatter:
         """
         Format escrituracion data (folio and papel numbers)
         """
-        print(f"DEBUG: Processing escrituracion data")
 
         folio_inicial = raw_data.get("folio_inicial") or ""
         folio_final = raw_data.get("folio_final") or ""
@@ -568,7 +565,6 @@ class DocumentFormatter:
         Combine all data dictionaries into one
         Mirrors: PHP array merging with +=
         """
-        print(f"DEBUG: Combining all data")
         # Merge all dictionaries
         final_data = {
             **data_documento,
@@ -586,6 +582,36 @@ class DocumentFormatter:
 
 
 # In utils.py - Add this class
+class DocxTemplateProcessor:
+    """
+    Handle placeholder replacement using python-docx-template
+    This library is specifically designed for template processing with formatting
+    """
+    
+    def replace_placeholders(self, template_bytes, final_data):
+        """
+        Replace placeholders using python-docx-template
+        This preserves formatting and handles colors better
+        """
+        try:
+            # Load template from bytes
+            template = DocxTemplate(io.BytesIO(template_bytes))
+            
+            # Render the template with data
+            template.render(final_data)
+            
+            # Save to bytes
+            output = io.BytesIO()
+            template.save(output)
+            output.seek(0)
+            
+            return output.getvalue()
+        except Exception as e:
+            print(f"ERROR: DocxTemplate processing failed: {e}")
+            # Fallback to original method
+            return None
+
+# In utils.py - Add this class
 class PlaceholderProcessor:
     """
     Handle placeholder replacement in Word documents
@@ -597,8 +623,7 @@ class PlaceholderProcessor:
         Replace {{PLACEHOLDERS}} in Word document
         Mirrors: PHP template processing
         """
-        print(f"DEBUG: Replacing placeholders")
-
+        
         # Replace in paragraphs
         for i, paragraph in enumerate(doc.paragraphs):
             if "{{" in paragraph.text and "}}" in paragraph.text:
@@ -612,7 +637,32 @@ class PlaceholderProcessor:
                         if "{{" in paragraph.text and "}}" in paragraph.text:
                             self._replace_in_paragraph(paragraph, final_data)
 
-        print(f"DEBUG: Placeholder replacement completed")
+
+
+    def debug_placeholder_formatting(self, doc):
+        """
+        Debug method to check if placeholders were properly formatted
+        This will print information about the formatting of replaced text
+        """
+        
+        for i, paragraph in enumerate(doc.paragraphs):
+            if paragraph.runs:
+                for j, run in enumerate(paragraph.runs):
+                    if run.text.strip():
+                        is_bold = run.font.bold
+                        
+                        # Simple color detection
+                        try:
+                            color_rgb = run.font.color.rgb
+                            if hasattr(color_rgb, 'rgb'):
+                                color_rgb = color_rgb.rgb
+                            elif isinstance(color_rgb, (tuple, list)) and len(color_rgb) >= 3:
+                                color_rgb = tuple(color_rgb[:3])
+                        except:
+                            color_rgb = None
+                        
+                        is_red = (color_rgb == (255, 0, 0))
+                        
 
     def _replace_in_paragraph(self, paragraph, final_data):
         """
@@ -625,94 +675,125 @@ class PlaceholderProcessor:
         if "{{" not in full_text or "}}" not in full_text:
             return
 
-        # Track which placeholders we've already replaced
-        replaced_placeholders = set()
+        # Get original formatting from first run
+        first_run_font = None
+        if paragraph.runs:
+            first_run_font = paragraph.runs[0].font
 
-        # Try simple replacement first (works if placeholder is in one run)
-        for key, value in final_data.items():
-            placeholder = f"{{{{{key}}}}}"
+        # Find all placeholders in the text
+        import re
+        placeholder_pattern = r'\{\{([^}]+)\}\}'
+        matches = list(re.finditer(placeholder_pattern, full_text))
+        
+        if not matches:
+            return
 
-            if placeholder in full_text and placeholder not in replaced_placeholders:
-                # Try to find and replace in individual runs
-                for run in paragraph.runs:
-                    if placeholder in run.text:
-                        run.text = run.text.replace(placeholder, str(value))
+        # Clear all runs
+        for run in paragraph.runs:
+            run.text = ""
 
-                        # Apply bold and red formatting to the replaced text
-                        run.font.bold = True
-                        run.font.color.rgb = RGBColor(255, 0, 0)  # Red color
+        # Split text by placeholders and create separate runs
+        last_end = 0
+        
+        # Process each placeholder match
+        for match in matches:
+            placeholder = match.group(0)  # Full placeholder like {{NOMBRE}}
+            key = match.group(1)  # Just the key like NOMBRE
+            start = match.start()
+            end = match.end()
 
-                        replaced_placeholders.add(placeholder)
-                        break  # Move to next placeholder, don't return!
-
-        # If we get here, some placeholders might be split across runs
-        # Fall back to paragraph-level replacement for remaining placeholders
-        remaining_placeholders = []
-        for key, value in final_data.items():
-            placeholder = f"{{{{{key}}}}}"
-            if placeholder in full_text and placeholder not in replaced_placeholders:
-                remaining_placeholders.append((placeholder, str(value)))
-
-        if remaining_placeholders:
-            # Get the formatting from the first run
-            first_run_font = None
-            if paragraph.runs:
-                first_run_font = paragraph.runs[0].font
-
-            # Clear all runs
-            for run in paragraph.runs:
-                run.text = ""
-
-            # Create a pattern to match all remaining placeholders
-            pattern_parts = []
-            replacements = {}
-
-            for placeholder, value in remaining_placeholders:
-                # Escape special regex characters in placeholder
-                escaped_placeholder = re.escape(placeholder)
-                pattern_parts.append(escaped_placeholder)
-                replacements[placeholder] = value
-
-            # Create regex pattern
-            pattern = "|".join(pattern_parts)
-
-            # Split text by placeholders and create separate runs
-            parts = re.split(f"({pattern})", full_text)
-
-            for part in parts:
-                if part in replacements:
-                    # This is a placeholder - create formatted run
-                    new_run = paragraph.add_run(replacements[part])
-                    new_run.font.bold = True
-                    new_run.font.color.rgb = RGBColor(255, 0, 0)  # Red color
-
-                    # Preserve font size and name from original
-                    if first_run_font:
-                        try:
-                            new_run.font.size = first_run_font.size
-                            new_run.font.name = first_run_font.name
-                        except:
-                            pass
-
-                elif part:  # Only create run if text is not empty
-                    # This is regular text - preserve original formatting
-                    new_run = paragraph.add_run(part)
+            # Add text before placeholder
+            if start > last_end:
+                text_before = full_text[last_end:start]
+                if text_before:
+                    new_run = paragraph.add_run(text_before)
                     if first_run_font:
                         try:
                             new_run.font.bold = first_run_font.bold
                             new_run.font.italic = first_run_font.italic
                             new_run.font.color.rgb = first_run_font.color.rgb
-                            new_run.font.size = first_run_font.size  # ADD THIS LINE!
-                            new_run.font.name = first_run_font.name  # ADD THIS LINE TOO!
+                            if first_run_font.size:
+                                new_run.font.size = first_run_font.size
+                            if first_run_font.name:
+                                new_run.font.name = first_run_font.name
                         except:
                             pass
+
+            # Add replaced placeholder with RED and BOLD formatting
+            if key in final_data:
+                value = str(final_data[key])
+                new_run = paragraph.add_run(value)
+                
+                # Debug: Print what we're trying to format
+                print(f"DEBUG: Formatting placeholder {key} with value: {value}")
+                
+                # Try multiple ways to set the color
+                try:
+                    # Method 1: Direct RGB
+                    new_run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+                    print(f"DEBUG: Successfully set color for {key}")
+                except Exception as e:
+                    print(f"DEBUG: Failed to set color for {key}: {e}")
+                    try:
+                        # Method 2: Using theme_color
+                        from docx.shared import RGBColor
+                        new_run.font.color.rgb = RGBColor(255, 0, 0)
+                        print(f"DEBUG: Successfully set color (method 2) for {key}")
+                    except Exception as e2:
+                        print(f"DEBUG: Failed to set color (method 2) for {key}: {e2}")
+                
+                # Set bold
+                new_run.font.bold = True
+                print(f"DEBUG: Set bold for {key}")
+                
+                # Preserve font size and name from original
+                if first_run_font:
+                    try:
+                        if first_run_font.size:
+                            new_run.font.size = first_run_font.size
+                        if first_run_font.name:
+                            new_run.font.name = first_run_font.name
+                    except:
+                        pass
+            else:
+                # Placeholder not found in data, keep original placeholder
+                new_run = paragraph.add_run(placeholder)
+                if first_run_font:
+                    try:
+                        new_run.font.bold = first_run_font.bold
+                        new_run.font.italic = first_run_font.italic
+                        new_run.font.color.rgb = first_run_font.color.rgb
+                        if first_run_font.size:
+                            new_run.font.size = first_run_font.size
+                        if first_run_font.name:
+                            new_run.font.name = first_run_font.name
+                    except:
+                        pass
+            
+            last_end = end
+
+        # Add remaining text after last placeholder
+        if last_end < len(full_text):
+            text_after = full_text[last_end:]
+            if text_after:
+                new_run = paragraph.add_run(text_after)
+                if first_run_font:
+                    try:
+                        new_run.font.bold = first_run_font.bold
+                        new_run.font.italic = first_run_font.italic
+                        new_run.font.color.rgb = first_run_font.color.rgb
+                        if first_run_font.size:
+                            new_run.font.size = first_run_font.size
+                        if first_run_font.name:
+                            new_run.font.name = first_run_font.name
+                    except:
+                        pass
 
     def clean_unfilled_placeholders(self, doc):
         """
         Remove or hide unfilled placeholders
         Mirrors: PHP placeholder cleanup
         """
-        print(f"DEBUG: Cleaning unfilled placeholders")
 
         # Define placeholder categories
         escrituracion_placeholders = {
@@ -813,7 +894,6 @@ class PlaceholderProcessor:
                             paragraph, escrituracion_placeholders, contractor_placeholders
                         )
 
-        print(f"DEBUG: Placeholder cleanup completed")
 
     def _clean_paragraph_placeholders(
         self, paragraph, escrituracion_placeholders, contractor_placeholders
@@ -827,7 +907,6 @@ class PlaceholderProcessor:
         if "{{" not in full_text and "[" not in full_text:
             return
 
-        print(f"DEBUG: Processing paragraph: {full_text[:100]}...")
 
         # Get original formatting
         first_run_font = None
@@ -850,11 +929,9 @@ class PlaceholderProcessor:
         # Remove [E.PLACEHOLDER] format
         new_text = re.sub(r"\[E\.[^\]]+\]", "", new_text)
 
-        print(f"DEBUG: After placeholder removal: {new_text[:100]}...")
 
         # Clean up extra spaces and punctuation
         new_text = self._clean_text_formatting(new_text)
-        print(f"DEBUG: After text cleanup: {new_text[:100]}...")
 
         # Create new run with cleaned text
         if new_text.strip():
@@ -870,8 +947,6 @@ class PlaceholderProcessor:
                     new_run.font.name = first_run_font.name
                 except:
                     pass
-        else:
-            print(f"DEBUG: No text left after cleanup, skipping paragraph")
 
     def _clean_text_formatting(self, text):
         """
@@ -961,7 +1036,6 @@ class TemplateManager:
         Download template from R2 storage
         Mirrors: PHP template download
         """
-        print(f"DEBUG: Downloading template from R2: {filename}")
 
         s3 = boto3.client(
             "s3",
@@ -977,7 +1051,6 @@ class TemplateManager:
         try:
             response = s3.get_object(Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"), Key=object_key)
             template_bytes = response["Body"].read()
-            print(f"DEBUG: Template downloaded successfully: {len(template_bytes)} bytes")
             return template_bytes
         except Exception as e:
             print(f"ERROR: Failed to download template from R2: {e}")
