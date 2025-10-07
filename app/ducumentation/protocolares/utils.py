@@ -300,7 +300,7 @@ class DocumentFormatter:
                 contractor_data["P_OCUPACION"] = t["ocupacion"] + " "
                 contractor_data["P_ESTADO_CIVIL"] = t["estadoCivil"] + " "
                 contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"] + " "
-                contractor_data["CALIDAD_P"] = "VENDEDOR "  # Quality/status of transferor
+                # CALIDAD_P will be set by _get_articles_and_grammar method
 
         # Process acquirers (C_ prefix)
         for idx, c in enumerate(acquirers, 1):
@@ -325,7 +325,7 @@ class DocumentFormatter:
                 contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
                 contractor_data["C_ESTADO_CIVIL"] = c["estadoCivil"] + " "
                 contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
-                contractor_data["CALIDAD_C"] = "COMPRADOR "  # Quality/status of acquirer
+                # CALIDAD_C will be set by _get_articles_and_grammar method
 
         # Fill empty placeholders for unused slots
         self._fill_empty_contractor_placeholders(contractor_data, len(transferors), len(acquirers))
@@ -333,6 +333,9 @@ class DocumentFormatter:
         # Add gender-based articles and grammar
         contractor_data.update(self._get_articles_and_grammar(transferors, "P"))
         contractor_data.update(self._get_articles_and_grammar(acquirers, "C"))
+        
+        # Add additional grammar placeholders
+        contractor_data.update(self._get_additional_grammar(transferors, acquirers))
 
         return contractor_data
 
@@ -445,10 +448,136 @@ class DocumentFormatter:
     def _get_articles_and_grammar(self, contractors, role_prefix):
         """
         Generate gender-based articles and grammar
+        Mirrors: PHP articulos_singular_plural() function
         """
-        # TODO: Implement gender-based articles
-        # This will handle EL_P, LA_P, ES_P, SON_P, etc.
-        return {}
+        if not contractors:
+            return {}
+        
+        # Determine gender and number
+        genders = [c.get("sexo", "M") for c in contractors]
+        num_contractors = len(contractors)
+        
+        # Determine if all women (for proper grammar)
+        all_women = all(g == "F" for g in genders)
+        
+        # Generate articles based on gender and number
+        articles = {}
+        
+        if num_contractors >= 2:
+            # PLURAL - Based on PHP logic
+            if all_women:
+                articles[f"EL_{role_prefix}"] = "LAS"
+                articles[f"INICIO_{role_prefix}"] = "SEÑORAS"
+                # Set CALIDAD based on role and gender
+                if role_prefix == "P":
+                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDORAS"
+                else:
+                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADORAS"
+            else:
+                articles[f"EL_{role_prefix}"] = "LOS"
+                articles[f"INICIO_{role_prefix}"] = "SEÑORES"
+                # Set CALIDAD based on role and gender
+                if role_prefix == "P":
+                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDORES"
+                else:
+                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADORES"
+            
+            articles[f"ES_{role_prefix}"] = "ES"
+            articles[f"S_{role_prefix}"] = "S"
+            articles[f"ES_SON_{role_prefix}"] = "SON"
+            articles[f"Y_CON_{role_prefix}"] = "Y"
+            articles[f"N_{role_prefix}"] = "N"
+            articles[f"Y_{role_prefix}"] = "Y"
+            articles[f"L_{role_prefix}"] = "L"
+            articles[f"O_A_{role_prefix}"] = "OS"
+            articles[f"O_ERON_{role_prefix}"] = "ERON"
+            articles[f"O_ARON_{role_prefix}"] = "ARON"
+            articles[f"{role_prefix}_FIRMA"] = "FIRMAN EN"
+            
+        else:
+            # SINGULAR - Based on PHP logic
+            if all_women:
+                articles[f"EL_{role_prefix}"] = "LA"
+                articles[f"INICIO_{role_prefix}"] = "SEÑORA"
+                # Set CALIDAD based on role and gender
+                if role_prefix == "P":
+                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDORA"
+                else:
+                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADORA"
+            else:
+                articles[f"EL_{role_prefix}"] = "EL"
+                articles[f"INICIO_{role_prefix}"] = "SEÑOR"
+                # Set CALIDAD based on role and gender
+                if role_prefix == "P":
+                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDOR"
+                else:
+                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADOR"
+            
+            articles[f"ES_{role_prefix}"] = ""
+            articles[f"S_{role_prefix}"] = ""
+            articles[f"ES_SON_{role_prefix}"] = "ES"
+            articles[f"Y_CON_{role_prefix}"] = ""
+            articles[f"N_{role_prefix}"] = ""
+            articles[f"Y_{role_prefix}"] = ""
+            articles[f"L_{role_prefix}"] = ""
+            articles[f"O_A_{role_prefix}"] = "O"
+            articles[f"O_ERON_{role_prefix}"] = "O"
+            articles[f"O_ARON_{role_prefix}"] = "O"
+            articles[f"{role_prefix}_FIRMA"] = "FIRMA EN"
+            articles[f"{role_prefix}_AMBOS"] = " "
+        
+        # Add spaces for proper formatting
+        for key, value in articles.items():
+            articles[key] = value + " "
+        
+        return articles
+
+    def _get_additional_grammar(self, transferors, acquirers):
+        """
+        Generate additional grammar placeholders commonly used in notary documents
+        """
+        grammar = {}
+        
+        # Determine if we have multiple parties
+        has_multiple_transferors = len(transferors) > 1
+        has_multiple_acquirers = len(acquirers) > 1
+        
+        # Articles for multiple parties
+        if has_multiple_transferors:
+            grammar["LOS_P"] = "LOS "
+            grammar["LAS_P"] = "LAS "
+        else:
+            grammar["LOS_P"] = "EL "
+            grammar["LAS_P"] = "LA "
+        
+        if has_multiple_acquirers:
+            grammar["LOS_C"] = "LOS "
+            grammar["LAS_C"] = "LAS "
+        else:
+            grammar["LOS_C"] = "EL "
+            grammar["LAS_C"] = "LA "
+        
+        # Conjunctions
+        grammar["Y"] = "Y "
+        grammar["O"] = "O "
+        
+        # Prepositions
+        grammar["DE"] = "DE "
+        grammar["A"] = "A "
+        grammar["EN"] = "EN "
+        grammar["POR"] = "POR "
+        grammar["CON"] = "CON "
+        
+        # Common phrases
+        grammar["QUE"] = "QUE "
+        grammar["QUIEN"] = "QUIEN "
+        grammar["QUIENES"] = "QUIENES "
+        grammar["CUYO"] = "CUYO "
+        grammar["CUYA"] = "CUYA "
+        grammar["CUYOS"] = "CUYOS "
+        grammar["CUYAS"] = "CUYAS "
+        
+        return grammar
 
     def format_payment_data(self, raw_data):
         """
