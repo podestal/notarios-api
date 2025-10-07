@@ -279,51 +279,51 @@ class DocumentFormatter:
 
         # Process transferors (P_ prefix)
         for idx, t in enumerate(transferors, 1):
-            contractor_data[f"P_NOM_{idx}"] = t["nombres"]
-            contractor_data[f"P_NACIONALIDAD_{idx}"] = t["nacionalidad"]
+            contractor_data[f"P_NOM_{idx}"] = t["nombres"] + " "
+            contractor_data[f"P_NACIONALIDAD_{idx}"] = t["nacionalidad"] + " "
             contractor_data[f"P_DOC_{idx}"] = self._get_identification_phrase(
                 t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
-            )
+            ) + " "
             contractor_data[f"P_IDE_{idx}"] = " "
-            contractor_data[f"P_OCUPACION_{idx}"] = t["ocupacion"]
-            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = t["estadoCivil"]
-            contractor_data[f"P_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + t["direccion"]
+            contractor_data[f"P_OCUPACION_{idx}"] = t["ocupacion"] + " "
+            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = t["estadoCivil"] + " "
+            contractor_data[f"P_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + t["direccion"] + " "
 
             # Add unnumbered versions for first person
             if idx == 1:
-                contractor_data["P_NOM"] = t["nombres"]
-                contractor_data["P_NACIONALIDAD"] = t["nacionalidad"]
+                contractor_data["P_NOM"] = t["nombres"] + " "
+                contractor_data["P_NACIONALIDAD"] = t["nacionalidad"] + " "
                 contractor_data["P_DOC"] = self._get_identification_phrase(
                     t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
-                )
+                ) + " "
                 contractor_data["P_IDE"] = " "
-                contractor_data["P_OCUPACION"] = t["ocupacion"]
-                contractor_data["P_ESTADO_CIVIL"] = t["estadoCivil"]
-                contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"]
+                contractor_data["P_OCUPACION"] = t["ocupacion"] + " "
+                contractor_data["P_ESTADO_CIVIL"] = t["estadoCivil"] + " "
+                contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"] + " "
 
         # Process acquirers (C_ prefix)
         for idx, c in enumerate(acquirers, 1):
-            contractor_data[f"C_NOM_{idx}"] = c["nombres"]
-            contractor_data[f"C_NACIONALIDAD_{idx}"] = c["nacionalidad"]
+            contractor_data[f"C_NOM_{idx}"] = c["nombres"] + " "
+            contractor_data[f"C_NACIONALIDAD_{idx}"] = c["nacionalidad"] + " "
             contractor_data[f"C_DOC_{idx}"] = self._get_identification_phrase(
                 c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
-            )
+            ) + " "
             contractor_data[f"C_IDE_{idx}"] = " "
-            contractor_data[f"C_OCUPACION_{idx}"] = c["ocupacion"]
-            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = c["estadoCivil"]
-            contractor_data[f"C_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + c["direccion"]
+            contractor_data[f"C_OCUPACION_{idx}"] = c["ocupacion"] + " "
+            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = c["estadoCivil"] + " "
+            contractor_data[f"C_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + c["direccion"] + " "
 
             # Add unnumbered versions for first person
             if idx == 1:
-                contractor_data["C_NOM"] = c["nombres"]
-                contractor_data["C_NACIONALIDAD"] = c["nacionalidad"]
+                contractor_data["C_NOM"] = c["nombres"] + " "
+                contractor_data["C_NACIONALIDAD"] = c["nacionalidad"] + " "
                 contractor_data["C_DOC"] = self._get_identification_phrase(
                     c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
-                )
-                contractor_data["C_IDE"] = c["numeroDocumento"] or " "
-                contractor_data["C_OCUPACION"] = c["ocupacion"]
-                contractor_data["C_ESTADO_CIVIL"] = c["estadoCivil"]
-                contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"]
+                ) + " "
+                contractor_data["C_IDE"] = (c["numeroDocumento"] or " ") + " "
+                contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
+                contractor_data["C_ESTADO_CIVIL"] = c["estadoCivil"] + " "
+                contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
 
         # Fill empty placeholders for unused slots
         self._fill_empty_contractor_placeholders(contractor_data, len(transferors), len(acquirers))
