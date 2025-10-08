@@ -59,7 +59,6 @@ class EscrituraDocumentService:
         self.data_validator = data_validator or DataValidator()
         self.template_manager = template_manager or TemplateManager()
 
-        print("DEBUG: EscrituraPublicaService initialized")
 
     def generate_escritura_publica_document(self, template_id, kardex, action, mode):
         """
@@ -80,29 +79,25 @@ class EscrituraDocumentService:
         - action: Action type ("generate", "actualizar", "parte")
         - mode: Response mode ("download" or "open")
         """
-        print("DEBUG: Starting new implementation")
-        print(f"DEBUG: Starting document generation for kardex: {kardex}")
 
         # STEP 1: Get template info
         template_info = self._get_template_info(template_id)
-        print(f"DEBUG: Template info: {template_info['filename']}")
 
         # STEP 2: Download template from R2
         template_bytes = self.template_manager.get_template_from_r2(
             template_id, template_info["filename"]
         )
-        print(f"DEBUG: Template downloaded: {len(template_bytes)} bytes")
 
         # STEP 3: Fetch ALL data from database (mirrors PHP consulta_escritura)
         # TODO: Implement this - fetch all data in ONE query
         raw_data = self._consulta_escritura(kardex, action, template_id)
-        print(f"DEBUG: Data fetched from database")
 
         data_documento = self.formatter.format_document_data(raw_data)
         data_vehiculos = self.formatter.format_vehicle_data(raw_data)
         data_pagos = self.formatter.format_payment_data(raw_data)
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
         data_contratantes = self.formatter.format_contractor_data(raw_data)
+        data_company = self.formatter.format_company_data(raw_data)
 
         final_data = self.formatter.combine_all_data(
             data_documento,
@@ -110,19 +105,22 @@ class EscrituraDocumentService:
             data_pagos,
             data_escrituracion,
             data_contratantes,
+            data_company,
         )
 
         # Try using python-docx-template first
         try:
-            print("DEBUG: Trying python-docx-template approach")
+            print(f"DEBUG: Trying python-docx-template for kardex: {kardex}")
             processed_bytes = self.docx_template_processor.replace_placeholders(template_bytes, final_data)
             if processed_bytes:
-                print("DEBUG: python-docx-template succeeded")
+                print(f"DEBUG: python-docx-template SUCCESS for kardex: {kardex}")
                 buffer = io.BytesIO(processed_bytes)
             else:
                 raise Exception("DocxTemplateProcessor returned None")
         except Exception as e:
-            print(f"DEBUG: python-docx-template failed: {e}, falling back to manual processing")
+            print(f"DEBUG: python-docx-template FAILED for kardex: {kardex} - Error: {e}")
+            print(f"DEBUG: Falling back to PlaceholderProcessor for kardex: {kardex}")
+            print(f"DEBUG: NOMBRE_EMPRESA_1 in final_data: {final_data.get('NOMBRE_EMPRESA_1', 'NOT_FOUND')}")
             # Fallback to original method
             buffer = io.BytesIO(template_bytes)
             doc = Document(buffer)
@@ -143,7 +141,6 @@ class EscrituraDocumentService:
         """
         Get template information from database
         """
-        print(f"DEBUG: Getting template info for template_id: {template_id}")
 
         template = models.TplTemplate.objects.get(pktemplate=template_id)
         return {"filename": template.filename}
@@ -152,7 +149,6 @@ class EscrituraDocumentService:
         """
         Create HTTP response with the document
         """
-        print(f"DEBUG: Creating response with mode: {mode}")
 
         buffer = io.BytesIO()
         doc.save(buffer)
@@ -184,7 +180,6 @@ class EscrituraDocumentService:
         """
         Create HTTP response from buffer
         """
-        print(f"DEBUG: Creating response from buffer with mode: {mode}")
 
         if mode == "open":
             response = JsonResponse(
@@ -228,7 +223,6 @@ class EscrituraDocumentService:
 
         SOLUTION: See app/ducumentation/services.py line 3032-3164
         """
-        print(f"DEBUG: _consulta_escritura for kardex: {num_kardex}")
 
         #########################################################
         """
@@ -356,7 +350,6 @@ class EscrituraDocumentService:
         """
 
         with connection.cursor() as cursor:
-            print(f"DEBUG: Executing SQL query ...")
             cursor.execute(query, [idtipoacto, template_id, template_id, num_kardex])
             desc = cursor.description
             row = cursor.fetchone()

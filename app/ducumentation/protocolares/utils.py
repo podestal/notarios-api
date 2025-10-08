@@ -264,11 +264,16 @@ class DocumentFormatter:
         # Classify contractors
         transferors = []
         acquirers = []
-        companies = []
+        transferor_companies = []
+        acquirer_companies = []
 
         for contractor in contractors:
             if contractor["tipper"] == "J":  # Company
-                companies.append(contractor)
+                # Companies are classified based on their representatives' roles
+                if contractor["condicion_str"] in TRANSFEROR_ROLES:
+                    transferor_companies.append(contractor)
+                elif contractor["condicion_str"] in ACQUIRER_ROLES:
+                    acquirer_companies.append(contractor)
             elif contractor["condicion_str"] in TRANSFEROR_ROLES:
                 transferors.append(contractor)
             elif contractor["condicion_str"] in ACQUIRER_ROLES:
@@ -327,8 +332,10 @@ class DocumentFormatter:
                 contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
                 # CALIDAD_C will be set by _get_articles_and_grammar method
 
+
         # Fill empty placeholders for unused slots
         self._fill_empty_contractor_placeholders(contractor_data, len(transferors), len(acquirers))
+        self._fill_empty_company_placeholders(contractor_data, len(transferor_companies), len(acquirer_companies))
 
         # Add gender-based articles and grammar
         contractor_data.update(self._get_articles_and_grammar(transferors, "P"))
@@ -363,6 +370,13 @@ class DocumentFormatter:
         sexos = split_if_not_none(raw_data.get("sexo"))
         id_clientes = split_if_not_none(raw_data.get("id_cliente"))
         id_conyuges = split_if_not_none(raw_data.get("id_conyuge"))
+        
+        # Company fields - use separate company fields from query
+        razones_sociales = split_if_not_none(raw_data.get("nombre_empresa"))
+        domicilios_fiscales = split_if_not_none(raw_data.get("domicilio_empresa"))
+        tipos_persona_empresa = split_if_not_none(raw_data.get("tipo_persona_empresa"))
+        condiciones_empresa = split_if_not_none(raw_data.get("condicion_empresa"))
+        tipos_persona = split_if_not_none(raw_data.get("tipper"))
 
         contractors = []
 
@@ -385,6 +399,13 @@ class DocumentFormatter:
             sexo = sexos[k] if k < len(sexos) else "M"
             id_cliente = id_clientes[k] if k < len(id_clientes) else ""
             id_conyuge = id_conyuges[k] if k < len(id_conyuges) else "NO"
+            
+            # Company data
+            razon_social = razones_sociales[k] if k < len(razones_sociales) else ""
+            domicilio_fiscal = domicilios_fiscales[k] if k < len(domicilios_fiscales) else ""
+            tipper_empresa = tipos_persona_empresa[k] if k < len(tipos_persona_empresa) else ""
+            condicion_empresa = condiciones_empresa[k] if k < len(condiciones_empresa) else ""
+            tipper = tipos_persona[k] if k < len(tipos_persona) else "N"
 
             contractor = {
                 "condiciones": condicion,
@@ -402,12 +423,70 @@ class DocumentFormatter:
                 "sexo": sexo,
                 "idCliente": id_cliente,
                 "idConyuge": id_conyuge,
-                "tipper": "N",  # Assume natural person for now
+                "tipper": tipper,  # N = Natural, J = Juridical
+                # Company fields
+                "razonsocial": razon_social,
+                "domfiscal": domicilio_fiscal,
+                "tipper_empresa": tipper_empresa,
+                "condicion_empresa": condicion_empresa,
+                "numdoc_empresa": num_doc if tipper == "J" else "",
             }
 
             contractors.append(contractor)
 
         return contractors
+
+    def format_company_data(self, raw_data):
+        """
+        Format company data separately from contractors
+        Companies are represented by juridical persons in the database
+        """
+        company_data = {}
+        
+        # Get company data from raw_data (handle None values)
+        nombre_empresa = (raw_data.get("nombre_empresa") or "").strip().rstrip(',')
+        domicilio_empresa = (raw_data.get("domicilio_empresa") or "").strip()
+        tipo_persona_empresa = raw_data.get("tipo_persona_empresa") or ""
+        condicion_empresa = (raw_data.get("condicion_empresa") or "").strip()
+        numero_documento_empresa = (raw_data.get("numero_documento_empresa") or "").strip()
+        numero_partida = (raw_data.get("numero_partida") or "").strip()
+        distrito_empresa = (raw_data.get("distrito_empresa") or "").strip()
+        provincia_empresa = (raw_data.get("provincia_empresa") or "").strip()
+        departamento_empresa = (raw_data.get("departamento_empresa") or "").strip()
+        oficina_registral = (raw_data.get("oficina_registral") or "").strip()
+        
+        # Process company data if it exists
+        if nombre_empresa and tipo_persona_empresa == "J":
+            # Determine which company slot to use based on condition
+            if condicion_empresa in ['EMPRESA EN CONSTITUCION', 'ASOCIACION EN CONSTITUCION']:
+                company_data["NOMBRE_EMPRESA_2"] = nombre_empresa
+                company_data["INS_EMPRESA_2"] = f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}" if numero_partida else ""
+                company_data["RUC_2"] = f", CON RUC N° {numero_documento_empresa}, " if numero_documento_empresa else ""
+                company_data["DOMICILIO_EMPRESA_2"] = f"CON DOMICILIO EN {domicilio_empresa} DEL DISTRITO DE {distrito_empresa} PROVINCIA DE {provincia_empresa} Y DEPARTAMENTO DE {departamento_empresa}" if domicilio_empresa else ""
+                company_data["CONDICION_EMPRESA_2"] = condicion_empresa
+            else:
+                company_data["NOMBRE_EMPRESA_1"] = nombre_empresa
+                company_data["INS_EMPRESA_1"] = f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}" if numero_partida else ""
+                company_data["RUC_1"] = f", CON RUC N° {numero_documento_empresa}, " if numero_documento_empresa else ""
+                company_data["DOMICILIO_EMPRESA_1"] = f"CON DOMICILIO EN {domicilio_empresa} DEL DISTRITO DE {distrito_empresa} PROVINCIA DE {provincia_empresa} Y DEPARTAMENTO DE {departamento_empresa}" if domicilio_empresa else ""
+                company_data["CONDICION_EMPRESA_1"] = condicion_empresa if condicion_empresa else ""
+        
+        # Fill empty company placeholders
+        if "NOMBRE_EMPRESA_1" not in company_data:
+            company_data["NOMBRE_EMPRESA_1"] = ""
+            company_data["INS_EMPRESA_1"] = ""
+            company_data["RUC_1"] = ""
+            company_data["DOMICILIO_EMPRESA_1"] = ""
+            company_data["CONDICION_EMPRESA_1"] = ""
+        
+        if "NOMBRE_EMPRESA_2" not in company_data:
+            company_data["NOMBRE_EMPRESA_2"] = ""
+            company_data["INS_EMPRESA_2"] = ""
+            company_data["RUC_2"] = ""
+            company_data["DOMICILIO_EMPRESA_2"] = ""
+            company_data["CONDICION_EMPRESA_2"] = ""
+        
+        return company_data
 
     def _get_identification_phrase(self, gender, doc_type, doc_number):
         """
@@ -444,6 +523,19 @@ class DocumentFormatter:
             contractor_data[f"C_OCUPACION_{idx}"] = ""
             contractor_data[f"C_ESTADO_CIVIL_{idx}"] = ""
             contractor_data[f"C_DOMICILIO_{idx}"] = ""
+
+    def _fill_empty_company_placeholders(self, contractor_data, num_transferor_companies, num_acquirer_companies):
+        """
+        Fill empty placeholders for unused company slots
+        """
+        total_companies = num_transferor_companies + num_acquirer_companies
+        
+        # Fill empty company slots - use empty strings, not [E.PLACEHOLDER]
+        for idx in range(total_companies + 1, 6):  # Support up to 5 companies
+            contractor_data[f"NOMBRE_EMPRESA_{idx}"] = ""
+            contractor_data[f"INS_EMPRESA_{idx}"] = ""
+            contractor_data[f"RUC_{idx}"] = ""
+            contractor_data[f"DOMICILIO_EMPRESA_{idx}"] = ""
 
     def _get_articles_and_grammar(self, contractors, role_prefix):
         """
@@ -691,6 +783,7 @@ class DocumentFormatter:
         data_pagos,
         data_escrituracion,
         data_contratantes,
+        data_company=None,
     ):
         """
         Combine all data dictionaries into one
@@ -704,10 +797,10 @@ class DocumentFormatter:
             **data_escrituracion,
             **data_contratantes,
         }
-
-        # TODO: Add contractor data when implemented
-        # if data_contratantes:
-        #     final_data.update(data_contratantes)
+        
+        # Add company data if provided
+        if data_company:
+            final_data.update(data_company)
 
         return final_data
 
@@ -855,27 +948,20 @@ class PlaceholderProcessor:
                 value = str(final_data[key])
                 new_run = paragraph.add_run(value)
                 
-                # Debug: Print what we're trying to format
-                print(f"DEBUG: Formatting placeholder {key} with value: {value}")
-                
                 # Try multiple ways to set the color
                 try:
                     # Method 1: Direct RGB
                     new_run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
-                    print(f"DEBUG: Successfully set color for {key}")
                 except Exception as e:
-                    print(f"DEBUG: Failed to set color for {key}: {e}")
                     try:
                         # Method 2: Using theme_color
                         from docx.shared import RGBColor
                         new_run.font.color.rgb = RGBColor(255, 0, 0)
-                        print(f"DEBUG: Successfully set color (method 2) for {key}")
                     except Exception as e2:
-                        print(f"DEBUG: Failed to set color (method 2) for {key}: {e2}")
+                        pass
                 
                 # Set bold
                 new_run.font.bold = True
-                print(f"DEBUG: Set bold for {key}")
                 
                 # Preserve font size and name from original
                 if first_run_font:
