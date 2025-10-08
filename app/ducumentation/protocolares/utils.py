@@ -235,7 +235,6 @@ class DocumentFormatter:
             "DEUDOR",
             "ASOCIANTE",
             "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
-            "APODERADO",
         }
 
         ACQUIRER_ROLES = {
