@@ -591,19 +591,27 @@ class DocumentFormatter:
             if all_women:
                 articles[f"EL_{role_prefix}"] = "LA"
                 articles[f"INICIO_{role_prefix}"] = "SEÑORA"
-                # Set CALIDAD based on role and gender
+                # Set CALIDAD based on role and gender (covers multiple document types)
                 if role_prefix == "P":
                     articles[f"CALIDAD_{role_prefix}"] = "VENDEDORA"
                 else:
                     articles[f"CALIDAD_{role_prefix}"] = "COMPRADORA"
+                # Female singular
+                articles[f"O_A_{role_prefix}"] = "A"
+                articles[f"O_ERON_{role_prefix}"] = "A"
+                articles[f"O_ARON_{role_prefix}"] = "A"
             else:
                 articles[f"EL_{role_prefix}"] = "EL"
                 articles[f"INICIO_{role_prefix}"] = "SEÑOR"
-                # Set CALIDAD based on role and gender
+                # Set CALIDAD based on role and gender (covers multiple document types)
                 if role_prefix == "P":
                     articles[f"CALIDAD_{role_prefix}"] = "VENDEDOR"
                 else:
                     articles[f"CALIDAD_{role_prefix}"] = "COMPRADOR"
+                # Male singular
+                articles[f"O_A_{role_prefix}"] = "O"
+                articles[f"O_ERON_{role_prefix}"] = "O"
+                articles[f"O_ARON_{role_prefix}"] = "O"
             
             articles[f"ES_{role_prefix}"] = ""
             articles[f"S_{role_prefix}"] = ""
@@ -612,9 +620,6 @@ class DocumentFormatter:
             articles[f"N_{role_prefix}"] = ""
             articles[f"Y_{role_prefix}"] = ""
             articles[f"L_{role_prefix}"] = ""
-            articles[f"O_A_{role_prefix}"] = "O"
-            articles[f"O_ERON_{role_prefix}"] = "O"
-            articles[f"O_ARON_{role_prefix}"] = "O"
             articles[f"{role_prefix}_FIRMA"] = "FIRMA EN"
             articles[f"{role_prefix}_AMBOS"] = " "
         
@@ -845,11 +850,11 @@ class PlaceholderProcessor:
     def replace_placeholders(self, doc, final_data):
         """
         Replace {{PLACEHOLDERS}} in Word document
-        Mirrors: PHP template processing
+        Processes: paragraphs, tables, headers, and footers
         """
         
-        # Replace in paragraphs
-        for i, paragraph in enumerate(doc.paragraphs):
+        # Replace in main document paragraphs
+        for paragraph in doc.paragraphs:
             if "{{" in paragraph.text and "}}" in paragraph.text:
                 self._replace_in_paragraph(paragraph, final_data)
 
@@ -860,6 +865,36 @@ class PlaceholderProcessor:
                     for paragraph in cell.paragraphs:
                         if "{{" in paragraph.text and "}}" in paragraph.text:
                             self._replace_in_paragraph(paragraph, final_data)
+        
+        # Replace in headers
+        for section in doc.sections:
+            header = section.header
+            for paragraph in header.paragraphs:
+                if "{{" in paragraph.text and "}}" in paragraph.text:
+                    self._replace_in_paragraph(paragraph, final_data)
+            
+            # Replace in header tables
+            for table in header.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            if "{{" in paragraph.text and "}}" in paragraph.text:
+                                self._replace_in_paragraph(paragraph, final_data)
+        
+        # Replace in footers
+        for section in doc.sections:
+            footer = section.footer
+            for paragraph in footer.paragraphs:
+                if "{{" in paragraph.text and "}}" in paragraph.text:
+                    self._replace_in_paragraph(paragraph, final_data)
+            
+            # Replace in footer tables
+            for table in footer.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            if "{{" in paragraph.text and "}}" in paragraph.text:
+                                self._replace_in_paragraph(paragraph, final_data)
 
 
 
@@ -948,20 +983,11 @@ class PlaceholderProcessor:
                 value = str(final_data[key])
                 new_run = paragraph.add_run(value)
                 
-                # Try multiple ways to set the color
-                try:
-                    # Method 1: Direct RGB
-                    new_run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
-                except Exception as e:
-                    try:
-                        # Method 2: Using theme_color
-                        from docx.shared import RGBColor
-                        new_run.font.color.rgb = RGBColor(255, 0, 0)
-                    except Exception as e2:
-                        pass
-                
-                # Set bold
+                # Set bold first
                 new_run.font.bold = True
+                
+                # Set RED color - use direct RGB
+                new_run.font.color.rgb = RGBColor(255, 0, 0)
                 
                 # Preserve font size and name from original
                 if first_run_font:

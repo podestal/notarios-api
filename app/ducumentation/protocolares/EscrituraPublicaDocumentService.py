@@ -108,20 +108,17 @@ class EscrituraDocumentService:
             data_company,
         )
 
-        # Try using python-docx-template first
+        # Try using python-docx-template first (docxtpl)
+        # Falls back to PlaceholderProcessor if docxtpl fails
         try:
-            print(f"DEBUG: Trying python-docx-template for kardex: {kardex}")
             processed_bytes = self.docx_template_processor.replace_placeholders(template_bytes, final_data)
             if processed_bytes:
-                print(f"DEBUG: python-docx-template SUCCESS for kardex: {kardex}")
                 buffer = io.BytesIO(processed_bytes)
             else:
                 raise Exception("DocxTemplateProcessor returned None")
         except Exception as e:
-            print(f"DEBUG: python-docx-template FAILED for kardex: {kardex} - Error: {e}")
-            print(f"DEBUG: Falling back to PlaceholderProcessor for kardex: {kardex}")
-            print(f"DEBUG: NOMBRE_EMPRESA_1 in final_data: {final_data.get('NOMBRE_EMPRESA_1', 'NOT_FOUND')}")
-            # Fallback to original method
+            # Fallback to PlaceholderProcessor
+            # This happens when template contains Jinja2 keywords in placeholder values
             buffer = io.BytesIO(template_bytes)
             doc = Document(buffer)
 
