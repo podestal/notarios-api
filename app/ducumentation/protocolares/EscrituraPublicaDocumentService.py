@@ -91,6 +91,12 @@ class EscrituraDocumentService:
         # STEP 3: Fetch ALL data from database (mirrors PHP consulta_escritura)
         # TODO: Implement this - fetch all data in ONE query
         raw_data = self._consulta_escritura(kardex, action, template_id)
+        
+        # Debug: Check what contractors were found
+        print(f"DEBUG: Contractors data for {kardex}:")
+        print(f"DEBUG: condicion = {raw_data.get('condicion', 'NOT_FOUND')}")
+        print(f"DEBUG: nombres = {raw_data.get('nombres', 'NOT_FOUND')}")
+        print(f"DEBUG: sexo = {raw_data.get('sexo', 'NOT_FOUND')}")
 
         data_documento = self.formatter.format_document_data(raw_data)
         data_vehiculos = self.formatter.format_vehicle_data(raw_data)
@@ -352,7 +358,34 @@ class EscrituraDocumentService:
             row = cursor.fetchone()
             if not row:
                 return None
-            return dict(zip([col[0] for col in desc], row))
+            result = dict(zip([col[0] for col in desc], row))
+            
+            # For constitution documents, also query company data (tipper='J')
+            # This gets the company being constituted
+            company_query = """
+                SELECT 
+                    c2.razonsocial as nombre_empresa_constitucion,
+                    c2.domfiscal as domicilio_empresa_constitucion,
+                    c2.tipper as tipo_persona_empresa_constitucion,
+                    c2.numdoc as numero_documento_empresa_constitucion,
+                    c2.numpartida as numero_partida_constitucion
+                FROM contratantesxacto as cxa
+                LEFT JOIN cliente2 as c2 on c2.idcontratante=cxa.idcontratante
+                WHERE cxa.kardex=%s and c2.tipper='J'
+                LIMIT 1
+            """
+            cursor.execute(company_query, [num_kardex])
+            company_row = cursor.fetchone()
+            
+            if company_row and company_row[0]:  # If company data exists
+                # Add company constitution data to result
+                result['nombre_empresa_constitucion'] = company_row[0]
+                result['domicilio_empresa_constitucion'] = company_row[1]
+                result['tipo_persona_empresa_constitucion'] = company_row[2]
+                result['numero_documento_empresa_constitucion'] = company_row[3]
+                result['numero_partida_constitucion'] = company_row[4]
+            
+            return result
 
 
 class EscriturasPublicasReportService:

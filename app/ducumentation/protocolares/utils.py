@@ -451,6 +451,7 @@ class DocumentFormatter:
         company_data = {}
         
         # Get company data from raw_data (handle None values)
+        # First try regular company data (from idcontratanterp)
         nombre_empresa = (raw_data.get("nombre_empresa") or "").strip().rstrip(',')
         domicilio_empresa = (raw_data.get("domicilio_empresa") or "").strip()
         tipo_persona_empresa = raw_data.get("tipo_persona_empresa") or ""
@@ -462,16 +463,34 @@ class DocumentFormatter:
         departamento_empresa = (raw_data.get("departamento_empresa") or "").strip()
         oficina_registral = (raw_data.get("oficina_registral") or "").strip()
         
+        # If no company data, try constitution data (company being created)
+        if not nombre_empresa:
+            nombre_empresa = (raw_data.get("nombre_empresa_constitucion") or "").strip().rstrip(',')
+            domicilio_empresa = (raw_data.get("domicilio_empresa_constitucion") or "").strip()
+            tipo_persona_empresa = raw_data.get("tipo_persona_empresa_constitucion") or ""
+            numero_documento_empresa = (raw_data.get("numero_documento_empresa_constitucion") or "").strip()
+            numero_partida = (raw_data.get("numero_partida_constitucion") or "").strip()
+            # For constitutions, use NOMBRE_EMPRESA_2
+            condicion_empresa = "EMPRESA EN CONSTITUCION"
+        
+        # Debug: Print company data
+        print(f"DEBUG: Company data processing:")
+        print(f"DEBUG: nombre_empresa = '{nombre_empresa}'")
+        print(f"DEBUG: tipo_persona_empresa = '{tipo_persona_empresa}'")
+        print(f"DEBUG: condicion_empresa = '{condicion_empresa}'")
+        
         # Process company data if it exists
         if nombre_empresa and tipo_persona_empresa == "J":
             # Determine which company slot to use based on condition
             if condicion_empresa in ['EMPRESA EN CONSTITUCION', 'ASOCIACION EN CONSTITUCION']:
+                print(f"DEBUG: Setting NOMBRE_EMPRESA_2 (constitution)")
                 company_data["NOMBRE_EMPRESA_2"] = nombre_empresa
                 company_data["INS_EMPRESA_2"] = f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}" if numero_partida else ""
                 company_data["RUC_2"] = f", CON RUC N° {numero_documento_empresa}, " if numero_documento_empresa else ""
                 company_data["DOMICILIO_EMPRESA_2"] = f"CON DOMICILIO EN {domicilio_empresa} DEL DISTRITO DE {distrito_empresa} PROVINCIA DE {provincia_empresa} Y DEPARTAMENTO DE {departamento_empresa}" if domicilio_empresa else ""
                 company_data["CONDICION_EMPRESA_2"] = condicion_empresa
             else:
+                print(f"DEBUG: Setting NOMBRE_EMPRESA_1 (normal)")
                 company_data["NOMBRE_EMPRESA_1"] = nombre_empresa
                 company_data["INS_EMPRESA_1"] = f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}" if numero_partida else ""
                 company_data["RUC_1"] = f", CON RUC N° {numero_documento_empresa}, " if numero_documento_empresa else ""
