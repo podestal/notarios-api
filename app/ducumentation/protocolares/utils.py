@@ -284,51 +284,59 @@ class DocumentFormatter:
 
         # Process transferors (P_ prefix)
         for idx, t in enumerate(transferors, 1):
+            # Apply gender agreement for nationality and civil status
+            nacionalidad = self._apply_gender_to_word(t["nacionalidad"], t["sexo"])
+            estado_civil = self._apply_gender_to_word(t["estadoCivil"], t["sexo"])
+            
             contractor_data[f"P_NOM_{idx}"] = t["nombres"] + " "
-            contractor_data[f"P_NACIONALIDAD_{idx}"] = t["nacionalidad"] + " "
+            contractor_data[f"P_NACIONALIDAD_{idx}"] = nacionalidad + " "
             contractor_data[f"P_DOC_{idx}"] = self._get_identification_phrase(
                 t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
             ) + " "
             contractor_data[f"P_IDE_{idx}"] = " "
             contractor_data[f"P_OCUPACION_{idx}"] = t["ocupacion"] + " "
-            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = t["estadoCivil"] + " "
+            contractor_data[f"P_ESTADO_CIVIL_{idx}"] = estado_civil + " "
             contractor_data[f"P_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + t["direccion"] + " "
 
             # Add unnumbered versions for first person
             if idx == 1:
                 contractor_data["P_NOM"] = t["nombres"] + " "
-                contractor_data["P_NACIONALIDAD"] = t["nacionalidad"] + " "
+                contractor_data["P_NACIONALIDAD"] = nacionalidad + " "
                 contractor_data["P_DOC"] = self._get_identification_phrase(
                     t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
                 ) + " "
                 contractor_data["P_IDE"] = " "
                 contractor_data["P_OCUPACION"] = t["ocupacion"] + " "
-                contractor_data["P_ESTADO_CIVIL"] = t["estadoCivil"] + " "
+                contractor_data["P_ESTADO_CIVIL"] = estado_civil + " "
                 contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"] + " "
                 # CALIDAD_P will be set by _get_articles_and_grammar method
 
         # Process acquirers (C_ prefix)
         for idx, c in enumerate(acquirers, 1):
+            # Apply gender agreement for nationality and civil status
+            nacionalidad = self._apply_gender_to_word(c["nacionalidad"], c["sexo"])
+            estado_civil = self._apply_gender_to_word(c["estadoCivil"], c["sexo"])
+            
             contractor_data[f"C_NOM_{idx}"] = c["nombres"] + " "
-            contractor_data[f"C_NACIONALIDAD_{idx}"] = c["nacionalidad"] + " "
+            contractor_data[f"C_NACIONALIDAD_{idx}"] = nacionalidad + " "
             contractor_data[f"C_DOC_{idx}"] = self._get_identification_phrase(
                 c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
             ) + " "
             contractor_data[f"C_IDE_{idx}"] = " "
             contractor_data[f"C_OCUPACION_{idx}"] = c["ocupacion"] + " "
-            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = c["estadoCivil"] + " "
+            contractor_data[f"C_ESTADO_CIVIL_{idx}"] = estado_civil + " "
             contractor_data[f"C_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + c["direccion"] + " "
 
             # Add unnumbered versions for first person
             if idx == 1:
                 contractor_data["C_NOM"] = c["nombres"] + " "
-                contractor_data["C_NACIONALIDAD"] = c["nacionalidad"] + " "
+                contractor_data["C_NACIONALIDAD"] = nacionalidad + " "
                 contractor_data["C_DOC"] = self._get_identification_phrase(
                     c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
                 ) + " "
                 contractor_data["C_IDE"] = " "
                 contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
-                contractor_data["C_ESTADO_CIVIL"] = c["estadoCivil"] + " "
+                contractor_data["C_ESTADO_CIVIL"] = estado_civil + " "
                 contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
                 # CALIDAD_C will be set by _get_articles_and_grammar method
 
@@ -488,6 +496,31 @@ class DocumentFormatter:
         
         return company_data
 
+    def _apply_gender_to_word(self, word, gender):
+        """
+        Apply gender agreement to Spanish words
+        Mirrors: PHP logic - changes last letter based on gender
+        
+        Examples:
+        - PERUANO (M) -> PERUANO, PERUANO (F) -> PERUANA
+        - SOLTERO (M) -> SOLTERO, SOLTERO (F) -> SOLTERA
+        """
+        if not word or not word.strip():
+            return word
+        
+        word = word.strip()
+        
+        # For female, change last 'O' to 'A'
+        if gender == "F":
+            if word.endswith("O"):
+                return word[:-1] + "A"
+        # For male, ensure it ends with 'O' (if it ended with 'A', change it)
+        elif gender == "M":
+            if word.endswith("A"):
+                return word[:-1] + "O"
+        
+        return word
+    
     def _get_identification_phrase(self, gender, doc_type, doc_number):
         """
         Generate identification phrase based on gender and document type
