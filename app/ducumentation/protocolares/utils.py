@@ -234,6 +234,7 @@ class DocumentFormatter:
             "PROPIETARIO",
             "DEUDOR",
             "ASOCIANTE",
+            "ASOCIADO",  # Added for constitution documents
             "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
         }
 
@@ -259,6 +260,8 @@ class DocumentFormatter:
 
         # Parse contractor data from raw_data
         contractors = self._parse_contractor_data(raw_data)
+        
+        print(f"DEBUG: Parsed {len(contractors)} contractors")
 
         # Classify contractors
         transferors = []
@@ -267,16 +270,26 @@ class DocumentFormatter:
         acquirer_companies = []
 
         for contractor in contractors:
+            print(f"DEBUG: Classifying {contractor.get('nombres', 'NO_NAME')} - Role: {contractor.get('condicion_str', 'NO_ROLE')}")
+            
             if contractor["tipper"] == "J":  # Company
                 # Companies are classified based on their representatives' roles
                 if contractor["condicion_str"] in TRANSFEROR_ROLES:
                     transferor_companies.append(contractor)
+                    print(f"DEBUG: -> TRANSFEROR COMPANY")
                 elif contractor["condicion_str"] in ACQUIRER_ROLES:
                     acquirer_companies.append(contractor)
+                    print(f"DEBUG: -> ACQUIRER COMPANY")
             elif contractor["condicion_str"] in TRANSFEROR_ROLES:
                 transferors.append(contractor)
+                print(f"DEBUG: -> TRANSFEROR")
             elif contractor["condicion_str"] in ACQUIRER_ROLES:
                 acquirers.append(contractor)
+                print(f"DEBUG: -> ACQUIRER")
+            else:
+                print(f"DEBUG: -> UNCLASSIFIED!")
+        
+        print(f"DEBUG: Total transferors: {len(transferors)}, Total acquirers: {len(acquirers)}")
 
         # Generate contractor placeholders
         contractor_data = {}
