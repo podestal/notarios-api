@@ -66,7 +66,7 @@ class EscrituraDocumentService:
 
         FLOW:
         1. Get template information from database (filename, etc.)
-        2. Download the template from R2 storage
+        2. Download the template from R2 storage (or existing document for actualizar)
         3. Fetch data from database (consulta_escritura)
         4. Process data into sections (documento, vehiculos, pagos, contratantes)
         5. Replace placeholders in template
@@ -79,6 +79,10 @@ class EscrituraDocumentService:
         - action: Action type ("generate", "actualizar", "parte")
         - mode: Response mode ("download" or "open")
         """
+        
+        # Handle "actualizar" action - update existing document
+        if action == "actualizar":
+            return self._update_existing_document(kardex, mode)
 
         # STEP 1: Get template info
         template_info = self._get_template_info(template_id)
@@ -143,6 +147,54 @@ class EscrituraDocumentService:
 
         return self._create_response_from_buffer(buffer, filename, kardex, mode)
 
+    def _update_existing_document(self, kardex, mode):
+        """
+        Update existing document with escrituracion data
+        Mirrors: PHP actualizar action
+        
+        FLOW:
+        1. Validate that numescritura exists in database
+        2. Download existing __PROY__{kardex}.docx from R2
+        3. Get escrituracion data (numero_escritura, folio, papel)
+        4. Replace only escrituracion placeholders
+        5. Upload updated document back to R2
+        6. Return HTTP response
+        """
+        from django.db import connection
+        
+        # STEP 1: Validate numescritura exists
+        kardex_obj = models.Kardex.objects.get(kardex=kardex)
+        if not kardex_obj.numescritura:
+            raise ValueError("ERROR: FALTA GRABAR NUMERO DE ACTA")
+        
+        # STEP 2: Download existing document from R2
+        doc_bytes = self.template_manager.get_document_from_r2(kardex)
+        if not doc_bytes:
+            raise ValueError(f"ERROR: Document not found in R2: __PROY__{kardex}.docx")
+        
+        # STEP 3: Get escrituracion data from database
+        raw_data = self._consulta_escritura(kardex, "actualizar", None)
+        data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
+        
+        # STEP 4: Replace only escrituracion placeholders in document
+        buffer = io.BytesIO(doc_bytes)
+        doc = Document(buffer)
+        
+        # Replace escrituracion placeholders
+        self.placeholder_processor.replace_placeholders(doc, data_escrituracion)
+        
+        # Save to buffer
+        output_buffer = io.BytesIO()
+        doc.save(output_buffer)
+        output_buffer.seek(0)
+        
+        # STEP 5: Upload updated document to R2
+        self.template_manager.upload_document_to_r2(output_buffer, kardex)
+        
+        # STEP 6: Return HTTP response
+        filename = f"__PROY__{kardex}.docx"
+        return self._create_response_from_buffer(output_buffer, filename, kardex, mode)
+    
     def _get_template_info(self, template_id):
         """
         Get template information from database

@@ -1404,3 +1404,38 @@ class TemplateManager:
         except Exception as e:
             print(f"ERROR: Failed to upload document to R2: {e}")
             return False
+    
+    def get_document_from_r2(self, kardex):
+        """
+        Download existing document from R2 for updating
+        Mirrors: PHP actualizar action
+        
+        Args:
+            kardex: Kardex number to identify the document
+            
+        Returns:
+            bytes: Document content, or None if not found
+        """
+        try:
+            filename = f"__PROY__{kardex}.docx"
+            object_key = f"rodriguez-zea/documentos/{filename}"
+            
+            print(f"DEBUG: Downloading document from R2: {object_key}")
+            
+            # Get S3 client
+            s3 = get_s3_client()
+            
+            # Download from R2
+            response = s3.get_object(
+                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                Key=object_key
+            )
+            
+            doc_bytes = response['Body'].read()
+            print(f"DEBUG: Downloaded document from R2: {len(doc_bytes)} bytes")
+            
+            return doc_bytes
+            
+        except Exception as e:
+            print(f"ERROR: Failed to download document from R2: {e}")
+            return None
