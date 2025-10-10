@@ -1385,6 +1385,7 @@ class TemplateManager:
             
             # Define object key for R2
             filename = f"__PROY__{kardex}.docx"
+            print(f"DEBUG: Uploading document to R2: {filename}")
             object_key = f"rodriguez-zea/documentos/{filename}"
             
             # Get S3 client
