@@ -181,34 +181,14 @@ class DocumentFormatter:
         Format basic document data
         """
 
-        numero_escritura = raw_data.get("numero_escritura") or ""
-        fecha_escritura = raw_data.get("fecha_escritura")
-        numero_minuta = raw_data.get("numero_minuta") or ""
-
-        numero_acta = (
-            f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})"
-            if numero_escritura
-            else "{{NRO_ESC}}"
-        )
-        fecha_impresion = (
-            self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F_IMPRESION}}"
-        )
-        fecha_acta = self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F}}"
-        numero_minuta_formatted = numero_minuta if numero_minuta else "{{NRO_MIN}}"
-
         return {
-            "NRO_ESC": numero_acta,
             "K": raw_data.get("kardex", ""),
             "NUM_REG": "1",
-            "FEC_LET": self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "",
-            "F_IMPRESION": fecha_impresion,
             "USUARIO": raw_data.get("usuario", ""),
             "USUARIO_DNI": raw_data.get("dni_usuario", ""),
-            "NRO_MIN": numero_minuta_formatted,
             "COMPROBANTE": "sin",
             "O_S": raw_data.get("kardex", ""),
             "ORDEN_SERVICIO": raw_data.get("kardex", ""),
-            "F": fecha_acta,
             "DESCRIPCION_SELLO": f"{raw_data.get('abogado', '')} PUNO {raw_data.get('matricula', '')}",
         }
 
@@ -833,12 +813,32 @@ class DocumentFormatter:
         Format escrituracion data (folio and papel numbers)
         """
 
+
+        numero_escritura = raw_data.get("numero_escritura") or ""
+        fecha_escritura = raw_data.get("fecha_escritura")
+        numero_minuta = raw_data.get("numero_minuta") or ""
+
+        numero_acta = (
+            f"{numero_escritura}({self.letras.number_to_letters(numero_escritura)})"
+            if numero_escritura
+            else "{{NRO_ESC}}"
+        )
+        fecha_impresion = (
+            self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F_IMPRESION}}"
+        )
+        fecha_acta = self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "{{F}}"
+        numero_minuta_formatted = numero_minuta if numero_minuta else "{{NRO_MIN}}"
         folio_inicial = raw_data.get("folio_inicial") or ""
         folio_final = raw_data.get("folio_final") or ""
         papel_inicial = raw_data.get("papel_inicial") or ""
         papel_final = raw_data.get("papel_final") or ""
 
         return {
+            "NRO_ESC": numero_acta,
+            "FEC_LET": self.letras.date_to_letters(fecha_escritura) if fecha_escritura else "",
+            "F_IMPRESION": fecha_impresion,
+            "NRO_MIN": numero_minuta_formatted,
+            "F": fecha_acta,
             "FI": folio_inicial if folio_inicial else "{{FI}}",
             "S_IN": papel_inicial if papel_inicial else "{{S_IN}}",
             "FF": folio_final if folio_final else "{{FF}}",
