@@ -135,7 +135,10 @@ class EscrituraDocumentService:
             doc.save(buffer)
             buffer.seek(0)
 
-        # STEP 9: Return HTTP response
+        # STEP 9: Upload to R2
+        self.template_manager.upload_document_to_r2(buffer, kardex)
+        
+        # STEP 10: Return HTTP response
         filename = f"__PROY__{kardex}.docx"
 
         return self._create_response_from_buffer(buffer, filename, kardex, mode)

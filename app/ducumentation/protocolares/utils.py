@@ -8,6 +8,8 @@ import re
 import io
 from docx.shared import RGBColor
 from docxtpl import DocxTemplate
+from ducumentation.shared.base_r2_documents import get_s3_client
+import os
 
 
 class NumberToLetterConverter:
@@ -1363,19 +1365,41 @@ class TemplateManager:
             print(f"ERROR: Failed to download template from R2: {e}")
             raise
 
-    def upload_document_to_r2(self, doc, kardex):
+    def upload_document_to_r2(self, buffer, kardex):
         """
         Upload generated document to R2
         Mirrors: PHP document upload
-
-        SOLUTION:
-        - Save document to buffer
-        - Upload to R2 with proper key
-        - Handle errors gracefully
-        - Return success status
+        
+        Args:
+            buffer: BytesIO buffer containing the document
+            kardex: Kardex number for filename
+            
+        Returns:
+            bool: True if upload successful, False otherwise
         """
-        # TODO: Implement document upload
-        # TODO: Save document to buffer
-        # TODO: Upload to R2
-        # TODO: Handle errors
-        pass
+        try:
+            # Reset buffer position
+            buffer.seek(0)
+            doc_content = buffer.read()
+            buffer.seek(0)  # Reset for further use
+            
+            # Define object key for R2
+            filename = f"__PROY__{kardex}.docx"
+            object_key = f"rodriguez-zea/documentos/{filename}"
+            
+            # Get S3 client
+            s3 = get_s3_client()
+            
+            # Upload to R2
+            s3.upload_fileobj(
+                io.BytesIO(doc_content),
+                os.environ.get('CLOUDFLARE_R2_BUCKET'),
+                object_key
+            )
+            
+            print(f"DEBUG: Document uploaded to R2: {object_key}")
+            return True
+            
+        except Exception as e:
+            print(f"ERROR: Failed to upload document to R2: {e}")
+            return False
