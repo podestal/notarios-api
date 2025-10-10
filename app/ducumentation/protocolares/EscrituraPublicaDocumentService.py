@@ -151,47 +151,24 @@ class EscrituraDocumentService:
         """
         Update existing document with escrituracion data
         Mirrors: PHP actualizar action
-        
-        FLOW:
-        1. Validate that numescritura exists in database
-        2. Download existing __PROY__{kardex}.docx from R2
-        3. Get escrituracion data (numero_escritura, folio, papel)
-        4. Replace only escrituracion placeholders
-        5. Upload updated document back to R2
-        6. Return HTTP response
         """
-        from django.db import connection
-        
         # STEP 1: Validate numescritura exists
         kardex_obj = models.Kardex.objects.get(kardex=kardex)
         if not kardex_obj.numescritura:
             raise ValueError("ERROR: FALTA GRABAR NUMERO DE ACTA")
         
-        # STEP 2: Download existing document from R2
-        doc_bytes = self.template_manager.get_document_from_r2(kardex)
-        if not doc_bytes:
-            raise ValueError(f"ERROR: Document not found in R2: __PROY__{kardex}.docx")
-        
-        # STEP 3: Get escrituracion data from database
+        # STEP 2: Get escrituracion data from database
         raw_data = self._consulta_escritura(kardex, "actualizar", None)
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
         
-        # STEP 4: Replace only escrituracion placeholders in document
-        buffer = io.BytesIO(doc_bytes)
-        doc = Document(buffer)
+        # STEP 3: Update document using generic method from utils
+        output_buffer = self.template_manager.update_document_escrituracion(
+            kardex, 
+            data_escrituracion, 
+            self.placeholder_processor
+        )
         
-        # Replace escrituracion placeholders
-        self.placeholder_processor.replace_placeholders(doc, data_escrituracion)
-        
-        # Save to buffer
-        output_buffer = io.BytesIO()
-        doc.save(output_buffer)
-        output_buffer.seek(0)
-        
-        # STEP 5: Upload updated document to R2
-        self.template_manager.upload_document_to_r2(output_buffer, kardex)
-        
-        # STEP 6: Return HTTP response
+        # STEP 4: Return HTTP response
         filename = f"__PROY__{kardex}.docx"
         return self._create_response_from_buffer(output_buffer, filename, kardex, mode)
     

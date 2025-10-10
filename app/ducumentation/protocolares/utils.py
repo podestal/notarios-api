@@ -6,10 +6,10 @@ from botocore.config import Config
 import os
 import re
 import io
+from docx import Document
 from docx.shared import RGBColor
 from docxtpl import DocxTemplate
 from ducumentation.shared.base_r2_documents import get_s3_client
-import os
 
 
 class NumberToLetterConverter:
@@ -1439,3 +1439,40 @@ class TemplateManager:
         except Exception as e:
             print(f"ERROR: Failed to download document from R2: {e}")
             return None
+    
+    def update_document_escrituracion(self, kardex, escrituracion_data, placeholder_processor):
+        """
+        Update existing document with escrituracion data only
+        Mirrors: PHP actualizar action
+        
+        This is a generic method that all services can use to update documents
+        
+        Args:
+            kardex: Kardex number
+            escrituracion_data: Dictionary with escrituracion placeholders (NRO_ESC, F, FI, FF, etc.)
+            placeholder_processor: PlaceholderProcessor instance to use for replacement
+            
+        Returns:
+            BytesIO: Updated document buffer
+        """
+        # Download existing document from R2
+        doc_bytes = self.get_document_from_r2(kardex)
+        if not doc_bytes:
+            raise ValueError(f"ERROR: Document not found in R2: __PROY__{kardex}.docx")
+        
+        # Load document
+        buffer = io.BytesIO(doc_bytes)
+        doc = Document(buffer)
+        
+        # Replace only escrituracion placeholders
+        placeholder_processor.replace_placeholders(doc, escrituracion_data)
+        
+        # Save to buffer
+        output_buffer = io.BytesIO()
+        doc.save(output_buffer)
+        output_buffer.seek(0)
+        
+        # Upload updated document back to R2
+        self.upload_document_to_r2(output_buffer, kardex)
+        
+        return output_buffer

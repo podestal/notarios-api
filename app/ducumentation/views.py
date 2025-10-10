@@ -78,6 +78,8 @@ from .extraprotocolares.cert_domiciliarios import CertDomiciliariosDocumentServi
 from .extraprotocolares.libros import LibrosDocumentService
 from notaria.models import Libros
 
+from ducumentation.protocolares.EscrituraPublicaDocumentService import EscrituraDocumentService
+
 
 # Token-based authentication for save_doc view
 def generate_secure_token():
@@ -288,7 +290,7 @@ def generate_document_by_tipkar(request):
         )
 
 
-@api_view(["GET"])
+@api_view(["POST"])
 def update_document_by_tipkar(request):
     """
     Smart update endpoint that preserves manual edits based on tipkar
@@ -328,7 +330,25 @@ def update_document_by_tipkar(request):
             tipkar = kardex_obj.idtipkar
 
             # Route to appropriate update function based on tipkar
-            if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+            if tipkar == 1:  # ESCRITURAS PUBLICAS
+                print(f"DEBUG: Using escritura publica update for tipkar {tipkar}")
+                
+                try:
+                    service = EscrituraDocumentService()
+                    response = service.generate_escritura_publica_document(
+                        template_id=template_id,
+                        kardex=kardex,
+                        action="actualizar",
+                        mode="download"
+                    )
+                    return response
+                except ValueError as e:
+                    # Handle validation errors (missing numescritura, document not found, etc.)
+                    return Response(
+                        {"success": False, "message": str(e)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            elif tipkar == 3:  # TRANSFERENCIAS VEHICULARES
                 print(f"DEBUG: Using vehicle update for tipkar {tipkar}")
                 result = _smart_update_with_auto_discovery(template_id, kardex)
                 return Response(result)
