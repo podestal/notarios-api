@@ -63,6 +63,7 @@ from .services import (
 from .protocolares.EscrituraPublicaDocumentService import EscrituraDocumentService
 from .protocolares.NoContenciososService import NoContenciososDocumentService
 from .protocolares.GarantiasService import GarantiasDocumentService
+from .protocolares.TestamentosService import TestamentosDocumentService
 
 # from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
 from .extraprotocolares.permiso_viajes import (
@@ -467,7 +468,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
         if tipkar == 5:
             print(f"DEBUG: Using TestamentDocumentService for tipkar {tipkar}")
-            service = TestamentoDocumentService()
+            service = TestamentosDocumentService()
             if mode == "open":
                 # Return the download URL for Windows users - force HTTPS
                 download_url = (
@@ -486,7 +487,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 response["Access-Control-Allow-Origin"] = "*"
                 return response
             else:
-                return service.generate_testamento_document(template_id, kardex, action, mode)
+                return service.generate_testamentos_document(template_id, kardex, action, mode)
 
         if tipkar == 4:  # GARANTIAS MOBILIARIAS
             print(f"DEBUG: Using GarantiasMobiliariasDocumentService for tipkar {tipkar}")
