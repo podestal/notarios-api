@@ -62,6 +62,7 @@ from .services import (
 )
 from .protocolares.EscrituraPublicaDocumentService import EscrituraDocumentService
 from .protocolares.NoContenciososService import NoContenciososDocumentService
+from .protocolares.GarantiasService import GarantiasDocumentService
 
 # from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
 from .extraprotocolares.permiso_viajes import (
@@ -489,7 +490,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
         if tipkar == 4:  # GARANTIAS MOBILIARIAS
             print(f"DEBUG: Using GarantiasMobiliariasDocumentService for tipkar {tipkar}")
-            service = GarantiasMobiliariasDocumentService()
+            service = GarantiasDocumentService()
             if mode == "open":
                 download_url = (
                     f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
@@ -507,7 +508,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 response["Access-Control-Allow-Origin"] = "*"
                 return response
             else:
-                return service.generate_garantias_mobiliarias_document(
+                return service.generate_garantias_document(
                     template_id, kardex, action, mode
                 )
 
