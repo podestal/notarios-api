@@ -634,6 +634,7 @@ class DocumentFormatter:
             articles[f"O_A_{role_prefix}"] = "OS"
             articles[f"O_ERON_{role_prefix}"] = "ERON"
             articles[f"O_ARON_{role_prefix}"] = "ARON"
+            articles[f"OR_{role_prefix}"] = "ES"  # For TESTADORES (plural)
             articles[f"{role_prefix}_FIRMA"] = "FIRMAN EN"
             
         else:
@@ -650,6 +651,7 @@ class DocumentFormatter:
                 articles[f"O_A_{role_prefix}"] = "A"
                 articles[f"O_ERON_{role_prefix}"] = "A"
                 articles[f"O_ARON_{role_prefix}"] = "A"
+                articles[f"OR_{role_prefix}"] = "A"  # For TESTADORA (feminine)
             else:
                 articles[f"EL_{role_prefix}"] = "EL"
                 articles[f"INICIO_{role_prefix}"] = "SEÑOR"
@@ -662,6 +664,7 @@ class DocumentFormatter:
                 articles[f"O_A_{role_prefix}"] = "O"
                 articles[f"O_ERON_{role_prefix}"] = "O"
                 articles[f"O_ARON_{role_prefix}"] = "O"
+                articles[f"OR_{role_prefix}"] = "OR"  # For TESTADOR (masculine)
             
             articles[f"ES_{role_prefix}"] = ""
             articles[f"S_{role_prefix}"] = ""
