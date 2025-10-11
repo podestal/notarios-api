@@ -534,9 +534,27 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 return response
             else:
                 return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
-        # elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
-        #     print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
-        #     service = NoContenciososDocumentService()
+        elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
+            print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
+            service = NoContenciososDocumentService()
+            if mode == "open":
+                download_url = (
+                    f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+                )
+                response = JsonResponse(
+                    {
+                        "status": "success",
+                        "mode": "open",
+                        "filename": f"__PROY__{kardex}.docx",
+                        "kardex": kardex,
+                        "url": download_url,
+                        "message": "Document ready to open in Word",
+                    }
+                )
+                response["Access-Control-Allow-Origin"] = "*"
+                return response
+            else:
+                return service.generate_no_contencioso_document(template_id, kardex, action, mode)
 
 
         elif tipkar == 1:  # ESCRITURA PUBLICA
