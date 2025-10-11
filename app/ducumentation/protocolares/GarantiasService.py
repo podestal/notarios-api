@@ -74,9 +74,6 @@ class GarantiasDocumentService:
 
         # STEP 3: Fetch data from database
         raw_data = self._consulta_garantias(kardex, action, template_id)
-        
-        print(f"DEBUG: Garantias data for {kardex}:")
-        print(f"DEBUG: condicion = {raw_data.get('condicion', 'NOT_FOUND')}")
 
         # STEP 4: Format data using REUSABLE utilities
         data_documento = self.formatter.format_document_data(raw_data)

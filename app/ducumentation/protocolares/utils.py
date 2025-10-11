@@ -214,7 +214,6 @@ class DocumentFormatter:
             "TITULAR",
             "MUTUANTE",
             "PROPIETARIO",
-            "DEUDOR",
             "ASOCIANTE",
             "ASOCIADO",  # Added for constitution documents
             "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
@@ -238,6 +237,9 @@ class DocumentFormatter:
             "ADQUIRENTE / BENEFICIARIO (COMPRADOR)",
             "REPRESENTANTE",
             "CAUSANTE",  # No Contenciosos
+            "DEUDOR",  # Garantias Mobiliarias (goes to C_ side per PHP and template)
+            "CONSTITUYENTE",  # Garantias Mobiliarias (goes to C_ side per template)
+            "CONSTITUYENTE - DEUDOR",  # Garantias Mobiliarias (goes to C_ side per template)
         }
 
         REPRESENTATIVE_ROLES = {"APODERADO", "REPRESENTANTE"}
