@@ -75,8 +75,14 @@ class NoContenciososDocumentService:
         # STEP 3: Fetch data from database
         raw_data = self._consulta_no_contencioso(kardex, action, template_id)
         
-        print(f"DEBUG: No Contencioso data for {kardex}:")
-        print(f"DEBUG: condicion = {raw_data.get('condicion', 'NOT_FOUND')}")
+        print(f"DEBUG: No Contencioso RAW DATA for {kardex}:")
+        if raw_data:
+            print(f"DEBUG: condicion = {raw_data.get('condicion', 'NOT_FOUND')}")
+            print(f"DEBUG: nombres = {raw_data.get('nombres', 'NOT_FOUND')}")
+            print(f"DEBUG: sexo = {raw_data.get('sexo', 'NOT_FOUND')}")
+            print(f"DEBUG: numero_documento = {raw_data.get('numero_documento', 'NOT_FOUND')}")
+        else:
+            print(f"ERROR: raw_data is None! Query returned no results.")
 
         # STEP 4: Format data using REUSABLE utilities
         data_documento = self.formatter.format_document_data(raw_data)
@@ -85,6 +91,12 @@ class NoContenciososDocumentService:
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
         data_contratantes = self.formatter.format_contractor_data(raw_data)
         data_company = self.formatter.format_company_data(raw_data)
+        
+        print(f"DEBUG: Contractor placeholders generated:")
+        print(f"DEBUG: P_NOM = {data_contratantes.get('P_NOM', 'NOT_SET')}")
+        print(f"DEBUG: P_IDE = {data_contratantes.get('P_IDE', 'NOT_SET')}")
+        print(f"DEBUG: P_DOMICILIO = {data_contratantes.get('P_DOMICILIO', 'NOT_SET')}")
+        print(f"DEBUG: C_NOM = {data_contratantes.get('C_NOM', 'NOT_SET')}")
 
         # STEP 5: Combine all data
         final_data = self.formatter.combine_all_data(
