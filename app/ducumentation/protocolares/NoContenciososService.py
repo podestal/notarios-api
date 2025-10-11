@@ -1,6 +1,347 @@
 from django.db import connection
 import io
+from django.db import connection
+from django.http import HttpResponse, JsonResponse
+from docx import Document
+import io
+from decimal import Decimal
+from datetime import datetime
+from rest_framework.response import Response
+from notaria import models
+from .utils import (
+    NumberToLetterConverter,
+    DocumentFormatter,
+    PlaceholderProcessor,
+    DocxTemplateProcessor,
+    DataValidator,
+    TemplateManager,
+)
 
+
+class NoContenciososDocumentService:
+    """
+    Service to generate No Contenciosos documents
+    Mirrors: PHP asunto_no_contencioso() function
+    Reuses all utilities from utils.py
+    """
+
+    def __init__(
+        self,
+        letras=None,
+        formatter=None,
+        placeholder_processor=None,
+        docx_template_processor=None,
+        data_validator=None,
+        template_manager=None,
+    ):
+        """
+        Initialize with dependency injection - SAME as EscrituraDocumentService
+        All utilities are reusable!
+        """
+        self.letras = letras or NumberToLetterConverter()
+        self.formatter = DocumentFormatter(self.letras)
+        self.placeholder_processor = placeholder_processor or PlaceholderProcessor()
+        self.docx_template_processor = docx_template_processor or DocxTemplateProcessor()
+        self.data_validator = data_validator or DataValidator()
+        self.template_manager = template_manager or TemplateManager()
+
+    def generate_no_contencioso_document(self, template_id, kardex, action, mode):
+        """
+        Main entry point for generating No Contencioso documents
+        Mirrors: PHP asunto_no_contencioso() function
+        
+        FLOW: (Same as Escrituras)
+        1. Get template information
+        2. Download template from R2 (or existing document for actualizar)
+        3. Fetch data from database
+        4. Process data into sections
+        5. Replace placeholders
+        6. Upload to R2
+        7. Return HTTP response
+        """
+        
+        # Handle "actualizar" action
+        if action == "actualizar":
+            return self._update_existing_document(kardex, mode)
+
+        # STEP 1: Get template info
+        template_info = self._get_template_info(template_id)
+
+        # STEP 2: Download template from R2
+        template_bytes = self.template_manager.get_template_from_r2(
+            template_id, template_info["filename"]
+        )
+
+        # STEP 3: Fetch data from database
+        raw_data = self._consulta_no_contencioso(kardex, action, template_id)
+        
+        print(f"DEBUG: No Contencioso data for {kardex}:")
+        print(f"DEBUG: condicion = {raw_data.get('condicion', 'NOT_FOUND')}")
+
+        # STEP 4: Format data using REUSABLE utilities
+        data_documento = self.formatter.format_document_data(raw_data)
+        data_vehiculos = self.formatter.format_vehicle_data(raw_data)
+        data_pagos = self.formatter.format_payment_data(raw_data)
+        data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
+        data_contratantes = self.formatter.format_contractor_data(raw_data)
+        data_company = self.formatter.format_company_data(raw_data)
+
+        # STEP 5: Combine all data
+        final_data = self.formatter.combine_all_data(
+            data_documento,
+            data_vehiculos,
+            data_pagos,
+            data_escrituracion,
+            data_contratantes,
+            data_company,
+        )
+
+        # STEP 6: Replace placeholders (try docxtpl, fallback to PlaceholderProcessor)
+        try:
+            processed_bytes = self.docx_template_processor.replace_placeholders(
+                template_bytes, final_data
+            )
+            if processed_bytes:
+                buffer = io.BytesIO(processed_bytes)
+            else:
+                raise Exception("DocxTemplateProcessor returned None")
+        except Exception as e:
+            print(f"DEBUG: Falling back to PlaceholderProcessor for No Contencioso")
+            buffer = io.BytesIO(template_bytes)
+            doc = Document(buffer)
+
+            self.placeholder_processor.replace_placeholders(doc, final_data)
+            self.placeholder_processor.clean_unfilled_placeholders(doc)
+
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+
+        # STEP 7: Upload to R2
+        self.template_manager.upload_document_to_r2(buffer, kardex)
+        
+        # STEP 8: Return HTTP response
+        filename = f"__PROY__{kardex}.docx"
+        return self._create_response_from_buffer(buffer, filename, kardex, mode)
+
+    def _update_existing_document(self, kardex, mode):
+        """
+        Update existing No Contencioso document with escrituracion data
+        Mirrors: PHP actualizar action
+        REUSES: TemplateManager.update_document_escrituracion()
+        """
+        # STEP 1: Validate numescritura exists
+        kardex_obj = models.Kardex.objects.get(kardex=kardex)
+        if not kardex_obj.numescritura:
+            raise ValueError("ERROR: FALTA GRABAR NUMERO DE ACTA")
+        
+        # STEP 2: Get escrituracion data
+        raw_data = self._consulta_no_contencioso(kardex, "actualizar", None)
+        data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
+        
+        # STEP 3: Update document using REUSABLE generic method
+        output_buffer = self.template_manager.update_document_escrituracion(
+            kardex, 
+            data_escrituracion, 
+            self.placeholder_processor
+        )
+        
+        # STEP 4: Return HTTP response
+        filename = f"__PROY__{kardex}.docx"
+        return self._create_response_from_buffer(output_buffer, filename, kardex, mode)
+
+    def _get_template_info(self, template_id):
+        """Get template information from database"""
+        template = models.TplTemplate.objects.get(pktemplate=template_id)
+        return {"filename": template.filename}
+
+    def _create_response_from_buffer(self, buffer, filename, kardex, mode):
+        """Create HTTP response from buffer"""
+        if mode == "open":
+            response = JsonResponse(
+                {
+                    "status": "success",
+                    "mode": "open",
+                    "filename": filename,
+                    "kardex": kardex,
+                    "message": "Document generated and ready to open in Word",
+                }
+            )
+            response["Access-Control-Allow-Origin"] = "*"
+            return response
+        else:
+            response = HttpResponse(
+                buffer.read(),
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+            response["Content-Disposition"] = f'inline; filename="{filename}"'
+            response["Content-Length"] = str(buffer.getbuffer().nbytes)
+            response["Access-Control-Allow-Origin"] = "*"
+            return response
+
+    def _consulta_no_contencioso(self, num_kardex, action, template_id):
+        """
+        SQL Query for No Contencioso documents
+        Mirrors: PHP consulta_transferencia() in asunto_no_contencioso.php
+        
+        NOTE: The query structure is IDENTICAL to Escrituras,
+        only the filtering might differ based on document type
+        """
+        
+        # Get idtipoacto from kardex
+        idtipoacto = models.Kardex.objects.get(kardex=num_kardex).idtipkar
+        
+        # Same query as Escrituras (No Contenciosos use same data structure)
+        query = """
+            SELECT k.idkardex as id_kardex,
+                k.kardex,
+                k.numescritura as numero_escritura,
+                k.fechaescritura as fecha_escritura,
+                k.txa_minuta as registro_escritura,
+                CURRENT_DATE() as fecha_generado,
+                k.fechaconclusion as fecha_conclusion,
+                k.numminuta as numero_minuta,
+                k.kardexconexo as kardex_conexo,
+                k.folioini as folio_inicial,
+                k.foliofin as folio_final,
+                k.papelini as papel_inicial,
+                k.papelfin as papel_final,
+                (SELECT desacto FROM tiposdeacto WHERE idtipoacto=%s) as acto,
+                (SELECT fileName FROM tpl_template WHERE pkTemplate=%s) as plantilla,
+                (SELECT urlTemplate FROM tpl_template WHERE pkTemplate=%s) as url_plantilla,
+                k.fechaingreso as fecha_ingreso,
+                k.responsable_new as usuario,
+                abo.razonsocial as abogado,
+                abo.matricula as matricula,
+                abo.sede_colegio as sede_colegio,
+                usu.dni as dni_usuario,
+                GROUP_CONCAT(c2.idcliente) as id_cliente,
+                GROUP_CONCAT(IF(c2.conyuge='','NO',c2.conyuge)) as id_conyuge,
+                GROUP_CONCAT(cxa.idcontratante) as id_contratante,
+                GROUP_CONCAT(TRIM(CONCAT(IFNULL(c2.prinom, ''), ' ', IFNULL(c2.segnom, ''), IF(c2.segnom='','',' ') ,IFNULL(c2.apepat, ''), ' ',IFNULL(c2.apemat, ''),
+            IFNULL(c2.razonsocial, '')))) AS nombres,
+                GROUP_CONCAT(cxa.uif) as uif,
+                GROUP_CONCAT(ac.condicion) as condicion,
+                GROUP_CONCAT(IF(n.descripcion IS NULL OR n.descripcion='','EMPRESA',n.descripcion)) as nacionalidad,
+                GROUP_CONCAT(td.destipdoc) as tipo_documento,
+                GROUP_CONCAT(c2.numdoc) AS numero_documento,
+                GROUP_CONCAT(UPPER(c2.profesion_plantilla)) AS ocupacion,
+                GROUP_CONCAT(IF(tec.desestcivil IS NULL OR tec.desestcivil='','EMPRESA',tec.desestcivil)) as estado_civil,
+                GROUP_CONCAT(IF(c2.tipper='N',c2.direccion,c2.domfiscal) SEPARATOR ',,') as direccion,
+                GROUP_CONCAT(IFNULL(u.codpto, '')) as codigo_departamento,
+                GROUP_CONCAT(IFNULL(u.coddis, '')) as codigo_distrito,
+                GROUP_CONCAT(IFNULL(u.codprov, '')) as codigo_provincia,
+                GROUP_CONCAT(IFNULL(IF(SUBSTRING_INDEX(c2.ubigeo_plantilla, '/', -1)='',u.nomdis,SUBSTRING_INDEX(c2.ubigeo_plantilla, '/', -1)),(IFNULL(u.nomdis, '')))) AS distrito,
+                GROUP_CONCAT(IFNULL(u.nomprov, '')) as provincia,
+                GROUP_CONCAT(IFNULL(u.nomdpto, '')) as departamento,
+                GROUP_CONCAT(c2.sexo) AS sexo,
+                GROUP_CONCAT(c2.tipper) as tipo_persona,
+                GROUP_CONCAT(IF(cn.firma = '0', 'NO', 'SI')) AS firma,
+                GROUP_CONCAT(cn.firma) as n_firma,
+                GROUP_CONCAT(cn.tiporepresentacion) AS tipo_representacion,
+                dv.numplaca AS placa,
+                dv.marca AS marca,
+                dv.clase AS clase,
+                dv.anofab AS anio,
+                dv.numserie AS serie,
+                dv.color AS color,
+                dv.motor AS motor,
+                dv.modelo AS modelo,
+                dv.carroceria AS carroceria,
+                dv.pregistral as partida,
+                dv.fecinsc AS fecha_inscripcion,
+                dv.combustible AS combustible,
+                UPPER(sr.dessede) AS sede,
+                UPPER(sr.num_zona) AS numero_zona,
+                pat.importetrans AS precio ,
+                pat.idmon AS moneda,
+                pat.exhibiomp,
+                pat.idoppago,
+                uif.descripcion AS medio_pago,
+                mon.simbolo as simbolo_moneda,
+                mon.desmon as descripcion_moneda,
+                mp.desmpagos as descripcion_medio_pago,
+                mp.sunat as sunat_medio_pago,
+                GROUP_CONCAT(cnr.idcontratanterp) as id_empresa,
+                GROUP_CONCAT(TRIM(CONCAT(IFNULL(cr2.prinom, ''), ' ', IFNULL(cr2.segnom, ''), IF(cr2.segnom='','',' ') ,IFNULL(cr2.apepat, ''), ' ',IFNULL(cr2.apemat, ''),
+            IFNULL(cr2.razonsocial, '')))) AS nombre_empresa,
+                GROUP_CONCAT(cr2.tipper) as tipo_persona_empresa,
+                GROUP_CONCAT(acr.condicion) as condicion_empresa,
+                GROUP_CONCAT(tdr.destipdoc) as tipo_documento_empresa,
+                GROUP_CONCAT(cr2.numdoc) AS numero_documento_empresa,
+                GROUP_CONCAT(cr2.domfiscal) as domicilio_empresa,
+                GROUP_CONCAT(ur.nomdis) as distrito_empresa,
+                GROUP_CONCAT(ur.nomprov) as provincia_empresa,
+                GROUP_CONCAT(ur.nomdpto) as departamento_empresa,
+                GROUP_CONCAT(srr2.zona_depar SEPARATOR ',,') as oficina_registral,
+                GROUP_CONCAT(cr2.numpartida) as numero_partida,
+                dmp.foperacion as fecha_operacion,
+                dmp.documentos as documentos,
+                ban.desbanco as banco
+            FROM kardex as k
+            LEFT JOIN tb_abogado as abo on abo.idabogado=k.idabogado
+            LEFT JOIN usuarios as usu on usu.idusuario=k.idusuario
+            LEFT JOIN contratantesxacto as cxa on cxa.kardex=k.kardex
+            LEFT JOIN actocondicion as ac ON cxa.idcondicion=ac.idcondicion
+            LEFT JOIN contratantes cn ON cxa.idcontratante = cn.idcontratante
+            LEFT JOIN cliente2 as c2 on c2.idcontratante=cxa.idcontratante
+            LEFT JOIN nacionalidades as n on n.idnacionalidad=c2.nacionalidad
+            LEFT JOIN tipodocumento as td ON td.idtipdoc = c2.idtipdoc
+            LEFT OUTER JOIN tipoestacivil as tec ON tec.idestcivil = c2.idestcivil
+            LEFT OUTER JOIN ubigeo as u ON u.coddis = c2.idubigeo
+            LEFT JOIN detallevehicular as dv ON dv.kardex=k.kardex
+            LEFT JOIN sedesregistrales as sr ON sr.idsedereg=dv.idsedereg
+            LEFT JOIN patrimonial as pat ON pat.kardex=k.kardex
+            LEFT JOIN fpago_uif as uif ON uif.id_fpago = pat.fpago
+            LEFT JOIN monedas as mon ON mon.idmon = pat.idmon
+            LEFT JOIN detallemediopago as dmp ON pat.kardex = dmp.kardex
+            LEFT JOIN mediospago as mp ON dmp.codmepag = mp.codmepag
+            LEFT JOIN contratantes as cnr ON cxa.idcontratante = cnr.idcontratante
+            LEFT JOIN contratantesxacto as cxar on cxar.idcontratante=cnr.idcontratanterp
+            LEFT JOIN actocondicion as acr ON acr.idcondicion=cxar.idcondicion
+            LEFT JOIN cliente2 as cr2 on cr2.idcontratante=cnr.idcontratanterp
+            left JOIN nacionalidades as nr on nr.idnacionalidad=cr2.nacionalidad
+            LEFT JOIN sedesregistrales as srr2 on srr2.idsedereg=cr2.idsedereg
+            LEFT JOIN tipodocumento as tdr ON tdr.idtipdoc = cr2.idtipdoc
+            LEFT OUTER JOIN tipoestacivil as tecr ON tecr.idestcivil = cr2.idestcivil
+            LEFT OUTER JOIN ubigeo as ur ON ur.coddis = cr2.idubigeo
+            LEFT JOIN  bancos as ban ON ban.idbancos=dmp.idbancos
+            WHERE k.kardex=%s and (c2.tipper='N')
+            GROUP BY k.idkardex, dmp.detmp LIMIT 1
+        """
+
+        with connection.cursor() as cursor:
+            cursor.execute(query, [idtipoacto, template_id, template_id, num_kardex])
+            desc = cursor.description
+            row = cursor.fetchone()
+            if not row:
+                return None
+            result = dict(zip([col[0] for col in desc], row))
+            
+            # Also query company data if needed (same as Escrituras)
+            company_query = """
+                SELECT 
+                    c2.razonsocial as nombre_empresa_constitucion,
+                    c2.domfiscal as domicilio_empresa_constitucion,
+                    c2.tipper as tipo_persona_empresa_constitucion,
+                    c2.numdoc as numero_documento_empresa_constitucion,
+                    c2.numpartida as numero_partida_constitucion
+                FROM contratantesxacto as cxa
+                LEFT JOIN cliente2 as c2 on c2.idcontratante=cxa.idcontratante
+                WHERE cxa.kardex=%s and c2.tipper='J'
+                LIMIT 1
+            """
+            cursor.execute(company_query, [num_kardex])
+            company_row = cursor.fetchone()
+            
+            if company_row and company_row[0]:
+                result['nombre_empresa_constitucion'] = company_row[0]
+                result['domicilio_empresa_constitucion'] = company_row[1]
+                result['tipo_persona_empresa_constitucion'] = company_row[2]
+                result['numero_documento_empresa_constitucion'] = company_row[3]
+                result['numero_partida_constitucion'] = company_row[4]
+            
+            return result
 
 class NoContenciososReportService:
     """Service for generating no contenciosos reports matching PHP script format"""
