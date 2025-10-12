@@ -64,6 +64,7 @@ from .protocolares.EscrituraPublicaDocumentService import EscrituraDocumentServi
 from .protocolares.NoContenciososService import NoContenciososDocumentService
 from .protocolares.GarantiasService import GarantiasDocumentService
 from .protocolares.TestamentosService import TestamentosDocumentService
+from .protocolares.TransferenciasVehicularesService import TransferenciasVehicularesDocumentService
 
 # from .services import VehicleTransferDocumentService, NonContentiousDocumentService, TestamentoDocumentService, GarantiasMobiliariasDocumentService, EscrituraPublicaDocumentService
 from .extraprotocolares.permiso_viajes import (
@@ -351,34 +352,24 @@ def update_document_by_tipkar(request):
                         {"success": False, "message": str(e)},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-            # elif tipkar == 3:  # TRANSFERENCIAS VEHICULARES
-            #     print(f"DEBUG: Using vehicle update for tipkar {tipkar}")
-            #     result = _smart_update_with_auto_discovery(template_id, kardex)
-            #     return Response(result)
-            # elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
-            #     print(f"DEBUG: Using non-contentious update for tipkar {tipkar}")
-            #     # For non-contentious, we need idtipoacto from the request or from kardex
-            #     if request.method == "GET":
-            #         idtipoacto = request.GET.get("idtipoacto")
-            #     else:  # POST
-            #         idtipoacto = request.data.get("idtipoacto")
-            #     if not idtipoacto:
-            #         # Try to get from kardex codactos
-            #         if kardex_obj.codactos:
-            #             idtipoacto = kardex_obj.codactos[:3]  # Take first 3 characters
-            #         else:
-            #             return Response(
-            #                 {
-            #                     "success": False,
-            #                     "message": "idtipoacto is required for non-contentious documents",
-            #                 },
-            #                 status=status.HTTP_400_BAD_REQUEST,
-            #             )
-
-            #     result = _smart_update_non_contentious_with_auto_discovery(
-            #         template_id, kardex, idtipoacto
-            #     )
-            #     return Response(result)
+            elif tipkar == 3:  # TRANSFERENCIAS VEHICULARES
+                print(f"DEBUG: Using transferencias vehiculares update for tipkar {tipkar}")
+                
+                try:
+                    service = TransferenciasVehicularesDocumentService()
+                    response = service.generate_transferencias_document(
+                        template_id=template_id,
+                        kardex=kardex,
+                        action="actualizar",
+                        mode="download"
+                    )
+                    return response
+                except ValueError as e:
+                    # Handle validation errors (missing numescritura, document not found, etc.)
+                    return Response(
+                        {"success": False, "message": str(e)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             else:
                 return Response(
                     {
@@ -515,8 +506,8 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
         # Route to appropriate service based on tipkar
         if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
-            print(f"DEBUG: Using VehicleTransferDocumentService for tipkar {tipkar}")
-            service = VehicleTransferDocumentService()
+            print(f"DEBUG: Using TransferenciasVehicularesDocumentService for tipkar {tipkar}")
+            service = TransferenciasVehicularesDocumentService()
             if mode == "open":
                 # Return the download URL for Windows users - force HTTPS
                 download_url = (
@@ -535,7 +526,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 response["Access-Control-Allow-Origin"] = "*"
                 return response
             else:
-                return service.generate_vehicle_transfer_document(template_id, kardex, action, mode)
+                return service.generate_transferencias_document(template_id, kardex, action, mode)
         elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
             print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
             service = NoContenciososDocumentService()
