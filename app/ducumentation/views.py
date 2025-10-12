@@ -332,6 +332,14 @@ def update_document_by_tipkar(request):
                 )
 
             tipkar = kardex_obj.idtipkar
+            
+            # Log the update action
+            from . import models
+            models.DocumentosLogs.objects.create(
+                kardex=kardex,
+                user=request.user,
+                action='U'  # U = Update
+            )
 
             # Route to appropriate update function based on tipkar
             if tipkar == 1:  # ESCRITURAS PUBLICAS
@@ -447,13 +455,27 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         if not kardex:
             return HttpResponse({"error": "Missing kardex parameter."}, status=400)
 
-        # Create document tracking record
+        # Get or create document tracking record
         todayTimeDate = datetime.now().isoformat() + "Z"
         print(f"DEBUG: kardex: {kardex}")
-        documentogenerados = models.Documentogenerados.objects.create(
-            kardex=kardex, usuario=user.idusuario, fecha=todayTimeDate
+        documentogenerados, created = models.Documentogenerados.objects.get_or_create(
+            kardex=kardex,
+            defaults={
+                'usuario': user.idusuario,
+                'fecha': todayTimeDate
+            }
         )
-        print(f"DEBUG: creating doc: {documentogenerados}")
+        if created:
+            print(f"DEBUG: Created new documentogenerados: {documentogenerados}")
+        else:
+            print(f"DEBUG: Using existing documentogenerados: {documentogenerados}")
+        
+        # Log the action in DocumentosLogs
+        models.DocumentosLogs.objects.create(
+            kardex=kardex,
+            user=user,
+            action='G'  # G = Generate
+        )
 
         # Parse template_id
         try:
@@ -586,6 +608,13 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         
         if doc_content:
             # Document exists in R2, return it
+            # Log the open action
+            models.DocumentosLogs.objects.create(
+                kardex=kardex,
+                user=user,
+                action='O'  # O = Open
+            )
+            
             if mode == "open":
                 return self._create_open_mode_response(request, kardex)
             else:
@@ -649,6 +678,17 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         # Generate document
         generate_method = getattr(service, service_config["method"])
         return generate_method(template_id, kardex, action, mode)
+
+
+class DocumentosLogsViewSet(ModelViewSet):
+    """
+    ViewSet for the DocumentosLogs model.
+    """
+
+    queryset = models.DocumentosLogs.objects.all()
+    serializer_class = serializers.DocumentosLogsSerializer
+    # permission_classes = [IsAuthenticated]
+    # pagination_class = pagination.KardexPagination
 
 
 # Create S3 client once at module level for better performance

@@ -13,3 +13,13 @@ class DocumentosGeneradosSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Documentogenerados
         fields = '__all__'
+
+
+class DocumentosLogsSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the DocumentosLogs model.
+    """
+
+    class Meta:
+        model = models.DocumentosLogs
+        fields = '__all__'

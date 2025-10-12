@@ -12,7 +12,7 @@ It includes the URL patterns for the Notaria app's views.
 router = routers.DefaultRouter()
 router.register('documentos', views.DocumentosGeneradosViewSet)
 router.register('extraprotocolares', views.ExtraprotocolaresViewSet, basename='extraprotocolares')
-
+router.register('documentos-logs', views.DocumentosLogsViewSet, basename='documentos-logs')
 from .views import download_docx
 
 print("DEBUG: urls.py loaded")
