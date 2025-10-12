@@ -687,8 +687,7 @@ class DocumentosLogsViewSet(ModelViewSet):
 
     queryset = models.DocumentosLogs.objects.all()
     serializer_class = serializers.DocumentosLogsSerializer
-    # permission_classes = [IsAuthenticated]
-    # pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"])
     def by_kardex(self, request):
