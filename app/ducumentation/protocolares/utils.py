@@ -472,11 +472,6 @@ class DocumentFormatter:
             # For constitutions, use NOMBRE_EMPRESA_2
             condicion_empresa = "EMPRESA EN CONSTITUCION"
         
-        # Debug: Print company data
-        print(f"DEBUG: Company data processing:")
-        print(f"DEBUG: nombre_empresa = '{nombre_empresa}'")
-        print(f"DEBUG: tipo_persona_empresa = '{tipo_persona_empresa}'")
-        print(f"DEBUG: condicion_empresa = '{condicion_empresa}'")
         
         # Process company data if it exists
         # NOTE: tipo_persona_empresa can be comma-separated (e.g., "J,N" when there are multiple contractors)

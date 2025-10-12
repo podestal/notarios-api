@@ -72,13 +72,6 @@ class TransferenciasVehicularesDocumentService:
 
         # STEP 3: Fetch data from database
         raw_data = self._consulta_transferencias(kardex, action, template_id)
-        
-        # DEBUG: Print raw_data to see what we're getting
-        print(f"DEBUG: Transferencias raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
-        print(f"DEBUG: condicion = {raw_data.get('condicion') if raw_data else 'None'}")
-        print(f"DEBUG: nombre_empresa = {raw_data.get('nombre_empresa') if raw_data else 'None'}")
-        print(f"DEBUG: tipo_persona_empresa = {raw_data.get('tipo_persona_empresa') if raw_data else 'None'}")
-        print(f"DEBUG: condicion_empresa = {raw_data.get('condicion_empresa') if raw_data else 'None'}")
 
         # STEP 4: Format data using REUSABLE utilities
         data_documento = self.formatter.format_document_data(raw_data)

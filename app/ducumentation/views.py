@@ -413,43 +413,56 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         serializer = serializers.DocumentosGeneradosSerializer(documentos_generados, many=True)
         return Response(serializer.data)
 
+    def _create_open_mode_response(self, request, kardex):
+        """Helper method to create 'open' mode JSON response"""
+        download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+        response = JsonResponse(
+            {
+                "status": "success",
+                "mode": "open",
+                "filename": f"__PROY__{kardex}.docx",
+                "kardex": kardex,
+                "url": download_url,
+                "message": "Document ready to open in Word",
+            }
+        )
+        response["Access-Control-Allow-Origin"] = "*"
+        return response
+
     @action(detail=False, methods=["get"], url_path="open-template")
     def open_template(self, request):
         print(f"DEBUG: open_template")
         template_id = request.query_params.get("template_id")
         kardex = request.query_params.get("kardex")
         action = request.query_params.get("action", "generate")
-        mode = request.query_params.get("mode", "download")  # Add mode param for consistency
+        mode = request.query_params.get("mode", "download")
 
         user = request.user
 
+        # Validation
         if not user:
             return HttpResponse({"error": "User not authenticated."}, status=401)
-
         if not template_id:
             return HttpResponse({"error": "Missing template_id parameter."}, status=400)
-
         if not kardex:
             return HttpResponse({"error": "Missing kardex parameter."}, status=400)
 
+        # Create document tracking record
         todayTimeDate = datetime.now().isoformat() + "Z"
-
-        # create a new instance of Documentogenerados only if it doesn't exist
         print(f"DEBUG: kardex: {kardex}")
-        print(f"DEBUG: getting doc: ")
-        documentogenerados = models.Documentogenerados.objects.filter(kardex=kardex).first()
-        print(f"DEBUG: documentogenerados: {documentogenerados}")
-        # if not documentogenerados:
         documentogenerados = models.Documentogenerados.objects.create(
             kardex=kardex, usuario=user.idusuario, fecha=todayTimeDate
         )
         print(f"DEBUG: creating doc: {documentogenerados}")
+
+        # Parse template_id
         try:
             template_id = int(template_id)
         except ValueError:
             return HttpResponse({"error": "Invalid template_id format."}, status=400)
         print(f"DEBUG: template_id: {template_id}")
-        # Get the kardex record to determine the tipkar
+
+        # Get kardex object to determine tipkar
         kardex_obj = Kardex.objects.filter(kardex=kardex).first()
         print(f"DEBUG: kardex_obj: {kardex_obj}")
         if not kardex_obj:
@@ -457,128 +470,54 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
         tipkar = kardex_obj.idtipkar
 
-        if tipkar == 5:
-            print(f"DEBUG: Using TestamentDocumentService for tipkar {tipkar}")
-            service = TestamentosDocumentService()
-            if mode == "open":
-                # Return the download URL for Windows users - force HTTPS
-                download_url = (
-                    f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                )
-                response = JsonResponse(
-                    {
-                        "status": "success",
-                        "mode": "open",
-                        "filename": f"__PROY__{kardex}.docx",
-                        "kardex": kardex,
-                        "url": download_url,
-                        "message": "Document ready to open in Word",
-                    }
-                )
-                response["Access-Control-Allow-Origin"] = "*"
-                return response
-            else:
-                return service.generate_testamentos_document(template_id, kardex, action, mode)
+        # Service configuration mapping
+        SERVICE_MAP = {
+            1: {
+                "name": "EscrituraPublicaDocumentService",
+                "class": EscrituraDocumentService,
+                "method": "generate_escritura_publica_document",
+            },
+            2: {
+                "name": "NonContenciousDocumentService",
+                "class": NoContenciososDocumentService,
+                "method": "generate_no_contencioso_document",
+            },
+            3: {
+                "name": "TransferenciasVehicularesDocumentService",
+                "class": TransferenciasVehicularesDocumentService,
+                "method": "generate_transferencias_document",
+            },
+            4: {
+                "name": "GarantiasMobiliariasDocumentService",
+                "class": GarantiasDocumentService,
+                "method": "generate_garantias_document",
+            },
+            5: {
+                "name": "TestamentosDocumentService",
+                "class": TestamentosDocumentService,
+                "method": "generate_testamentos_document",
+            },
+        }
 
-        if tipkar == 4:  # GARANTIAS MOBILIARIAS
-            print(f"DEBUG: Using GarantiasMobiliariasDocumentService for tipkar {tipkar}")
-            service = GarantiasDocumentService()
-            if mode == "open":
-                download_url = (
-                    f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                )
-                response = JsonResponse(
-                    {
-                        "status": "success",
-                        "mode": "open",
-                        "filename": f"__PROY__{kardex}.docx",
-                        "kardex": kardex,
-                        "url": download_url,
-                        "message": "Document ready to open in Word",
-                    }
-                )
-                response["Access-Control-Allow-Origin"] = "*"
-                return response
-            else:
-                return service.generate_garantias_document(
-                    template_id, kardex, action, mode
-                )
-
-        # Route to appropriate service based on tipkar
-        if tipkar == 3:  # TRANSFERENCIAS VEHICULARES
-            print(f"DEBUG: Using TransferenciasVehicularesDocumentService for tipkar {tipkar}")
-            service = TransferenciasVehicularesDocumentService()
-            if mode == "open":
-                # Return the download URL for Windows users - force HTTPS
-                download_url = (
-                    f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                )
-                response = JsonResponse(
-                    {
-                        "status": "success",
-                        "mode": "open",
-                        "filename": f"__PROY__{kardex}.docx",
-                        "kardex": kardex,
-                        "url": download_url,
-                        "message": "Document ready to open in Word",
-                    }
-                )
-                response["Access-Control-Allow-Origin"] = "*"
-                return response
-            else:
-                return service.generate_transferencias_document(template_id, kardex, action, mode)
-        elif tipkar == 2:  # ASUNTOS NO CONTENCIOSOS
-            print(f"DEBUG: Using NonContentiousDocumentService for tipkar {tipkar}")
-            service = NoContenciososDocumentService()
-            if mode == "open":
-                download_url = (
-                    f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                )
-                response = JsonResponse(
-                    {
-                        "status": "success",
-                        "mode": "open",
-                        "filename": f"__PROY__{kardex}.docx",
-                        "kardex": kardex,
-                        "url": download_url,
-                        "message": "Document ready to open in Word",
-                    }
-                )
-                response["Access-Control-Allow-Origin"] = "*"
-                return response
-            else:
-                return service.generate_no_contencioso_document(template_id, kardex, action, mode)
-
-
-        elif tipkar == 1:  # ESCRITURA PUBLICA
-            print(f"DEBUG: Using EscrituraPublicaDocumentService for tipkar {tipkar}")
-            service = EscrituraDocumentService()
-            if mode == "open":
-                # Return the download URL for Windows users - force HTTPS
-                download_url = (
-                    f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
-                )
-                response = JsonResponse(
-                    {
-                        "status": "success",
-                        "mode": "open",
-                        "filename": f"__PROY__{kardex}.docx",
-                        "kardex": kardex,
-                        "url": download_url,
-                        "message": "Document ready to open in Word",
-                    }
-                )
-                response["Access-Control-Allow-Origin"] = "*"
-                return response
-            else:
-                return service.generate_escritura_publica_document(
-                    template_id, kardex, action, mode
-                )
-        else:
+        # Get service config
+        service_config = SERVICE_MAP.get(tipkar)
+        if not service_config:
             return HttpResponse(
-                {"error": f"Document generation not implemented for tipkar {tipkar}"}, status=501
+                {"error": f"Document generation not implemented for tipkar {tipkar}"}, 
+                status=501
             )
-        return HttpResponse({"error": "Documentogenerados already exists."}, status=400)
+
+        # Create service instance
+        print(f"DEBUG: Using {service_config['name']} for tipkar {tipkar}")
+        service = service_config["class"]()
+
+        # Handle 'open' mode
+        if mode == "open":
+            return self._create_open_mode_response(request, kardex)
+
+        # Generate document
+        generate_method = getattr(service, service_config["method"])
+        return generate_method(template_id, kardex, action, mode)
 
     @action(detail=False, methods=["get"], url_path="open-document")
     def open_document(self, request):
