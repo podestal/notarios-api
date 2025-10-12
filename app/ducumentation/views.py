@@ -455,20 +455,23 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         if not kardex:
             return HttpResponse({"error": "Missing kardex parameter."}, status=400)
 
-        # Get or create document tracking record
+        # Get or create document tracking record (handle duplicates gracefully)
         todayTimeDate = datetime.now().isoformat() + "Z"
         print(f"DEBUG: kardex: {kardex}")
-        documentogenerados, created = models.Documentogenerados.objects.get_or_create(
-            kardex=kardex,
-            defaults={
-                'usuario': user.idusuario,
-                'fecha': todayTimeDate
-            }
-        )
-        if created:
-            print(f"DEBUG: Created new documentogenerados: {documentogenerados}")
-        else:
+        
+        # Check if any record exists for this kardex
+        documentogenerados = models.Documentogenerados.objects.filter(kardex=kardex).first()
+        
+        if documentogenerados:
             print(f"DEBUG: Using existing documentogenerados: {documentogenerados}")
+        else:
+            # Create new record only if none exists
+            documentogenerados = models.Documentogenerados.objects.create(
+                kardex=kardex,
+                usuario=user.idusuario,
+                fecha=todayTimeDate
+            )
+            print(f"DEBUG: Created new documentogenerados: {documentogenerados}")
         
         # Log the action in DocumentosLogs
         models.DocumentosLogs.objects.create(

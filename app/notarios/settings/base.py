@@ -154,11 +154,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Lima'  # Peru timezone (UTC-5)
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = True  # Keep this True - Django will handle timezone conversions
 
 INTERNAL_IPS = ["127.0.0.1"]
 
