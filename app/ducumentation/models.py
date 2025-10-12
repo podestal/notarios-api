@@ -26,6 +26,34 @@ class Documentogenerados(models.Model):
         db_table = 'documentogenerados'
 
 
+class DocumentosLogs(models.Model):
+    """Model for storing document generation logs"""
+    
+    ACTIONS_CHOICES = [
+        ('G', 'Generate'),
+        ('U', 'Update'),
+        ('O', 'Open'),
+    ]
+
+    # Use kardex as reference instead of ForeignKey (since Documentogenerados is unmanaged)
+    kardex = models.CharField(max_length=15, db_index=True, help_text="Kardex reference")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    action = models.CharField(max_length=1, choices=ACTIONS_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        managed = True  # This table will be managed by Django
+        db_table = 'documentos_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['kardex', '-created_at']),
+            models.Index(fields=['action', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.kardex} - {self.get_action_display()} at {self.created_at}"
+
+
 class APIToken(models.Model):
     """Model for managing API tokens with expiration"""
     name = models.CharField(max_length=100, help_text="Token name/description")
