@@ -479,7 +479,9 @@ class DocumentFormatter:
         print(f"DEBUG: condicion_empresa = '{condicion_empresa}'")
         
         # Process company data if it exists
-        if nombre_empresa and tipo_persona_empresa == "J":
+        # NOTE: tipo_persona_empresa can be comma-separated (e.g., "J,N" when there are multiple contractors)
+        # We check if "J" is in the string to detect if ANY contractor represents a juridical person
+        if nombre_empresa and "J" in str(tipo_persona_empresa):
             # Determine which company slot to use based on condition
             if condicion_empresa in ['EMPRESA EN CONSTITUCION', 'ASOCIACION EN CONSTITUCION']:
                 print(f"DEBUG: Setting NOMBRE_EMPRESA_2 (constitution)")
