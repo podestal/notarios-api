@@ -690,6 +690,20 @@ class DocumentosLogsViewSet(ModelViewSet):
     # permission_classes = [IsAuthenticated]
     # pagination_class = pagination.KardexPagination
 
+    @action(detail=False, methods=["get"])
+    def by_kardex(self, request):
+        """
+        Get DocumentosLogs by kardex
+        """
+        kardex = request.query_params.get("kardex")
+        logs = models.DocumentosLogs.objects.filter(kardex=kardex)
+
+        if not logs.exists():
+            return Response([], status=200)
+
+        serializer = serializers.DocumentosLogsSerializer(logs, many=True)
+        return Response(serializer.data)
+
 
 # Create S3 client once at module level for better performance
 _s3_client = None
