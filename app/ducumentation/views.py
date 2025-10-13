@@ -297,102 +297,120 @@ def generate_document_by_tipkar(request):
 @api_view(["POST"])
 def update_document_by_tipkar(request):
     """
-    Smart update endpoint that preserves manual edits based on tipkar
+    Smart update endpoint that preserves manual edits based on tipkar.
+    Supports all 5 document types: Escrituras, No Contenciosos, Transferencias, Garantías, Testamentos
     """
     print("SMART UPDATE DOCUMENT BY TIPKAR VIEW CALLED")
-    if request.method == "POST":
-        # Get parameters
-        template_id = request.POST.get("template_id")
-        kardex = request.POST.get("kardex")
+    
+    # Get parameters
+    template_id = request.POST.get("template_id")
+    kardex = request.POST.get("kardex")
 
-        if not all([template_id, kardex]):
+    if not all([template_id, kardex]):
+        return Response(
+            {"success": False, "message": "Faltan parámetros requeridos: template_id, kardex"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        template_id = int(template_id)
+    except ValueError:
+        return Response(
+            {"success": False, "message": "Formato de template_id inválido"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        # Get the kardex record to determine the tipkar
+        from notaria.models import Kardex
+
+        kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+
+        if not kardex_obj:
             return Response(
-                {"success": False, "message": "Faltan parámetros requeridos: template_id, kardex"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"success": False, "message": f"Kardex {kardex} no encontrado"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
-        try:
-            template_id = int(template_id)
-        except ValueError:
+        tipkar = kardex_obj.idtipkar
+        
+        # Log the update action
+        from . import models
+        models.DocumentosLogs.objects.create(
+            kardex=kardex,
+            user=request.user,
+            action='U'  # U = Update
+        )
+
+        # Service map for all document types
+        UPDATE_SERVICE_MAP = {
+            1: {
+                "name": "Escrituras Públicas",
+                "class": EscrituraDocumentService,
+                "method": "generate_escritura_publica_document"
+            },
+            2: {
+                "name": "Asuntos No Contenciosos",
+                "class": NoContenciososDocumentService,
+                "method": "generate_no_contencioso_document"
+            },
+            3: {
+                "name": "Transferencias Vehiculares",
+                "class": TransferenciasVehicularesDocumentService,
+                "method": "generate_transferencias_document"
+            },
+            4: {
+                "name": "Garantías Mobiliarias",
+                "class": GarantiasDocumentService,
+                "method": "generate_garantias_document"
+            },
+            5: {
+                "name": "Testamentos",
+                "class": TestamentosDocumentService,
+                "method": "generate_testamentos_document"
+            },
+        }
+
+        # Get service configuration
+        service_config = UPDATE_SERVICE_MAP.get(tipkar)
+        
+        if not service_config:
             return Response(
-                {"success": False, "message": "Formato de template_id inválido"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {
+                    "success": False,
+                    "message": f"Actualización de documento no implementada para tipkar {tipkar}",
+                },
+                status=status.HTTP_501_NOT_IMPLEMENTED,
             )
 
+        # Log which service we're using
+        print(f"DEBUG: Updating {service_config['name']} document for tipkar {tipkar}")
+        
+        # Instantiate service and call update method
         try:
-            # Get the kardex record to determine the tipkar
-            from notaria.models import Kardex
-
-            kardex_obj = Kardex.objects.filter(kardex=kardex).first()
-
-            if not kardex_obj:
-                return Response(
-                    {"success": False, "message": f"Kardex {kardex} no encontrado"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            tipkar = kardex_obj.idtipkar
-            
-            # Log the update action
-            from . import models
-            models.DocumentosLogs.objects.create(
+            service = service_config["class"]()
+            update_method = getattr(service, service_config["method"])
+            response = update_method(
+                template_id=template_id,
                 kardex=kardex,
-                user=request.user,
-                action='U'  # U = Update
+                action="actualizar",
+                mode="download"
             )
-
-            # Route to appropriate update function based on tipkar
-            if tipkar == 1:  # ESCRITURAS PUBLICAS
-                print(f"DEBUG: Using escritura publica update for tipkar {tipkar}")
-                
-                try:
-                    service = EscrituraDocumentService()
-                    response = service.generate_escritura_publica_document(
-                        template_id=template_id,
-                        kardex=kardex,
-                        action="actualizar",
-                        mode="download"
-                    )
-                    return response
-                except ValueError as e:
-                    # Handle validation errors (missing numescritura, document not found, etc.)
-                        return Response(
-                        {"success": False, "message": str(e)},
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-            elif tipkar == 3:  # TRANSFERENCIAS VEHICULARES
-                print(f"DEBUG: Using transferencias vehiculares update for tipkar {tipkar}")
-                
-                try:
-                    service = TransferenciasVehicularesDocumentService()
-                    response = service.generate_transferencias_document(
-                        template_id=template_id,
-                        kardex=kardex,
-                        action="actualizar",
-                        mode="download"
-                    )
-                    return response
-                except ValueError as e:
-                    # Handle validation errors (missing numescritura, document not found, etc.)
-                    return Response(
-                        {"success": False, "message": str(e)},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            else:
-                return Response(
-                    {
-                        "success": False,
-                        "message": f"Actualización de documento no implementada para tipkar {tipkar}",
-                    },
-                    status=status.HTTP_501_NOT_IMPLEMENTED,
-                )
-
-        except Exception as e:
-            print(f"Error in smart update: {e}")
+            return response
+            
+        except ValueError as e:
+            # Handle validation errors (missing numescritura, document not found, etc.)
             return Response(
-                {"success": False, "message": "Ocurrió un error interno en el servidor"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"success": False, "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+    except Exception as e:
+        print(f"Error in smart update: {e}")
+        return Response(
+            {"success": False, "message": "Ocurrió un error interno en el servidor"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 class DocumentosGeneradosViewSet(ModelViewSet):
