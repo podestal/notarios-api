@@ -23,6 +23,8 @@ def get_notary_config():
     The ubigeo field format is: "distrito - provincia - departamento"
     Example: "Macusani - carabaya - Puno"
     
+    If ubigeo column doesn't exist, falls back to individual distrito, provincia, departamento columns.
+    
     Returns:
         dict: Notary configuration with keys: nombre, telefono, correo, ruc, 
               direccion, distrito, provincia, departamento, codnotario, codoficial, coduif
@@ -34,12 +36,32 @@ def get_notary_config():
     from django.db import connection
     
     with connection.cursor() as cursor:
+        # First check if ubigeo column exists
         cursor.execute("""
-            SELECT nombre, apellido, telefono, correo, ruc, direccion, distrito,
-                   codnotario, codoficial, coduif, notario, ubigeo
-            FROM confinotario
-            LIMIT 1
+            SELECT COUNT(*) 
+            FROM information_schema.columns 
+            WHERE table_schema = DATABASE()
+            AND table_name = 'confinotario' 
+            AND column_name = 'ubigeo'
         """)
+        has_ubigeo = cursor.fetchone()[0] > 0
+        
+        # Build query based on column availability
+        if has_ubigeo:
+            cursor.execute("""
+                SELECT nombre, apellido, telefono, correo, ruc, direccion, distrito,
+                       codnotario, codoficial, coduif, notario, ubigeo, provincia, departamento
+                FROM confinotario
+                LIMIT 1
+            """)
+        else:
+            cursor.execute("""
+                SELECT nombre, apellido, telefono, correo, ruc, direccion, distrito,
+                       codnotario, codoficial, coduif, notario, NULL as ubigeo, provincia, departamento
+                FROM confinotario
+                LIMIT 1
+            """)
+        
         result = cursor.fetchone()
         
         if result:
@@ -48,13 +70,13 @@ def get_notary_config():
             if telefono and not telefono.startswith("("):
                 telefono = f"(051) {telefono}"
             
-            # Parse ubigeo field: "distrito - provincia - departamento"
+            # Parse ubigeo field if available: "distrito - provincia - departamento"
             ubigeo = result[11] or ""
             distrito = ""
             provincia = ""
             departamento = ""
             
-            if ubigeo:
+            if ubigeo and has_ubigeo:
                 parts = [part.strip() for part in ubigeo.split("-")]
                 if len(parts) >= 1:
                     distrito = parts[0].upper()  # "MACUSANI"
@@ -63,9 +85,13 @@ def get_notary_config():
                 if len(parts) >= 3:
                     departamento = parts[2].upper()  # "PUNO"
             
-            # Fallback to distrito column if ubigeo parsing fails
+            # Fallback to individual columns if ubigeo parsing fails or column doesn't exist
             if not distrito:
                 distrito = (result[6] or "").upper()
+            if not provincia:
+                provincia = (result[12] or "").upper()
+            if not departamento:
+                departamento = (result[13] or "").upper()
             
             return {
                 "nombre": result[10] or f"{result[0] or ''} {result[1] or ''}".strip(),  # Use 'notario' field or concatenate
