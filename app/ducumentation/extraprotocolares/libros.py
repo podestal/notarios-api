@@ -9,6 +9,7 @@ from docxtpl import DocxTemplate
 
 from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
 from ..utils import NumberToLetterConverter
+from ..protocolares.utils import get_notary_config
 
 
 class LibrosDocumentService(BaseR2DocumentService):
@@ -70,7 +71,7 @@ class LibrosDocumentService(BaseR2DocumentService):
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
-                return self.json_error(404, f"Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.")
+                return self.json_error(404, f"Template '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.")
 
             libro_data = self._get_libro_data(num_libro, anio_libro)
             if not libro_data:
@@ -140,16 +141,13 @@ class LibrosDocumentService(BaseR2DocumentService):
         return response
 
     def _get_notary_data(self) -> Dict[str, str]:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT CONCAT(nombre, ' ', apellido) AS notario, direccion, distrito FROM confinotario")
-            row = cursor.fetchone()
-            if row:
-                return {
-                    'NOTARIO': str(row[0]).upper() if row[0] else '',
-                    'DIRECCION_NOTARIO': str(row[1]).upper() if row[1] else '',
-                    'DISTRITO_NOTARIO': str(row[2]).upper() if row[2] else '',
-                }
-        return {'NOTARIO': '', 'DIRECCION_NOTARIO': '', 'DISTRITO_NOTARIO': ''}
+        """Get notary configuration info from database"""
+        config = get_notary_config()
+        return {
+            'NOTARIO': config["nombre"].upper(),
+            'DIRECCION_NOTARIO': config["direccion"].upper(),
+            'DISTRITO_NOTARIO': config["distrito"].upper(),
+        }
 
     def _get_libro_data(self, num_libro: str, anio_libro: str) -> Dict[str, Any]:
         d: Dict[str, Any] = {}
@@ -359,40 +357,17 @@ class LibrosReportService:
             return []
     
     def _get_notary_info(self):
-        """Get notary configuration info"""
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT 
-                    CONCAT(nombre, ' ', apellido) as nombre_completo,
-                    direccion,
-                    telefono,
-                    departamento,
-                    ruc,
-                    provincia,
-                    distrito
-                FROM confinotario
-                LIMIT 1
-            """)
-            result = cursor.fetchone()
-            if result:
-                return {
-                    'nombre': result[0],
-                    'direccion': result[1] or '',
-                    'telefono': result[2] or '',
-                    'departamento': result[3] or '',
-                    'ruc': result[4] or '',
-                    'provincia': result[5] or '',
-                    'distrito': result[6] or ''
-                }
-            return {
-                'nombre': 'NOTARIO',
-                'direccion': '',
-                'telefono': '',
-                'departamento': '',
-                'ruc': '', 
-                'provincia': '',
-                'distrito': ''
-            }
+        """Get notary configuration info from database"""
+        config = get_notary_config()
+        return {
+            'nombre': config["nombre"],
+            'direccion': config["direccion"],
+            'telefono': config["telefono"],
+            'departamento': config["departamento"],
+            'ruc': config["ruc"],
+            'provincia': config["provincia"],
+            'distrito': config["distrito"]
+        }
     
     def _format_date_in_spanish(self, date_str):
         """Convert date to Spanish format like 'LUNES, 15 DE ENERO DEL 2025'"""

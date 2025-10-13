@@ -115,7 +115,7 @@ class VehicleTransferDocumentService:
             print(f"DEBUG: Document size: {len(doc_content)} bytes")
             
             # Define the object key for R2
-            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
             
             # Check environment variables
             endpoint_url = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
@@ -255,7 +255,7 @@ class VehicleTransferDocumentService:
         )
         
         # Template path in simplified structure
-        object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
         
         try:
             s3_response = s3.get_object(
@@ -876,7 +876,7 @@ class NonContentiousDocumentService:
             print(f"DEBUG: Non-contentious document size: {len(doc_content)} bytes")
             
             # Define the object key for R2 - simplified path structure
-            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
             
             # Check environment variables
             endpoint_url = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
@@ -984,7 +984,7 @@ class NonContentiousDocumentService:
         s3 = get_s3_client()
         
         # Template path in simplified structure
-        object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
         
         try:
             s3_response = s3.get_object(
@@ -2035,7 +2035,7 @@ class TestamentoDocumentService:
         s3 = get_s3_client()
         
         # Template path in simplified structure
-        object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
         
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
@@ -2120,7 +2120,7 @@ class TestamentoDocumentService:
             buffer = BytesIO()
             doc.save(buffer)
             buffer.seek(0)
-            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
             s3 = get_s3_client()
             s3.upload_fileobj(
                 buffer,
@@ -2827,7 +2827,7 @@ class GarantiasMobiliariasDocumentService:
         template = TplTemplate.objects.get(pktemplate=template_id)
         s3 = get_s3_client()
         
-        object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
         
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
@@ -2878,7 +2878,7 @@ class GarantiasMobiliariasDocumentService:
             buffer = BytesIO()
             doc.save(buffer)
             buffer.seek(0)
-            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
             s3 = get_s3_client()
             s3.upload_fileobj(
                 buffer,
@@ -3815,7 +3815,7 @@ class EscrituraPublicaDocumentService:
         template = TplTemplate.objects.get(pktemplate=template_id)
         s3 = get_s3_client()
         
-        object_key = f"rodriguez-zea/plantillas/{template.filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
         print(f"DEBUG: Template file: {template.filename}")
         
         try:
@@ -3943,7 +3943,7 @@ class EscrituraPublicaDocumentService:
             buffer = BytesIO()
             doc.save(buffer)
             buffer.seek(0)
-            object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
             s3 = get_s3_client()
             s3.upload_fileobj(
                 buffer,

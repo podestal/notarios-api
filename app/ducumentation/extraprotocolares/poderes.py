@@ -11,6 +11,7 @@ from docxtpl import DocxTemplate, RichText
 import traceback
 from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
 from ..utils import NumberToLetterConverter
+from ..protocolares.utils import get_notary_config
 from datetime import datetime
 import re
 
@@ -20,8 +21,8 @@ logger = logging.getLogger(__name__)
 class BasePoderDocumentService(BaseR2DocumentService):
     """
     Base service with common logic for generating Poder documents.
-    - Loads templates from R2 under rodriguez-zea/plantillas/
-    - Saves generated docs to R2 under rodriguez-zea/documentos/
+    - Loads templates from R2 under {os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/
+    - Saves generated docs to R2 under {os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/
     - Supports 'generate' and 'retrieve' workflows
     """
     def __init__(self) -> None:
@@ -36,7 +37,7 @@ class BasePoderDocumentService(BaseR2DocumentService):
             # Use the provided filename only (legacy-specific per endpoint)
             s3 = get_s3_client()
             bucket = os.environ.get('CLOUDFLARE_R2_BUCKET')
-            object_key = f"rodriguez-zea/documentos/{filename}"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             if mode == "open":
                 url = s3.generate_presigned_url(
                     'get_object',
@@ -71,7 +72,7 @@ class BasePoderDocumentService(BaseR2DocumentService):
         if not self.template_filename:
             raise ValueError("template_filename must be set in child class")
         s3 = get_s3_client()
-        object_key = f"rodriguez-zea/plantillas/{self.template_filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{self.template_filename}"
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             template_bytes = response['Body'].read()
@@ -117,7 +118,7 @@ class BasePoderDocumentService(BaseR2DocumentService):
     def _create_response(self, buffer: Optional[io.BytesIO], filename: str, id_poder: int, mode: str = "download") -> HttpResponse:
         if mode == "open":
             s3 = get_s3_client()
-            object_key = f"rodriguez-zea/documentos/{filename}"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             try:
                 url = s3.generate_presigned_url(
                     'get_object',
@@ -144,7 +145,7 @@ class BasePoderDocumentService(BaseR2DocumentService):
 
     def _save_document_to_r2(self, buffer: io.BytesIO, filename: str) -> None:
         s3 = get_s3_client()
-        object_key = f"rodriguez-zea/documentos/{filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
         buffer.seek(0)
         s3.put_object(
             Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
@@ -208,7 +209,7 @@ class PoderFueraDeRegistroDocumentService(BasePoderDocumentService):
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
                 return HttpResponse(
-                    f"Error: Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.",
+                    f"Error: Template '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.",
                     status=404,
                 )
 
@@ -544,7 +545,7 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
             if template_bytes is None:
                 logger.error(f"Template not found: {self.template_filename}")
                 return HttpResponse(
-                    f"Error: Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.",
+                    f"Error: Template '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.",
                     status=404,
                 )
             logger.info(f"Template size: {len(template_bytes)} bytes")
@@ -678,7 +679,7 @@ class PoderEssaludDocumentService(BasePoderDocumentService):
 class PoderPensionDocumentService(BasePoderDocumentService):
     def __init__(self) -> None:
         super().__init__()
-        # Template expected in R2 at rodriguez-zea/plantillas/
+        # Template expected in R2 at {os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/
         self.template_filename = "COBRO DE PENSION ONP.docx"
 
     def generate_poder_pension_document(self, id_poder: int, mode: str = "download") -> HttpResponse:
@@ -700,7 +701,7 @@ class PoderPensionDocumentService(BasePoderDocumentService):
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
                 return HttpResponse(
-                    f"Error: Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.",
+                    f"Error: Template '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.",
                     status=404,
                 )
 
@@ -988,11 +989,9 @@ class PoderesReportService:
             return result if result else []
     
     def _get_notary_info(self):
-        """Get notary configuration info"""
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT CONCAT(nombre, ' ', apellido) as notario FROM confinotario LIMIT 1")
-            result = cursor.fetchone()
-            return result[0] if result else "NOTARIO"
+        """Get notary configuration info from database"""
+        config = get_notary_config()
+        return config["nombre"]
     
     def _get_contratantes_for_poder(self, id_poder):
         """Fetch contratantes for a specific poder"""
@@ -1107,6 +1106,7 @@ class PoderesReportService:
             
             # Get data
             report_data = self._get_report_data(desde, hasta)
+            notary_config = get_notary_config()  # Get config from database
             notary_name = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
@@ -1173,7 +1173,7 @@ class PoderesReportService:
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
             ws.merge_cells(f'C{row}:D{row}')
-            ws[f'C{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'C{row}'] = f': {notary_config["direccion"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -1182,7 +1182,7 @@ class PoderesReportService:
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
             ws.merge_cells(f'F{row}:I{row}')
-            ws[f'F{row}'] = ': (051) 326609'
+            ws[f'F{row}'] = f': {notary_config["telefono"]}'
             ws[f'F{row}'].font = data_font
             ws[f'F{row}'].alignment = left_alignment
             ws[f'F{row}'].border = no_border
@@ -1195,7 +1195,7 @@ class PoderesReportService:
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
             ws.merge_cells(f'C{row}:D{row}')
-            ws[f'C{row}'] = ': PUNO'
+            ws[f'C{row}'] = f': {notary_config["departamento"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -1204,7 +1204,7 @@ class PoderesReportService:
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
             ws.merge_cells(f'F{row}:I{row}')
-            ws[f'F{row}'] = ': 10024231572'
+            ws[f'F{row}'] = f': {notary_config["ruc"]}'
             ws[f'F{row}'].font = data_font
             ws[f'F{row}'].alignment = left_alignment
             ws[f'F{row}'].border = no_border
@@ -1217,7 +1217,7 @@ class PoderesReportService:
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
             ws.merge_cells(f'C{row}:D{row}')
-            ws[f'C{row}'] = ': SAN ROMAN'
+            ws[f'C{row}'] = f': {notary_config["provincia"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -1239,7 +1239,7 @@ class PoderesReportService:
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
             ws.merge_cells(f'C{row}:D{row}')
-            ws[f'C{row}'] = ': JULIACA'
+            ws[f'C{row}'] = f': {notary_config["distrito"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].alignment = left_alignment
             ws[f'C{row}'].border = no_border
@@ -1400,6 +1400,7 @@ class PoderesReportService:
             import json
             
             report_data = self._get_report_data(desde, hasta)
+            notary_config = get_notary_config()  # Get config from database
             notary_name = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
@@ -1432,25 +1433,25 @@ class PoderesReportService:
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'DIRECCION'
             row.cells[2].merge(row.cells[3])
-            row.cells[2].text = ': JR.BOLIVAR NRO. 340'
+            row.cells[2].text = f': {notary_config["direccion"]}'
             row.cells[4].text = 'TELEFONO'
-            row.cells[5].text = ': (051) 326609'
+            row.cells[5].text = f': {notary_config["telefono"]}'
             
             # Row 3: DEPARTAMENTO
             row = info_table.rows[2]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'DEPARTAMENTO'
             row.cells[2].merge(row.cells[3])
-            row.cells[2].text = ': PUNO'
+            row.cells[2].text = f': {notary_config["departamento"]}'
             row.cells[4].text = 'RUC'
-            row.cells[5].text = ': 10024231572'
+            row.cells[5].text = f': {notary_config["ruc"]}'
             
             # Row 4: PROVINCIA
             row = info_table.rows[3]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'PROVINCIA'
             row.cells[2].merge(row.cells[3])
-            row.cells[2].text = ': SAN ROMAN'
+            row.cells[2].text = f': {notary_config["provincia"]}'
             row.cells[4].text = 'DESDE'
             row.cells[5].text = f': {self._format_date_in_spanish(desde)}'
             
@@ -1459,7 +1460,7 @@ class PoderesReportService:
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'DISTRITO'
             row.cells[2].merge(row.cells[3])
-            row.cells[2].text = ': JULIACA'
+            row.cells[2].text = f': {notary_config["distrito"]}'
             row.cells[4].text = 'HASTA'
             row.cells[5].text = f': {self._format_date_in_spanish(hasta)}'
             

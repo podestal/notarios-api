@@ -9,6 +9,7 @@ from docxtpl import DocxTemplate
 
 from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
 from ..utils import NumberToLetterConverter
+from ..protocolares.utils import get_notary_config
 
 
 class CertDomiciliariosDocumentService(BaseR2DocumentService):
@@ -17,7 +18,7 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
 
     - Template expected in R2: 'CERTIFICADO DOMICILIARIO BASE.docx'
     - Output filename: '__CDOM__{RIGHT6(num_certificado)}-{LEFT4(num_certificado)}.docx'
-    - Stored under: rodriguez-zea/documentos/
+    - Stored under: {os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/
     """
 
     def __init__(self) -> None:
@@ -63,7 +64,7 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
-                return self.json_error(404, f"Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.")
+                return self.json_error(404, f"Template '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.")
 
             cert_data = self._get_cert_data(num_certificado)
             if not cert_data:
@@ -434,13 +435,9 @@ class CertDomiciliariosReportService:
             return []
     
     def _get_notary_info(self):
-        """Get notary configuration info"""
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT nombre, apellido FROM confinotario")
-            result = cursor.fetchone()
-            if result:
-                return f"{result[0]} {result[1]}"
-            return "NOTARIO"
+        """Get notary configuration info from database"""
+        config = get_notary_config()
+        return config["nombre"]
     
     def _format_date_in_spanish(self, date_input):
         """Convert date to Spanish format like 'LUNES, 15 DE ENERO DEL 2025'"""
@@ -525,6 +522,7 @@ class CertDomiciliariosReportService:
             
             # Get data
             report_data = self._get_report_data(desde, hasta)
+            notary_config = get_notary_config()  # Get config from database
             notary_name = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
@@ -582,13 +580,13 @@ class CertDomiciliariosReportService:
             ws[f'A{row}'] = 'DIRECCION'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'C{row}'] = f': {notary_config["direccion"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].border = no_border
             ws[f'F{row}'] = 'TELEFONO'
             ws[f'F{row}'].font = header_font
             ws[f'F{row}'].border = no_border
-            ws[f'H{row}'] = ': (051) 326609'
+            ws[f'H{row}'] = f': {notary_config["telefono"]}'
             ws[f'H{row}'].font = data_font
             ws[f'H{row}'].border = no_border
             
@@ -596,13 +594,13 @@ class CertDomiciliariosReportService:
             ws[f'A{row}'] = 'DEPARTAMENTO'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': PUNO'
+            ws[f'C{row}'] = f': {notary_config["departamento"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].border = no_border
             ws[f'F{row}'] = 'RUC'
             ws[f'F{row}'].font = header_font
             ws[f'F{row}'].border = no_border
-            ws[f'H{row}'] = ': 10024231572'
+            ws[f'H{row}'] = f': {notary_config["ruc"]}'
             ws[f'H{row}'].font = data_font
             ws[f'H{row}'].border = no_border
             
@@ -610,7 +608,7 @@ class CertDomiciliariosReportService:
             ws[f'A{row}'] = 'PROVINCIA'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': SAN ROMAN'
+            ws[f'C{row}'] = f': {notary_config["provincia"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].border = no_border
             ws[f'F{row}'] = 'DESDE'
@@ -624,7 +622,7 @@ class CertDomiciliariosReportService:
             ws[f'A{row}'] = 'DISTRITO'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = ': JULIACA'
+            ws[f'C{row}'] = f': {notary_config["distrito"]}'
             ws[f'C{row}'].font = data_font
             ws[f'C{row}'].border = no_border
             ws[f'F{row}'] = 'HASTA'
@@ -722,6 +720,7 @@ class CertDomiciliariosReportService:
             
             # Get data
             report_data = self._get_report_data(desde, hasta)
+            notary_config = get_notary_config()  # Get config from database
             notary_name = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
@@ -760,25 +759,25 @@ class CertDomiciliariosReportService:
             row2 = info_table.rows[1]
             row2.cells[0].text = 'DIRECCION'
             row2.cells[0].paragraphs[0].runs[0].bold = True
-            row2.cells[2].text = ': JR.BOLIVAR NRO. 340'
+            row2.cells[2].text = f': {notary_config["direccion"]}'
             row2.cells[4].text = 'TELEFONO'
             row2.cells[4].paragraphs[0].runs[0].bold = True
-            row2.cells[7].text = ': (051) 326609'
+            row2.cells[7].text = f': {notary_config["telefono"]}'
             
             # Row 3: DEPARTAMENTO
             row3 = info_table.rows[2]
             row3.cells[0].text = 'DEPARTAMENTO'
             row3.cells[0].paragraphs[0].runs[0].bold = True
-            row3.cells[2].text = ': PUNO'
+            row3.cells[2].text = f': {notary_config["departamento"]}'
             row3.cells[4].text = 'RUC'
             row3.cells[4].paragraphs[0].runs[0].bold = True
-            row3.cells[7].text = ': 10024231572'
+            row3.cells[7].text = f': {notary_config["ruc"]}'
             
             # Row 4: PROVINCIA
             row4 = info_table.rows[3]
             row4.cells[0].text = 'PROVINCIA'
             row4.cells[0].paragraphs[0].runs[0].bold = True
-            row4.cells[2].text = ': SAN ROMAN'
+            row4.cells[2].text = f': {notary_config["provincia"]}'
             row4.cells[4].text = 'DESDE'
             row4.cells[4].paragraphs[0].runs[0].bold = True
             row4.cells[7].text = f': {self._format_date_in_spanish(desde).upper()}'
@@ -787,7 +786,7 @@ class CertDomiciliariosReportService:
             row5 = info_table.rows[4]
             row5.cells[0].text = 'DISTRITO'
             row5.cells[0].paragraphs[0].runs[0].bold = True
-            row5.cells[2].text = ': JULIACA'
+            row5.cells[2].text = f': {notary_config["distrito"]}'
             row5.cells[4].text = 'HASTA'
             row5.cells[4].paragraphs[0].runs[0].bold = True
             row5.cells[7].text = f': {self._format_date_in_spanish(hasta).upper()}'

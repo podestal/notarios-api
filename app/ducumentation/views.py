@@ -564,7 +564,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
     def _get_document_from_r2(self, kardex):
         """Helper method to retrieve document from R2 if it exists"""
-        object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
         print(f"DEBUG: Checking if document exists in R2: {object_key}")
         
         s3 = boto3.client(
@@ -758,7 +758,7 @@ def download_docx(request, kardex, kardex2):
 
     start_time = time.time()
 
-    object_key = f"rodriguez-zea/documentos/__PROY__{kardex}.docx"
+    object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
 
     try:
         s3 = get_s3_client()
@@ -1169,7 +1169,7 @@ def save_doc(request):
 
         # Use the filename provided by the Word add-in
         filename = uploaded_file.name
-        object_key = f"rodriguez-zea/documentos/{filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
 
         print(f"DEBUG: Saving document to R2: {object_key}")
         print(f"DEBUG: Filename: {filename}")

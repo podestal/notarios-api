@@ -12,6 +12,78 @@ from docxtpl import DocxTemplate
 from ducumentation.shared.base_r2_documents import get_s3_client
 
 
+def get_notary_config():
+    """
+    Get notary configuration from database (confinotario table).
+    Returns a dict with notary information.
+    
+    This function queries the database directly and does NOT include
+    hardcoded sensitive values as fallback.
+    
+    The ubigeo field format is: "distrito - provincia - departamento"
+    Example: "Macusani - carabaya - Puno"
+    
+    Returns:
+        dict: Notary configuration with keys: nombre, telefono, correo, ruc, 
+              direccion, distrito, provincia, departamento, codnotario, codoficial, coduif
+              Returns empty strings for missing values.
+    
+    Raises:
+        Exception: If no configuration is found in database
+    """
+    from django.db import connection
+    
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT nombre, apellido, telefono, correo, ruc, direccion, distrito,
+                   codnotario, codoficial, coduif, notario, ubigeo
+            FROM confinotario
+            LIMIT 1
+        """)
+        result = cursor.fetchone()
+        
+        if result:
+            # Format phone with area code if needed
+            telefono = result[2] or ""
+            if telefono and not telefono.startswith("("):
+                telefono = f"(051) {telefono}"
+            
+            # Parse ubigeo field: "distrito - provincia - departamento"
+            ubigeo = result[11] or ""
+            distrito = ""
+            provincia = ""
+            departamento = ""
+            
+            if ubigeo:
+                parts = [part.strip() for part in ubigeo.split("-")]
+                if len(parts) >= 1:
+                    distrito = parts[0].upper()  # "MACUSANI"
+                if len(parts) >= 2:
+                    provincia = parts[1].upper()  # "CARABAYA"
+                if len(parts) >= 3:
+                    departamento = parts[2].upper()  # "PUNO"
+            
+            # Fallback to distrito column if ubigeo parsing fails
+            if not distrito:
+                distrito = (result[6] or "").upper()
+            
+            return {
+                "nombre": result[10] or f"{result[0] or ''} {result[1] or ''}".strip(),  # Use 'notario' field or concatenate
+                "telefono": telefono,
+                "correo": result[3] or "",
+                "ruc": result[4] or "",
+                "direccion": result[5] or "",
+                "distrito": distrito,
+                "provincia": provincia,
+                "departamento": departamento,
+                "codnotario": result[7] or "",
+                "codoficial": result[8] or "",
+                "coduif": result[9] or "",
+            }
+        else:
+            raise Exception("No se encontró configuración de notaría en la base de datos. Por favor, configure la tabla 'confinotario'.")
+
+
 class NumberToLetterConverter:
     """
     Utility class to convert numbers and dates to letter format in Spanish
@@ -1359,7 +1431,7 @@ class TemplateManager:
             region_name="auto",
         )
 
-        object_key = f"rodriguez-zea/plantillas/{filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{filename}"
 
         try:
             response = s3.get_object(Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"), Key=object_key)
@@ -1390,7 +1462,7 @@ class TemplateManager:
             # Define object key for R2
             filename = f"__PROY__{kardex}.docx"
             print(f"DEBUG: Uploading document to R2: {filename}")
-            object_key = f"rodriguez-zea/documentos/{filename}"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             
             # Get S3 client
             s3 = get_s3_client()
@@ -1422,7 +1494,7 @@ class TemplateManager:
         """
         try:
             filename = f"__PROY__{kardex}.docx"
-            object_key = f"rodriguez-zea/documentos/{filename}"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             
             print(f"DEBUG: Downloading document from R2: {object_key}")
             

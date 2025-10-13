@@ -22,6 +22,7 @@ from openpyxl.utils import get_column_letter
 
 from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
 from ..utils import NumberToLetterConverter
+from ..protocolares.utils import get_notary_config
 
 
 class CartasNotarialesDocumentService(BaseR2DocumentService):
@@ -30,7 +31,7 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
 
     - Template expected in R2: 'CERTIFICACION ENTREGA DE CARTA NOTARIAL.docx'
     - Output filename: '__CARTA__{num_carta}.docx'
-    - Stores under: rodriguez-zea/documentos/
+    - Stores under: {os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/
     """
 
     def __init__(self) -> None:
@@ -80,7 +81,7 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
-                return self.json_error(404, f"Template '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.")
+                return self.json_error(404, f"Template '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.")
 
             carta_data = self._get_carta_data(num_carta)
             if not carta_data:
@@ -299,13 +300,9 @@ class CartasNotarialesReportService:
                 return result
     
     def _get_notary_info(self):
-        """Get notary configuration info"""
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT nombre, apellido FROM confinotario")
-            result = cursor.fetchone()
-            if result:
-                return f"{result[0]} {result[1]}"
-            return "NOTARIO"
+        """Get notary configuration info from database"""
+        config = get_notary_config()
+        return config["nombre"]
     
     def _format_date_in_spanish(self, date_str):
         """Convert date to Spanish format like 'LUNES, 15 DE ENERO DEL 2025'"""
@@ -352,6 +349,7 @@ class CartasNotarialesReportService:
             
             # Get data
             report_data = self._get_report_data(desde, hasta)
+            notary_config = get_notary_config()  # Get config from database
             notary_name = self._get_notary_info()
             anio = self._extract_year_from_date(hasta)
             
@@ -409,13 +407,13 @@ class CartasNotarialesReportService:
             ws[f'A{row}'] = 'DIRECCION'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].border = no_border
-            ws[f'B{row}'] = ': JR.BOLIVAR NRO. 340'
+            ws[f'B{row}'] = f': {notary_config["direccion"]}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
             ws[f'D{row}'] = 'TELEFONO'
             ws[f'D{row}'].font = header_font
             ws[f'D{row}'].border = no_border
-            ws[f'E{row}'] = ': (051) 326609'
+            ws[f'E{row}'] = f': {notary_config["telefono"]}'
             ws[f'E{row}'].font = data_font
             ws[f'E{row}'].border = no_border
             
@@ -429,7 +427,7 @@ class CartasNotarialesReportService:
             ws[f'D{row}'] = 'RUC'
             ws[f'D{row}'].font = header_font
             ws[f'D{row}'].border = no_border
-            ws[f'E{row}'] = ': 10024231572'
+            ws[f'E{row}'] = f': {notary_config["ruc"]}'
             ws[f'E{row}'].font = data_font
             ws[f'E{row}'].border = no_border
             
@@ -585,6 +583,7 @@ class CartasNotarialesReportService:
         try:
             # Get data
             report_data = self._get_report_data(desde, hasta)
+            notary_config = get_notary_config()  # Get config from database
             notary_name = self._get_notary_info()
             
             # Create a new document
@@ -633,10 +632,10 @@ class CartasNotarialesReportService:
             row = info_table.rows[1]
             row.cells[0].merge(row.cells[1])
             row.cells[0].text = 'DIRECCION'
-            row.cells[2].text = ': JR.BOLIVAR NRO. 340'
+            row.cells[2].text = f': {notary_config["direccion"]}'
             row.cells[3].text = 'TELEFONO'
             row.cells[4].merge(row.cells[5])
-            row.cells[4].text = ': (051) 326609'
+            row.cells[4].text = f': {notary_config["telefono"]}'
             
             # Row 3: DEPARTAMENTO
             row = info_table.rows[2]
@@ -645,7 +644,7 @@ class CartasNotarialesReportService:
             row.cells[2].text = ': PUNO'
             row.cells[3].text = 'RUC'
             row.cells[4].merge(row.cells[5])
-            row.cells[4].text = ': 10024231572'
+            row.cells[4].text = f': {notary_config["ruc"]}'
             
             # Row 4: PROVINCIA
             row = info_table.rows[3]

@@ -519,29 +519,9 @@ class EscriturasPublicasReportService:
             return str(date_obj)
 
     def _get_notary_info(self):
-        """Get notary configuration info"""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT nombre, apellido, telefono, correo, ruc, direccion, distrito FROM confinotario"
-            )
-            result = cursor.fetchone()
-            if result:
-                return {
-                    "nombre": f"{result[0]} {result[1]}",
-                    "telefono": result[2],
-                    "correo": result[3],
-                    "ruc": result[4],
-                    "direccion": result[5],
-                    "distrito": result[6],
-                }
-            return {
-                "nombre": "NOTARIO",
-                "telefono": "(051) 326609",
-                "correo": "",
-                "ruc": "10024231572",
-                "direccion": "JR.BOLIVAR NRO. 340",
-                "distrito": "JULIACA",
-            }
+        """Get notary configuration info from database"""
+        from .utils import get_notary_config
+        return get_notary_config()
 
     def _get_report_data(self, desde, hasta):
         """Fetch data for the report matching PHP query"""
@@ -760,7 +740,7 @@ class EscriturasPublicasReportService:
             ws[f"A{row}"] = "DEPARTAMENTO"
             ws[f"A{row}"].font = header_font
             ws[f"A{row}"].border = no_border
-            ws[f"C{row}"] = ": PUNO"
+            ws[f"C{row}"] = f': {notary_info["departamento"]}'
             ws[f"C{row}"].font = data_font
             ws[f"C{row}"].border = no_border
             ws[f"F{row}"] = "RUC"
@@ -774,7 +754,7 @@ class EscriturasPublicasReportService:
             ws[f"A{row}"] = "PROVINCIA"
             ws[f"A{row}"].font = header_font
             ws[f"A{row}"].border = no_border
-            ws[f"C{row}"] = ": SAN ROMAN"
+            ws[f"C{row}"] = f': {notary_info["provincia"]}'
             ws[f"C{row}"].font = data_font
             ws[f"C{row}"].border = no_border
             ws[f"F{row}"] = "DESDE"
@@ -943,7 +923,7 @@ class EscriturasPublicasReportService:
             row3 = info_table.rows[2]
             row3.cells[0].text = "DEPARTAMENTO"
             row3.cells[0].paragraphs[0].runs[0].bold = True
-            row3.cells[2].text = ": PUNO"
+            row3.cells[2].text = f': {notary_info["departamento"]}'
             row3.cells[4].text = "RUC"
             row3.cells[4].paragraphs[0].runs[0].bold = True
             row3.cells[7].text = f': {notary_info["ruc"]}'
@@ -952,7 +932,7 @@ class EscriturasPublicasReportService:
             row4 = info_table.rows[3]
             row4.cells[0].text = "PROVINCIA"
             row4.cells[0].paragraphs[0].runs[0].bold = True
-            row4.cells[2].text = ": SAN ROMAN"
+            row4.cells[2].text = f': {notary_info["provincia"]}'
             row4.cells[4].text = "DESDE"
             row4.cells[4].paragraphs[0].runs[0].bold = True
             row4.cells[7].text = f": {self._format_date_in_spanish(desde).upper()}"

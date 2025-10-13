@@ -23,10 +23,10 @@ def get_s3_client():
 
 class BaseR2DocumentService:
     def _object_key_for_document(self, filename: str) -> str:
-        return f"rodriguez-zea/documentos/{filename}"
+        return f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
 
     def _object_key_for_template(self, template_filename: str) -> str:
-        return f"rodriguez-zea/plantillas/{template_filename}"
+        return f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template_filename}"
 
     def _document_exists_in_r2(self, filename: str) -> bool:
         s3 = get_s3_client()

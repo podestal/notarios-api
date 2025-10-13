@@ -20,6 +20,7 @@ import json
 
 
 from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
+from ..protocolares.utils import get_notary_config
 
 
 class BasePermisoViajeDocumentService(BaseR2DocumentService):
@@ -44,7 +45,7 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
                 return self._create_response(None, filename, id_permiviaje, mode)
 
             s3 = get_s3_client()
-            object_key = f"rodriguez-zea/documentos/{filename}"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             buffer = io.BytesIO(response['Body'].read())
             
@@ -66,7 +67,7 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
         if not self.template_filename:
             raise ValueError("template_filename must be set in the child service class.")
         s3 = get_s3_client()
-        object_key = f"rodriguez-zea/plantillas/{self.template_filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{self.template_filename}"
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             return response['Body'].read()
@@ -160,7 +161,7 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
     def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
         if mode == "open":
             s3 = get_s3_client()
-            object_key = f"rodriguez-zea/documentos/{filename}"
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             try:
                 url = s3.generate_presigned_url(
                     'get_object',
@@ -191,7 +192,7 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
 
     def _save_document_to_r2(self, buffer: io.BytesIO, filename: str):
         s3 = get_s3_client()
-        object_key = f"rodriguez-zea/documentos/{filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
         buffer.seek(0)
         s3.put_object(
             Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
@@ -202,7 +203,7 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
 
     def _document_exists_in_r2(self, filename: str) -> bool:
         s3 = get_s3_client()
-        object_key = f"rodriguez-zea/documentos/{filename}"
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
         try:
             s3.head_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             return True
@@ -243,7 +244,7 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
-                return self.json_error(404, f"Template file '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.")
+                return self.json_error(404, f"Template file '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.")
             
             document_data = self.get_document_data(id_permiviaje)
             doc = self._process_document(template_bytes, document_data)
@@ -381,7 +382,7 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
-                return self.json_error(404, f"Template file '{self.template_filename}' not found in 'rodriguez-zea/plantillas/'.")
+                return self.json_error(404, f"Template file '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.")
             
             document_data = self.get_document_data(id_permiviaje)
             doc = self._process_document(template_bytes, document_data)
@@ -544,40 +545,17 @@ class PermisosViajeReportService:
             return result if result else []
     
     def _get_notary_info(self) -> dict:
-        """Get notary configuration info"""
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT 
-                    CONCAT(nombre, ' ', apellido) as nombre_completo,
-                    direccion,
-                    telefono,
-                    departamento,
-                    ruc,
-                    provincia,
-                    distrito
-                FROM confinotario
-                LIMIT 1
-            """)
-            result = cursor.fetchone()
-            if result:
-                return {
-                    'nombre': result[0],
-                    'direccion': result[1] or '',
-                    'telefono': result[2] or '',
-                    'departamento': result[3] or '',
-                    'ruc': result[4] or '',
-                    'provincia': result[5] or '',
-                    'distrito': result[6] or ''
-                }
-            return {
-                'nombre': 'NOTARIO',
-                'direccion': '',
-                'telefono': '',
-                'departamento': '',
-                'ruc': '',
-                'provincia': '',
-                'distrito': ''
-            }
+        """Get notary configuration info from database"""
+        config = get_notary_config()
+        return {
+            'nombre': config["nombre"],
+            'direccion': config["direccion"],
+            'telefono': config["telefono"],
+            'departamento': config["departamento"],
+            'ruc': config["ruc"],
+            'provincia': config["provincia"],
+            'distrito': config["distrito"]
+        }
     
     def _get_participants_for_viaje(self, id_viaje: int) -> List[Dict[str, str]]:
         """Fetch participants for a specific viaje."""
