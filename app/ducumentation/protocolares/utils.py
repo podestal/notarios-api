@@ -1406,7 +1406,7 @@ class TemplateManager:
             return True
             
         except Exception as e:
-            print(f"ERROR: Failed to upload document to R2: {e}")
+            print(f"ERROR: No se pudo subir el documento a R2: {e}")
             return False
     
     def get_document_from_r2(self, kardex):
@@ -1441,7 +1441,7 @@ class TemplateManager:
             return doc_bytes
             
         except Exception as e:
-            print(f"ERROR: Failed to download document from R2: {e}")
+            print(f"ERROR: No se pudo descargar el documento de R2: {e}")
             return None
     
     def update_document_escrituracion(self, kardex, escrituracion_data, placeholder_processor):
@@ -1462,7 +1462,7 @@ class TemplateManager:
         # Download existing document from R2
         doc_bytes = self.get_document_from_r2(kardex)
         if not doc_bytes:
-            raise ValueError(f"ERROR: Document not found in R2: __PROY__{kardex}.docx")
+            raise ValueError(f"El documento __PROY__{kardex}.docx no existe. Debe generar el documento antes de actualizarlo.")
         
         # Load document
         buffer = io.BytesIO(doc_bytes)

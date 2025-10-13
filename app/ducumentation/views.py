@@ -307,7 +307,7 @@ def update_document_by_tipkar(request):
 
         if not all([template_id, kardex]):
             return Response(
-                {"success": False, "message": "Missing required parameters: template_id, kardex"},
+                {"success": False, "message": "Faltan parámetros requeridos: template_id, kardex"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -315,7 +315,7 @@ def update_document_by_tipkar(request):
             template_id = int(template_id)
         except ValueError:
             return Response(
-                {"success": False, "message": "Invalid template_id format"},
+                {"success": False, "message": "Formato de template_id inválido"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -327,7 +327,7 @@ def update_document_by_tipkar(request):
 
             if not kardex_obj:
                 return Response(
-                    {"success": False, "message": f"Kardex {kardex} not found"},
+                    {"success": False, "message": f"Kardex {kardex} no encontrado"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
@@ -356,10 +356,10 @@ def update_document_by_tipkar(request):
                     return response
                 except ValueError as e:
                     # Handle validation errors (missing numescritura, document not found, etc.)
-                    return Response(
+                        return Response(
                         {"success": False, "message": str(e)},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
             elif tipkar == 3:  # TRANSFERENCIAS VEHICULARES
                 print(f"DEBUG: Using transferencias vehiculares update for tipkar {tipkar}")
                 
@@ -382,7 +382,7 @@ def update_document_by_tipkar(request):
                 return Response(
                     {
                         "success": False,
-                        "message": f"Document update not implemented for tipkar {tipkar}",
+                        "message": f"Actualización de documento no implementada para tipkar {tipkar}",
                     },
                     status=status.HTTP_501_NOT_IMPLEMENTED,
                 )
@@ -390,7 +390,7 @@ def update_document_by_tipkar(request):
         except Exception as e:
             print(f"Error in smart update: {e}")
             return Response(
-                {"success": False, "message": "Internal server error occurred"},
+                {"success": False, "message": "Ocurrió un error interno en el servidor"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -467,10 +467,10 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         else:
             # Create new record only if none exists
             documentogenerados = models.Documentogenerados.objects.create(
-                kardex=kardex,
-                usuario=user.idusuario,
-                fecha=todayTimeDate
-            )
+                    kardex=kardex,
+                    usuario=user.idusuario,
+                    fecha=todayTimeDate
+                )
             print(f"DEBUG: Created new documentogenerados: {documentogenerados}")
         
         # Log the action in DocumentosLogs
@@ -617,7 +617,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 user=user,
                 action='O'  # O = Open
             )
-            
+
             if mode == "open":
                 return self._create_open_mode_response(request, kardex)
             else:
@@ -629,7 +629,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         # Get kardex object to determine tipkar
         kardex_obj = Kardex.objects.filter(kardex=kardex).first()
         if not kardex_obj:
-            return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
+            return HttpResponse({"error": f"Kardex {kardex} no encontrado"}, status=404)
 
         tipkar = kardex_obj.idtipkar
 
@@ -666,7 +666,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         service_config = SERVICE_MAP.get(tipkar)
         if not service_config:
             return HttpResponse(
-                {"error": f"Document generation not implemented for tipkar {tipkar}"}, 
+                {"error": f"La generación de documentos no está implementada para tipkar {tipkar}"}, 
                 status=501
             )
 

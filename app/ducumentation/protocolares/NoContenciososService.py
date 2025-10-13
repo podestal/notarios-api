@@ -145,7 +145,7 @@ class NoContenciososDocumentService:
         # STEP 1: Validate numescritura exists
         kardex_obj = models.Kardex.objects.get(kardex=kardex)
         if not kardex_obj.numescritura:
-            raise ValueError("ERROR: FALTA GRABAR NUMERO DE ACTA")
+            raise ValueError("Falta grabar el número de escritura. Por favor, complete el número de escritura antes de actualizar el documento.")
         
         # STEP 2: Get escrituracion data
         raw_data = self._consulta_no_contencioso(kardex, "actualizar", None)
