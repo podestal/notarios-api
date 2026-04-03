@@ -315,16 +315,23 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                     n.descripcion AS NACIONALIDAD,
                     -- Testigo fields (optional) via correlated selects
                     cd.nom_testigo AS NOM_TESTIGO,
-                    (SELECT UPPER(td2.td_abrev) FROM tipodocumento td2 WHERE td2.codtipdoc = cd.tdoc_testigo) AS TIPDOC_TESTIGO,
+                    (SELECT UPPER(td2.td_abrev)
+                     FROM tipodocumento td2
+                     WHERE CONVERT(td2.codtipdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                           CONVERT(cd.tdoc_testigo USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS TIPDOC_TESTIGO,
                     cd.ndocu_testigo AS NUMDOC_TESTIGO,
                     CASE WHEN u.coddis='070101' THEN 'DISTRITO DE CALLAO , PROVINCIA CONSTITUCIONAL DEL CALLAO'
                          ELSE CONCAT('DISTRITO DE ',u.nomdis, ', PROVINCIA DE ',u.nomprov,', DEPARTAMENTO DE ',u.nomdpto) END AS UBIGEO_TESTIGO
                 FROM cert_domiciliario cd
-                INNER JOIN tipodocumento td ON cd.tipdoc_solic = td.codtipdoc
-                INNER JOIN cliente c ON cd.numdoc_solic = c.numdoc
-                LEFT JOIN ubigeo u ON u.coddis = cd.distrito_solic
+                INNER JOIN tipodocumento td ON CONVERT(cd.tipdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                                               CONVERT(td.codtipdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                INNER JOIN cliente c ON CONVERT(cd.numdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                                         CONVERT(c.numdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                LEFT JOIN ubigeo u ON CONVERT(u.coddis USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                                      CONVERT(cd.distrito_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci
                 INNER JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
-                WHERE cd.num_certificado = %s
+                WHERE CONVERT(cd.num_certificado USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                      CONVERT(CAST(%s AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
                 LIMIT 1
                 """,
                 [num_certificado],

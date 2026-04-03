@@ -83,15 +83,59 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
         if not fecha_ingreso:
             return {'licencia': ''}
         with connection.cursor() as cursor:
-            cursor.execute("SELECT notario, resolucion, (SELECT CONCAT(nombre, ' ', apellido) FROM confinotario LIMIT 1) as notario_principal, (SELECT direccion FROM confinotario LIMIT 1) as direccion_notario FROM confinotario WHERE %s BETWEEN fechainicio AND fechafin", [fecha_ingreso])
-            row = cursor.fetchone()
-            if row:
-                return {'licencia': f'POR LICENCIA DE LA NOTARIA {row[2]} FIRMA EL NOTARIO {row[0]} SEGUN RESOLUCION N° {row[1]}'}
-            else:
-                cursor.execute("SELECT CONCAT(nombre, ' ', apellido) as notario, direccion FROM confinotario LIMIT 1")
-                notary_info = cursor.fetchone()
-                if notary_info:
-                    return {'licencia': f'YO {notary_info[0]} ABOGADO - NOTARIO DE PUNO CON OFICIO NOTARIAL EN {notary_info[1]}'}
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'confinotario'
+                  AND column_name = 'notario'
+            """)
+            has_notario = cursor.fetchone()[0] > 0
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'confinotario'
+                  AND column_name = 'resolucion'
+            """)
+            has_resolucion = cursor.fetchone()[0] > 0
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'confinotario'
+                  AND column_name = 'fechainicio'
+            """)
+            has_fechainicio = cursor.fetchone()[0] > 0
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'confinotario'
+                  AND column_name = 'fechafin'
+            """)
+            has_fechafin = cursor.fetchone()[0] > 0
+
+            notario_expr = "notario" if has_notario else "CONCAT(nombre, ' ', apellido)"
+            if has_resolucion and has_fechainicio and has_fechafin:
+                cursor.execute(
+                    f"""
+                    SELECT {notario_expr} as notario, resolucion,
+                           (SELECT CONCAT(nombre, ' ', apellido) FROM confinotario LIMIT 1) as notario_principal,
+                           (SELECT direccion FROM confinotario LIMIT 1) as direccion_notario
+                    FROM confinotario
+                    WHERE %s BETWEEN fechainicio AND fechafin
+                    """,
+                    [fecha_ingreso]
+                )
+                row = cursor.fetchone()
+                if row:
+                    return {'licencia': f'POR LICENCIA DE LA NOTARIA {row[2]} FIRMA EL NOTARIO {row[0]} SEGUN RESOLUCION N° {row[1]}'}
+
+            cursor.execute("SELECT CONCAT(nombre, ' ', apellido) as notario, direccion FROM confinotario LIMIT 1")
+            notary_info = cursor.fetchone()
+            if notary_info:
+                return {'licencia': f'YO {notary_info[0]} ABOGADO - NOTARIO DE PUNO CON OFICIO NOTARIAL EN {notary_info[1]}'}
         return {'licencia': ''}
 
     def _get_notary_data(self) -> Dict[str, str]:

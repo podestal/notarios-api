@@ -1,3 +1,4 @@
+import os
 from rest_framework import serializers
 from . import models
 from django.db import IntegrityError
@@ -889,6 +890,14 @@ class CreatePermiViajeSerializer(serializers.ModelSerializer):
             "fecha_hasta",
         ]
 
+    def create(self, validated_data):
+        # Some legacy backups have `permi_viaje.nom_recep` as INT.
+        # Only for this tenant, coerce empty string to NULL to avoid 1366 errors.
+        if os.environ.get("CLOUDFLARE_R2_MAIN_URL") == "gonzales-caceres":
+            if validated_data.get("nom_recep", None) in ("", " "):
+                validated_data["nom_recep"] = None
+        return super().create(validated_data)
+
 
 class ViajeContratantesSerializer(serializers.ModelSerializer):
     """
@@ -1022,6 +1031,14 @@ class IngresoCartasSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.IngresoCartas
         fields = "__all__"
+
+    def create(self, validated_data):
+        # Some legacy backups have `ingreso_cartas.id_encargado` as INT and
+        # receive empty string from frontend. Keep behavior conditional by tenant.
+        if os.environ.get("CLOUDFLARE_R2_MAIN_URL") == "gonzales-caceres":
+            if validated_data.get("id_encargado", None) in ("", " "):
+                validated_data["id_encargado"] = None
+        return super().create(validated_data)
 
 
 class SelloscartasSerializer(serializers.ModelSerializer):

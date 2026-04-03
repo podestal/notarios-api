@@ -45,19 +45,29 @@ def get_notary_config():
             AND column_name = 'ubigeo'
         """)
         has_ubigeo = cursor.fetchone()[0] > 0
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+            AND table_name = 'confinotario'
+            AND column_name = 'notario'
+        """)
+        has_notario = cursor.fetchone()[0] > 0
         
         # Build query based on column availability
         if has_ubigeo:
-            cursor.execute("""
+            notario_select = "notario" if has_notario else "NULL as notario"
+            cursor.execute(f"""
                 SELECT nombre, apellido, telefono, correo, ruc, direccion, distrito,
-                       codnotario, codoficial, coduif, notario, ubigeo, provincia, departamento
+                       codnotario, codoficial, coduif, {notario_select}, ubigeo, provincia, departamento
                 FROM confinotario
                 LIMIT 1
             """)
         else:
-            cursor.execute("""
+            notario_select = "notario" if has_notario else "NULL as notario"
+            cursor.execute(f"""
                 SELECT nombre, apellido, telefono, correo, ruc, direccion, distrito,
-                       codnotario, codoficial, coduif, notario, NULL as ubigeo, provincia, departamento
+                       codnotario, codoficial, coduif, {notario_select}, NULL as ubigeo, provincia, departamento
                 FROM confinotario
                 LIMIT 1
             """)
