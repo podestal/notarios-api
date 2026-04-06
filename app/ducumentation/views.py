@@ -1092,11 +1092,24 @@ class ExtraprotocolaresViewSet(ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        if not num_certificado:
+            return Response(
+                {"error": f"num_certificado is empty for id_domiciliario {id_domiciliario}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         service = CertDomiciliariosDocumentService()
-        if action == "retrieve":
-            return service.retrieve_cdom_document(num_certificado, mode)
-        else:
-            return service.generate_cdom_document(num_certificado, mode)
+        try:
+            if action == "retrieve":
+                response = service.retrieve_cdom_document(num_certificado, mode)
+            else:
+                response = service.generate_cdom_document(
+                    num_certificado, mode, id_domiciliario=id_domiciliario
+                )
+
+            return response
+        except Exception as e:
+            raise
 
     @action(detail=False, methods=["get"], url_path="libro")
     def libro(self, request):

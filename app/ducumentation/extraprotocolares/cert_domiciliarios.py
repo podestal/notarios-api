@@ -48,7 +48,7 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             traceback.print_exc()
             return HttpResponse(f"Error retrieving document: {e}", status=500)
 
-    def generate_cdom_document(self, num_certificado: str, mode: str = "download") -> HttpResponse:
+    def generate_cdom_document(self, num_certificado: str, mode: str = "download", id_domiciliario: Optional[str] = None) -> HttpResponse:
         try:
             if not num_certificado:
                 return JsonResponse({'status': 'error', 'message': 'num_certificado is required'}, status=400)
@@ -64,9 +64,10 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
 
             template_bytes = self._get_template_from_r2()
             if template_bytes is None:
+                template_key = self._object_key_for_template(self.template_filename)
                 return self.json_error(404, f"Template '{self.template_filename}' not found in '{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/'.")
 
-            cert_data = self._get_cert_data(num_certificado)
+            cert_data = self._get_cert_data(num_certificado, id_domiciliario)
             if not cert_data:
                 return self.json_error(404, f"cert_domiciliario record with num_certificado {num_certificado} not found")
 
@@ -222,7 +223,7 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
         try:
             response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
             return response['Body'].read()
-        except Exception:
+        except Exception as e:
             return None
 
     def _save_document_to_r2(self, buffer: io.BytesIO, filename: str) -> None:
@@ -281,11 +282,18 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                 }
         return {'NOTARIO': '', 'DIRECCION_NOTARIO': '', 'UBIGEO_NOTARIO': ''}
 
-    def _get_cert_data(self, num_certificado: str) -> Dict[str, Any]:
+    def _get_cert_data(self, num_certificado: str, id_domiciliario: Optional[str] = None) -> Dict[str, Any]:
         data: Dict[str, Any] = {}
         with connection.cursor() as cursor:
+            where_clause = (
+                "WHERE cd.id_domiciliario = %s"
+                if id_domiciliario
+                else """WHERE CONVERT(cd.num_certificado USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                      CONVERT(CAST(%s AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci"""
+            )
+            params = [id_domiciliario] if id_domiciliario else [num_certificado]
             cursor.execute(
-                """
+                f"""
                 SELECT 
                     UPPER(cd.num_certificado) AS NUM_CERTI,
                     cd.fec_ingreso AS FEC_INGRESO,
@@ -323,18 +331,17 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                     CASE WHEN u.coddis='070101' THEN 'DISTRITO DE CALLAO , PROVINCIA CONSTITUCIONAL DEL CALLAO'
                          ELSE CONCAT('DISTRITO DE ',u.nomdis, ', PROVINCIA DE ',u.nomprov,', DEPARTAMENTO DE ',u.nomdpto) END AS UBIGEO_TESTIGO
                 FROM cert_domiciliario cd
-                INNER JOIN tipodocumento td ON CONVERT(cd.tipdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
-                                               CONVERT(td.codtipdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                INNER JOIN cliente c ON CONVERT(cd.numdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
-                                         CONVERT(c.numdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                LEFT JOIN tipodocumento td ON CONVERT(cd.tipdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                                              CONVERT(td.codtipdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                LEFT JOIN cliente c ON CONVERT(cd.numdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
+                                       CONVERT(c.numdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
                 LEFT JOIN ubigeo u ON CONVERT(u.coddis USING utf8mb4) COLLATE utf8mb4_unicode_ci =
                                       CONVERT(cd.distrito_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                INNER JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
-                WHERE CONVERT(cd.num_certificado USING utf8mb4) COLLATE utf8mb4_unicode_ci =
-                      CONVERT(CAST(%s AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                LEFT JOIN nacionalidades n ON CAST(c.nacionalidad AS UNSIGNED) = n.idnacionalidad
+                {where_clause}
                 LIMIT 1
                 """,
-                [num_certificado],
+                params,
             )
             row = cursor.fetchone()
             if not row:
@@ -380,7 +387,6 @@ class CertDomiciliariosReportService:
             from django.db import connection
             from notaria.models import CertDomiciliario
             
-            print(f"DEBUG: Input dates - desde: {desde} (type: {type(desde)}), hasta: {hasta} (type: {type(hasta)})")
             
             # Convert dates to proper format for Django ORM
             if isinstance(desde, str):
@@ -407,15 +413,11 @@ class CertDomiciliariosReportService:
             else:
                 hasta_dt = hasta
             
-            print(f"DEBUG: Converted dates - desde_dt: {desde_dt}, hasta_dt: {hasta_dt}")
             
             # Use Django ORM like the working list method
             queryset = CertDomiciliario.objects.filter(
                 fec_ingreso__range=(desde_dt, hasta_dt)
             ).order_by('num_certificado')
-            
-            print(f"DEBUG: Django ORM query: {queryset.query}")
-            print(f"DEBUG: Found {queryset.count()} records")
             
             # Convert to the format expected by the report
             result = []
@@ -431,12 +433,10 @@ class CertDomiciliariosReportService:
                     record.numero_recibo
                 )
                 result.append(row)
-                print(f"DEBUG: Record: {row}")
             
             return result
             
         except Exception as e:
-            print(f"ERROR in _get_report_data: {e}")
             import traceback
             traceback.print_exc()
             return []
