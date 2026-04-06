@@ -1167,12 +1167,28 @@ def save_doc(request):
                 {"status": "error", "message": "Only .docx files are allowed"}, status=400
             )
 
-        # Use the filename provided by the Word add-in
+        # Sanitize filename:
+        # - remove trailing " (n)" or "(n)" before extension
+        # - trim spaces around the basename
+        # - preserve original extension
         filename = uploaded_file.name
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
+        try:
+            import os as _os
+            import re as _re
+            base, ext = _os.path.splitext(filename)
+            # Remove optional whitespace + (digits) at the end of the base name
+            base = _re.sub(r"\s*\(\d+\)\s*$", "", base)
+            base = base.strip()
+            sanitized_filename = f"{base}{ext}"
+        except Exception:
+            # Fallback to original if anything odd happens
+            sanitized_filename = filename
+
+        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{sanitized_filename}"
 
         print(f"DEBUG: Saving document to R2: {object_key}")
-        print(f"DEBUG: Filename: {filename}")
+        print(f"DEBUG: Filename (original): {filename}")
+        print(f"DEBUG: Filename (sanitized): {sanitized_filename}")
         print(f"DEBUG: File size: {uploaded_file.size} bytes")
 
         # Create S3 client
@@ -1195,7 +1211,7 @@ def save_doc(request):
                 {
                     "status": "success",
                     "message": "Document saved successfully",
-                    "filename": filename,
+                    "filename": sanitized_filename,
                     "r2_path": object_key,
                     "file_size": uploaded_file.size,
                 }
