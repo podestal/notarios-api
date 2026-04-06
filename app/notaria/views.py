@@ -48,6 +48,11 @@ from .services.pdt_file_service import PdtFileService
 from .services.pdt_escrituras_service import PdtEscriturasService
 from .services.pdt_vehiculares_service import PdtVehicularesService
 from .services.pdt_garantias_service import PdtGarantiasService
+from ducumentation.storage import (
+    docx_filename_from_name_template,
+    build_object_key,
+    upload_fileobj_to_r2,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -3055,6 +3060,102 @@ class TemplateViewSet(ModelViewSet):
     serializer_class = serializers.TemplateSerializer
     pagination_class = pagination.KardexPagination
 
+    def _handle_template_upload(self, request):
+        """
+        Shared handler for template upload to R2 + DB upsert.
+        """
+        logger.info("TEMPLATE_UPLOAD: request received")
+        logger.info("TEMPLATE_UPLOAD: data keys=%s", list(request.data.keys()))
+        logger.info("TEMPLATE_UPLOAD: file keys=%s", list(request.FILES.keys()))
+
+        if "file" not in request.FILES:
+            return Response({"error": "file is required (.docx)"}, status=400)
+
+        uploaded_file = request.FILES["file"]
+        name_template = request.data.get("nameTemplate") or request.data.get("nametemplate")
+
+        if not name_template:
+            return Response({"error": "nameTemplate is required"}, status=400)
+        if not uploaded_file.name.endswith(".docx"):
+            return Response({"error": "Only .docx files are allowed"}, status=400)
+
+        # Build filename from nameTemplate and upload into /plantillas
+        sanitized_filename = docx_filename_from_name_template(name_template)
+        object_key = build_object_key("plantillas", sanitized_filename)
+        logger.info(
+            "TEMPLATE_UPLOAD: original_file=%s sanitized_filename=%s object_key=%s",
+            uploaded_file.name,
+            sanitized_filename,
+            object_key,
+        )
+
+        try:
+            upload_fileobj_to_r2(uploaded_file, object_key)
+            logger.info("TEMPLATE_UPLOAD: upload to R2 successful")
+        except Exception as e:
+            logger.exception("TEMPLATE_UPLOAD: upload to R2 failed: %s", str(e))
+            return Response({"status": "error", "message": f"R2 upload failed: {str(e)}"}, status=500)
+
+        # Keep nametemplate aligned with the requested template name; filename stores .docx
+        codeacts = request.data.get("codeActs") or request.data.get("codeacts")
+        fktypekardex = request.data.get("fkTypeKardex") or request.data.get("fktypekardex")
+        contract = request.data.get("contract")
+        urltemplate = f"plantillas/{sanitized_filename}"
+
+        # Upsert by nametemplate to avoid duplicates for same logical template name
+        tpl, created = models.TplTemplate.objects.get_or_create(
+            nametemplate=name_template.strip(),
+            defaults={
+                "filename": sanitized_filename,
+                "urltemplate": urltemplate,
+                "fktypekardex": int(fktypekardex) if fktypekardex else None,
+                "codeacts": codeacts if codeacts else None,
+                "contract": contract if contract else None,
+            },
+        )
+
+        tpl.filename = sanitized_filename
+        tpl.urltemplate = urltemplate
+        if fktypekardex is not None and fktypekardex != "":
+            try:
+                tpl.fktypekardex = int(fktypekardex)
+            except Exception:
+                logger.warning("TEMPLATE_UPLOAD: invalid fkTypeKardex=%s", fktypekardex)
+        if codeacts is not None and codeacts != "":
+            tpl.codeacts = codeacts
+        if contract is not None and contract != "":
+            tpl.contract = contract
+        tpl.save()
+
+        logger.info(
+            "TEMPLATE_UPLOAD: DB upsert successful pk=%s created=%s nametemplate=%s filename=%s",
+            tpl.pktemplate,
+            created,
+            tpl.nametemplate,
+            tpl.filename,
+        )
+
+        return Response(
+            {
+                "status": "success",
+                "message": "Template uploaded",
+                "nameTemplate": tpl.nametemplate,
+                "filename": tpl.filename,
+                "r2_path": object_key,
+                "template_id": tpl.pktemplate,
+            },
+            status=201,
+        )
+
+    def create(self, request, *args, **kwargs):
+        """
+        Support file uploads through the standard POST /templates/ endpoint too.
+        If multipart contains a file, route through R2 upload flow.
+        """
+        if "file" in request.FILES:
+            return self._handle_template_upload(request)
+        return super().create(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"])
     def by_actos(self, request):
         """
@@ -3070,6 +3171,19 @@ class TemplateViewSet(ModelViewSet):
 
         serializer = serializers.TemplateSerializer(templates, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["post"], url_path="upload")
+    def upload_template(self, request):
+        """
+        Upload a template file to R2 '/plantillas' using nameTemplate as filename.
+        - Expects multipart/form-data with:
+          - file: .docx file
+          - nameTemplate: string (used as base filename)
+          - codeActs (optional): 3-char codes concatenated (e.g., '123456')
+          - fkTypeKardex (optional): integer
+        - Saves/updates a TplTemplate record with provided metadata.
+        """
+        return self._handle_template_upload(request)
 
 
 class LegalizacionViewSet(ModelViewSet):
