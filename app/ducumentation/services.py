@@ -3062,7 +3062,8 @@ class EscrituraPublicaDocumentService:
                 GROUP_CONCAT(cxa.idcontratante) as id_contratante,
                 GROUP_CONCAT(TRIM(CONCAT(IFNULL(c2.prinom, ''), ' ', IFNULL(c2.segnom, ''), IF(c2.segnom='','',' ') ,IFNULL(c2.apepat, ''), ' ',IFNULL(c2.apemat, ''),
             IFNULL(c2.razonsocial, '')))) AS nombres,
-                GROUP_CONCAT(cxa.uif) as uif,
+                GROUP_CONCAT(IFNULL(cxa.uif,'')) as uif,
+                GROUP_CONCAT(IFNULL(cxa.parte,'')) as parte,
                 GROUP_CONCAT(ac.condicion) as condicion,
                 GROUP_CONCAT(IF(n.descripcion IS NULL OR n.descripcion='','EMPRESA',n.descripcion)) as nacionalidad,
                 GROUP_CONCAT(td.destipdoc) as tipo_documento,
@@ -3139,7 +3140,7 @@ class EscrituraPublicaDocumentService:
             LEFT JOIN detallemediopago as dmp ON pat.kardex = dmp.kardex
             LEFT JOIN mediospago as mp ON dmp.codmepag = mp.codmepag
             LEFT JOIN contratantes as cnr ON cxa.idcontratante = cnr.idcontratante
-            LEFT JOIN contratantesxacto as cxar on cxar.idcontratante=cnr.idcontratanterp
+            LEFT JOIN contratantesxacto as cxar ON cxar.idcontratante = cnr.idcontratanterp AND cxar.kardex = cxa.kardex
             LEFT JOIN actocondicion as acr ON acr.idcondicion=cxar.idcondicion
             LEFT JOIN cliente2 as cr2 on cr2.idcontratante=cnr.idcontratanterp
             left JOIN nacionalidades as nr on nr.idnacionalidad=cr2.nacionalidad
@@ -3148,7 +3149,7 @@ class EscrituraPublicaDocumentService:
             LEFT OUTER JOIN tipoestacivil as tecr ON tecr.idestcivil = cr2.idestcivil
             LEFT OUTER JOIN ubigeo as ur ON ur.coddis = cr2.idubigeo
             LEFT JOIN  bancos as ban ON ban.idbancos=dmp.idbancos
-            WHERE k.kardex=%s and (c2.tipper='N')
+            WHERE k.kardex=%s and (c2.tipper IN ('N','J'))
             GROUP BY k.idkardex, dmp.detmp LIMIT 1
         """
         

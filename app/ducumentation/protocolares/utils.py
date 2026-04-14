@@ -314,7 +314,6 @@ class DocumentFormatter:
             "DONANTE",
             "PODERDANTE",
             "OTORGANTE",
-            "REPRESENTANTE",
             "ANTICIPANTE",
             "ADJUDICANTE",
             "USUFRUCTUANTE",
@@ -343,7 +342,6 @@ class DocumentFormatter:
             "BENEFICIARIA",
             "ASOCIADO",
             "ADQUIRENTE / BENEFICIARIO (COMPRADOR)",
-            "REPRESENTANTE",
             "CAUSANTE",  # No Contenciosos
             "DEUDOR",  # Garantias Mobiliarias (goes to C_ side per PHP and template)
             "CONSTITUYENTE",  # Garantias Mobiliarias (goes to C_ side per template)
@@ -365,7 +363,34 @@ class DocumentFormatter:
 
         for contractor in contractors:
             print(f"DEBUG: Classifying {contractor.get('nombres', 'NO_NAME')} - Role: {contractor.get('condicion_str', 'NO_ROLE')}")
-            
+            cond = (contractor.get("condicion_str") or "").strip()
+            uif_c = (contractor.get("uif") or "").strip().upper()
+            parte_s = contractor.get("parte")
+            try:
+                parte_i = (
+                    int(str(parte_s).strip())
+                    if parte_s is not None and str(parte_s).strip() != ""
+                    else 0
+                )
+            except (TypeError, ValueError):
+                parte_i = 0
+
+            # REPRESENTANTE is not inherently otorgante vs donatario: use parte (1/2) and UIF.
+            if cond == "REPRESENTANTE" or uif_c == "R":
+                if parte_i == 2:
+                    acquirers.append(contractor)
+                    print("DEBUG: -> ACQUIRER (representante parte=2)")
+                elif parte_i == 1:
+                    transferors.append(contractor)
+                    print("DEBUG: -> TRANSFEROR (representante parte=1)")
+                elif uif_c in ("B", "N"):
+                    acquirers.append(contractor)
+                    print(f"DEBUG: -> ACQUIRER (representante uif={uif_c})")
+                else:
+                    transferors.append(contractor)
+                    print("DEBUG: -> TRANSFEROR (representante default otorgante-side)")
+                continue
+
             if contractor["tipper"] == "J":  # Company
                 # Companies are classified based on their representatives' roles
                 if contractor["condicion_str"] in TRANSFEROR_ROLES:
@@ -484,6 +509,8 @@ class DocumentFormatter:
         sexos = split_if_not_none(raw_data.get("sexo"))
         id_clientes = split_if_not_none(raw_data.get("id_cliente"))
         id_conyuges = split_if_not_none(raw_data.get("id_conyuge"))
+        uifs = split_if_not_none(raw_data.get("uif"))
+        partes = split_if_not_none(raw_data.get("parte"))
         
         # Company fields - use separate company fields from query
         razones_sociales = split_if_not_none(raw_data.get("nombre_empresa"))
@@ -513,7 +540,9 @@ class DocumentFormatter:
             sexo = sexos[k] if k < len(sexos) else "M"
             id_cliente = id_clientes[k] if k < len(id_clientes) else ""
             id_conyuge = id_conyuges[k] if k < len(id_conyuges) else "NO"
-            
+            uif_k = uifs[k] if k < len(uifs) else ""
+            parte_k = partes[k] if k < len(partes) else ""
+
             # Company data
             razon_social = razones_sociales[k] if k < len(razones_sociales) else ""
             domicilio_fiscal = domicilios_fiscales[k] if k < len(domicilios_fiscales) else ""
@@ -537,6 +566,8 @@ class DocumentFormatter:
                 "sexo": sexo,
                 "idCliente": id_cliente,
                 "idConyuge": id_conyuge,
+                "uif": uif_k,
+                "parte": parte_k,
                 "tipper": tipper,  # N = Natural, J = Juridical
                 # Company fields
                 "razonsocial": razon_social,
