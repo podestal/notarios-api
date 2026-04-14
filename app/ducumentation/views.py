@@ -42,6 +42,7 @@ from docxcompose.properties import CustomProperties
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from docx.shared import RGBColor, Pt
+from .storage import sanitize_uploaded_docx_filename
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -1180,21 +1181,11 @@ def save_doc(request):
                 {"status": "error", "message": "Only .docx files are allowed"}, status=400
             )
 
-        # Sanitize filename:
-        # - remove trailing " (n)" or "(n)" before extension
-        # - trim spaces around the basename
-        # - preserve original extension
+        # Sanitize filename: macOS '(n)', Windows '-n' duplicate markers, trim basename
         filename = uploaded_file.name
         try:
-            import os as _os
-            import re as _re
-            base, ext = _os.path.splitext(filename)
-            # Remove optional whitespace + (digits) at the end of the base name
-            base = _re.sub(r"\s*\(\d+\)\s*$", "", base)
-            base = base.strip()
-            sanitized_filename = f"{base}{ext}"
+            sanitized_filename = sanitize_uploaded_docx_filename(filename)
         except Exception:
-            # Fallback to original if anything odd happens
             sanitized_filename = filename
 
         object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{sanitized_filename}"

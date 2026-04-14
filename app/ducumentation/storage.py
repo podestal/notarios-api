@@ -22,19 +22,24 @@ def get_s3_client():
 
 def sanitize_copy_suffix_base(base: str) -> str:
 	"""
-	Remove trailing copy counters like '(1)', ' (2)' from the end of a base filename
-	and trim surrounding whitespace.
+	Remove trailing OS duplicate markers from the basename (before extension):
+	- macOS / browser: optional whitespace + '(n)' at end
+	- Windows: optional whitespace + '-' + short integer (e.g. '-1', ' - 2') at end
+
+	Uses 1–3 digit Windows suffixes only so structured names like '__PODER__12-2024'
+	are not truncated (4-digit years stay intact).
 	"""
 	if base is None:
 		return ""
 	base = re.sub(r"\s*\(\d+\)\s*$", "", base)
+	base = re.sub(r"\s*-\s*\d{1,3}\s*$", "", base)
 	return base.strip()
 
 
 def sanitize_uploaded_docx_filename(filename: str) -> str:
 	"""
-	Given a raw uploaded filename, remove trailing '(n)' before the extension
-	and trim surrounding spaces from the base, preserving the extension.
+	Given a raw uploaded filename, remove trailing '(n)' (macOS/browser) and '-n'
+	(Windows) copy markers before the extension; trim the basename; keep extension.
 	"""
 	if not filename:
 		return filename
