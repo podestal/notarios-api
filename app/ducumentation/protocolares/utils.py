@@ -350,6 +350,8 @@ class DocumentFormatter:
 
         REPRESENTATIVE_ROLES = {"APODERADO", "REPRESENTANTE"}
 
+        is_donacion = "DONAC" in (raw_data.get("acto") or "").upper()
+
         # Parse contractor data from raw_data
         contractors = self._parse_contractor_data(raw_data)
         
@@ -365,6 +367,7 @@ class DocumentFormatter:
             print(f"DEBUG: Classifying {contractor.get('nombres', 'NO_NAME')} - Role: {contractor.get('condicion_str', 'NO_ROLE')}")
             cond = (contractor.get("condicion_str") or "").strip()
             uif_c = (contractor.get("uif") or "").strip().upper()
+            cond_emp = (contractor.get("condicion_empresa") or "").upper()
             parte_s = contractor.get("parte")
             try:
                 parte_i = (
@@ -375,8 +378,18 @@ class DocumentFormatter:
             except (TypeError, ValueError):
                 parte_i = 0
 
-            # REPRESENTANTE is not inherently otorgante vs donatario: use parte (1/2) and UIF.
+            # REPRESENTANTE / UIF R: lado P (donantes/otorgantes) vs C (donatarios) según la PJ
+            # que representan (condicion_empresa desde actocondicion de la empresa en idcontratanterp),
+            # parte y UIF. Sin esto, el gerente del donatario caía por defecto en P_.
             if cond == "REPRESENTANTE" or uif_c == "R":
+                if "DONATARIO" in cond_emp:
+                    acquirers.append(contractor)
+                    print("DEBUG: -> ACQUIRER (representante de persona jurídica donataria)")
+                    continue
+                if "DONANTE" in cond_emp and "DONATARIO" not in cond_emp:
+                    transferors.append(contractor)
+                    print("DEBUG: -> TRANSFEROR (representante de persona jurídica donante)")
+                    continue
                 if parte_i == 2:
                     acquirers.append(contractor)
                     print("DEBUG: -> ACQUIRER (representante parte=2)")
@@ -386,6 +399,12 @@ class DocumentFormatter:
                 elif uif_c in ("B", "N"):
                     acquirers.append(contractor)
                     print(f"DEBUG: -> ACQUIRER (representante uif={uif_c})")
+                elif uif_c == "O":
+                    transferors.append(contractor)
+                    print("DEBUG: -> TRANSFEROR (representante uif=O)")
+                elif is_donacion and (contractor.get("idContratanteRepresentado") or "").strip():
+                    acquirers.append(contractor)
+                    print("DEBUG: -> ACQUIRER (donación: representante con PJ, parte/uif ambiguos)")
                 else:
                     transferors.append(contractor)
                     print("DEBUG: -> TRANSFEROR (representante default otorgante-side)")
@@ -483,6 +502,17 @@ class DocumentFormatter:
         # Add additional grammar placeholders
         contractor_data.update(self._get_additional_grammar(transferors, acquirers))
 
+        if is_donacion:
+            np, nq = len(transferors), len(acquirers)
+            p_cal = "DONANTES" if np > 1 else "DONANTE"
+            c_cal = "DONATARIOS" if nq > 1 else "DONATARIO"
+            p_cal += " "
+            c_cal += " "
+            contractor_data["P_CALIDAD"] = p_cal
+            contractor_data["C_CALIDAD"] = c_cal
+            contractor_data["CALIDAD_P"] = p_cal
+            contractor_data["CALIDAD_C"] = c_cal
+
         return contractor_data
 
     def _parse_contractor_data(self, raw_data):
@@ -511,6 +541,9 @@ class DocumentFormatter:
         id_conyuges = split_if_not_none(raw_data.get("id_conyuge"))
         uifs = split_if_not_none(raw_data.get("uif"))
         partes = split_if_not_none(raw_data.get("parte"))
+        id_contratantes = split_if_not_none(raw_data.get("id_contratante"))
+        # Per fila en contratantes: idcontratanterp → idcontratante de la persona jurídica representada (ej. empresa donataria)
+        id_contratantes_representados = split_if_not_none(raw_data.get("id_empresa"))
         
         # Company fields - use separate company fields from query
         razones_sociales = split_if_not_none(raw_data.get("nombre_empresa"))
@@ -542,6 +575,12 @@ class DocumentFormatter:
             id_conyuge = id_conyuges[k] if k < len(id_conyuges) else "NO"
             uif_k = uifs[k] if k < len(uifs) else ""
             parte_k = partes[k] if k < len(partes) else ""
+            id_cte = id_contratantes[k] if k < len(id_contratantes) else ""
+            id_cte_representado = (
+                id_contratantes_representados[k]
+                if k < len(id_contratantes_representados)
+                else ""
+            )
 
             # Company data
             razon_social = razones_sociales[k] if k < len(razones_sociales) else ""
@@ -568,6 +607,12 @@ class DocumentFormatter:
                 "idConyuge": id_conyuge,
                 "uif": uif_k,
                 "parte": parte_k,
+                # contratantesxacto.idcontratante de ESTE participante (ej. el representante)
+                "idContratante": id_cte,
+                # contratantes.idcontratanterp: si firma por empresa, apunta al idcontratante de la persona jurídica
+                "idContratanteRepresentado": id_cte_representado.strip()
+                if id_cte_representado
+                else "",
                 "tipper": tipper,  # N = Natural, J = Juridical
                 # Company fields
                 "razonsocial": razon_social,
@@ -612,25 +657,52 @@ class DocumentFormatter:
             condicion_empresa = "EMPRESA EN CONSTITUCION"
         
         
-        # Process company data if it exists
-        # NOTE: tipo_persona_empresa can be comma-separated (e.g., "J,N" when there are multiple contractors)
-        # We check if "J" is in the string to detect if ANY contractor represents a juridical person
-        if nombre_empresa and "J" in str(tipo_persona_empresa):
+        # Process company data if it exists (joined cliente2 cr2 via idcontratanterp).
+        # Do not require "J" in tipo_persona_empresa: MySQL GROUP_CONCAT skips NULL segments, so the
+        # letter J can disappear from the aggregate even when nombre_empresa / RUC from cr2 are present.
+        acto_u = (raw_data.get("acto") or "").upper()
+        is_donacion = "DONAC" in acto_u
+        if (nombre_empresa or "").strip():
+            ins_txt = (
+                f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}"
+                if numero_partida
+                else ""
+            )
+            ruc_txt = f", CON RUC N° {numero_documento_empresa}, " if numero_documento_empresa else ""
+            dom_txt = (
+                f"CON DOMICILIO EN {domicilio_empresa} DEL DISTRITO DE {distrito_empresa} PROVINCIA DE {provincia_empresa} Y DEPARTAMENTO DE {departamento_empresa}"
+                if domicilio_empresa
+                else ""
+            )
+            cond_emp = condicion_empresa if condicion_empresa else ""
             # Determine which company slot to use based on condition
             if condicion_empresa in ['EMPRESA EN CONSTITUCION', 'ASOCIACION EN CONSTITUCION']:
                 print(f"DEBUG: Setting NOMBRE_EMPRESA_2 (constitution)")
                 company_data["NOMBRE_EMPRESA_2"] = nombre_empresa
-                company_data["INS_EMPRESA_2"] = f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}" if numero_partida else ""
-                company_data["RUC_2"] = f", CON RUC N° {numero_documento_empresa}, " if numero_documento_empresa else ""
-                company_data["DOMICILIO_EMPRESA_2"] = f"CON DOMICILIO EN {domicilio_empresa} DEL DISTRITO DE {distrito_empresa} PROVINCIA DE {provincia_empresa} Y DEPARTAMENTO DE {departamento_empresa}" if domicilio_empresa else ""
+                company_data["INS_EMPRESA_2"] = ins_txt
+                company_data["RUC_2"] = ruc_txt
+                company_data["DOMICILIO_EMPRESA_2"] = dom_txt
                 company_data["CONDICION_EMPRESA_2"] = condicion_empresa
+            elif is_donacion:
+                # Donación: plantilla usa NOMBRE_EMPRESA_2 para el donatario PJ; algunas líneas usan INS/RUC_1
+                print(f"DEBUG: Setting empresa donatario (donación) en _2 y duplicando legales en _1")
+                company_data["NOMBRE_EMPRESA_2"] = nombre_empresa
+                company_data["INS_EMPRESA_2"] = ins_txt
+                company_data["RUC_2"] = ruc_txt
+                company_data["DOMICILIO_EMPRESA_2"] = dom_txt
+                company_data["CONDICION_EMPRESA_2"] = cond_emp
+                company_data["NOMBRE_EMPRESA_1"] = nombre_empresa
+                company_data["INS_EMPRESA_1"] = ins_txt
+                company_data["RUC_1"] = ruc_txt
+                company_data["DOMICILIO_EMPRESA_1"] = dom_txt
+                company_data["CONDICION_EMPRESA_1"] = cond_emp
             else:
                 print(f"DEBUG: Setting NOMBRE_EMPRESA_1 (normal)")
                 company_data["NOMBRE_EMPRESA_1"] = nombre_empresa
-                company_data["INS_EMPRESA_1"] = f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}" if numero_partida else ""
-                company_data["RUC_1"] = f", CON RUC N° {numero_documento_empresa}, " if numero_documento_empresa else ""
-                company_data["DOMICILIO_EMPRESA_1"] = f"CON DOMICILIO EN {domicilio_empresa} DEL DISTRITO DE {distrito_empresa} PROVINCIA DE {provincia_empresa} Y DEPARTAMENTO DE {departamento_empresa}" if domicilio_empresa else ""
-                company_data["CONDICION_EMPRESA_1"] = condicion_empresa if condicion_empresa else ""
+                company_data["INS_EMPRESA_1"] = ins_txt
+                company_data["RUC_1"] = ruc_txt
+                company_data["DOMICILIO_EMPRESA_1"] = dom_txt
+                company_data["CONDICION_EMPRESA_1"] = cond_emp
         
         # Fill empty company placeholders
         if "NOMBRE_EMPRESA_1" not in company_data:
