@@ -3105,8 +3105,18 @@ class EscrituraPublicaDocumentService:
                 mp.desmpagos as descripcion_medio_pago,
                 mp.sunat as sunat_medio_pago,
                 GROUP_CONCAT(IFNULL(cnr.idcontratanterp, '')) as id_empresa,
-                GROUP_CONCAT(IFNULL(TRIM(CONCAT(IFNULL(cr2.prinom, ''), ' ', IFNULL(cr2.segnom, ''), IF(cr2.segnom='','',' ') ,IFNULL(cr2.apepat, ''), ' ',IFNULL(cr2.apemat, ''),
-            IFNULL(cr2.razonsocial, ''))), '')) AS nombre_empresa,
+                GROUP_CONCAT(IFNULL(
+                    IFNULL(
+                        NULLIF(TRIM(IFNULL(cr2.razonsocial, '')), ''),
+                        TRIM(CONCAT(
+                            IFNULL(cr2.prinom, ''), ' ',
+                            IFNULL(cr2.segnom, ''), IF(IFNULL(cr2.segnom,'')='','',' '),
+                            IFNULL(cr2.apepat, ''), ' ', IFNULL(cr2.apemat, ''),
+                            IFNULL(cr2.razonsocial, '')
+                        ))
+                    ),
+                    ''
+                )) AS nombre_empresa,
                 GROUP_CONCAT(IFNULL(cr2.tipper, '')) as tipo_persona_empresa,
                 GROUP_CONCAT(IFNULL(acr.condicion, '')) as condicion_empresa,
                 GROUP_CONCAT(tdr.destipdoc) as tipo_documento_empresa,

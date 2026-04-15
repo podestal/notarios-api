@@ -286,6 +286,18 @@ class DocumentFormatter:
     def __init__(self, letras_converter):
         self.letras = letras_converter
 
+    def _es_acto_donacion(self, raw_data: dict) -> bool:
+        acto_u = (raw_data.get("acto") or "").upper()
+        plantilla_u = (raw_data.get("plantilla") or "").upper()
+        cond_part_u = (raw_data.get("condicion") or "").upper()
+        cond_emp_u = (raw_data.get("condicion_empresa") or "").upper()
+        return (
+            "DONAC" in acto_u
+            or "DONAC" in plantilla_u
+            or "DONATARIO" in cond_emp_u
+            or ("DONANTE" in cond_part_u and "REPRESENTANTE" in cond_part_u)
+        )
+
     def format_document_data(self, raw_data):
         """
         Format basic document data
@@ -350,7 +362,7 @@ class DocumentFormatter:
 
         REPRESENTATIVE_ROLES = {"APODERADO", "REPRESENTANTE"}
 
-        is_donacion = "DONAC" in (raw_data.get("acto") or "").upper()
+        is_donacion = self._es_acto_donacion(raw_data)
 
         # Parse contractor data from raw_data
         contractors = self._parse_contractor_data(raw_data)
@@ -626,6 +638,36 @@ class DocumentFormatter:
 
         return contractors
 
+    def _resolve_nombre_empresa_aggregate(
+        self,
+        nombre_raw: str,
+        tipo_persona_empresa_raw: str = "",
+        id_empresa_raw: str = "",
+    ) -> str:
+        """
+        GROUP_CONCAT mezcla filas; el nombre PJ debe alinearse con idcontratanterp (id_empresa) o tipper J.
+        """
+        raw = (nombre_raw or "").strip().rstrip(",")
+        if not raw:
+            return ""
+        segments = [s.strip() for s in raw.split(",") if s.strip()]
+        if not segments:
+            return ""
+        ids_parts = (id_empresa_raw or "").split(",")
+        if len(ids_parts) == len(segments):
+            for i, eid in enumerate(ids_parts):
+                eid = (eid or "").strip()
+                if eid and i < len(segments) and (segments[i] or "").strip():
+                    return segments[i]
+        tipos = [t.strip() for t in (tipo_persona_empresa_raw or "").split(",") if t.strip() != ""]
+        if tipos and len(tipos) == len(segments):
+            for i, t in enumerate(tipos):
+                if t == "J" and i < len(segments):
+                    return segments[i]
+        if len(segments) == 1:
+            return segments[0]
+        return max(segments, key=len)
+
     def format_company_data(self, raw_data):
         """
         Format company data separately from contractors
@@ -635,7 +677,11 @@ class DocumentFormatter:
         
         # Get company data from raw_data (handle None values)
         # First try regular company data (from idcontratanterp)
-        nombre_empresa = (raw_data.get("nombre_empresa") or "").strip().rstrip(',')
+        nombre_empresa = self._resolve_nombre_empresa_aggregate(
+            raw_data.get("nombre_empresa") or "",
+            raw_data.get("tipo_persona_empresa") or "",
+            raw_data.get("id_empresa") or "",
+        )
         domicilio_empresa = (raw_data.get("domicilio_empresa") or "").strip()
         tipo_persona_empresa = raw_data.get("tipo_persona_empresa") or ""
         condicion_empresa = (raw_data.get("condicion_empresa") or "").strip()
@@ -648,7 +694,11 @@ class DocumentFormatter:
         
         # If no company data, try constitution data (company being created)
         if not nombre_empresa:
-            nombre_empresa = (raw_data.get("nombre_empresa_constitucion") or "").strip().rstrip(',')
+            nombre_empresa = self._resolve_nombre_empresa_aggregate(
+                raw_data.get("nombre_empresa_constitucion") or "",
+                raw_data.get("tipo_persona_empresa_constitucion") or "",
+                "",
+            )
             domicilio_empresa = (raw_data.get("domicilio_empresa_constitucion") or "").strip()
             tipo_persona_empresa = raw_data.get("tipo_persona_empresa_constitucion") or ""
             numero_documento_empresa = (raw_data.get("numero_documento_empresa_constitucion") or "").strip()
@@ -660,8 +710,7 @@ class DocumentFormatter:
         # Process company data if it exists (joined cliente2 cr2 via idcontratanterp).
         # Do not require "J" in tipo_persona_empresa: MySQL GROUP_CONCAT skips NULL segments, so the
         # letter J can disappear from the aggregate even when nombre_empresa / RUC from cr2 are present.
-        acto_u = (raw_data.get("acto") or "").upper()
-        is_donacion = "DONAC" in acto_u
+        is_donacion = self._es_acto_donacion(raw_data)
         if (nombre_empresa or "").strip():
             ins_txt = (
                 f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}"
