@@ -1,7 +1,15 @@
+x-logging: &default-logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "10"
+    compress: "true"
+
 services:
   app:
     build: .
     restart: always
+    logging: *default-logging
     volumes:
       - ./app:/app
       - ./mediafiles:/vol/media
@@ -33,6 +41,7 @@ services:
 
   db:
     image: mariadb:10.5
+    logging: *default-logging
     environment:
       MARIADB_ROOT_PASSWORD: ${DATABASE_PASSWORD}
       MARIADB_DATABASE: ${DATABASE_NAME}
