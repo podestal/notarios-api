@@ -7,7 +7,7 @@ def generate_new_id(model, id_field='id', fill=10):
         last_id = getattr(last_instance, id_field, '0')
         if last_id.isdigit():
             return str(int(last_id) + 1).zfill(fill)
-    return '0000000001'
+    return str(1).zfill(fill)
 
 def normalize_name_for_search(name):
     """
