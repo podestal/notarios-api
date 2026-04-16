@@ -66,6 +66,35 @@ They are also used to define the URL patterns for the Notaria app.
 """
 
 
+def _normalize_condicion_entries(condicion_value):
+    """
+    Normalize condicion payload strings like:
+    - '001.1/002.1/'
+    into ordered unique tuples: [('001', '1'), ('002', '1')]
+    """
+    if not condicion_value:
+        return []
+
+    raw_entries = str(condicion_value).split("/")
+    normalized = []
+    seen = set()
+
+    for raw in raw_entries:
+        raw = (raw or "").strip()
+        if not raw or "." not in raw:
+            continue
+        idcondicion, item = raw.split(".", 1)
+        idcondicion = idcondicion.strip()
+        item = item.strip()
+        if not idcondicion or not item:
+            continue
+        key = (idcondicion, item)
+        if key not in seen:
+            seen.add(key)
+            normalized.append(key)
+    return normalized
+
+
 class UsuariosViewSet(ModelViewSet):
     """
     ViewSet for the Usuarios model.
@@ -2158,65 +2187,46 @@ class ContratantesViewSet(ModelViewSet):
         instance = self.get_object()
         data = request.data
 
-        data_conditions = data.get("condicion").split("/") if data.get("condicion") else []
-        # item = instance.
-        if "/" not in data.get("condicion"):
-            data_conditions = [data.get("condicion")]
-            item = instance
-        else:
-            data_conditions = data.get("condicion").split("/")
-            item = data_conditions[0].split(".")[1] if "." in data_conditions[0] else ""
+        data_condition_pairs = _normalize_condicion_entries(data.get("condicion"))
+        instance_condition_pairs = _normalize_condicion_entries(instance.condicion)
 
-        conditions = instance.condicion.split("/")
-        item = conditions[0].split(".")[1] if "." in conditions[0] else ""
-
-        consditions_normalized = []
-
-        for condition in conditions:
-            if condition:
-                idcondicion = condition.split(".")[0]
-                consditions_normalized.append(idcondicion)
-
-        set_data = set(data_conditions)
-        set_conditions = set(conditions)
+        set_data = set(data_condition_pairs)
+        set_conditions = set(instance_condition_pairs)
 
         # Check if the conditions in the data are already in the instance
         only_in_set_data = set_data - set_conditions
 
-        for condition in only_in_set_data:
-
-            if condition:
-                idcondicion, item = condition.split(".")
-                acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
-                models.Contratantesxacto.objects.create(
-                    idtipkar=acto_condicion.idtipoacto,
-                    kardex=data.get("kardex"),
-                    idtipoacto=acto_condicion.idtipoacto,
-                    idcontratante=instance.idcontratante,
-                    item=item,
-                    idcondicion=idcondicion,
-                    parte=acto_condicion.parte,
-                    porcentaje="",
-                    uif=acto_condicion.uif,
-                    formulario=acto_condicion.formulario,
-                    monto="",
-                    opago="",
-                    ofondo="",
-                    montop=acto_condicion.montop,
-                )
+        for idcondicion, item in only_in_set_data:
+            acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
+            models.Contratantesxacto.objects.get_or_create(
+                kardex=data.get("kardex"),
+                idtipoacto=acto_condicion.idtipoacto,
+                idcontratante=instance.idcontratante,
+                item=item,
+                idcondicion=idcondicion,
+                defaults={
+                    "idtipkar": acto_condicion.idtipoacto,
+                    "parte": acto_condicion.parte,
+                    "porcentaje": "",
+                    "uif": acto_condicion.uif,
+                    "formulario": acto_condicion.formulario,
+                    "monto": "",
+                    "opago": "",
+                    "ofondo": "",
+                    "montop": acto_condicion.montop,
+                },
+            )
 
         only_in_set_conditions = set_conditions - set_data
-        for condition in only_in_set_conditions:
-            if condition:
-                idcondicion, item = condition.split(".")
-                print("removing contratantexacto for condition:", condition)
-                # If the condition is in the instance but not in the data, delete it
-                models.Contratantesxacto.objects.filter(
-                    idcontratante=instance.idcontratante,
-                    idcondicion=idcondicion,
-                    kardex=instance.kardex,
-                    # item=instance.item
-                ).delete()
+        for idcondicion, item in only_in_set_conditions:
+            print("removing contratantexacto for condition:", f"{idcondicion}.{item}")
+            # If the condition is in the instance but not in the data, delete only that exact row
+            models.Contratantesxacto.objects.filter(
+                idcontratante=instance.idcontratante,
+                idcondicion=idcondicion,
+                kardex=instance.kardex,
+                item=item,
+            ).delete()
 
         # conditions_formatted_array = []
         # for single_condition in  data.get('condicion').split('/'):
@@ -2278,27 +2288,27 @@ class ContratantesViewSet(ModelViewSet):
                 idcontratante = utils.generate_new_id(models.Contratantes, "idcontratante")
                 idcliente2 = utils.generate_new_id(models.Cliente2, "idcliente")
 
-                conditions = data.get("condicion").split("/")
-                for condition in conditions:
-                    if condition:
-                        idcondicion, item = condition.split(".")
-                        acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
-                        models.Contratantesxacto.objects.create(
-                            idtipkar=acto_condicion.idtipoacto,
-                            kardex=data.get("kardex"),
-                            idtipoacto=acto_condicion.idtipoacto,
-                            idcontratante=idcontratante,
-                            item=item,
-                            idcondicion=idcondicion,
-                            parte=acto_condicion.parte,
-                            porcentaje="",
-                            uif=acto_condicion.uif,
-                            formulario=acto_condicion.formulario,
-                            monto="",
-                            opago="",
-                            ofondo="",
-                            montop=acto_condicion.montop,
-                        )
+                condition_pairs = _normalize_condicion_entries(data.get("condicion"))
+                for idcondicion, item in condition_pairs:
+                    acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
+                    models.Contratantesxacto.objects.get_or_create(
+                        kardex=data.get("kardex"),
+                        idtipoacto=acto_condicion.idtipoacto,
+                        idcontratante=idcontratante,
+                        item=item,
+                        idcondicion=idcondicion,
+                        defaults={
+                            "idtipkar": acto_condicion.idtipoacto,
+                            "parte": acto_condicion.parte,
+                            "porcentaje": "",
+                            "uif": acto_condicion.uif,
+                            "formulario": acto_condicion.formulario,
+                            "monto": "",
+                            "opago": "",
+                            "ofondo": "",
+                            "montop": acto_condicion.montop,
+                        },
+                    )
 
                 # Check orphan
                 if models.Cliente2.objects.filter(idcontratante=idcontratante).exists():
