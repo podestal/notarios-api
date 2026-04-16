@@ -190,6 +190,11 @@ class NumberToLetterConverter:
         if number < 20:
             return TEENS[number - 10]
 
+        if number < 30:
+            if number == 20:
+                return "VEINTE"
+            return "VEINTI" + UNITS[number - 20]
+
         if number < 100:
             tens = number // 10
             units = number % 10
@@ -226,7 +231,16 @@ class NumberToLetterConverter:
 
         try:
             if isinstance(date_str, str):
-                date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                value = date_str.strip()
+                date_obj = None
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d"):
+                    try:
+                        date_obj = datetime.strptime(value, fmt)
+                        break
+                    except ValueError:
+                        continue
+                if date_obj is None:
+                    raise ValueError(f"Unsupported date format: {date_str}")
             else:
                 date_obj = date_str
 
