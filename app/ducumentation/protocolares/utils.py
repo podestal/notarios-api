@@ -506,7 +506,9 @@ class DocumentFormatter:
             contractor_data[f"P_ORIGEN_FONDO_{idx}"] = (t.get("origen_fondo") or "").strip() + " "
             contractor_data[f"P_OCUPACION_{idx}"] = t["ocupacion"] + " "
             contractor_data[f"P_ESTADO_CIVIL_{idx}"] = estado_civil + " "
-            contractor_data[f"P_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + t["direccion"] + " "
+            contractor_data[f"P_DOMICILIO_{idx}"] = self._format_address_with_ubigeo(
+                t["direccion"], t["distrito"], t["provincia"], t["departamento"]
+            )
 
             # Add unnumbered versions for first person
             if idx == 1:
@@ -519,7 +521,9 @@ class DocumentFormatter:
                 contractor_data["P_ORIGEN_FONDO"] = (t.get("origen_fondo") or "").strip() + " "
                 contractor_data["P_OCUPACION"] = t["ocupacion"] + " "
                 contractor_data["P_ESTADO_CIVIL"] = estado_civil + " "
-                contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"] + " "
+                contractor_data["P_DOMICILIO"] = self._format_address_with_ubigeo(
+                    t["direccion"], t["distrito"], t["provincia"], t["departamento"]
+                )
                 # CALIDAD_P will be set by _get_articles_and_grammar method
 
         # Process acquirers (C_ prefix)
@@ -537,7 +541,9 @@ class DocumentFormatter:
             contractor_data[f"C_ORIGEN_FONDO_{idx}"] = (c.get("origen_fondo") or "").strip() + " "
             contractor_data[f"C_OCUPACION_{idx}"] = c["ocupacion"] + " "
             contractor_data[f"C_ESTADO_CIVIL_{idx}"] = estado_civil + " "
-            contractor_data[f"C_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + c["direccion"] + " "
+            contractor_data[f"C_DOMICILIO_{idx}"] = self._format_address_with_ubigeo(
+                c["direccion"], c["distrito"], c["provincia"], c["departamento"]
+            )
 
             # Add unnumbered versions for first person
             if idx == 1:
@@ -550,7 +556,9 @@ class DocumentFormatter:
                 contractor_data["C_ORIGEN_FONDO"] = (c.get("origen_fondo") or "").strip() + " "
                 contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
                 contractor_data["C_ESTADO_CIVIL"] = estado_civil + " "
-                contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
+                contractor_data["C_DOMICILIO"] = self._format_address_with_ubigeo(
+                    c["direccion"], c["distrito"], c["provincia"], c["departamento"]
+                )
                 # CALIDAD_C will be set by _get_articles_and_grammar method
 
 
@@ -881,6 +889,50 @@ class DocumentFormatter:
             return f"IDENTIFICADA CON {doc_type} N° {doc_number}"
         else:
             return f"IDENTIFICADO CON {doc_type} N° {doc_number}"
+
+    def _format_address_with_ubigeo(self, address, distrito, provincia, departamento):
+        """
+        Build address phrase always followed by ubigeo names.
+        """
+        address = (address or "").strip()
+        if not address:
+            return ""
+
+        distrito = self._resolve_distrito_name((distrito or "").strip())
+        provincia = (provincia or "").strip()
+        departamento = (departamento or "").strip()
+
+        return (
+            f"CON DOMICILIO EN {address} DEL DISTRITO DE {distrito} "
+            f"PROVINCIA DE {provincia} Y DEPARTAMENTO DE {departamento} "
+        )
+
+    def _resolve_distrito_name(self, distrito):
+        """
+        Some rows return coddis (e.g. 010102) instead of nomdis.
+        Resolve the code to district name from ubigeo table.
+        """
+        distrito = (distrito or "").strip()
+        if not distrito:
+            return ""
+        if not re.fullmatch(r"\d{6}", distrito):
+            return distrito
+
+        try:
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT IFNULL(nomdis, '') FROM ubigeo WHERE coddis = %s LIMIT 1",
+                    [distrito],
+                )
+                row = cursor.fetchone()
+                if row and (row[0] or "").strip():
+                    return row[0].strip()
+        except Exception:
+            pass
+
+        return distrito
 
     def _fill_empty_contractor_placeholders(self, contractor_data, num_transferors, num_acquirers):
         """
