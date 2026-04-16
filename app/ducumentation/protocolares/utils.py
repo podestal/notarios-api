@@ -456,6 +456,7 @@ class DocumentFormatter:
                 t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
             ) + " "
             contractor_data[f"P_IDE_{idx}"] = " "
+            contractor_data[f"P_ORIGEN_FONDO_{idx}"] = (t.get("origen_fondo") or "").strip() + " "
             contractor_data[f"P_OCUPACION_{idx}"] = t["ocupacion"] + " "
             contractor_data[f"P_ESTADO_CIVIL_{idx}"] = estado_civil + " "
             contractor_data[f"P_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + t["direccion"] + " "
@@ -468,6 +469,7 @@ class DocumentFormatter:
                     t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
                 ) + " "
                 contractor_data["P_IDE"] = " "
+                contractor_data["P_ORIGEN_FONDO"] = (t.get("origen_fondo") or "").strip() + " "
                 contractor_data["P_OCUPACION"] = t["ocupacion"] + " "
                 contractor_data["P_ESTADO_CIVIL"] = estado_civil + " "
                 contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"] + " "
@@ -485,6 +487,7 @@ class DocumentFormatter:
                 c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
             ) + " "
             contractor_data[f"C_IDE_{idx}"] = " "
+            contractor_data[f"C_ORIGEN_FONDO_{idx}"] = (c.get("origen_fondo") or "").strip() + " "
             contractor_data[f"C_OCUPACION_{idx}"] = c["ocupacion"] + " "
             contractor_data[f"C_ESTADO_CIVIL_{idx}"] = estado_civil + " "
             contractor_data[f"C_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + c["direccion"] + " "
@@ -497,6 +500,7 @@ class DocumentFormatter:
                     c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
                 ) + " "
                 contractor_data["C_IDE"] = " "
+                contractor_data["C_ORIGEN_FONDO"] = (c.get("origen_fondo") or "").strip() + " "
                 contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
                 contractor_data["C_ESTADO_CIVIL"] = estado_civil + " "
                 contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
@@ -550,6 +554,7 @@ class DocumentFormatter:
         tipos_documento = split_if_not_none(raw_data.get("tipo_documento"))
         numeros_documento = split_if_not_none(raw_data.get("numero_documento"))
         ocupaciones = split_if_not_none(raw_data.get("ocupacion"))
+        origenes_fondo = split_if_not_none(raw_data.get("origen_fondo"))
         estados_civil = split_if_not_none(raw_data.get("estado_civil"))
         direcciones = raw_data.get("direccion", "").split(",,") if raw_data.get("direccion") else []
         distritos = split_if_not_none(raw_data.get("distrito"))
@@ -584,6 +589,7 @@ class DocumentFormatter:
             tipo_doc = tipos_documento[k] if k < len(tipos_documento) else ""
             num_doc = numeros_documento[k] if k < len(numeros_documento) else ""
             ocupacion = ocupaciones[k] if k < len(ocupaciones) else ""
+            origen_fondo = origenes_fondo[k] if k < len(origenes_fondo) else ""
             estado_civil = estados_civil[k] if k < len(estados_civil) else ""
             direccion = direcciones[k] if k < len(direcciones) else ""
             distrito = distritos[k] if k < len(distritos) else ""
@@ -616,6 +622,7 @@ class DocumentFormatter:
                 "tipoDocumento": tipo_doc,
                 "numeroDocumento": num_doc,
                 "ocupacion": ocupacion,
+                "origen_fondo": origen_fondo,
                 "estadoCivil": estado_civil,
                 "direccion": direccion,
                 "distrito": distrito,
@@ -824,6 +831,7 @@ class DocumentFormatter:
             contractor_data[f"P_NACIONALIDAD_{idx}"] = ""
             contractor_data[f"P_DOC_{idx}"] = ""
             contractor_data[f"P_IDE_{idx}"] = ""
+            contractor_data[f"P_ORIGEN_FONDO_{idx}"] = ""
             contractor_data[f"P_OCUPACION_{idx}"] = ""
             contractor_data[f"P_ESTADO_CIVIL_{idx}"] = ""
             contractor_data[f"P_DOMICILIO_{idx}"] = ""
@@ -834,6 +842,7 @@ class DocumentFormatter:
             contractor_data[f"C_NACIONALIDAD_{idx}"] = ""
             contractor_data[f"C_DOC_{idx}"] = ""
             contractor_data[f"C_IDE_{idx}"] = ""
+            contractor_data[f"C_ORIGEN_FONDO_{idx}"] = ""
             contractor_data[f"C_OCUPACION_{idx}"] = ""
             contractor_data[f"C_ESTADO_CIVIL_{idx}"] = ""
             contractor_data[f"C_DOMICILIO_{idx}"] = ""
@@ -1071,13 +1080,15 @@ class DocumentFormatter:
             "COLOR": str(raw_data.get("color") or "").upper(),
             "NRO_MOTOR": str(raw_data.get("motor") or "").upper(),
             "NRO_SERIE": str(raw_data.get("serie") or "").upper(),
+            "PARTIDA": str(raw_data.get("partida") or "").upper(),
             "FEC_INS": str(raw_data.get("fecha_inscripcion") or "").upper(),
             "FECHA_INSCRIPCION": str(raw_data.get("fecha_inscripcion") or "").upper(),
             "ZONA_REGISTRAL": str(sede).upper(),
             "NUM_ZONA_REG": str(raw_data.get("numero_zona") or "").upper(),
             "SEDE": str(sede_name).upper(),
+            "ZONA_VEHICULO": str(sede_name).upper(),
             "INSTRUIDO": " ",
-            "COMBUSTIBLE": " ",
+            "COMBUSTIBLE": str(raw_data.get("combustible") or "").upper(),
             "NRO_TARJETA": " ",
         }
 

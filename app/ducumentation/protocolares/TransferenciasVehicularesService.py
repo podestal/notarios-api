@@ -234,6 +234,7 @@ class TransferenciasVehicularesDocumentService:
                 GROUP_CONCAT(IF(cn.firma = '0', 'NO', 'SI')) AS firma,
                 GROUP_CONCAT(cn.firma) as n_firma,
                 GROUP_CONCAT(cn.tiporepresentacion) AS tipo_representacion,
+                GROUP_CONCAT(IFNULL(cxa.ofondo, '')) AS origen_fondo,
                 dv.numplaca AS placa, 
                 dv.marca AS marca, 
                 dv.clase AS clase,
