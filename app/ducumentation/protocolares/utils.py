@@ -303,6 +303,48 @@ class DocumentFormatter:
         plantilla_u = (raw_data.get("plantilla") or "").upper()
         return "CONSTITUC" in acto_u or "CONSTITUC" in plantilla_u
 
+    def _infer_company_target_slot(self, raw_data: dict) -> int:
+        """
+        Decide whether current PJ should be exposed as slot _1 (P side)
+        or slot _2 (C side), based on contractor role data.
+        """
+        condiciones = (raw_data.get("condicion") or "").split(",")
+        tipos_persona = (raw_data.get("tipo_persona") or raw_data.get("tipper") or "").split(",")
+        partes = (raw_data.get("parte") or "").split(",")
+        uifs = (raw_data.get("uif") or "").split(",")
+
+        transferor_roles = {
+            "VENDEDOR",
+            "DONANTE",
+            "OTORGANTE",
+            "TRANSFERENTE",
+            "PROPIETARIO",
+        }
+        acquirer_roles = {
+            "COMPRADOR",
+            "DONATARIO",
+            "ADQUIRIENTE",
+            "OTORGADO",
+            "ACREEDOR",
+        }
+
+        max_len = max(len(condiciones), len(tipos_persona), len(partes), len(uifs))
+        for i in range(max_len):
+            tip = (tipos_persona[i].strip().upper() if i < len(tipos_persona) else "")
+            if tip != "J":
+                continue
+
+            cond = (condiciones[i].strip().upper() if i < len(condiciones) else "")
+            parte = (partes[i].strip() if i < len(partes) else "")
+            uif = (uifs[i].strip().upper() if i < len(uifs) else "")
+
+            if cond in acquirer_roles or parte == "2" or uif in {"B", "N"}:
+                return 2
+            if cond in transferor_roles or parte == "1" or uif == "O":
+                return 1
+
+        return 1
+
     def format_document_data(self, raw_data):
         """
         Format basic document data
@@ -735,6 +777,7 @@ class DocumentFormatter:
         # Do not require "J" in tipo_persona_empresa: MySQL GROUP_CONCAT skips NULL segments, so the
         # letter J can disappear from the aggregate even when nombre_empresa / RUC from cr2 are present.
         is_donacion = self._es_acto_donacion(raw_data)
+        target_slot = self._infer_company_target_slot(raw_data)
         if (nombre_empresa or "").strip():
             ins_txt = (
                 f" INSCRITA EN LA PARTIDA ELECTRONICA N° {numero_partida} DE LA OFICINA REGISTRAL {oficina_registral}"
@@ -770,12 +813,20 @@ class DocumentFormatter:
                 company_data["DOMICILIO_EMPRESA_1"] = dom_txt
                 company_data["CONDICION_EMPRESA_1"] = cond_emp
             else:
-                print(f"DEBUG: Setting NOMBRE_EMPRESA_1 (normal)")
-                company_data["NOMBRE_EMPRESA_1"] = nombre_empresa
-                company_data["INS_EMPRESA_1"] = ins_txt
-                company_data["RUC_1"] = ruc_txt
-                company_data["DOMICILIO_EMPRESA_1"] = dom_txt
-                company_data["CONDICION_EMPRESA_1"] = cond_emp
+                if target_slot == 2:
+                    print(f"DEBUG: Setting NOMBRE_EMPRESA_2 (normal C-side PJ)")
+                    company_data["NOMBRE_EMPRESA_2"] = nombre_empresa
+                    company_data["INS_EMPRESA_2"] = ins_txt
+                    company_data["RUC_2"] = ruc_txt
+                    company_data["DOMICILIO_EMPRESA_2"] = dom_txt
+                    company_data["CONDICION_EMPRESA_2"] = cond_emp
+                else:
+                    print(f"DEBUG: Setting NOMBRE_EMPRESA_1 (normal P-side PJ)")
+                    company_data["NOMBRE_EMPRESA_1"] = nombre_empresa
+                    company_data["INS_EMPRESA_1"] = ins_txt
+                    company_data["RUC_1"] = ruc_txt
+                    company_data["DOMICILIO_EMPRESA_1"] = dom_txt
+                    company_data["CONDICION_EMPRESA_1"] = cond_emp
         
         # Fill empty company placeholders
         if "NOMBRE_EMPRESA_1" not in company_data:
