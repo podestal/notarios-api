@@ -298,6 +298,11 @@ class DocumentFormatter:
             or ("DONANTE" in cond_part_u and "REPRESENTANTE" in cond_part_u)
         )
 
+    def _es_acto_constitucion(self, raw_data: dict) -> bool:
+        acto_u = (raw_data.get("acto") or "").upper()
+        plantilla_u = (raw_data.get("plantilla") or "").upper()
+        return "CONSTITUC" in acto_u or "CONSTITUC" in plantilla_u
+
     def format_document_data(self, raw_data):
         """
         Format basic document data
@@ -574,7 +579,9 @@ class DocumentFormatter:
         domicilios_fiscales = split_if_not_none(raw_data.get("domicilio_empresa"))
         tipos_persona_empresa = split_if_not_none(raw_data.get("tipo_persona_empresa"))
         condiciones_empresa = split_if_not_none(raw_data.get("condicion_empresa"))
-        tipos_persona = split_if_not_none(raw_data.get("tipper"))
+        # In SQL this field is exposed as "tipo_persona" (GROUP_CONCAT(c2.tipper)).
+        # Keep fallback to "tipper" for compatibility with older query variants.
+        tipos_persona = split_if_not_none(raw_data.get("tipo_persona") or raw_data.get("tipper"))
 
         contractors = []
 
@@ -612,7 +619,9 @@ class DocumentFormatter:
             domicilio_fiscal = domicilios_fiscales[k] if k < len(domicilios_fiscales) else ""
             tipper_empresa = tipos_persona_empresa[k] if k < len(tipos_persona_empresa) else ""
             condicion_empresa = condiciones_empresa[k] if k < len(condiciones_empresa) else ""
-            tipper = tipos_persona[k] if k < len(tipos_persona) else "N"
+            tipper = (tipos_persona[k].strip().upper() if k < len(tipos_persona) else "N")
+            if tipper not in {"N", "J"}:
+                tipper = "N"
 
             contractor = {
                 "condiciones": condicion,
@@ -706,7 +715,7 @@ class DocumentFormatter:
         departamento_empresa = (raw_data.get("departamento_empresa") or "").strip()
         oficina_registral = (raw_data.get("oficina_registral") or "").strip()
         
-        # If no company data, try constitution data (company being created)
+        # If no company data, try alternate company data from service query fallback.
         if not nombre_empresa:
             nombre_empresa = self._resolve_nombre_empresa_aggregate(
                 raw_data.get("nombre_empresa_constitucion") or "",
@@ -717,8 +726,9 @@ class DocumentFormatter:
             tipo_persona_empresa = raw_data.get("tipo_persona_empresa_constitucion") or ""
             numero_documento_empresa = (raw_data.get("numero_documento_empresa_constitucion") or "").strip()
             numero_partida = (raw_data.get("numero_partida_constitucion") or "").strip()
-            # For constitutions, use NOMBRE_EMPRESA_2
-            condicion_empresa = "EMPRESA EN CONSTITUCION"
+            # Mark as constitution only when the current act/template is really a constitution.
+            if self._es_acto_constitucion(raw_data):
+                condicion_empresa = "EMPRESA EN CONSTITUCION"
         
         
         # Process company data if it exists (joined cliente2 cr2 via idcontratanterp).

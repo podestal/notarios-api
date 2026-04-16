@@ -293,7 +293,7 @@ class TransferenciasVehicularesDocumentService:
             LEFT JOIN detallemediopago as dmp ON pat.kardex = dmp.kardex
             LEFT JOIN mediospago as mp ON dmp.codmepag = mp.codmepag
             LEFT JOIN contratantes as cnr ON cxa.idcontratante = cnr.idcontratante
-            LEFT JOIN contratantesxacto as cxar on cxar.idcontratante=cnr.idcontratanterp
+            LEFT JOIN contratantesxacto as cxar on cxar.idcontratante=cnr.idcontratanterp AND cxar.kardex = cxa.kardex
             LEFT JOIN actocondicion as acr ON acr.idcondicion=cxar.idcondicion
             LEFT JOIN cliente2 as cr2 on cr2.idcontratante=cnr.idcontratanterp
             left JOIN nacionalidades as nr on nr.idnacionalidad=cr2.nacionalidad
@@ -302,7 +302,7 @@ class TransferenciasVehicularesDocumentService:
             LEFT OUTER JOIN tipoestacivil as tecr ON tecr.idestcivil = cr2.idestcivil
             LEFT OUTER JOIN ubigeo as ur ON ur.coddis = cr2.idubigeo
             LEFT JOIN  bancos as ban ON ban.idbancos=dmp.idbancos
-            WHERE k.kardex=%s and (c2.tipper='N')
+            WHERE k.kardex=%s and (c2.tipper IN ('N','J'))
             GROUP BY k.idkardex, dmp.detmp LIMIT 1
         """
         with connection.cursor() as cursor:
@@ -335,6 +335,42 @@ class TransferenciasVehicularesDocumentService:
                 result['tipo_persona_empresa_constitucion'] = company_row[2]
                 result['numero_documento_empresa_constitucion'] = company_row[3]
                 result['numero_partida_constitucion'] = company_row[4]
+
+            # Debug dump: all contratantes rows for this kardex
+            contratantes_debug_query = """
+                SELECT
+                    cxa.id AS cxa_id,
+                    cxa.idcontratante,
+                    IFNULL(ac.condicion, '') AS condicion,
+                    IFNULL(cxa.parte, '') AS parte,
+                    IFNULL(cxa.uif, '') AS uif,
+                    IFNULL(c2.tipper, '') AS tipper,
+                    TRIM(CONCAT(
+                        IFNULL(c2.prinom, ''), ' ',
+                        IFNULL(c2.segnom, ''), IF(IFNULL(c2.segnom,'')='','',' '),
+                        IFNULL(c2.apepat, ''), ' ',
+                        IFNULL(c2.apemat, '')
+                    )) AS nombre_natural,
+                    TRIM(IFNULL(c2.razonsocial, '')) AS razonsocial,
+                    IFNULL(cn.idcontratanterp, '') AS idcontratanterp_raw
+                FROM contratantesxacto cxa
+                LEFT JOIN actocondicion ac ON ac.idcondicion = cxa.idcondicion
+                LEFT JOIN contratantes cn ON cn.idcontratante = cxa.idcontratante
+                LEFT JOIN cliente2 c2 ON c2.idcontratante = cxa.idcontratante
+                WHERE cxa.kardex = %s
+                ORDER BY cxa.id ASC
+            """
+            cursor.execute(contratantes_debug_query, [num_kardex])
+            contratantes_debug_rows = cursor.fetchall()
+            print(f"DEBUG: contratantes dump for {num_kardex} (rows={len(contratantes_debug_rows)})")
+            for row in contratantes_debug_rows:
+                print(
+                    "DEBUG: "
+                    f"cxa_id={row[0]} | idcontratante={row[1]} | condicion={row[2]} | "
+                    f"parte={row[3]} | uif={row[4]} | tipper={row[5]} | "
+                    f"nombre_natural='{row[6]}' | razonsocial='{row[7]}' | "
+                    f"idcontratanterp_raw='{row[8]}'"
+                )
             
             return result
 
