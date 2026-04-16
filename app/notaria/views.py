@@ -48,6 +48,7 @@ from .services.pdt_file_service import PdtFileService
 from .services.pdt_escrituras_service import PdtEscriturasService
 from .services.pdt_vehiculares_service import PdtVehicularesService
 from .services.pdt_garantias_service import PdtGarantiasService
+from .constants import get_kardex_abbreviation_map
 from ducumentation.storage import (
     docx_filename_from_name_template,
     build_object_key,
@@ -324,13 +325,7 @@ class KardexViewSet(ModelViewSet):
             return Response({"error": "Invalid fechaingreso format"}, status=400)
 
         # Get abbreviation based on tipoescritura
-        abreviatura_map = {
-            "1": "KAR",  # ESCRITURAS PUBLICAS
-            "2": "NCT",  # ASUNTOS NO CONTENCIOSOS
-            "3": "ACT",  # TRANSFERENCIAS VEHICULARES
-            "4": "GAM",  # GARANTIAS MOBILIARIAS
-            "5": "TES",  # TESTAMENTOS
-        }
+        abreviatura_map = get_kardex_abbreviation_map()
         abreviatura = abreviatura_map.get(str(idtipkar))
         if not abreviatura:
             return Response({"error": "Invalid tipoescritura"}, status=400)

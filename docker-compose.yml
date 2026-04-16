@@ -36,6 +36,7 @@ services:
       - PROVIDER_NAME=${PROVIDER_NAME}
       - APP_NAME=${APP_NAME}
       - APP_VERSION=${APP_VERSION}
+      - KARDEX_ABBREVIATIONS=${KARDEX_ABBREVIATIONS}
     depends_on:
       - db
 

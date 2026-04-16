@@ -1,3 +1,5 @@
+import os
+
 MONEDAS = {
     1: {'desmon': 'SOLES', 'simbolo': 'S/', 'codigo': 'PEN', 'codmon': '01'},
     2: {'desmon': 'DOLARES N.A.', 'simbolo': 'US$.', 'codigo': 'USD', 'codmon': '02'},
@@ -23,3 +25,36 @@ FORMAS_PAGO = {
     '4': {'id_fpago': '4', 'codigo': 'D', 'descripcion': 'DONACIONES O ANTICIPOS'},
     '5': {'id_fpago': '5', 'codigo': 'N', 'descripcion': 'NO APLICA'}
 }
+
+
+DEFAULT_KARDEX_ABBREVIATIONS = {
+    '1': 'KAR',  # ESCRITURAS PUBLICAS
+    '2': 'NCT',  # ASUNTOS NO CONTENCIOSOS
+    '3': 'ACT',  # TRANSFERENCIAS VEHICULARES
+    '4': 'GAM',  # GARANTIAS MOBILIARIAS
+    '5': 'TES',  # TESTAMENTOS
+}
+
+
+def get_kardex_abbreviation_map():
+    """
+    Resolve kardex abbreviations from env.
+
+    Example:
+    KARDEX_ABBREVIATIONS=1:K,2:N,3:A,4:G,5:T
+    """
+    raw = (os.environ.get('KARDEX_ABBREVIATIONS') or '').strip()
+    if not raw:
+        return DEFAULT_KARDEX_ABBREVIATIONS.copy()
+
+    parsed = DEFAULT_KARDEX_ABBREVIATIONS.copy()
+    for entry in raw.split(','):
+        entry = entry.strip()
+        if not entry or ':' not in entry:
+            continue
+        key, value = entry.split(':', 1)
+        key = key.strip()
+        value = value.strip().upper()
+        if key and value:
+            parsed[key] = value
+    return parsed
