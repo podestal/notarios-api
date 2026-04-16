@@ -455,7 +455,7 @@ class DocumentFormatter:
             contractor_data[f"P_DOC_{idx}"] = self._get_identification_phrase(
                 t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
             ) + " "
-            contractor_data[f"P_IDE_{idx}"] = t["numeroDocumento"] + " "
+            contractor_data[f"P_IDE_{idx}"] = " "
             contractor_data[f"P_OCUPACION_{idx}"] = t["ocupacion"] + " "
             contractor_data[f"P_ESTADO_CIVIL_{idx}"] = estado_civil + " "
             contractor_data[f"P_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + t["direccion"] + " "
@@ -467,7 +467,7 @@ class DocumentFormatter:
                 contractor_data["P_DOC"] = self._get_identification_phrase(
                     t["sexo"], t["tipoDocumento"], t["numeroDocumento"]
                 ) + " "
-                contractor_data["P_IDE"] = t["numeroDocumento"] + " "
+                contractor_data["P_IDE"] = " "
                 contractor_data["P_OCUPACION"] = t["ocupacion"] + " "
                 contractor_data["P_ESTADO_CIVIL"] = estado_civil + " "
                 contractor_data["P_DOMICILIO"] = "CON DOMICILIO EN " + t["direccion"] + " "
@@ -484,7 +484,7 @@ class DocumentFormatter:
             contractor_data[f"C_DOC_{idx}"] = self._get_identification_phrase(
                 c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
             ) + " "
-            contractor_data[f"C_IDE_{idx}"] = c["numeroDocumento"] + " "
+            contractor_data[f"C_IDE_{idx}"] = " "
             contractor_data[f"C_OCUPACION_{idx}"] = c["ocupacion"] + " "
             contractor_data[f"C_ESTADO_CIVIL_{idx}"] = estado_civil + " "
             contractor_data[f"C_DOMICILIO_{idx}"] = "CON DOMICILIO EN " + c["direccion"] + " "
@@ -496,7 +496,7 @@ class DocumentFormatter:
                 contractor_data["C_DOC"] = self._get_identification_phrase(
                     c["sexo"], c["tipoDocumento"], c["numeroDocumento"]
                 ) + " "
-                contractor_data["C_IDE"] = c["numeroDocumento"] + " "
+                contractor_data["C_IDE"] = " "
                 contractor_data["C_OCUPACION"] = c["ocupacion"] + " "
                 contractor_data["C_ESTADO_CIVIL"] = estado_civil + " "
                 contractor_data["C_DOMICILIO"] = "CON DOMICILIO EN " + c["direccion"] + " "
@@ -510,6 +510,13 @@ class DocumentFormatter:
         # Add gender-based articles and grammar
         contractor_data.update(self._get_articles_and_grammar(transferors, "P"))
         contractor_data.update(self._get_articles_and_grammar(acquirers, "C"))
+
+        # Backward-compatible aliases used by multiple templates
+        # (many templates use P_CALIDAD/C_CALIDAD instead of CALIDAD_P/CALIDAD_C)
+        if contractor_data.get("CALIDAD_P") and not contractor_data.get("P_CALIDAD"):
+            contractor_data["P_CALIDAD"] = contractor_data["CALIDAD_P"]
+        if contractor_data.get("CALIDAD_C") and not contractor_data.get("C_CALIDAD"):
+            contractor_data["C_CALIDAD"] = contractor_data["CALIDAD_C"]
         
         # Add additional grammar placeholders
         contractor_data.update(self._get_additional_grammar(transferors, acquirers))
