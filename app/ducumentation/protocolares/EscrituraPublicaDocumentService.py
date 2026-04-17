@@ -117,6 +117,7 @@ class EscrituraDocumentService:
             data_contratantes,
             data_company,
         )
+        final_data = self._apply_escritura_template_compat(final_data, raw_data)
 
         # Try using python-docx-template first (docxtpl)
         # Falls back to PlaceholderProcessor if docxtpl fails
@@ -146,6 +147,19 @@ class EscrituraDocumentService:
         filename = f"__PROY__{kardex}.docx"
 
         return self._create_response_from_buffer(buffer, filename, kardex, mode)
+
+    def _apply_escritura_template_compat(self, final_data, raw_data):
+        """
+        Escritura-only compatibility layer:
+        - Fill F_IMPRESION from fecha_escritura/fecha_generado when blank
+        """
+        fecha_impresion = (final_data.get("F_IMPRESION") or "").strip()
+        if not fecha_impresion:
+            fecha_base = raw_data.get("fecha_escritura") or raw_data.get("fecha_generado")
+            if fecha_base:
+                final_data["F_IMPRESION"] = self.letras.date_to_letters(fecha_base)
+
+        return final_data
 
     def _update_existing_document(self, kardex, mode):
         """
