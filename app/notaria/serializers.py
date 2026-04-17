@@ -890,13 +890,21 @@ class CreatePermiViajeSerializer(serializers.ModelSerializer):
             "fecha_hasta",
         ]
 
+    def _normalize_nom_recep(self, validated_data):
+        if validated_data.get("nom_recep", None) in ("", " "):
+            validated_data["nom_recep"] = None
+        return validated_data
+
     def create(self, validated_data):
-        # Some legacy backups have `permi_viaje.nom_recep` as INT.
-        # Only for this tenant, coerce empty string to NULL to avoid 1366 errors.
-        if os.environ.get("CLOUDFLARE_R2_MAIN_URL") == "gonzales-caceres":
-            if validated_data.get("nom_recep", None) in ("", " "):
-                validated_data["nom_recep"] = None
+        # Some legacy schemas have `permi_viaje.nom_recep` as INT.
+        # Coerce blank values to NULL to avoid MySQL 1366 on insert.
+        validated_data = self._normalize_nom_recep(validated_data)
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Same coercion for PATCH/PUT updates.
+        validated_data = self._normalize_nom_recep(validated_data)
+        return super().update(instance, validated_data)
 
 
 class ViajeContratantesSerializer(serializers.ModelSerializer):
