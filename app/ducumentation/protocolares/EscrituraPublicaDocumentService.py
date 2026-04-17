@@ -151,13 +151,29 @@ class EscrituraDocumentService:
     def _apply_escritura_template_compat(self, final_data, raw_data):
         """
         Escritura-only compatibility layer:
-        - Fill F_IMPRESION from fecha_escritura/fecha_generado when blank
+        - For constitution templates using slot _1, mirror company data from _2 when needed
         """
-        fecha_impresion = (final_data.get("F_IMPRESION") or "").strip()
-        if not fecha_impresion:
-            fecha_base = raw_data.get("fecha_escritura") or raw_data.get("fecha_generado")
-            if fecha_base:
-                final_data["F_IMPRESION"] = self.letras.date_to_letters(fecha_base)
+        # Constitution templates often store company in _2, but some templates read _1.
+        nombre_1 = (final_data.get("NOMBRE_EMPRESA_1") or "").strip()
+        nombre_2 = (final_data.get("NOMBRE_EMPRESA_2") or "").strip()
+        if not nombre_1 and nombre_2:
+            final_data["NOMBRE_EMPRESA_1"] = nombre_2
+            final_data["INS_EMPRESA_1"] = final_data.get("INS_EMPRESA_2", "")
+            final_data["RUC_1"] = final_data.get("RUC_2", "")
+            final_data["DOMICILIO_EMPRESA_1"] = final_data.get("DOMICILIO_EMPRESA_2", "")
+            final_data["CONDICION_EMPRESA_1"] = final_data.get("CONDICION_EMPRESA_2", "")
+
+        # Extra fallback from raw query constitution fields, in case formatter didn't fill slots.
+        if not (final_data.get("NOMBRE_EMPRESA_1") or "").strip():
+            nombre_const = (raw_data.get("nombre_empresa_constitucion") or "").strip()
+            if nombre_const:
+                final_data["NOMBRE_EMPRESA_1"] = nombre_const
+                nro_doc = (raw_data.get("numero_documento_empresa_constitucion") or "").strip()
+                dom = (raw_data.get("domicilio_empresa_constitucion") or "").strip()
+                final_data["RUC_1"] = f", CON RUC N° {nro_doc}, " if nro_doc else final_data.get("RUC_1", "")
+                final_data["DOMICILIO_EMPRESA_1"] = (
+                    f"CON DOMICILIO EN {dom}" if dom else final_data.get("DOMICILIO_EMPRESA_1", "")
+                )
 
         return final_data
 
