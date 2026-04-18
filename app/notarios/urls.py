@@ -29,7 +29,7 @@ if settings.DEBUG:
 urlpatterns += [
     path('admin/', admin.site.urls),
     path('api/', include('notaria.urls')),
-    # path('signatum/', include('signatum.urls')),
+    path('signatum/', include('signatum.urls')),
     path('api-docs/', include('ducumentation.urls')),
     path('sisgen/', include('sisgen.urls')),
     path('viajes/', include('viajes.urls')),
