@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from rest_framework.exceptions import ValidationError
 
-from app.notaria.models import Kardex
-from app.signatum.models import Notarization, NotarizationReservation
+from notaria.models import Kardex
+from signatum.models import Notarization, NotarizationReservation
 
 
 def _snapshot_from_kardex(k: Kardex) -> dict:

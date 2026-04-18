@@ -348,7 +348,7 @@ class KardexViewSet(ModelViewSet):
         response = super().update(request, *args, **kwargs)
 
         if rid is not None:
-            from app.signatum.services import finalize_notarization_from_reservation
+            from signatum.services import finalize_notarization_from_reservation
 
             finalize_notarization_from_reservation(
                 kardex_instance=self.get_object(),
