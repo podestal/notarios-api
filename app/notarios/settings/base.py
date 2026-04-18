@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'sisgen',
     'notaria',
     'viajes',
+    'signatum',
 ]
 
 MIDDLEWARE = [
