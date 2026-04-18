@@ -1,17 +1,14 @@
-from datetime import timedelta
-
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
 
-def _default_reservation_expires():
-    return timezone.now() + timedelta(minutes=5)
-
-
 class Notarization(models.Model):
     """Persisted escrituración correlatives; `kardex` is the legacy kardex code string."""
 
+    idtipkar = models.IntegerField(
+        help_text="Tipo de kardex; correlatives and locks are scoped per tipo.",
+    )
     kardex = models.CharField(max_length=30)
     fecha_conclusion = models.CharField(max_length=10, blank=True)
     folio_ini = models.CharField(max_length=30, blank=True)
@@ -43,8 +40,9 @@ class Notarization(models.Model):
     class Meta:
         ordering = ("-id",)
 
+
 class NotarizationReservation(models.Model):
-    """Draft correlatives; `status=PE` and `expires_at` in the future means locked for others."""
+    """Draft correlatives; `status=PE` blocks other users for the same idtipkar until released or stale."""
 
     class Status(models.TextChoices):
         PENDING = "PE", "Pending"
@@ -52,6 +50,9 @@ class NotarizationReservation(models.Model):
         CANCELLED = "CA", "Cancelled"
         EXPIRED = "EX", "Expired"
 
+    idtipkar = models.IntegerField(
+        help_text="Tipo de kardex; pending lock and correlatives are independent per tipo.",
+    )
     kardex = models.CharField(max_length=30)
     fecha_conclusion = models.CharField(max_length=10, blank=True)
     folio_ini = models.CharField(max_length=30, blank=True)
@@ -75,7 +76,6 @@ class NotarizationReservation(models.Model):
         related_name="signatum_notarization_reservations",
     )
     created_at = models.DateTimeField(default=timezone.now)
-    expires_at = models.DateTimeField(default=_default_reservation_expires)
 
     class Meta:
         ordering = ("-id",)

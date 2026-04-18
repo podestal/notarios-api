@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
                 ('fecha_escritura', models.CharField(blank=True, max_length=10)),
                 ('status', models.CharField(choices=[('PE', 'Pending'), ('CO', 'Committed'), ('CA', 'Cancelled'), ('EX', 'Expired')], default='PE', max_length=2)),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('expires_at', models.DateTimeField(default=signatum.models._default_reservation_expires)),
+                # ('expires_at', models.DateTimeField(default=signatum.models._default_reservation_expires)),
                 ('held_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='signatum_notarization_reservations', to=settings.AUTH_USER_MODEL)),
             ],
             options={
