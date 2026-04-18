@@ -30,6 +30,7 @@ from . import serializers
 from . import pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from django.db.models import Q, Max, F, Func, Value
 from django.db.models.functions import Cast, Substr
 from django.db import models as django_models
@@ -268,6 +269,7 @@ class KardexViewSet(ModelViewSet):
         """
         Override the update method to handle the update of the tipo de actos.
         """
+
         instance = self.get_object()
         data = request.data
         codactos = data.get("codactos", "")
@@ -284,7 +286,7 @@ class KardexViewSet(ModelViewSet):
         for id_tipo_acto in only_in_set_conditions:
             try:
                 tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
-            except tipo_acto.DoesNotExist:
+            except models.Tiposdeacto.DoesNotExist:
                 return Response({"error": "Tipo de acto no encontrado."}, status=404)
 
             # Check if there are any contratantes using this tipo_acto
@@ -331,7 +333,30 @@ class KardexViewSet(ModelViewSet):
 
             models.DetalleActosKardex.objects.create(**detalle_data)
 
-        return super().update(request, *args, **kwargs)
+        reservation_id = request.data.get("signatum_reservation_id") or request.query_params.get(
+            "signatum_reservation_id"
+        )
+        rid = None
+        if reservation_id not in (None, ""):
+            try:
+                rid = int(reservation_id)
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    {"signatum_reservation_id": "Must be a valid integer."},
+                )
+
+        response = super().update(request, *args, **kwargs)
+
+        if rid is not None:
+            from app.signatum.services import finalize_notarization_from_reservation
+
+            finalize_notarization_from_reservation(
+                kardex_instance=self.get_object(),
+                reservation_id=rid,
+                user=request.user,
+            )
+
+        return response
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
