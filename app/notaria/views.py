@@ -3084,11 +3084,44 @@ class DetallemediopagoViewSet(ModelViewSet):
 class TemplateViewSet(ModelViewSet):
     """
     ViewSet for the TplTemplate model.
+
+    Optional query params on list only:
+    - codeActs: substring match on codeActs
+    - fkTypeKardex: exact match on fkTypeKardex (integer)
+    - nameTemplate: substring match on nameTemplate (case-insensitive)
     """
 
     queryset = models.TplTemplate.objects.all()
     serializer_class = serializers.TemplateSerializer
     pagination_class = pagination.KardexPagination
+
+    def get_queryset(self):
+        qs = models.TplTemplate.objects.all()
+        if self.action != "list":
+            return qs
+
+        code_acts = self.request.query_params.get("codeActs")
+        fk_type = self.request.query_params.get("fkTypeKardex")
+        name_template = self.request.query_params.get("nameTemplate")
+
+        if code_acts and str(code_acts).strip():
+            qs = qs.filter(codeacts__icontains=code_acts.strip())
+        if fk_type is not None and str(fk_type).strip() != "":
+            try:
+                qs = qs.filter(fktypekardex=int(fk_type))
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    {"fkTypeKardex": "Must be a valid integer."},
+                )
+        if name_template and str(name_template).strip():
+            qs = qs.filter(nametemplate__icontains=name_template.strip())
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        """
+        List TplTemplate records with optional filters (see class docstring).
+        """
+        return super().list(request, *args, **kwargs)
 
     def _handle_template_upload(self, request):
         """
