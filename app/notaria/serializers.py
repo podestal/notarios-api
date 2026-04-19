@@ -788,6 +788,19 @@ class TemplateSerializer(serializers.ModelSerializer):
         model = models.TplTemplate
         fields = "__all__"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # camelCase aliases (DB / frontend expect these names)
+        data["pkTemplate"] = instance.pktemplate
+        data["fileName"] = instance.filename
+        data["nameTemplate"] = instance.nametemplate
+        data["urlTemplate"] = instance.urltemplate
+        data["fkTypeKardex"] = instance.fktypekardex
+        data["codeActs"] = instance.codeacts
+        data["registrationDate"] = data.get("registrationdate")
+        data["statusRegister"] = data.get("statusregister")
+        return data
+
 
 class LegalizacionSerializer(serializers.ModelSerializer):
     """

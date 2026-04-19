@@ -1,9 +1,11 @@
+import io
 import os
 import re
 from typing import IO
 
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 
 def get_s3_client():
@@ -18,6 +20,42 @@ def get_s3_client():
 		config=Config(signature_version="s3v4"),
 		region_name="auto",
 	)
+
+
+def get_r2_bucket() -> str:
+	bucket = os.environ.get("CLOUDFLARE_R2_BUCKET")
+	if not bucket:
+		raise RuntimeError("CLOUDFLARE_R2_BUCKET is not set")
+	return bucket
+
+
+# ---------------------------------------------------------------------------
+# Folder defaults (override via env; any code can still pass a custom folder)
+# ---------------------------------------------------------------------------
+
+def default_folder_documentos() -> str:
+	"""Default R2 path segment for generated documents (env: CLOUDFLARE_R2_FOLDER_DOCUMENTOS)."""
+	return (os.environ.get("CLOUDFLARE_R2_FOLDER_DOCUMENTOS") or "documentos").strip().strip("/")
+
+
+def default_folder_plantillas() -> str:
+	"""Default R2 path segment for templates (env: CLOUDFLARE_R2_FOLDER_PLANTILLAS)."""
+	return (os.environ.get("CLOUDFLARE_R2_FOLDER_PLANTILLAS") or "plantillas").strip().strip("/")
+
+
+def validate_folder_path(folder: str) -> str:
+	"""
+	Normalize folder to a safe relative path (no '..', no leading slash).
+	Raises ValueError if invalid. Supports nested segments, e.g. 'plantillas/v2024'.
+	"""
+	if folder is None:
+		raise ValueError("folder is required")
+	clean = str(folder).strip().strip("/")
+	if not clean:
+		raise ValueError("folder must be non-empty")
+	if ".." in clean:
+		raise ValueError("folder must not contain '..'")
+	return clean
 
 
 def sanitize_copy_suffix_base(base: str) -> str:
@@ -61,6 +99,8 @@ def docx_filename_from_name_template(name_template: str) -> str:
 def build_object_key(folder: str, filename: str) -> str:
 	"""
 	Build an object key like '{MAIN_URL}/{folder}/{filename}' ensuring no duplicate slashes.
+	`folder` may include nested segments (e.g. 'plantillas/custom'); pass through
+	validate_folder_path() if the value comes from clients.
 	"""
 	main_url = os.environ.get("CLOUDFLARE_R2_MAIN_URL", "").strip().strip("/")
 	folder_clean = (folder or "").strip().strip("/")
@@ -74,14 +114,90 @@ def build_object_key(folder: str, filename: str) -> str:
 	return filename_clean
 
 
+def build_object_key_safe(folder: str, filename: str) -> str:
+	"""Like build_object_key but validates `folder` with validate_folder_path."""
+	return build_object_key(validate_folder_path(folder), filename.lstrip("/"))
+
+
+def full_object_key_from_stored_relative(relative_path: str) -> str:
+	"""
+	Build the full R2 object key from a DB-relative path (e.g. urltemplate
+	'plantillas/foo.docx' without MAIN_URL). Matches keys produced by
+	build_object_key('plantillas', 'foo.docx').
+	"""
+	rel = (relative_path or "").strip().lstrip("/")
+	if not rel:
+		raise ValueError("relative_path is empty")
+	main_url = os.environ.get("CLOUDFLARE_R2_MAIN_URL", "").strip().strip("/")
+	if main_url:
+		return f"{main_url}/{rel}"
+	return rel
+
+
+def object_key_for_tpl_template_row(urltemplate: str | None, filename: str | None) -> str:
+	"""
+	Resolve R2 key for a TplTemplate row.
+
+	Legacy rows sometimes store urltemplate without the ``plantillas/`` prefix (or
+	with a trailing slash). Only treat urltemplate as a full relative path when
+	it already starts with ``{default_folder_plantillas()}/``; otherwise use
+	filename, or treat urltemplate as a basename under the default plantillas folder.
+	"""
+	folder = default_folder_plantillas()
+	fn = (filename or "").strip()
+	ut = (urltemplate or "").strip().strip("/")
+
+	if ut.startswith(f"{folder}/"):
+		return full_object_key_from_stored_relative(ut)
+	if fn:
+		return build_object_key(folder, fn)
+	if ut:
+		basename = ut.split("/")[-1]
+		if basename:
+			return build_object_key(folder, basename)
+	raise ValueError("Template has no usable urltemplate or filename")
+
+
+def read_bytes_from_r2(object_key: str) -> bytes:
+	"""
+	Download an object from R2 into memory. Raises FileNotFoundError if missing.
+	"""
+	bucket = get_r2_bucket()
+	s3 = get_s3_client()
+	try:
+		resp = s3.get_object(Bucket=bucket, Key=object_key)
+	except ClientError as e:
+		code = e.response.get("Error", {}).get("Code", "")
+		if code in ("404", "NoSuchKey", "NotFound"):
+			raise FileNotFoundError(f"Object not found in R2: {object_key}") from e
+		raise
+	body = resp["Body"]
+	return body.read()
+
+
 def upload_fileobj_to_r2(fileobj: IO[bytes], object_key: str) -> None:
 	"""
 	Upload a file-like object to R2 under the given object_key.
 	Raises on error.
 	"""
-	bucket = os.environ.get("CLOUDFLARE_R2_BUCKET")
-	if not bucket:
-		raise RuntimeError("CLOUDFLARE_R2_BUCKET is not set")
 	s3 = get_s3_client()
-	s3.upload_fileobj(fileobj, bucket, object_key)
+	s3.upload_fileobj(fileobj, get_r2_bucket(), object_key)
 
+
+def write_bytes_to_r2(data: bytes, object_key: str) -> None:
+	"""Upload raw bytes to R2 at object_key."""
+	buf = io.BytesIO(data)
+	upload_fileobj_to_r2(buf, object_key)
+
+
+def object_exists_in_r2(object_key: str) -> bool:
+	"""Return True if the object key exists in the configured bucket."""
+	s3 = get_s3_client()
+	try:
+		s3.head_object(Bucket=get_r2_bucket(), Key=object_key)
+		return True
+	except ClientError as e:
+		code = e.response.get("Error", {}).get("Code", "")
+		if code in ("404", "NoSuchKey", "NotFound"):
+			return False
+		raise

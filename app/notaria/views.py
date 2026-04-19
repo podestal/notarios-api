@@ -29,6 +29,9 @@ from . import models
 from . import serializers
 from . import pagination
 from rest_framework.decorators import action
+from io import BytesIO
+
+from django.http import FileResponse, Http404
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.db.models import Q, Max, F, Func, Value
@@ -51,9 +54,14 @@ from .services.pdt_vehiculares_service import PdtVehicularesService
 from .services.pdt_garantias_service import PdtGarantiasService
 from .constants import get_kardex_abbreviation_map
 from ducumentation.storage import (
-    docx_filename_from_name_template,
     build_object_key,
+    default_folder_plantillas,
+    docx_filename_from_name_template,
+    full_object_key_from_stored_relative,
+    object_key_for_tpl_template_row,
+    read_bytes_from_r2,
     upload_fileobj_to_r2,
+    validate_folder_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -3085,15 +3093,47 @@ class TemplateViewSet(ModelViewSet):
     """
     ViewSet for the TplTemplate model.
 
+    URL ``{pk}`` is the database **pkTemplate** value (model field ``pktemplate``), not a
+    positional index in a list.
+
     Optional query params on list only:
     - codeActs: substring match on codeActs
     - fkTypeKardex: exact match on fkTypeKardex (integer)
     - nameTemplate: substring match on nameTemplate (case-insensitive)
+
+    R2 file download (no DB): ``GET .../templates/r2-file/?relative_path=plantillas/foo.docx``
+    or ``?folder=plantillas&filename=foo.docx``. DB-backed: ``GET .../templates/{pk}/file/``.
     """
 
     queryset = models.TplTemplate.objects.all()
     serializer_class = serializers.TemplateSerializer
     pagination_class = pagination.KardexPagination
+    lookup_field = "pktemplate"
+    lookup_url_kwarg = "pk"
+
+    def get_object(self):
+        """
+        Resolve detail routes by ``pktemplate`` (pkTemplate).
+
+        Uses ``get_queryset()`` only (not ``filter_queryset``) so list filters /
+        filter backends never hide a row on retrieve, update, or file download.
+        """
+        queryset = self.get_queryset()
+        pk_raw = self.kwargs.get(self.lookup_url_kwarg)
+        try:
+            pk_val = int(pk_raw)
+        except (TypeError, ValueError):
+            raise Http404(f"Invalid pkTemplate in URL: {pk_raw!r}") from None
+        try:
+            obj = queryset.get(pktemplate=pk_val)
+        except models.TplTemplate.DoesNotExist:
+            raise Http404(
+                f"No TplTemplate with pkTemplate={pk_val}. "
+                "Confirm with GET /api/templates/. "
+                "R2-only download: GET /api/templates/r2-file/?relative_path=plantillas/…"
+            ) from None
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_queryset(self):
         qs = models.TplTemplate.objects.all()
@@ -3123,6 +3163,117 @@ class TemplateViewSet(ModelViewSet):
         """
         return super().list(request, *args, **kwargs)
 
+    @action(detail=True, methods=["get"], url_path="file")
+    def template_file(self, request, pk=None):
+        """
+        GET: download the .docx from R2 using this template row (resolved key; see
+        ``object_key_for_tpl_template_row`` in ducumentation.storage).
+        Prefer ``GET .../r2-file/`` when you know the exact R2 path and do not need the DB row.
+        """
+        tpl = self.get_object()
+        return self._download_template_file(tpl)
+
+    @action(detail=False, methods=["get"], url_path="r2-file")
+    def r2_file(self, request):
+        """
+        Download a file directly from R2 — no TplTemplate DB row.
+
+        Query (one of):
+
+        - ``relative_path`` — path after MAIN_URL, e.g. ``plantillas/GARANTIA MOBILIARIA.docx``
+        - ``folder`` + ``filename`` — built like ``build_object_key(folder, filename)``
+        """
+        relative_path = request.query_params.get("relative_path") or request.query_params.get(
+            "relativePath"
+        )
+        folder = request.query_params.get("folder")
+        filename = request.query_params.get("filename")
+
+        object_key = None
+        attachment_name = "template.docx"
+
+        if relative_path and str(relative_path).strip():
+            rel = str(relative_path).strip().lstrip("/")
+            if ".." in rel:
+                return Response({"detail": "relative_path must not contain '..'"}, status=400)
+            try:
+                object_key = full_object_key_from_stored_relative(rel)
+            except ValueError as e:
+                return Response({"detail": str(e)}, status=400)
+            attachment_name = rel.split("/")[-1] or attachment_name
+        elif folder is not None and str(folder).strip() and filename is not None and str(
+            filename
+        ).strip():
+            try:
+                object_key = build_object_key(
+                    validate_folder_path(folder),
+                    str(filename).strip().lstrip("/"),
+                )
+            except ValueError as e:
+                return Response({"detail": str(e)}, status=400)
+            attachment_name = str(filename).strip().split("/")[-1] or attachment_name
+        else:
+            return Response(
+                {
+                    "detail": (
+                        "Provide relative_path= (e.g. plantillas/foo.docx) "
+                        "or folder= and filename=."
+                    )
+                },
+                status=400,
+            )
+
+        try:
+            data = read_bytes_from_r2(object_key)
+        except FileNotFoundError:
+            return Response(
+                {"detail": "File not found in R2.", "object_key": object_key},
+                status=404,
+            )
+        except Exception as e:
+            logger.exception("R2_FILE_GET: read failed")
+            return Response({"detail": str(e)}, status=500)
+
+        if not attachment_name.lower().endswith(".docx"):
+            attachment_name = f"{attachment_name}.docx"
+
+        return FileResponse(
+            BytesIO(data),
+            as_attachment=True,
+            filename=attachment_name,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+        )
+
+    def _download_template_file(self, tpl):
+        try:
+            object_key = object_key_for_tpl_template_row(tpl.urltemplate, tpl.filename)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=400)
+        try:
+            data = read_bytes_from_r2(object_key)
+        except FileNotFoundError:
+            return Response(
+                {"detail": "Template file not found in R2.", "object_key": object_key},
+                status=404,
+            )
+        except Exception as e:
+            logger.exception("TEMPLATE_FILE_GET: R2 read failed")
+            return Response({"detail": str(e)}, status=500)
+        name = (tpl.filename or "template.docx").strip() or "template.docx"
+        resp = FileResponse(
+            BytesIO(data),
+            as_attachment=True,
+            filename=name,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+        )
+        return resp
+
     def _handle_template_upload(self, request):
         """
         Shared handler for template upload to R2 + DB upsert.
@@ -3142,9 +3293,9 @@ class TemplateViewSet(ModelViewSet):
         if not uploaded_file.name.endswith(".docx"):
             return Response({"error": "Only .docx files are allowed"}, status=400)
 
-        # Build filename from nameTemplate and upload into /plantillas
+        folder = default_folder_plantillas()
         sanitized_filename = docx_filename_from_name_template(name_template)
-        object_key = build_object_key("plantillas", sanitized_filename)
+        object_key = build_object_key(folder, sanitized_filename)
         logger.info(
             "TEMPLATE_UPLOAD: original_file=%s sanitized_filename=%s object_key=%s",
             uploaded_file.name,
@@ -3163,7 +3314,7 @@ class TemplateViewSet(ModelViewSet):
         codeacts = request.data.get("codeActs") or request.data.get("codeacts")
         fktypekardex = request.data.get("fkTypeKardex") or request.data.get("fktypekardex")
         contract = request.data.get("contract")
-        urltemplate = f"plantillas/{sanitized_filename}"
+        urltemplate = f"{folder}/{sanitized_filename}"
 
         # Upsert by nametemplate to avoid duplicates for same logical template name
         tpl, created = models.TplTemplate.objects.get_or_create(
