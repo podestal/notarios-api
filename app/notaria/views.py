@@ -60,6 +60,7 @@ from ducumentation.storage import (
     full_object_key_from_stored_relative,
     object_key_for_tpl_template_row,
     read_bytes_from_r2,
+    sanitize_copy_suffix_base,
     upload_fileobj_to_r2,
     validate_folder_path,
 )
@@ -3288,9 +3289,17 @@ class TemplateViewSet(ModelViewSet):
         uploaded_file = request.FILES["file"]
         name_template = request.data.get("nameTemplate") or request.data.get("nametemplate")
 
+        # Allow file-only uploads: derive template name from uploaded filename.
         if not name_template:
-            return Response({"error": "nameTemplate is required"}, status=400)
-        if not uploaded_file.name.endswith(".docx"):
+            raw_name = str(uploaded_file.name or "").split("/")[-1].split("\\")[-1]
+            base = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
+            name_template = sanitize_copy_suffix_base(base)
+        if not name_template:
+            return Response(
+                {"error": "nameTemplate is required (or upload a file with a valid name)"},
+                status=400,
+            )
+        if not uploaded_file.name.lower().endswith(".docx"):
             return Response({"error": "Only .docx files are allowed"}, status=400)
 
         folder = default_folder_plantillas()
