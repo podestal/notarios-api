@@ -3287,20 +3287,24 @@ class TemplateViewSet(ModelViewSet):
             return Response({"error": "file is required (.docx)"}, status=400)
 
         uploaded_file = request.FILES["file"]
+        raw_uploaded_name = str(uploaded_file.name or "").split("/")[-1].split("\\")[-1]
         name_template = request.data.get("nameTemplate") or request.data.get("nametemplate")
 
-        # Allow file-only uploads: derive template name from uploaded filename.
-        if not name_template:
-            raw_name = str(uploaded_file.name or "").split("/")[-1].split("\\")[-1]
-            base = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
-            name_template = sanitize_copy_suffix_base(base)
+        if not raw_uploaded_name.lower().endswith(".docx"):
+            return Response({"error": "Only .docx files are allowed"}, status=400)
+
+        # Normalize duplicate suffixes from either provided nameTemplate or filename.
+        # Examples: "compra venta(2).docx", "compra venta-2.docx" -> "compra venta.docx".
+        template_source = str(name_template).strip() if name_template else raw_uploaded_name
+        if template_source.lower().endswith(".docx"):
+            template_source = template_source[:-5]
+        name_template = sanitize_copy_suffix_base(template_source)
+
         if not name_template:
             return Response(
                 {"error": "nameTemplate is required (or upload a file with a valid name)"},
                 status=400,
             )
-        if not uploaded_file.name.lower().endswith(".docx"):
-            return Response({"error": "Only .docx files are allowed"}, status=400)
 
         folder = default_folder_plantillas()
         sanitized_filename = docx_filename_from_name_template(name_template)
