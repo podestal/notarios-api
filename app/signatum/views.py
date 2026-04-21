@@ -38,6 +38,8 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
             serializer.instance,
             context=self.get_serializer_context(),
         )
+        if getattr(self, "_reservation_reused", False):
+            return Response(output.data, status=status.HTTP_200_OK)
         headers = self.get_success_headers(output.data)
         return Response(output.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -54,6 +56,19 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
         return (
             models.NotarizationReservation.objects.filter(
                 idtipkar=idtipkar,
+                status=models.NotarizationReservation.Status.PENDING,
+            )
+            .select_related("held_by")
+            .order_by("-id")
+            .first()
+        )
+
+    def _active_pending_reservation_for_user_scope(self, *, user, idtipkar: int, kardex: str):
+        return (
+            models.NotarizationReservation.objects.filter(
+                idtipkar=idtipkar,
+                kardex=kardex,
+                held_by=user,
                 status=models.NotarizationReservation.Status.PENDING,
             )
             .select_related("held_by")
@@ -116,12 +131,30 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_create(self, serializer):
         user = self.request.user
+        self._reservation_reused = False
         if not user.is_authenticated:
             raise PermissionDenied("Authentication required to reserve.")
 
         idtipkar = serializer.validated_data["idtipkar"]
+        kardex = serializer.validated_data["kardex"].strip()
+        if not kardex:
+            raise ValidationError({"kardex": "This field may not be blank."})
 
         self._release_stale_pending_on_create(idtipkar)
+
+        # Idempotent behavior for refresh/retry:
+        # if same user already has an active reservation for the same kardex + tipo,
+        # return that row instead of raising an error.
+        existing_for_same_scope = self._active_pending_reservation_for_user_scope(
+            user=user,
+            idtipkar=idtipkar,
+            kardex=kardex,
+        )
+        if existing_for_same_scope is not None:
+            serializer.instance = existing_for_same_scope
+            self._reservation_reused = True
+            return
+
         active = self._active_pending_reservation(idtipkar)
         if active is not None:
             if active.held_by_id != user.id:
@@ -142,10 +175,6 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
                     )
                 }
             )
-
-        kardex = serializer.validated_data["kardex"].strip()
-        if not kardex:
-            raise ValidationError({"kardex": "This field may not be blank."})
 
         year = correlatives.correlative_year_today()
         payload = self._build_reservation_fields(
