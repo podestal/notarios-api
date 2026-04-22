@@ -1,4 +1,3 @@
-import os
 from rest_framework import serializers
 from . import models
 from django.db import IntegrityError
@@ -1053,13 +1052,13 @@ class IngresoCartasSerializer(serializers.ModelSerializer):
         model = models.IngresoCartas
         fields = "__all__"
 
-    def create(self, validated_data):
-        # Some legacy backups have `ingreso_cartas.id_encargado` as INT and
-        # receive empty string from frontend. Keep behavior conditional by tenant.
-        if os.environ.get("CLOUDFLARE_R2_MAIN_URL") == "gonzales-caceres":
-            if validated_data.get("id_encargado", None) in ("", " "):
-                validated_data["id_encargado"] = None
-        return super().create(validated_data)
+    def validate_id_encargado(self, value):
+        # DB column is often INT; MySQL rejects '' for integer columns.
+        if value is None:
+            return None
+        if str(value).strip() == "":
+            return None
+        return value
 
 
 class SelloscartasSerializer(serializers.ModelSerializer):
