@@ -273,18 +273,26 @@ class NumberToLetterConverter:
     def money_to_letters(self, currency: str, amount: Decimal) -> str:
         """Convert money amount to words in Spanish"""
         try:
+            amount = Decimal(amount).quantize(Decimal("0.01"))
             integer_part = int(amount)
             decimal_part = int((amount % 1) * 100)
 
             integer_text = self.number_to_letters(integer_part)
-            decimal_text = self.number_to_letters(decimal_part)
+            if decimal_part > 0:
+                decimal_text = self.number_to_letters(decimal_part)
 
             if currency == "SOLES":
-                return f"{integer_text} SOLES CON {decimal_text} CÉNTIMOS"
+                if decimal_part > 0:
+                    return f"{integer_text} SOLES CON {decimal_text} CÉNTIMOS"
+                return f"{integer_text} SOLES"
             elif currency == "DOLARES N.A.":
-                return f"{integer_text} DÓLARES AMERICANOS CON {decimal_text} CENTAVOS"
+                if decimal_part > 0:
+                    return f"{integer_text} DÓLARES AMERICANOS CON {decimal_text} CENTAVOS"
+                return f"{integer_text} DÓLARES AMERICANOS"
             else:
-                return f"{integer_text} {currency} CON {decimal_text} CENTAVOS"
+                if decimal_part > 0:
+                    return f"{integer_text} {currency} CON {decimal_text} CENTAVOS"
+                return f"{integer_text} {currency}"
         except Exception as e:
             print(f"ERROR: Failed to convert money to letters: {e}")
             return f"{amount} {currency}"
