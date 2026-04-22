@@ -3,6 +3,7 @@ from django.http import HttpResponse, JsonResponse
 from docx import Document
 import io
 import re
+from zipfile import ZipFile
 from decimal import Decimal
 from datetime import datetime
 from rest_framework.response import Response
@@ -101,7 +102,7 @@ class TransferenciasVehicularesDocumentService:
                 template_bytes, final_data
             )
             if processed_bytes:
-                buffer = io.BytesIO(processed_bytes)
+                final_bytes = processed_bytes
             else:
                 raise Exception("DocxTemplateProcessor returned None")
         except Exception as e:
@@ -115,6 +116,13 @@ class TransferenciasVehicularesDocumentService:
             buffer = io.BytesIO()
             doc.save(buffer)
             buffer.seek(0)
+            final_bytes = buffer.getvalue()
+
+        # Cleanup punctuation artifacts caused by optional placeholders in templates
+        # (e.g. ", ,", ", ;") for Transferencias text blocks.
+        final_bytes = self._cleanup_transferencias_punctuation_artifacts(final_bytes)
+        buffer = io.BytesIO(final_bytes)
+        buffer.seek(0)
 
         # STEP 7: Upload to R2
         self.template_manager.upload_document_to_r2(buffer, kardex)
@@ -138,8 +146,9 @@ class TransferenciasVehicularesDocumentService:
             r"^(P|C)_(NOM(_\d+)?)$"
         )
         contractor_comma_space_fields = re.compile(
-            r"^(P|C)_(NACIONALIDAD(_\d+)?|DOC(_\d+)?|ORIGEN_FONDO(_\d+)?)$"
+            r"^(P|C)_(NACIONALIDAD(_\d+)?|DOC(_\d+)?)$"
         )
+        contractor_origen_fields = re.compile(r"^(P|C)_(ORIGEN_FONDO(_\d+)?)$")
         contractor_comma_space_estado_civil_fields = re.compile(
             r"^(P|C)_(ESTADO_CIVIL(_\d+)?)$"
         )
@@ -194,6 +203,11 @@ class TransferenciasVehicularesDocumentService:
                 text = text.rstrip(" ,;.") + ","
             elif contractor_comma_space_fields.match(key) and text:
                 text = text.rstrip(" ,;.") + ", "
+            elif contractor_origen_fields.match(key) and text:
+                text = (
+                    "DECLARA QUE PARA ADQUISICION DEL PRESENTE BIEN MUEBLE "
+                    f"ES PROVENIENTE DE {text.rstrip(' ,;.')}"
+                )
             elif contractor_comma_space_estado_civil_fields.match(key) and text:
                 text = text.rstrip(" ,;.") + ", "
             elif contractor_no_trailing_space_fields.match(key) and text:
@@ -203,6 +217,27 @@ class TransferenciasVehicularesDocumentService:
 
             normalized[key] = text
         return normalized
+
+    def _cleanup_transferencias_punctuation_artifacts(self, docx_bytes: bytes) -> bytes:
+        """
+        Remove redundant punctuation left by optional placeholders in templates.
+        Examples:
+        - ", , " -> ", "
+        - ", ;"  -> ";"
+        """
+        in_mem = io.BytesIO(docx_bytes)
+        out_mem = io.BytesIO()
+        with ZipFile(in_mem, "r") as zin, ZipFile(out_mem, "w") as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.startswith("word/") and item.filename.endswith(".xml"):
+                    xml = data.decode("utf-8")
+                    xml = re.sub(r",\s*,+", ", ", xml)
+                    xml = re.sub(r",\s*;", ";", xml)
+                    xml = re.sub(r";\s*,", "; ", xml)
+                    data = xml.encode("utf-8")
+                zout.writestr(item, data)
+        return out_mem.getvalue()
 
     def _update_existing_document(self, kardex, mode):
         """
