@@ -23,6 +23,40 @@ from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
 from ..protocolares.utils import get_notary_config
 
 
+def _dict_gender_mf(person: dict) -> str:
+    """
+    Normalize cliente sexo from raw SQL row dict to 'M' or 'F' for document grammar.
+    Handles alternate key casing and empty values (default masculine wording).
+    """
+    if not isinstance(person, dict):
+        return "M"
+    raw = person.get("sexo")
+    if raw is None:
+        raw = person.get("SEXO")
+    if raw is None:
+        return "M"
+    s = str(raw).strip().upper().translate(str.maketrans({"Ｍ": "M", "Ｆ": "F"}))
+    if not s:
+        return "M"
+    if s[0] == "F" or s.startswith("FEM"):
+        return "F"
+    return "M"
+
+
+def _el_la_los_contratantes(contratantes_list: List[Dict[str, Any]]) -> str:
+    """
+    Article for comparecientes (padres / firmantes): EL, LA, LOS o LAS.
+    Not the same as minor-grammar (that is EL_LA_LOS_MENOR in interior templates).
+    """
+    if not contratantes_list:
+        return "LOS"
+    if len(contratantes_list) == 1:
+        return "LA" if _dict_gender_mf(contratantes_list[0]) == "F" else "EL"
+    if all(_dict_gender_mf(p) == "F" for p in contratantes_list):
+        return "LAS"
+    return "LOS"
+
+
 class BasePermisoViajeDocumentService(BaseR2DocumentService):
     """
     Base service with common logic for generating Permiso Viaje documents.
@@ -366,9 +400,8 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
             
             columns = [col[0] for col in cursor.description]
             minors_list = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            all_female = all(p.get('sexo') == 'F' for p in minors_list)
             for i, p in enumerate(minors_list):
-                sex = p.get('sexo', 'M')
+                sex = _dict_gender_mf(p)
                 p['identificado'] = 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA'
                 p['y_coma'] = '.' if i == len(minors_list) - 1 else (' Y' if i == len(minors_list) - 2 else ',')
             blocks_data['m'] = minors_list
@@ -376,12 +409,38 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
             
             if len(contratantes_list) > 1: participants_data.update({'A_EL_LOS': 'LOS', 'A_S': 'S', 'A_N': 'N'})
             else: participants_data.update({'A_EL_LOS': 'EL', 'A_S': '', 'A_N': ''})
-            
-            if len(minors_list) == 1:
-                sex = minors_list[0].get('sexo', 'M')
-                participants_data.update({'EL_LA_LOS': 'LA' if sex == 'F' else 'EL', 'HIJO': 'HIJA' if sex == 'F' else 'HIJO', 'MENOR': 'SU MENOR', 'AUTORIZA': 'AUTORIZA'})
+
+            n_minors = len(minors_list)
+            # all([]) is True in Python — empty minors must not force "HIJAS".
+            if n_minors == 0:
+                participants_data.update(
+                    {
+                        'EL_LA_LOS_MENOR': 'LOS',
+                        'HIJO': 'HIJOS',
+                        'MENOR': 'SUS MENORES',
+                        'AUTORIZA': 'AUTORIZAN',
+                    }
+                )
+            elif n_minors == 1:
+                sex = _dict_gender_mf(minors_list[0])
+                participants_data.update(
+                    {
+                        'EL_LA_LOS_MENOR': 'LA' if sex == 'F' else 'EL',
+                        'HIJO': 'HIJA' if sex == 'F' else 'HIJO',
+                        'MENOR': 'SU MENOR',
+                        'AUTORIZA': 'AUTORIZA',
+                    }
+                )
             else:
-                participants_data.update({'EL_LA_LOS': 'LAS' if all_female else 'LOS', 'HIJO': 'HIJAS' if all_female else 'HIJOS', 'MENOR': 'SUS MENORES', 'AUTORIZA': 'AUTORIZAN'})
+                all_female = all(_dict_gender_mf(p) == 'F' for p in minors_list)
+                participants_data.update(
+                    {
+                        'EL_LA_LOS_MENOR': 'LAS' if all_female else 'LOS',
+                        'HIJO': 'HIJAS' if all_female else 'HIJOS',
+                        'MENOR': 'SUS MENORES',
+                        'AUTORIZA': 'AUTORIZAN',
+                    }
+                )
             
             cursor.execute("SELECT id_condicion, des_condicion FROM c_condiciones WHERE swt_condicion = 'V' AND id_condicion != '002'")
             for id_cond, desc in cursor.fetchall():
@@ -392,7 +451,10 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
                     participant_dict = dict(zip(cols, rows[0]))
                     for k, v in participant_dict.items():
                         participants_data[f"{desc.lower()}_{k.upper()}"] = v
-            
+
+            # Comparecientes (padres): set last so c_condiciones keys cannot clobber. Menores use EL_LA_LOS_MENOR.
+            participants_data['EL_LA_LOS'] = _el_la_los_contratantes(contratantes_list)
+
             return participants_data, blocks_data
 
     def _determine_padre_madre(self, blocks_data: Dict[str, Any]) -> str:
@@ -528,22 +590,48 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
                 signature_rows.append(row)
             blocks_data['signature_rows'] = signature_rows
 
+            participants_data['EL_LA_LOS'] = _el_la_los_contratantes(contratantes_list)
+
             minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
             cursor.execute(minors_query, [id_permiviaje])
             columns = [col[0] for col in cursor.description]
             minors_list = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            all_female = all(p.get('sexo') == 'F' for p in minors_list)
             for i, p in enumerate(minors_list):
-                sex = p.get('sexo', 'M')
+                sex = _dict_gender_mf(p)
                 p['identificado'] = 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA'
                 p['y_coma'] = '.' if i == len(minors_list) - 1 else (' Y' if i == len(minors_list) - 2 else ',')
             blocks_data['m'] = minors_list
 
-            if len(minors_list) == 1:
-                sex = minors_list[0].get('sexo', 'M')
-                participants_data.update({'HIJO': 'HIJA' if sex == 'F' else 'HIJO', 'MENOR': 'MENOR', 'AUTORIZA': 'AUTORIZA'})
+            n_minors = len(minors_list)
+            if n_minors == 0:
+                participants_data.update(
+                    {
+                        'EL_LA_LOS_MENOR': 'LOS',
+                        'HIJO': 'HIJOS',
+                        'MENOR': 'MENORES',
+                        'AUTORIZA': 'AUTORIZAN',
+                    }
+                )
+            elif n_minors == 1:
+                sex = _dict_gender_mf(minors_list[0])
+                participants_data.update(
+                    {
+                        'EL_LA_LOS_MENOR': 'LA' if sex == 'F' else 'EL',
+                        'HIJO': 'HIJA' if sex == 'F' else 'HIJO',
+                        'MENOR': 'MENOR',
+                        'AUTORIZA': 'AUTORIZA',
+                    }
+                )
             else:
-                participants_data.update({'HIJO': 'HIJAS' if all_female else 'HIJOS', 'MENOR': 'MENORES', 'AUTORIZA': 'AUTORIZAN'})
+                all_female = all(_dict_gender_mf(p) == 'F' for p in minors_list)
+                participants_data.update(
+                    {
+                        'EL_LA_LOS_MENOR': 'LAS' if all_female else 'LOS',
+                        'HIJO': 'HIJAS' if all_female else 'HIJOS',
+                        'MENOR': 'MENORES',
+                        'AUTORIZA': 'AUTORIZAN',
+                    }
+                )
 
             return participants_data, blocks_data 
 
