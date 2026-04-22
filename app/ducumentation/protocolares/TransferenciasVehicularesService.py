@@ -2,6 +2,7 @@ from django.db import connection
 from django.http import HttpResponse, JsonResponse
 from docx import Document
 import io
+import re
 from decimal import Decimal
 from datetime import datetime
 from rest_framework.response import Response
@@ -79,6 +80,9 @@ class TransferenciasVehicularesDocumentService:
         data_pagos = self.formatter.format_payment_data(raw_data)
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
         data_contratantes = self.formatter.format_contractor_data(raw_data)
+        data_contratantes = self._normalize_transferencias_contractor_fields(
+            data_contratantes
+        )
         data_company = self.formatter.format_company_data(raw_data)
 
         # STEP 5: Combine all data
@@ -118,6 +122,87 @@ class TransferenciasVehicularesDocumentService:
         # STEP 8: Return HTTP response
         filename = f"__PROY__{kardex}.docx"
         return self._create_response_from_buffer(buffer, filename, kardex, mode)
+
+    def _normalize_transferencias_contractor_fields(self, contractor_data):
+        """
+        Transferencias-only text normalization requested by business:
+        - Contractor names end with comma.
+        - Contractor addresses separate address and ubigeo with comma.
+
+        Important: do not strip/normalize every contractor placeholder because many
+        templates rely on intentional trailing spaces between placeholders.
+        """
+        normalized = {}
+
+        contractor_comma_only_fields = re.compile(
+            r"^(P|C)_(NOM(_\d+)?)$"
+        )
+        contractor_comma_space_fields = re.compile(
+            r"^(P|C)_(NACIONALIDAD(_\d+)?|DOC(_\d+)?|ORIGEN_FONDO(_\d+)?)$"
+        )
+        contractor_comma_space_estado_civil_fields = re.compile(
+            r"^(P|C)_(ESTADO_CIVIL(_\d+)?)$"
+        )
+        contractor_no_trailing_space_fields = re.compile(r"^(P|C)_(OCUPACION(_\d+)?)$")
+        contractor_empty_fields = re.compile(r"^(P|C)_(DOC_LETRAS(_\d+)?|IDE(_\d+)?)$")
+
+        def _compact_spaces(text: str) -> str:
+            # Includes non-breaking spaces from Word/html payloads.
+            text = text.replace("\u00a0", " ")
+            return re.sub(r"\s+", " ", text).strip()
+
+        for key, value in contractor_data.items():
+            if not isinstance(value, str):
+                normalized[key] = value
+                continue
+
+            # Default: compact spaces and remove trailing whitespace.
+            text = _compact_spaces(value)
+
+            if "DOMICILIO" in key and value.strip():
+                # "CON DOMICILIO EN <direccion> DEL DISTRITO..." -> "... <direccion>, DEL DISTRITO..."
+                text = _compact_spaces(value)
+                text = re.sub(
+                    r"\b(CON DOMICILIO EN\s+)(.+?)\s+(DEL DISTRITO DE\b)",
+                    lambda m: f"{m.group(1)}{m.group(2).strip()}, {m.group(3)}",
+                    text,
+                    count=1,
+                )
+                # Only normalize spaces around comma we introduced.
+                text = re.sub(r"\s+,", ",", text)
+                text = re.sub(r",\s*", ", ", text)
+                # Fix legacy cases like "..., , DEL DISTRITO..."
+                text = re.sub(r",\s*,\s*(DEL DISTRITO DE\b)", r", \1", text)
+                # Add comma between distrito and provincia.
+                # "... DEL DISTRITO DE AYAVIRI PROVINCIA DE MELGAR ..."
+                # -> "... DEL DISTRITO DE AYAVIRI, PROVINCIA DE MELGAR ..."
+                text = re.sub(
+                    r"\b(DEL DISTRITO DE\s+.+?)\s+(PROVINCIA DE\b)",
+                    r"\1, \2",
+                    text,
+                    count=1,
+                )
+
+            # Enforce clean separators for contractor placeholders:
+            # - no double spaces
+            # - NOMBRE ends in comma (template usually has next static space)
+            # - core identity fields end in comma+space
+            # - ocupacion/estado civil end in single space (template may add punctuation after ocupacion)
+            if contractor_empty_fields.match(key):
+                text = ""
+            elif contractor_comma_only_fields.match(key) and text:
+                text = text.rstrip(" ,;.") + ","
+            elif contractor_comma_space_fields.match(key) and text:
+                text = text.rstrip(" ,;.") + ", "
+            elif contractor_comma_space_estado_civil_fields.match(key) and text:
+                text = text.rstrip(" ,;.") + ", "
+            elif contractor_no_trailing_space_fields.match(key) and text:
+                text = text.rstrip(" ,;.")
+            elif re.match(r"^(P|C)_", key) or key in {"CALIDAD_P", "CALIDAD_C"}:
+                text = _compact_spaces(text)
+
+            normalized[key] = text
+        return normalized
 
     def _update_existing_document(self, kardex, mode):
         """
