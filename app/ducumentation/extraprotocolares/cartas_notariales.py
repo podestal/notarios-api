@@ -93,18 +93,16 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
             context.update(self._get_notary_data())
 
             # Aliases to match template variable names (docxtpl is case-sensitive)
-            context['contenido_carta'] = str(
-                context.get('CONTENIDO_CARTA')
-                or context.get('conte_carta')
-                or context.get('CONTENIDO')
-                or ''
-            ).strip()
+            context['contenido_carta'] = self._resolve_contenido_carta(context)
             context['fec_ingreso'] = context.get('FECHA_INGRESO_LETRAS', '')
             context['num_carta'] = context.get('NUM_CARTA_FMT', '')
             # Legacy placeholders from PHP template
             context['USUARIO'] = context.get('USUARIO', '') or ''
             context['USUARIO_DNI'] = context.get('USUARIO_DNI', '') or ''
             context['COMPROBANTE'] = context.get('COMPROBANTE', '') or 'sin'
+            # Keep common aliases used by older templates.
+            context['CONTENIDO_CARTA'] = context.get('contenido_carta', '')
+            context['conte_carta'] = context.get('contenido_carta', '')
 
             doc = DocxTemplate(io.BytesIO(template_bytes))
             doc.render(context)
@@ -116,6 +114,25 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
         except Exception as e:
             traceback.print_exc()
             return self.json_error(500, f"Error generating document: {e}")
+
+    def _resolve_contenido_carta(self, context: Dict[str, Any]) -> str:
+        """
+        Resolve carta body robustly across tenants/schema variants.
+        """
+        candidates = [
+            context.get('CONTENIDO_CARTA'),
+            context.get('conte_carta'),
+            context.get('contenido_carta'),
+            context.get('RECEPCION'),
+            context.get('recepcion'),
+            context.get('CONTENIDO'),
+            context.get('contenido'),
+        ]
+        for value in candidates:
+            text = str(value or '').replace('\u00a0', ' ').strip()
+            if text:
+                return text
+        return ''
 
     def _get_template_from_r2(self) -> Optional[bytes]:
         s3 = get_s3_client()
@@ -203,6 +220,7 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
                 SELECT 
                     num_carta,
                     conte_carta,
+                    recepcion,
                     emple_entrega,
                     STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') AS fecha_diligencia,
                     hora_entrega,
@@ -217,10 +235,11 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
                 return {}
             raw_num_carta = row[0]
             contenido = row[1] or ''
-            usuario_imprime = row[2] or ''
-            fecha_diligencia = row[3]
-            hora_entrega = row[4] or ''
-            fecha_ingreso = row[5]
+            recepcion = row[2] or ''
+            usuario_imprime = row[3] or ''
+            fecha_diligencia = row[4]
+            hora_entrega = row[5] or ''
+            fecha_ingreso = row[6]
 
             # Prepare replacements in contenido (00/00/0000 -> dd/mm/YYYY, 00:00 -> hora_entrega)
             fecha_diligencia_ddmmyyyy = fecha_diligencia.strftime('%d/%m/%Y') if fecha_diligencia else ''
@@ -231,12 +250,21 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
                 .replace('00:00', hora_entrega)
                 .strip()
             )
+            recepcion_replaced = (
+                str(recepcion)
+                .replace('\u00a0', ' ')
+                .replace('00/00/0000', fecha_diligencia_ddmmyyyy)
+                .replace('00:00', hora_entrega)
+                .strip()
+            )
 
             data.update({
                 'NUM_CARTA': raw_num_carta or '',
                 'NUM_CARTA_FMT': self._format_num_carta(raw_num_carta),
-                'CONTENIDO_CARTA': contenido_replaced,
+                'CONTENIDO_CARTA': contenido_replaced or recepcion_replaced,
                 'conte_carta': contenido_replaced,
+                'RECEPCION': recepcion_replaced,
+                'recepcion': recepcion_replaced,
                 'USUARIO_IMPRIME': usuario_imprime,
                 'FECHA_DILIGENCIA': fecha_diligencia_ddmmyyyy,
                 'FECHA_DILIGENCIA_LETRAS': self.letras.date_to_letters(fecha_diligencia).upper() if fecha_diligencia else '',
