@@ -2555,6 +2555,26 @@ class ClienteViewSet(ModelViewSet):
             return serializers.CreateClienteSerializer
         return serializers.ClienteSerializer
 
+    def _log_cliente_post_payload(self, request):
+        """
+        Log incoming payload for Cliente POST requests.
+        """
+        print("DEBUG _log_cliente_post_payload method called")
+        try:
+            payload = request.data.copy()
+            if hasattr(payload, "dict"):
+                payload = payload.dict()
+            elif not isinstance(payload, dict):
+                payload = dict(payload)
+            # Keep both logger + stdout print so it is visible in all environments.
+            logger.warning("Cliente POST payload received: %s", payload)
+            print("DEBUG Cliente POST payload received:", payload)
+            return payload
+        except Exception as exc:
+            logger.warning("Could not log Cliente POST payload: %s", exc)
+            print("DEBUG Could not log Cliente POST payload:", exc)
+            return {}
+
     @action(detail=False, methods=["get"])
     def by_name(self, request):
         """
@@ -2611,8 +2631,10 @@ class ClienteViewSet(ModelViewSet):
         """
         Create a Cliente record.
         """
-        idtipdoc = request.data.get("idtipdoc")
-        if idtipdoc == 10:
+        raw_payload = self._log_cliente_post_payload(request)
+        data = request.data.copy()
+        idtipdoc = data.get("idtipdoc")
+        if str(idtipdoc) == "10":
             # Generate CODJU for juridical persons (like PHP script)
             codju_count = models.Cliente.objects.filter(numdoc_plantilla__contains="CODJU").count()
             next_number = codju_count + 1
@@ -2620,22 +2642,36 @@ class ClienteViewSet(ModelViewSet):
             # Format as CODJU000001, CODJU000002, etc.
             new_codju = f"CODJU{str(next_number).zfill(6)}"
 
-            # Create a mutable copy of the request data
-            data = request.data.copy()
             data["numdoc_plantilla"] = new_codju
 
             # Also ensure numdoc is empty for CODJU records (like PHP)
             if "numdoc" not in data:
                 data["numdoc"] = ""
 
-            # Create serializer with modified data
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        normalized_payload = dict(data)
+        logger.warning("Cliente POST normalized payload: %s", normalized_payload)
+        print("DEBUG Cliente POST normalized payload:", normalized_payload)
 
-        return super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(data=data)
+        if not serializer.is_valid():
+            logger.warning("Cliente POST validation errors: %s", serializer.errors)
+            print("DEBUG Cliente POST validation errors:", serializer.errors)
+            serializer.is_valid(raise_exception=True)
+
+        logger.warning("Cliente POST validated_data: %s", serializer.validated_data)
+        print("DEBUG Cliente POST validated_data:", serializer.validated_data)
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        logger.warning(
+            "Cliente POST created successfully idcliente=%s numdoc=%s response=%s",
+            serializer.data.get("idcliente"),
+            serializer.data.get("numdoc"),
+            serializer.data,
+        )
+        print("DEBUG Cliente POST created response:", serializer.data)
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def update(self, request, *args, **kwargs):
         # working on this

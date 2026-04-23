@@ -393,7 +393,7 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
             cursor.execute("SELECT COUNT(*) FROM viaje_contratantes WHERE c_condicontrat IN ('001','003','004','005','010') AND id_viaje = %s", [id_permiviaje])
             num_contratantes = cursor.fetchone()[0]
             
-            contratantes_query = """SELECT vc.c_condicontrat, CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, td.destipdoc as tipo_documento, td.td_abrev as abreviatura, c.numdoc as numero_documento, n.descripcion as nacionalidad, c.direccion, vc.c_fircontrat, IF(u.coddis='' OR ISNULL(u.coddis), '', CONCAT('DISTRITO DE ',u.nomdis, ', PROVINCIA DE ', u.nomprov,', DEPARTAMENTO DE ',u.nomdpto)) AS ubigeo, tec.desestcivil as estado_civil, IFNULL(p.desprofesion,'') as profesion, IFNULL(vc.codi_podera,'') as codigo_poderado, c.detaprofesion as profesion_cliente, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil LEFT JOIN profesiones p ON p.idprofesion = c.idprofesion LEFT JOIN ubigeo u ON u.coddis = c.idubigeo WHERE vc.c_condicontrat IN ('001','003','004','005','010') AND vc.id_viaje = %s"""
+            contratantes_query = """SELECT vc.c_condicontrat, CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, td.destipdoc as tipo_documento, td.td_abrev as abreviatura, c.numdoc as numero_documento, n.descripcion as nacionalidad, c.direccion, vc.c_fircontrat, IF(u.coddis='' OR ISNULL(u.coddis), '', CONCAT('DISTRITO DE ',u.nomdis, ', PROVINCIA DE ', u.nomprov,', DEPARTAMENTO DE ',u.nomdpto)) AS ubigeo, tec.desestcivil as estado_civil, IFNULL(c.detaprofesion,'') as profesion, IFNULL(vc.codi_podera,'') as codigo_poderado, c.detaprofesion as profesion_cliente, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil LEFT JOIN ubigeo u ON u.coddis = c.idubigeo WHERE vc.c_condicontrat IN ('001','003','004','005','010') AND vc.id_viaje = %s"""
             cursor.execute(contratantes_query, [id_permiviaje])
             
             columns = [col[0] for col in cursor.description]
@@ -572,14 +572,13 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
                     CONCAT(' CON DOMICILIO EN ', c.direccion) AS direccion,
                     IF(u.coddis='' OR ISNULL(u.coddis), '', CONCAT('DEL DISTRITO DE ', u.nomdis, ', PROVINCIA DE ', u.nomprov, ', DEPARTAMENTO DE ', u.nomdpto)) AS ubigeo,
                     tec.desestcivil AS estado_civil,
-                    IFNULL(p.desprofesion, '') AS profesion,
+                    IFNULL(c.detaprofesion, '') AS profesion,
                     c.sexo
                 FROM viaje_contratantes vc
                 JOIN cliente c ON c.numdoc = vc.c_codcontrat
                 JOIN tipodocumento td ON td.idtipdoc = c.idtipdoc
                 JOIN nacionalidades n ON n.idnacionalidad = c.nacionalidad
                 JOIN tipoestacivil tec ON tec.idestcivil = c.idestcivil
-                LEFT JOIN profesiones p ON p.idprofesion = c.idprofesion
                 LEFT JOIN ubigeo u ON u.coddis = c.idubigeo
                 WHERE vc.id_viaje = %s AND vc.c_condicontrat IN {contratante_conditions}
             """
