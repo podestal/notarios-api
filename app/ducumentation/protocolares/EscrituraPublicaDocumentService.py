@@ -12,6 +12,7 @@ import gc
 from typing import Dict
 from functools import lru_cache
 import os
+from zipfile import ZipFile
 from rest_framework.response import Response
 from notaria import models
 from .utils import (
@@ -107,6 +108,7 @@ class EscrituraDocumentService:
         data_pagos = self.formatter.format_payment_data(raw_data)
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
         data_contratantes = self.formatter.format_contractor_data(raw_data)
+        data_contratantes = self._normalize_escritura_contractor_fields(data_contratantes)
         data_company = self.formatter.format_company_data(raw_data)
 
         final_data = self.formatter.combine_all_data(
@@ -139,6 +141,12 @@ class EscrituraDocumentService:
             buffer = io.BytesIO()
             doc.save(buffer)
             buffer.seek(0)
+            processed_bytes = buffer.getvalue()
+
+        # Cleanup punctuation/spacing artifacts after placeholder rendering
+        processed_bytes = self._cleanup_escritura_punctuation_artifacts(processed_bytes)
+        buffer = io.BytesIO(processed_bytes)
+        buffer.seek(0)
 
         # STEP 9: Upload to R2
         self.template_manager.upload_document_to_r2(buffer, kardex)
@@ -147,6 +155,92 @@ class EscrituraDocumentService:
         filename = f"__PROY__{kardex}.docx"
 
         return self._create_response_from_buffer(buffer, filename, kardex, mode)
+
+    def _normalize_escritura_contractor_fields(self, contractor_data):
+        """
+        Escritura-only text normalization for contractor placeholders.
+        Prevents double spaces and enforces commas between address/ubigeo chunks.
+        """
+        normalized = {}
+
+        contractor_comma_only_fields = re.compile(r"^(P|C)_(NOM(_\d+)?)$")
+        contractor_comma_space_fields = re.compile(
+            r"^(P|C)_(NACIONALIDAD(_\d+)?|DOC(_\d+)?)$"
+        )
+        contractor_origen_fields = re.compile(r"^(P|C)_(ORIGEN_FONDO(_\d+)?)$")
+        contractor_comma_space_estado_civil_fields = re.compile(
+            r"^(P|C)_(ESTADO_CIVIL(_\d+)?)$"
+        )
+        contractor_no_trailing_space_fields = re.compile(r"^(P|C)_(OCUPACION(_\d+)?)$")
+        contractor_empty_fields = re.compile(r"^(P|C)_(DOC_LETRAS(_\d+)?|IDE(_\d+)?)$")
+
+        def _compact_spaces(text: str) -> str:
+            text = text.replace("\u00a0", " ")
+            return re.sub(r"\s+", " ", text).strip()
+
+        for key, value in contractor_data.items():
+            if not isinstance(value, str):
+                normalized[key] = value
+                continue
+
+            text = _compact_spaces(value)
+
+            if "DOMICILIO" in key and value.strip():
+                text = _compact_spaces(value)
+                text = re.sub(
+                    r"\b(CON DOMICILIO EN\s+)(.+?)\s+(DEL DISTRITO DE\b)",
+                    lambda m: f"{m.group(1)}{m.group(2).strip()}, {m.group(3)}",
+                    text,
+                    count=1,
+                )
+                text = re.sub(r"\s+,", ",", text)
+                text = re.sub(r",\s*", ", ", text)
+                text = re.sub(r",\s*,\s*(DEL DISTRITO DE\b)", r", \1", text)
+                text = re.sub(
+                    r"\b(DEL DISTRITO DE\s+.+?)\s+(PROVINCIA DE\b)",
+                    r"\1, \2",
+                    text,
+                    count=1,
+                )
+
+            if contractor_empty_fields.match(key):
+                text = ""
+            elif contractor_comma_only_fields.match(key) and text:
+                text = text.rstrip(" ,;.") + ","
+            elif contractor_comma_space_fields.match(key) and text:
+                text = text.rstrip(" ,;.") + ", "
+            elif contractor_origen_fields.match(key) and text:
+                text = (
+                    "DECLARA QUE PARA ADQUISICION DEL PRESENTE BIEN MUEBLE "
+                    f"ES PROVENIENTE DE {text.rstrip(' ,;.')}"
+                )
+            elif contractor_comma_space_estado_civil_fields.match(key) and text:
+                text = text.rstrip(" ,;.") + ", "
+            elif contractor_no_trailing_space_fields.match(key) and text:
+                text = text.rstrip(" ,;.")
+            elif re.match(r"^(P|C)_", key) or key in {"CALIDAD_P", "CALIDAD_C"}:
+                text = _compact_spaces(text)
+
+            normalized[key] = text
+        return normalized
+
+    def _cleanup_escritura_punctuation_artifacts(self, docx_bytes: bytes) -> bytes:
+        """
+        Remove punctuation artifacts left by optional placeholders in docx XML.
+        """
+        in_mem = io.BytesIO(docx_bytes)
+        out_mem = io.BytesIO()
+        with ZipFile(in_mem, "r") as zin, ZipFile(out_mem, "w") as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.startswith("word/") and item.filename.endswith(".xml"):
+                    xml = data.decode("utf-8")
+                    xml = re.sub(r",\s*,+", ", ", xml)
+                    xml = re.sub(r",\s*;", ";", xml)
+                    xml = re.sub(r";\s*,", "; ", xml)
+                    data = xml.encode("utf-8")
+                zout.writestr(item, data)
+        return out_mem.getvalue()
 
     def _apply_escritura_template_compat(self, final_data, raw_data):
         """
