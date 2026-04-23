@@ -57,6 +57,27 @@ def _el_la_los_contratantes(contratantes_list: List[Dict[str, Any]]) -> str:
     return "LOS"
 
 
+def _format_minor_age(edad_value: Any, condi_edad_value: Any) -> str:
+    """
+    Normalize minor age phrase across tenant variants.
+    condi_edad can be numeric/string (1/2, A/M, AÑO/MES, etc).
+    """
+    edad = str(edad_value or "").strip()
+    if not edad:
+        return ""
+
+    # If age already includes units, keep it with compact spaces.
+    edad_up = edad.upper()
+    if "AÑO" in edad_up or "MES" in edad_up:
+        return re.sub(r"\s+", " ", edad).strip()
+
+    condi = str(condi_edad_value or "").strip().upper()
+    if condi in {"2", "M", "MES", "MESES"}:
+        return f"{edad} MESES"
+    # Default to years for unknown/empty values.
+    return f"{edad} AÑOS"
+
+
 class BasePermisoViajeDocumentService(BaseR2DocumentService):
     """
     Base service with common logic for generating Permiso Viaje documents.
@@ -395,13 +416,14 @@ class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
                 signature_rows.append(row)
             blocks_data['signature_rows'] = signature_rows
 
-            minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
+            minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, vc.edad AS edad_raw, vc.condi_edad AS condi_edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
             cursor.execute(minors_query, [id_permiviaje])
             
             columns = [col[0] for col in cursor.description]
             minors_list = [dict(zip(columns, row)) for row in cursor.fetchall()]
             for i, p in enumerate(minors_list):
                 sex = _dict_gender_mf(p)
+                p['edad'] = _format_minor_age(p.get('edad_raw'), p.get('condi_edad'))
                 p['identificado'] = 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA'
                 p['y_coma'] = '.' if i == len(minors_list) - 1 else (' Y' if i == len(minors_list) - 2 else ',')
             blocks_data['m'] = minors_list
@@ -592,12 +614,13 @@ class PermisoViajeExteriorDocumentService(BasePermisoViajeDocumentService):
 
             participants_data['EL_LA_LOS'] = _el_la_los_contratantes(contratantes_list)
 
-            minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, (CASE WHEN vc.condi_edad = 1 THEN CONCAT(vc.edad,' AÑOS') WHEN vc.condi_edad = 2 THEN CONCAT(vc.edad,' MESES') ELSE '' END) as edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
+            minors_query = "SELECT CONCAT_WS(' ', c.prinom, c.segnom, c.apepat, c.apemat) AS contratante, vc.edad AS edad_raw, vc.condi_edad AS condi_edad, c.sexo, td.td_abrev as abreviatura, c.numdoc as numero_documento FROM viaje_contratantes vc JOIN cliente c ON c.numdoc = vc.c_codcontrat JOIN tipodocumento td ON td.idtipdoc=c.idtipdoc WHERE vc.c_condicontrat = '002' AND vc.id_viaje = %s"
             cursor.execute(minors_query, [id_permiviaje])
             columns = [col[0] for col in cursor.description]
             minors_list = [dict(zip(columns, row)) for row in cursor.fetchall()]
             for i, p in enumerate(minors_list):
                 sex = _dict_gender_mf(p)
+                p['edad'] = _format_minor_age(p.get('edad_raw'), p.get('condi_edad'))
                 p['identificado'] = 'IDENTIFICADO' if sex == 'M' else 'IDENTIFICADA'
                 p['y_coma'] = '.' if i == len(minors_list) - 1 else (' Y' if i == len(minors_list) - 2 else ',')
             blocks_data['m'] = minors_list
