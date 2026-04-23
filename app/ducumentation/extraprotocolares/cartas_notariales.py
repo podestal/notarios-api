@@ -89,10 +89,16 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
 
             context: Dict[str, Any] = {}
             context.update(carta_data)
+            context.update(self._get_user_data(carta_data.get('USUARIO_IMPRIME')))
             context.update(self._get_notary_data())
 
             # Aliases to match template variable names (docxtpl is case-sensitive)
-            context['contenido_carta'] = context.get('CONTENIDO_CARTA', '')
+            context['contenido_carta'] = str(
+                context.get('CONTENIDO_CARTA')
+                or context.get('conte_carta')
+                or context.get('CONTENIDO')
+                or ''
+            ).strip()
             context['fec_ingreso'] = context.get('FECHA_INGRESO_LETRAS', '')
             context['num_carta'] = context.get('NUM_CARTA_FMT', '')
             # Legacy placeholders from PHP template
@@ -197,6 +203,7 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
                 SELECT 
                     num_carta,
                     conte_carta,
+                    emple_entrega,
                     STR_TO_DATE(fec_entrega, '%%d/%%m/%%Y') AS fecha_diligencia,
                     hora_entrega,
                     STR_TO_DATE(fec_ingreso, '%%d/%%m/%%Y') AS fecha_ingreso
@@ -210,18 +217,27 @@ class CartasNotarialesDocumentService(BaseR2DocumentService):
                 return {}
             raw_num_carta = row[0]
             contenido = row[1] or ''
-            fecha_diligencia = row[2]
-            hora_entrega = row[3] or ''
-            fecha_ingreso = row[4]
+            usuario_imprime = row[2] or ''
+            fecha_diligencia = row[3]
+            hora_entrega = row[4] or ''
+            fecha_ingreso = row[5]
 
             # Prepare replacements in contenido (00/00/0000 -> dd/mm/YYYY, 00:00 -> hora_entrega)
             fecha_diligencia_ddmmyyyy = fecha_diligencia.strftime('%d/%m/%Y') if fecha_diligencia else ''
-            contenido_replaced = contenido.replace('00/00/0000', fecha_diligencia_ddmmyyyy).replace('00:00', hora_entrega)
+            contenido_replaced = (
+                str(contenido)
+                .replace('\u00a0', ' ')
+                .replace('00/00/0000', fecha_diligencia_ddmmyyyy)
+                .replace('00:00', hora_entrega)
+                .strip()
+            )
 
             data.update({
                 'NUM_CARTA': raw_num_carta or '',
                 'NUM_CARTA_FMT': self._format_num_carta(raw_num_carta),
                 'CONTENIDO_CARTA': contenido_replaced,
+                'conte_carta': contenido_replaced,
+                'USUARIO_IMPRIME': usuario_imprime,
                 'FECHA_DILIGENCIA': fecha_diligencia_ddmmyyyy,
                 'FECHA_DILIGENCIA_LETRAS': self.letras.date_to_letters(fecha_diligencia).upper() if fecha_diligencia else '',
                 'HORA_DILIGENCIA': hora_entrega,
