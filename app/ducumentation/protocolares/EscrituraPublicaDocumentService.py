@@ -424,6 +424,7 @@ class EscrituraDocumentService:
                 GROUP_CONCAT(td.destipdoc) as tipo_documento,
                 GROUP_CONCAT(c2.numdoc) AS numero_documento,
                 GROUP_CONCAT(UPPER(c2.profesion_plantilla)) AS ocupacion,
+                GROUP_CONCAT(IFNULL(cxa.ofondo, '')) AS origen_fondo,
                 GROUP_CONCAT(IF(tec.desestcivil IS NULL OR tec.desestcivil='','EMPRESA',tec.desestcivil)) as estado_civil,
                 GROUP_CONCAT(IF(c2.tipper='N',c2.direccion,c2.domfiscal) SEPARATOR ',,') as direccion,
                 GROUP_CONCAT(IFNULL(u.codpto, '')) as codigo_departamento,

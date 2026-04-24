@@ -2631,10 +2631,8 @@ class ClienteViewSet(ModelViewSet):
         """
         Create a Cliente record.
         """
-        raw_payload = self._log_cliente_post_payload(request)
-        data = request.data.copy()
-        idtipdoc = data.get("idtipdoc")
-        if str(idtipdoc) == "10":
+        idtipdoc = request.data.get("idtipdoc")
+        if idtipdoc == 10:
             # Generate CODJU for juridical persons (like PHP script)
             codju_count = models.Cliente.objects.filter(numdoc_plantilla__contains="CODJU").count()
             next_number = codju_count + 1
@@ -2642,36 +2640,22 @@ class ClienteViewSet(ModelViewSet):
             # Format as CODJU000001, CODJU000002, etc.
             new_codju = f"CODJU{str(next_number).zfill(6)}"
 
+            # Create a mutable copy of the request data
+            data = request.data.copy()
             data["numdoc_plantilla"] = new_codju
 
             # Also ensure numdoc is empty for CODJU records (like PHP)
             if "numdoc" not in data:
                 data["numdoc"] = ""
 
-        normalized_payload = dict(data)
-        logger.warning("Cliente POST normalized payload: %s", normalized_payload)
-        print("DEBUG Cliente POST normalized payload:", normalized_payload)
-
-        serializer = self.get_serializer(data=data)
-        if not serializer.is_valid():
-            logger.warning("Cliente POST validation errors: %s", serializer.errors)
-            print("DEBUG Cliente POST validation errors:", serializer.errors)
+            # Create serializer with modified data
+            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-        logger.warning("Cliente POST validated_data: %s", serializer.validated_data)
-        print("DEBUG Cliente POST validated_data:", serializer.validated_data)
-
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        logger.warning(
-            "Cliente POST created successfully idcliente=%s numdoc=%s response=%s",
-            serializer.data.get("idcliente"),
-            serializer.data.get("numdoc"),
-            serializer.data,
-        )
-        print("DEBUG Cliente POST created response:", serializer.data)
-
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
         # working on this
