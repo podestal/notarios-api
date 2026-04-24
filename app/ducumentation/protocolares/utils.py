@@ -1881,8 +1881,9 @@ class TemplateManager:
         buffer = io.BytesIO(doc_bytes)
         doc = Document(buffer)
         
-        # Replace only escrituracion placeholders
-        placeholder_processor.replace_placeholders(doc, escrituracion_data)
+        # Replace only escrituracion placeholders without rebuilding runs/paragraphs,
+        # so existing formatting (bold/regular mix) stays intact.
+        self._replace_placeholders_preserve_styles(doc, escrituracion_data)
         
         # Save to buffer
         output_buffer = io.BytesIO()
@@ -1893,3 +1894,34 @@ class TemplateManager:
         self.upload_document_to_r2(output_buffer, kardex)
         
         return output_buffer
+
+    def _replace_placeholders_preserve_styles(self, doc, data):
+        """
+        Replace placeholders in-place at run level to preserve paragraph styling.
+        Used by actualizar proyecto (escrituracion-only updates).
+        """
+        if not data:
+            return
+
+        replacements = {f"{{{{{k}}}}}": str(v) for k, v in data.items()}
+
+        def _replace_in_paragraph_runs(paragraph):
+            for run in paragraph.runs:
+                text = run.text
+                if not text or "{{" not in text:
+                    continue
+                new_text = text
+                for placeholder, value in replacements.items():
+                    if placeholder in new_text:
+                        new_text = new_text.replace(placeholder, value)
+                if new_text != text:
+                    run.text = new_text
+
+        for paragraph in doc.paragraphs:
+            _replace_in_paragraph_runs(paragraph)
+
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        _replace_in_paragraph_runs(paragraph)
