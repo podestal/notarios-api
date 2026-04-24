@@ -397,7 +397,39 @@ def update_document_by_tipkar(request):
                 action="actualizar",
                 mode="download"
             )
-            return response
+            # If service already returned the binary document, pass it through.
+            if (
+                hasattr(response, "get")
+                and response.get("Content-Type")
+                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ):
+                # Force download for update-docx endpoint UX.
+                response["Content-Disposition"] = f'attachment; filename="__PROY__{kardex}.docx"'
+                return response
+
+            # Fallback: stream updated file from R2 after successful update.
+            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=os.environ.get("CLOUDFLARE_R2_ENDPOINT"),
+                aws_access_key_id=os.environ.get("CLOUDFLARE_R2_ACCESS_KEY"),
+                aws_secret_access_key=os.environ.get("CLOUDFLARE_R2_SECRET_KEY"),
+                config=Config(signature_version="s3v4"),
+                region_name="auto",
+            )
+            s3_response = s3.get_object(
+                Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"),
+                Key=object_key,
+            )
+            doc_content = s3_response["Body"].read()
+            download_response = HttpResponse(
+                doc_content,
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+            download_response["Content-Disposition"] = f'attachment; filename="__PROY__{kardex}.docx"'
+            download_response["Content-Length"] = str(len(doc_content))
+            download_response["Access-Control-Allow-Origin"] = "*"
+            return download_response
             
         except ValueError as e:
             # Handle validation errors (missing numescritura, document not found, etc.)
