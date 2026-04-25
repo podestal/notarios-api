@@ -29,3 +29,9 @@ class CreateNotarizationReservationSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.NotarizationReservation
         fields = ("kardex", "idtipkar")
+
+
+class SerieNotarialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SerieNotarial
+        fields = "__all__"

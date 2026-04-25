@@ -79,3 +79,28 @@ class NotarizationReservation(models.Model):
 
     class Meta:
         ordering = ("-id",)
+
+
+class SerieNotarial(models.Model):
+    """
+    Purchased notarial paper ranges used to propose papel_ini/papel_fin.
+    Ranges are not globally correlative; they are consumed within each purchased
+    range and can jump when a new range is added.
+    """
+
+    idtipkar = models.IntegerField(
+        default=1,
+        help_text="Tipo de kardex this series applies to.",
+    )
+    nombre = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text="Optional label for the purchased range/lot.",
+    )
+    papel_ini = models.CharField(max_length=30)
+    papel_fin = models.CharField(max_length=30)
+    activo = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("created_at", "id")

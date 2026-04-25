@@ -10,5 +10,6 @@ It includes the URL patterns for the Signatum app's views.
 router = routers.DefaultRouter()
 router.register('notarizations', views.NotarizationViewSet, basename='notarizations')
 router.register('notarization-reservations', views.NotarizationReservationViewSet, basename='notarization-reservations')
+router.register('series-notariales', views.SerieNotarialViewSet, basename='series-notariales')
 
 urlpatterns = router.urls

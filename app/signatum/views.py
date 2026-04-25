@@ -1,4 +1,5 @@
 from datetime import timedelta
+import re
 
 from django.db import transaction
 from django.utils import timezone
@@ -12,6 +13,11 @@ from . import correlatives, models, serializers
 class NotarizationViewSet(viewsets.ModelViewSet):
     queryset = models.Notarization.objects.all()
     serializer_class = serializers.NotarizationSerializer
+
+
+class SerieNotarialViewSet(viewsets.ModelViewSet):
+    queryset = models.SerieNotarial.objects.all()
+    serializer_class = serializers.SerieNotarialSerializer
 
 
 class NotarizationReservationViewSet(viewsets.ModelViewSet):
@@ -86,20 +92,105 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
             .first()
         )
 
+    def _last_notarization_any_year(self, idtipkar: int):
+        return (
+            models.Notarization.objects.filter(idtipkar=idtipkar)
+            .order_by("-id")
+            .first()
+        )
+
+    def _paper_num_side(self, paper_value: str):
+        """
+        Return (number, side) where side 0=recto, 1=VTA.
+        Accepts '123', '123 VTA', '123V', '123VTA'.
+        """
+        s = (paper_value or "").strip().upper()
+        if not s:
+            return None
+        m = re.match(r"^(\d+)\s*(VTA|V)?$", s)
+        if not m:
+            return None
+        num = int(m.group(1))
+        side = 1 if (m.group(2) in {"VTA", "V"}) else 0
+        return (num, side)
+
+    def _paper_to_string(self, number: int, side: int) -> str:
+        return f"{number} VTA" if side == 1 else str(number)
+
+    def _paper_next(self, number: int, side: int):
+        if side == 0:
+            return (number, 1)
+        return (number + 1, 0)
+
+    def _active_series_ranges(self, idtipkar: int):
+        ranges = []
+        series_qs = models.SerieNotarial.objects.filter(idtipkar=idtipkar, activo=True).order_by(
+            "created_at", "id"
+        )
+        for serie in series_qs:
+            ini = self._paper_num_side(serie.papel_ini)
+            fin = self._paper_num_side(serie.papel_fin)
+            if not ini or not fin:
+                continue
+            start_num = ini[0]
+            end_num = fin[0]
+            if end_num < start_num:
+                continue
+            ranges.append((start_num, end_num))
+        return ranges
+
+    def _proposed_papel_from_series(self, idtipkar: int):
+        """
+        Propose next paper from configured active series.
+        If no active series or no remaining pages, return empty strings.
+        """
+        ranges = self._active_series_ranges(idtipkar)
+        if not ranges:
+            return ("", "")
+
+        last_any = self._last_notarization_any_year(idtipkar)
+        last_paper = self._paper_num_side(
+            (last_any.papel_fin or last_any.papel_ini or "") if last_any else ""
+        )
+
+        # First ever use or last value not parseable: start at first active range start.
+        if last_paper is None:
+            start_num = ranges[0][0]
+            proposed = self._paper_to_string(start_num, 0)
+            return (proposed, proposed)
+
+        cand_num, cand_side = self._paper_next(last_paper[0], last_paper[1])
+
+        # Keep candidate if still inside any active range.
+        for start_num, end_num in ranges:
+            if start_num <= cand_num <= end_num:
+                proposed = self._paper_to_string(cand_num, cand_side)
+                return (proposed, proposed)
+
+        # Otherwise jump to the next range start after the last used number.
+        for start_num, end_num in ranges:
+            if start_num > last_paper[0]:
+                proposed = self._paper_to_string(start_num, 0)
+                return (proposed, proposed)
+
+        # Exhausted all configured ranges.
+        return ("", "")
+
     def _build_reservation_fields(
         self, *, kardex: str, idtipkar: int, year: int, user
     ):
         last = self._last_notarization_for_year(year, idtipkar)
         if last is None:
             one = "1"
+            papel_ini, papel_fin = self._proposed_papel_from_series(idtipkar)
             return {
                 "idtipkar": idtipkar,
                 "kardex": kardex,
                 "fecha_conclusion": "",
                 "folio_ini": one,
                 "folio_fin": one,
-                "papel_ini": one,
-                "papel_fin": one,
+                "papel_ini": papel_ini,
+                "papel_fin": papel_fin,
                 "num_minuta": one,
                 "num_escritura": one,
                 "fecha_escritura": correlatives.today_iso(),
@@ -110,17 +201,15 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
         folio = correlatives.bump_folio_papel_string(
             last.folio_fin or last.folio_ini or ""
         )
-        papel = correlatives.bump_folio_papel_string(
-            last.papel_fin or last.papel_ini or ""
-        )
+        papel_ini, papel_fin = self._proposed_papel_from_series(idtipkar)
         return {
             "idtipkar": idtipkar,
             "kardex": kardex,
             "fecha_conclusion": last.fecha_conclusion,
             "folio_ini": folio,
             "folio_fin": folio,
-            "papel_ini": papel,
-            "papel_fin": papel,
+            "papel_ini": papel_ini,
+            "papel_fin": papel_fin,
             "num_minuta": correlatives.bump_int_string(last.num_minuta),
             "num_escritura": correlatives.bump_int_string(last.num_escritura),
             "fecha_escritura": correlatives.today_iso(),
