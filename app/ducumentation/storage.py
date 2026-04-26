@@ -1,4 +1,3 @@
-import io
 import os
 import re
 from typing import IO
@@ -114,11 +113,6 @@ def build_object_key(folder: str, filename: str) -> str:
 	return filename_clean
 
 
-def build_object_key_safe(folder: str, filename: str) -> str:
-	"""Like build_object_key but validates `folder` with validate_folder_path."""
-	return build_object_key(validate_folder_path(folder), filename.lstrip("/"))
-
-
 def full_object_key_from_stored_relative(relative_path: str) -> str:
 	"""
 	Build the full R2 object key from a DB-relative path (e.g. urltemplate
@@ -182,22 +176,3 @@ def upload_fileobj_to_r2(fileobj: IO[bytes], object_key: str) -> None:
 	"""
 	s3 = get_s3_client()
 	s3.upload_fileobj(fileobj, get_r2_bucket(), object_key)
-
-
-def write_bytes_to_r2(data: bytes, object_key: str) -> None:
-	"""Upload raw bytes to R2 at object_key."""
-	buf = io.BytesIO(data)
-	upload_fileobj_to_r2(buf, object_key)
-
-
-def object_exists_in_r2(object_key: str) -> bool:
-	"""Return True if the object key exists in the configured bucket."""
-	s3 = get_s3_client()
-	try:
-		s3.head_object(Bucket=get_r2_bucket(), Key=object_key)
-		return True
-	except ClientError as e:
-		code = e.response.get("Error", {}).get("Code", "")
-		if code in ("404", "NoSuchKey", "NotFound"):
-			return False
-		raise
