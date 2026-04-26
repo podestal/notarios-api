@@ -1,15 +1,13 @@
 from datetime import datetime
 from decimal import Decimal
 import locale
-import boto3
-from botocore.config import Config
 import os
 import re
 import io
 from docx import Document
 from docx.shared import RGBColor
 from docxtpl import DocxTemplate
-from ducumentation.shared.base_r2_documents import get_s3_client
+from ducumentation.storage_backends import get_document_storage_backend
 
 
 def get_notary_config():
@@ -1755,7 +1753,7 @@ class TemplateManager:
     """
 
     def __init__(self):
-        self.s3_client = None  # Will be set when needed
+        self.storage_backend = get_document_storage_backend()
 
     def get_template_from_r2(self, template_id, filename):
         """
@@ -1763,20 +1761,10 @@ class TemplateManager:
         Mirrors: PHP template download
         """
 
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=os.environ.get("CLOUDFLARE_R2_ENDPOINT"),
-            aws_access_key_id=os.environ.get("CLOUDFLARE_R2_ACCESS_KEY"),
-            aws_secret_access_key=os.environ.get("CLOUDFLARE_R2_SECRET_KEY"),
-            config=Config(signature_version="s3v4"),
-            region_name="auto",
-        )
-
         object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{filename}"
 
         try:
-            response = s3.get_object(Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"), Key=object_key)
-            template_bytes = response["Body"].read()
+            template_bytes = self.storage_backend.read_bytes(object_key)
             return template_bytes
         except Exception as e:
             print(f"ERROR: Failed to download template from R2: {e}")
@@ -1805,15 +1793,8 @@ class TemplateManager:
             print(f"DEBUG: Uploading document to R2: {filename}")
             object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             
-            # Get S3 client
-            s3 = get_s3_client()
-            
-            # Upload to R2
-            s3.upload_fileobj(
-                io.BytesIO(doc_content),
-                os.environ.get('CLOUDFLARE_R2_BUCKET'),
-                object_key
-            )
+            # Upload to configured storage backend
+            self.storage_backend.upload_fileobj(object_key, io.BytesIO(doc_content))
             
             print(f"DEBUG: Document uploaded to R2: {object_key}")
             return True
@@ -1839,16 +1820,8 @@ class TemplateManager:
             
             print(f"DEBUG: Downloading document from R2: {object_key}")
             
-            # Get S3 client
-            s3 = get_s3_client()
-            
-            # Download from R2
-            response = s3.get_object(
-                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
-                Key=object_key
-            )
-            
-            doc_bytes = response['Body'].read()
+            # Download from configured storage backend
+            doc_bytes = self.storage_backend.read_bytes(object_key)
             print(f"DEBUG: Downloaded document from R2: {len(doc_bytes)} bytes")
             
             return doc_bytes
