@@ -19,7 +19,7 @@ import json
 
 
 
-from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
+from ..shared.base_r2_documents import BaseR2DocumentService
 from ..protocolares.utils import get_notary_config
 
 
@@ -99,10 +99,7 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
             if mode == "open":
                 return self._create_response(None, filename, id_permiviaje, mode)
 
-            s3 = get_s3_client()
-            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            buffer = io.BytesIO(response['Body'].read())
+            buffer = io.BytesIO(self._read_document_bytes(filename))
             
             return self._create_response(buffer, filename, id_permiviaje, mode)
 
@@ -121,11 +118,8 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
     def _get_template_from_r2(self) -> bytes:
         if not self.template_filename:
             raise ValueError("template_filename must be set in the child service class.")
-        s3 = get_s3_client()
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{self.template_filename}"
         try:
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return response['Body'].read()
+            return self._read_template_bytes(self.template_filename)
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchKey':
                 return None
@@ -259,14 +253,8 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
 
     def _create_response(self, buffer: io.BytesIO, filename: str, id_permiviaje: int, mode: str = "download"):
         if mode == "open":
-            s3 = get_s3_client()
-            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             try:
-                url = s3.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': os.environ.get('CLOUDFLARE_R2_BUCKET'), 'Key': object_key},
-                    ExpiresIn=3600  # URL expires in 1 hour
-                )
+                url = self._open_document_url(filename, expires_in=3600)
                 response = JsonResponse({
                     'status': 'success',
                     'mode': 'open',
@@ -290,36 +278,10 @@ class BasePermisoViajeDocumentService(BaseR2DocumentService):
             return response
 
     def _save_document_to_r2(self, buffer: io.BytesIO, filename: str):
-        s3 = get_s3_client()
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
-        buffer.seek(0)
-        s3.put_object(
-            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
-            Key=object_key,
-            Body=buffer.read()
-        )
-        buffer.seek(0)
+        self._write_document_buffer(buffer, filename)
 
     def _document_exists_in_r2(self, filename: str) -> bool:
-        s3 = get_s3_client()
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
-        try:
-            s3.head_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return True
-        except ClientError as e:
-            code = e.response.get('Error', {}).get('Code') if hasattr(e, 'response') else None
-            if code in ('NoSuchKey', '404'):
-                return False
-            # Some R2 providers return numeric strings for 404 on head_object
-            try:
-                status = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
-                if status == 404:
-                    return False
-            except Exception:
-                pass
-            raise
-        except Exception:
-            raise
+        return super()._document_exists_in_r2(filename)
 
 class PermisoViajeInteriorDocumentService(BasePermisoViajeDocumentService):
     def __init__(self):

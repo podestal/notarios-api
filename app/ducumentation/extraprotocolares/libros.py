@@ -7,7 +7,7 @@ from django.db import connection
 from django.http import HttpResponse, JsonResponse
 from docxtpl import DocxTemplate
 
-from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
+from ..shared.base_r2_documents import BaseR2DocumentService
 from ..utils import NumberToLetterConverter
 from ..protocolares.utils import get_notary_config
 
@@ -40,10 +40,7 @@ class LibrosDocumentService(BaseR2DocumentService):
             if mode == "open":
                 return self._create_response(None, filename, f"{num_libro}-{anio_libro}", mode)
 
-            s3 = get_s3_client()
-            object_key = self._object_key_for_document(filename)
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            buffer = io.BytesIO(response['Body'].read())
+            buffer = io.BytesIO(self._read_document_bytes(filename))
             return self._create_response(buffer, filename, f"{num_libro}-{anio_libro}", mode)
         except Exception as e:
             if hasattr(e, 'response') and isinstance(getattr(e, 'response'), dict):
@@ -93,35 +90,18 @@ class LibrosDocumentService(BaseR2DocumentService):
             return self.json_error(500, f"Error generating document: {e}")
 
     def _get_template_from_r2(self) -> Optional[bytes]:
-        s3 = get_s3_client()
-        object_key = self._object_key_for_template(self.template_filename)
         try:
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return response['Body'].read()
+            return self._read_template_bytes(self.template_filename)
         except Exception:
             return None
 
     def _save_document_to_r2(self, buffer: io.BytesIO, filename: str) -> None:
-        s3 = get_s3_client()
-        object_key = self._object_key_for_document(filename)
-        buffer.seek(0)
-        s3.put_object(
-            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
-            Key=object_key,
-            Body=buffer.read(),
-        )
-        buffer.seek(0)
+        self._write_document_buffer(buffer, filename)
 
     def _create_response(self, buffer: Optional[io.BytesIO], filename: str, key_id: str, mode: str = "download") -> HttpResponse:
         if mode == "open":
-            s3 = get_s3_client()
-            object_key = self._object_key_for_document(filename)
             try:
-                url = s3.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': os.environ.get('CLOUDFLARE_R2_BUCKET'), 'Key': object_key},
-                    ExpiresIn=3600,
-                )
+                url = self._open_document_url(filename, expires_in=3600)
                 response = JsonResponse({
                     'status': 'success', 'mode': 'open', 'url': url,
                     'filename': filename, 'libro': key_id,

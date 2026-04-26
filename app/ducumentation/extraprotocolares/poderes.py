@@ -9,7 +9,7 @@ from django.http import HttpResponse, JsonResponse
 from django.db import connection
 from docxtpl import DocxTemplate, RichText
 import traceback
-from ..shared.base_r2_documents import get_s3_client, BaseR2DocumentService
+from ..shared.base_r2_documents import BaseR2DocumentService
 from ..utils import NumberToLetterConverter
 from ..protocolares.utils import get_notary_config
 from datetime import datetime
@@ -35,15 +35,8 @@ class BasePoderDocumentService(BaseR2DocumentService):
                 return self.json_error(400, "filename is required to retrieve document")
 
             # Use the provided filename only (legacy-specific per endpoint)
-            s3 = get_s3_client()
-            bucket = os.environ.get('CLOUDFLARE_R2_BUCKET')
-            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             if mode == "open":
-                url = s3.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': bucket, 'Key': object_key},
-                    ExpiresIn=3600,
-                )
+                url = self._open_document_url(filename, expires_in=3600)
                 response = JsonResponse({
                     'status': 'success', 'mode': 'open', 'url': url,
                     'filename': filename, 'id_poder': id_poder,
@@ -52,8 +45,7 @@ class BasePoderDocumentService(BaseR2DocumentService):
                 response['Access-Control-Allow-Origin'] = '*'
                 return response
 
-            response = s3.get_object(Bucket=bucket, Key=object_key)
-            buffer = io.BytesIO(response['Body'].read())
+            buffer = io.BytesIO(self._read_document_bytes(filename))
             return self._create_response(buffer, filename, id_poder, mode)
         except ClientError as e:
             code = e.response.get('Error', {}).get('Code')
@@ -71,11 +63,8 @@ class BasePoderDocumentService(BaseR2DocumentService):
     def _get_template_from_r2(self) -> Optional[bytes]:
         if not self.template_filename:
             raise ValueError("template_filename must be set in child class")
-        s3 = get_s3_client()
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{self.template_filename}"
         try:
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            template_bytes = response['Body'].read()
+            template_bytes = self._read_template_bytes(self.template_filename)
             
             # Validate that this is a proper DOCX file
             import zipfile
@@ -117,14 +106,8 @@ class BasePoderDocumentService(BaseR2DocumentService):
 
     def _create_response(self, buffer: Optional[io.BytesIO], filename: str, id_poder: int, mode: str = "download") -> HttpResponse:
         if mode == "open":
-            s3 = get_s3_client()
-            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
             try:
-                url = s3.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': os.environ.get('CLOUDFLARE_R2_BUCKET'), 'Key': object_key},
-                    ExpiresIn=3600,
-                )
+                url = self._open_document_url(filename, expires_in=3600)
                 response = JsonResponse({
                     'status': 'success', 'mode': 'open', 'url': url,
                     'filename': filename, 'id_poder': id_poder,
@@ -144,15 +127,7 @@ class BasePoderDocumentService(BaseR2DocumentService):
         return response
 
     def _save_document_to_r2(self, buffer: io.BytesIO, filename: str) -> None:
-        s3 = get_s3_client()
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{filename}"
-        buffer.seek(0)
-        s3.put_object(
-            Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'),
-            Key=object_key,
-            Body=buffer.read(),
-        )
-        buffer.seek(0)
+        self._write_document_buffer(buffer, filename)
 
     def _get_notary_data(self) -> Dict[str, str]:
         with connection.cursor() as cursor:

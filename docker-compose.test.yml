@@ -36,6 +36,8 @@ services:
       - PROVIDER_NAME=${PROVIDER_NAME}
       - APP_NAME=${APP_NAME}
       - APP_VERSION=${APP_VERSION}
+      - DOC_STORAGE_BACKEND=${DOC_STORAGE_BACKEND}
+      - DOC_STORAGE_LOCAL_ROOT=${DOC_STORAGE_LOCAL_ROOT}
     depends_on:
       - db
 

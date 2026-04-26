@@ -80,6 +80,9 @@ class LocalFsStorageBackend(DocumentStorageBackend):
 
     def _abs(self, object_key: str) -> Path:
         rel = str(object_key).replace("\\", "/").lstrip("/")
+        main_url = (os.environ.get("CLOUDFLARE_R2_MAIN_URL") or "").strip().strip("/")
+        if main_url and rel.startswith(f"{main_url}/"):
+            rel = rel[len(main_url) + 1 :]
         return self.root / rel
 
     def read_bytes(self, object_key: str) -> bytes:
@@ -100,8 +103,9 @@ class LocalFsStorageBackend(DocumentStorageBackend):
         return self._abs(object_key).exists()
 
     def open_url(self, object_key: str, expires_in: int = 3600) -> str:
-        # Local backend URL strategy will be defined in later phase.
-        raise NotImplementedError("Local open_url is not configured yet.")
+        # Local backend does not provide open/presigned URLs.
+        # Keep endpoints stable by returning empty URL; callers should use mode=download.
+        return ""
 
 
 def get_document_storage_backend() -> DocumentStorageBackend:
@@ -111,8 +115,6 @@ def get_document_storage_backend() -> DocumentStorageBackend:
     """
     backend = (os.environ.get("DOC_STORAGE_BACKEND") or "r2").strip().lower()
     if backend == "local":
-        root = (os.environ.get("DOC_STORAGE_LOCAL_ROOT") or "").strip()
-        if not root:
-            raise RuntimeError("DOC_STORAGE_LOCAL_ROOT is required for local backend.")
+        root = (os.environ.get("DOC_STORAGE_LOCAL_ROOT") or "C:/documentos/gc").strip()
         return LocalFsStorageBackend(root)
     return R2StorageBackend()
