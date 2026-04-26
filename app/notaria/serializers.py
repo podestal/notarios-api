@@ -721,12 +721,28 @@ class PatrimonialSerializer(serializers.ModelSerializer):
             "medios_pago_sum",
         ]
 
+    def validate_idmon(self, value):
+        """
+        Allow 0 as a valid 'no aplica' currency code.
+        Also tolerate null/empty payloads from frontend by coercing to 0.
+        """
+        if value in ("", None):
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("idmon debe ser un entero.")
+
     def get_moneda(self, obj):
         """
         Returns the currency associated with the Patrimonial instance.
         """
-        moneda_des = MONEDAS[obj.idmon]["desmon"]
-        return moneda_des
+        moneda = MONEDAS.get(obj.idmon)
+        if moneda:
+            return moneda["desmon"]
+        if obj.idmon == 0:
+            return "NO APLICA"
+        return ""
 
     def get_medios_pago_sum(self, obj):
         """
