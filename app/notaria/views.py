@@ -381,10 +381,19 @@ class KardexViewSet(ModelViewSet):
         if not idtipkar or not fechaingreso:
             return Response({"error": "Missing required fields"}, status=400)
 
-        # Extract the year from fechaingreso
+        # Extract year from fechaingreso supporting DD/MM/YYYY and YYYY-MM-DD
+        fechaingreso_str = str(fechaingreso or "").strip()
         try:
-            anio = fechaingreso.split("/")[-1]  # Assuming format is DD/MM/YYYY
-        except IndexError:
+            if "/" in fechaingreso_str:
+                anio = fechaingreso_str.split("/")[-1]
+            elif "-" in fechaingreso_str:
+                # Expected API/storage format: YYYY-MM-DD
+                anio = fechaingreso_str.split("-")[0]
+            else:
+                return Response({"error": "Invalid fechaingreso format"}, status=400)
+            if not anio.isdigit() or len(anio) != 4:
+                return Response({"error": "Invalid fechaingreso format"}, status=400)
+        except Exception:
             return Response({"error": "Invalid fechaingreso format"}, status=400)
 
         # Get abbreviation based on tipoescritura
@@ -393,12 +402,13 @@ class KardexViewSet(ModelViewSet):
         if not abreviatura:
             return Response({"error": "Invalid tipoescritura"}, status=400)
 
-        # Query the last Kardex number for the given idtipkar and year
+        # Query last Kardex number for this tipo and target year.
+        # Use kardex suffix "-YYYY" so yearly reset does not depend on fechaingreso storage format.
         last_kardex = (
             models.Kardex.objects.filter(
                 idtipkar=idtipkar,
-                fechaingreso__endswith=anio,  # Match the year in fechaingreso
                 kardex__startswith=abreviatura,
+                kardex__endswith=f"-{anio}",
             )
             .annotate(
                 numeric_part=Cast(
