@@ -4602,3 +4602,50 @@ class FormularioViewSet(ModelViewSet):
         formulario = models.Formulario.objects.filter(idrenta=idrenta)
         serializer = serializers.FormularioSerializer(formulario, many=True)
         return Response(serializer.data)
+
+
+class ConfinotarioViewSet(ModelViewSet):
+    """
+    ViewSet for the Confinotario model.
+    """
+
+    queryset = models.Confinotario.objects.all()
+    serializer_class = serializers.ConfinotarioSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def list(self, request, *args, **kwargs):
+        """
+        Return singleton notary config object (not an array).
+        """
+        instance = self.get_queryset().first()
+        if not instance:
+            return Response({}, status=status.HTTP_200_OK)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def _ensure_superuser(self, request):
+        if not request.user or not request.user.is_authenticated or not request.user.is_superuser:
+            return Response(
+                {"detail": "Usuario no autorizado para modificar la configuración del notario."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    def update(self, request, *args, **kwargs):
+        denied = self._ensure_superuser(request)
+        if denied:
+            return denied
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        denied = self._ensure_superuser(request)
+        if denied:
+            return denied
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        denied = self._ensure_superuser(request)
+        if denied:
+            return denied
+        return super().destroy(request, *args, **kwargs)

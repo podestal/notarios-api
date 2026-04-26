@@ -1071,3 +1071,29 @@ class Formulario(models.Model):
     class Meta:
         managed = False
         db_table = "formulario"
+
+
+class Confinotario(models.Model):
+    idnotar = models.AutoField(primary_key=True)
+    nombre = models.CharField(max_length=200)
+    apellido = models.CharField(max_length=200)
+    telefono = models.CharField(max_length=20)
+    correo = models.CharField(max_length=200)
+    ruc = models.CharField(max_length=1000)
+    direccion = models.TextField(blank=True, null=True)
+    distrito = models.CharField(max_length=1000, blank=True, null=True)
+    codnotario = models.CharField(max_length=15, blank=True, null=True)
+    codoficial = models.CharField(max_length=15, blank=True, null=True)
+    coduif = models.CharField(max_length=15, blank=True, null=True)
+    islima = models.IntegerField(db_column='isLima', blank=True, null=True)  # Field name made lowercase.
+    cajaemail = models.CharField(db_column='cajaEmail', max_length=300, blank=True, null=True)  # Field name made lowercase.
+    passwordemail = models.CharField(db_column='passwordEmail', max_length=100, blank=True, null=True)  # Field name made lowercase.
+    ubigeo = models.CharField(max_length=300, blank=True, null=True)
+    ructest = models.CharField(db_column='rucTest', max_length=300, blank=True, null=True)  # Field name made lowercase.
+    provincia = models.CharField(max_length=150, blank=True, null=True)
+    departamento = models.CharField(max_length=150, blank=True, null=True)
+    abrev = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'confinotario'

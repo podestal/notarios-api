@@ -52,5 +52,6 @@ router.register('sellos-cartas', views.SellosViewSet)
 router.register('libros', views.LibrosViewSet, basename='libros')
 router.register('tipolibro', views.TipolibroViewSet, basename='tipolibro')
 router.register('cert_domiciliario', views.CertDomiciliarioViewSet, basename='cert_domiciliario')
+router.register('confinotario', views.ConfinotarioViewSet, basename='confinotario')
 
 urlpatterns = router.urls

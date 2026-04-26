@@ -1159,3 +1159,13 @@ class FormularioSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Formulario
         fields = "__all__"
+
+
+class ConfinotarioSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Confinotario model.
+    """
+
+    class Meta:
+        model = models.Confinotario
+        fields = "__all__"
