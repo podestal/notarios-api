@@ -3960,6 +3960,7 @@ class IngresoCartasViewSet(ModelViewSet):
     queryset = models.IngresoCartas.objects.all().order_by("-id_carta")
     serializer_class = serializers.IngresoCartasSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def list(self, request, *args, **kwargs):
 
@@ -4013,11 +4014,6 @@ class IngresoCartasViewSet(ModelViewSet):
                     ],
                     params=[dateTo],
                 )
-
-        print("dateFrom", dateFrom)
-        print("dateTo", dateTo)
-        print("dateType", dateType)
-        print("queryset", self.queryset)
 
         if numCarta:
             self.queryset = self.queryset.filter(num_carta=numCarta)
