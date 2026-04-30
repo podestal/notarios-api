@@ -2822,6 +2822,39 @@ class TbAbogadoViewSet(ModelViewSet):
     serializer_class = serializers.TbAbogadoSerializer
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """
+        Create a TbAbogado instance with auto-generated idabogado.
+        idabogado format: 10-digit zero-padded incremental value.
+        """
+        for attempt in range(5):
+            try:
+                sid = transaction.savepoint()
+                last_record = models.TbAbogado.objects.order_by("-idabogado").first()
+                if last_record and str(last_record.idabogado).strip():
+                    try:
+                        next_id = int(str(last_record.idabogado).strip()) + 1
+                    except ValueError:
+                        next_id = 1
+                else:
+                    next_id = 1
+
+                data = request.data.copy()
+                data["idabogado"] = f"{next_id:010d}"
+                serializer = self.get_serializer(data=data)
+                serializer.is_valid(raise_exception=True)
+                self.perform_create(serializer)
+                headers = self.get_success_headers(serializer.data)
+                return Response(
+                    serializer.data, status=status.HTTP_201_CREATED, headers=headers
+                )
+            except Exception as e:
+                transaction.savepoint_rollback(sid)
+                if attempt == 4:
+                    raise
+                continue
+
 
 class NacionalidadesViewSet(ModelViewSet):
     """
