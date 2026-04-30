@@ -58,6 +58,8 @@ from ducumentation.storage import (
     default_folder_plantillas,
     docx_filename_from_name_template,
     full_object_key_from_stored_relative,
+    get_r2_bucket,
+    get_s3_client,
     object_key_for_tpl_template_row,
     read_bytes_from_r2,
     sanitize_copy_suffix_base,
@@ -3226,6 +3228,34 @@ class TemplateViewSet(ModelViewSet):
         List TplTemplate records with optional filters (see class docstring).
         """
         return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete TplTemplate DB row and best-effort delete its related R2 template file.
+        """
+        tpl = self.get_object()
+        object_key = None
+        try:
+            object_key = object_key_for_tpl_template_row(tpl.urltemplate, tpl.filename)
+        except ValueError:
+            # Keep DB delete behavior even if legacy row has no usable file mapping.
+            object_key = None
+
+        if object_key:
+            try:
+                s3 = get_s3_client()
+                s3.delete_object(Bucket=get_r2_bucket(), Key=object_key)
+                logger.info("TEMPLATE_DELETE: deleted R2 object %s", object_key)
+            except Exception as exc:
+                # Do not block DB deletion if file is already missing or delete fails.
+                logger.warning(
+                    "TEMPLATE_DELETE: failed to delete R2 object %s | error=%s",
+                    object_key,
+                    str(exc),
+                )
+
+        tpl.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"], url_path="file")
     def template_file(self, request, pk=None):
