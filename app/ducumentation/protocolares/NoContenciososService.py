@@ -107,6 +107,7 @@ class NoContenciososDocumentService:
             data_contratantes,
             data_company,
         )
+        final_data = self._ensure_no_contencioso_people_placeholders(final_data, raw_data)
 
         # STEP 6: Replace placeholders (try docxtpl, fallback to PlaceholderProcessor)
         try:
@@ -135,6 +136,81 @@ class NoContenciososDocumentService:
         # STEP 8: Return HTTP response
         filename = f"__PROY__{kardex}.docx"
         return self._create_response_from_buffer(buffer, filename, kardex, mode)
+
+    def _split_csv(self, value):
+        if value is None:
+            return []
+        return [part.strip() for part in str(value).split(",")]
+
+    def _split_addresses(self, value):
+        if value is None:
+            return []
+        return [part.strip() for part in str(value).split(",,")]
+
+    @staticmethod
+    def _is_blank(value):
+        return value is None or str(value).strip() == ""
+
+    def _ensure_no_contencioso_people_placeholders(self, final_data, raw_data):
+        """
+        No Contenciosos templates rely heavily on P_/C_ placeholders.
+        If role classification leaves them empty, fall back to raw SQL aggregates:
+        - first person -> P_ (solicitante/recurrente)
+        - second person -> C_ (causante)
+        """
+        if not isinstance(final_data, dict):
+            return final_data
+
+        names = [n for n in self._split_csv(raw_data.get("nombres")) if n]
+        docs = self._split_csv(raw_data.get("numero_documento"))
+        addresses = self._split_addresses(raw_data.get("direccion"))
+
+        if not names:
+            return final_data
+
+        # Fill P_* from first participant when missing.
+        if self._is_blank(final_data.get("P_NOM")):
+            final_data["P_NOM"] = f"{names[0]} "
+        if self._is_blank(final_data.get("P_NOM_1")):
+            final_data["P_NOM_1"] = f"{names[0]} "
+        if self._is_blank(final_data.get("P_IDE")) and docs:
+            final_data["P_IDE"] = f"{docs[0]} "
+        if self._is_blank(final_data.get("P_IDE_1")) and docs:
+            final_data["P_IDE_1"] = f"{docs[0]} "
+        if self._is_blank(final_data.get("P_DOMICILIO")) and addresses:
+            final_data["P_DOMICILIO"] = addresses[0]
+        if self._is_blank(final_data.get("P_DOMICILIO_1")) and addresses:
+            final_data["P_DOMICILIO_1"] = addresses[0]
+
+        # Fill P_NOM_2..P_NOM_5, P_IDE_2..P_IDE_5, P_DOMICILIO_2..P_DOMICILIO_5
+        for idx in range(2, 6):
+            pos = idx - 1
+            if pos < len(names) and self._is_blank(final_data.get(f"P_NOM_{idx}")):
+                final_data[f"P_NOM_{idx}"] = f"{names[pos]} "
+            if pos < len(docs) and self._is_blank(final_data.get(f"P_IDE_{idx}")):
+                final_data[f"P_IDE_{idx}"] = f"{docs[pos]} "
+            if pos < len(addresses) and self._is_blank(final_data.get(f"P_DOMICILIO_{idx}")):
+                final_data[f"P_DOMICILIO_{idx}"] = addresses[pos]
+
+        # Fill C_* from second participant when missing (causante in many templates).
+        if len(names) > 1 and self._is_blank(final_data.get("C_NOM")):
+            final_data["C_NOM"] = f"{names[1]} "
+        if len(names) > 1 and self._is_blank(final_data.get("C_NOM_1")):
+            final_data["C_NOM_1"] = f"{names[1]} "
+
+        for idx in range(2, 6):
+            pos = idx
+            if pos < len(names) and self._is_blank(final_data.get(f"C_NOM_{idx}")):
+                final_data[f"C_NOM_{idx}"] = f"{names[pos]} "
+
+        print(
+            "DEBUG: NoCont fallback placeholders | "
+            f"P_NOM={final_data.get('P_NOM', '')!r} "
+            f"P_IDE={final_data.get('P_IDE', '')!r} "
+            f"P_DOMICILIO={final_data.get('P_DOMICILIO', '')!r} "
+            f"C_NOM={final_data.get('C_NOM', '')!r}"
+        )
+        return final_data
 
     def _update_existing_document(self, kardex, mode):
         """
