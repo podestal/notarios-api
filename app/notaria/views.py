@@ -3208,6 +3208,8 @@ class TemplateViewSet(ModelViewSet):
 
         code_acts = self.request.query_params.get("codeActs")
         fk_type = self.request.query_params.get("fkTypeKardex")
+        if fk_type is None:
+            fk_type = self.request.query_params.get("fktypekardex")
         name_template = self.request.query_params.get("nameTemplate")
 
         if code_acts and str(code_acts).strip():
