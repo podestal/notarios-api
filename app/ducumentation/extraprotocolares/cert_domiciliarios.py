@@ -156,6 +156,42 @@ def _rewrite_corroborado_testigo_preserving_format(document, replacement: str) -
             break
 
 
+def _find_expide_interesado_span(full: str) -> Optional[tuple]:
+    """Span after 'DEL INTERESADO ' / 'INTERESADO ' up to ', PARA LOS FINES' (cert. expide clause)."""
+    up = full.upper()
+    mk = 'DEL INTERESADO '
+    i0 = up.find(mk)
+    if i0 < 0:
+        mk = 'INTERESADO '
+        i0 = up.find(mk)
+        if i0 < 0:
+            return None
+    j0 = i0 + len(mk)
+    token = ', PARA LOS FINES'
+    k = up.find(token, j0)
+    if k < 0 or k <= j0:
+        return None
+    return (j0, k)
+
+
+def _rewrite_expide_interesado_preserving_format(document, replacement: str) -> None:
+    """Comma-separate P_NOM / P_NACIONALIDAD / P_DOC+P_IDE in '… INTERESADO … , PARA LOS FINES …'."""
+    repl = (replacement or '').strip()
+    if not repl:
+        return
+    for paragraph in _iter_cert_domiciliario_paragraphs(document):
+        full = _paragraph_text_from_runs(paragraph)
+        upf = full.upper()
+        if 'EXPIDE' not in upf or 'INTERESADO' not in upf:
+            continue
+        span = _find_expide_interesado_span(full)
+        if not span:
+            continue
+        start, end = span
+        if _replace_span_preserving_runs(paragraph, start, end, repl):
+            break
+
+
 class CertDomiciliariosDocumentService(BaseR2DocumentService):
     """
     Service to generate and retrieve Certificación/Constatación Domiciliaria documents.
@@ -287,6 +323,9 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             _ocu = ' '.join((context.get('P_OCUPACION') or '').split())
             _solic_parts = [p for p in (_nom, _nac, _doc_line, _ocu) if p]
             context['P_DESCRIPCION_CLIENTE_ACTO'] = ', '.join(_solic_parts)
+            # "SE EXPIDE … INTERESADO …" (name, nationality, doc only — no ocupación)
+            _expide_parts = [p for p in (_nom, _nac, _doc_line) if p]
+            context['P_DESCRIPCION_INTERESADO_EXPIDE'] = ', '.join(_expide_parts)
 
             # Testigo line (optional)
             if context.get('NOM_TESTIGO'):
@@ -382,6 +421,9 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             )
             _rewrite_corroborado_testigo_preserving_format(
                 doc, context.get('I_CORROBORADO_CLAUSE') or ''
+            )
+            _rewrite_expide_interesado_preserving_format(
+                doc, context.get('P_DESCRIPCION_INTERESADO_EXPIDE') or ''
             )
 
             buffer = io.BytesIO()
