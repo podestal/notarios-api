@@ -5,6 +5,8 @@ This module contains the views for the sisgen service.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from .permissions import IsSuperuser
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .services.document_search_service import DocumentSearchService
@@ -21,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DocumentSearchView(APIView):
+    permission_classes = [IsAuthenticated, IsSuperuser]
+
     def post(self, request):
         """Search for notarial documents with pagination"""
         try:
@@ -150,7 +154,7 @@ class DocumentSearchView(APIView):
 class SendToSISGENView(APIView):
     """
     Send documents to SISGEN service.
-    
+
     POST Parameters:
     - documents: List of documents to process, each containing:
         {'kardex': str, 'idkardex': str}
@@ -158,6 +162,9 @@ class SendToSISGENView(APIView):
         For batch processing, send array with multiple items (processed in batches of 10)
     - all: 0 for documents array, 1 for all documents in temp tables
     """
+
+    permission_classes = [IsAuthenticated, IsSuperuser]
+
     def post(self, request):
         try:
             # Get parameters
