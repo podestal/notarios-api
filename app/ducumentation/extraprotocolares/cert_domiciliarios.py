@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import traceback
 from typing import Dict, Any, Optional
 
@@ -10,6 +11,112 @@ from docxtpl import DocxTemplate
 from ..shared.base_r2_documents import BaseR2DocumentService
 from ..utils import NumberToLetterConverter
 from ..protocolares.utils import get_notary_config
+
+def _paragraph_text_from_runs(paragraph) -> str:
+    return ''.join((r.text or '') for r in paragraph.runs)
+
+
+def _replace_span_preserving_runs(paragraph, start: int, end: int, new_middle: str) -> bool:
+    """
+    Replace logical text[start:end] (0-based, end exclusive) without assigning paragraph.text,
+    so existing run formatting (bold, caps, etc.) is kept on untouched segments.
+    """
+    runs = list(paragraph.runs)
+    if not runs or start < 0 or start >= end:
+        return False
+    lengths = [len(r.text or '') for r in runs]
+    total = sum(lengths)
+    if end > total:
+        return False
+
+    def run_index_for_char(idx: int) -> tuple:
+        if idx >= total:
+            return len(runs) - 1, len(runs[-1].text or '')
+        acc = 0
+        for i, ln in enumerate(lengths):
+            if acc + ln > idx:
+                return i, idx - acc
+            acc += ln
+        return len(runs) - 1, lengths[-1]
+
+    si, soff = run_index_for_char(start)
+    ei, eoff = run_index_for_char(end)
+
+    if si == ei:
+        t = runs[si].text or ''
+        runs[si].text = t[:soff] + new_middle + t[eoff:]
+        return True
+
+    runs[si].text = (runs[si].text or '')[:soff] + new_middle
+    for j in range(si + 1, ei):
+        runs[j].text = ''
+    runs[ei].text = (runs[ei].text or '')[eoff:]
+    return True
+
+
+def _iter_cert_domiciliario_paragraphs(document):
+    yield from document.paragraphs
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                yield from _iter_cell_paragraphs_nested(cell)
+
+
+def _iter_cell_paragraphs_nested(cell):
+    yield from cell.paragraphs
+    for table in cell.tables:
+        for row in table.rows:
+            for inner in row.cells:
+                yield from _iter_cell_paragraphs_nested(inner)
+
+
+def _find_encontraba_blob_span(full: str) -> Optional[tuple]:
+    """
+    Locate [start, end) in full text for the solicitante blob after 'SE ENCONTRABA',
+    ending at the character before the period that closes that clause (before ASIMISMO…).
+    Works with docxtpl run splits; does not rely on paragraph.text matching join(runs).
+    """
+    up = full.upper()
+    marker = 'SE ENCONTRABA'
+    i0 = up.find(marker)
+    if i0 < 0:
+        return None
+    j0 = i0 + len(marker)
+    while j0 < len(full) and full[j0].isspace():
+        j0 += 1
+    # Spanish "asimismo" → ASIMISMO; some templates omit one S (ASIMIMO)
+    i_as = -1
+    for token in ('asimismo'.upper(), 'ASIMIMO'):
+        i_as = up.find(token, j0)
+        if i_as >= 0:
+            break
+    if i_as < 0:
+        return None
+    k = i_as - 1
+    while k >= j0 and full[k] in ' \t\n\r\f\v\u00a0\u200b':
+        k -= 1
+    if k < j0 or full[k] != '.':
+        return None
+    start_blob, end_blob = j0, k
+    if end_blob <= start_blob:
+        return None
+    return (start_blob, end_blob)
+
+
+def _rewrite_encontraba_solicitante_preserving_format(document, replacement: str) -> None:
+    repl = (replacement or '').strip()
+    if not repl:
+        return
+    for paragraph in _iter_cert_domiciliario_paragraphs(document):
+        full = _paragraph_text_from_runs(paragraph)
+        if 'ENCONTRABA' not in full.upper():
+            continue
+        span = _find_encontraba_blob_span(full)
+        if not span:
+            continue
+        start, end = span
+        if _replace_span_preserving_runs(paragraph, start, end, repl):
+            break
 
 
 class CertDomiciliariosDocumentService(BaseR2DocumentService):
@@ -135,6 +242,14 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                 context['P_NACIONALIDAD'] = 'PERUANA' if sex == 'F' else 'PERUANO'
             
             context['P_OCUPACION'] = context.get('PROFESION', '') or ''
+            _nom = ' '.join((context.get('P_NOM') or '').split())
+            _nac = ' '.join((context.get('P_NACIONALIDAD') or '').split())
+            _doc_t = (context.get('P_DOC') or '').strip()
+            _ide = (context.get('P_IDE') or '').strip()
+            _doc_line = ' '.join(f'{_doc_t} {_ide}'.split())
+            _ocu = ' '.join((context.get('P_OCUPACION') or '').split())
+            _solic_parts = [p for p in (_nom, _nac, _doc_line, _ocu) if p]
+            context['P_DESCRIPCION_CLIENTE_ACTO'] = ', '.join(_solic_parts)
 
             # Testigo line (optional)
             if context.get('NOM_TESTIGO'):
@@ -205,6 +320,9 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             # Render and save
             doc = DocxTemplate(io.BytesIO(template_bytes))
             doc.render(context)
+            _rewrite_encontraba_solicitante_preserving_format(
+                doc, context.get('P_DESCRIPCION_CLIENTE_ACTO') or ''
+            )
 
             buffer = io.BytesIO()
             doc.save(buffer)
