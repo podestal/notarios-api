@@ -287,6 +287,11 @@ def generate_document_by_tipkar(request):
                 status=status.HTTP_501_NOT_IMPLEMENTED,
             )
 
+    except ValueError as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     except Exception as e:
         print(f"Error generating document: {e}")
         return Response(

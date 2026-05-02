@@ -2,6 +2,7 @@ from rest_framework import serializers
 from . import models
 from django.db import IntegrityError
 from .constants import MONEDAS
+from datetime import datetime
 
 """
 Serializers for the Notaria app.
@@ -9,6 +10,29 @@ These serializers are used to convert complex data types,
 such as querysets and model instances, into native Python datatypes
 that can then be easily rendered into JSON, XML or other content types.
 """
+
+
+def _normalize_kardex_date_string(value, field_name):
+    """
+    Normalize kardex date strings to YYYY-MM-DD.
+    Accepts YYYY-MM-DD, DD/MM/YYYY and DD-MM-YYYY.
+    """
+    if value in (None, ""):
+        return value
+
+    raw = str(value).strip()
+    if not raw:
+        return ""
+
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+    raise serializers.ValidationError(
+        f"{field_name} debe tener formato YYYY-MM-DD o DD/MM/YYYY."
+    )
 
 
 class UsuariosSerializer(serializers.ModelSerializer):
@@ -82,6 +106,15 @@ class CreateKardexSerializer(serializers.ModelSerializer):
             "nc",
         ]
 
+    def validate_fechaingreso(self, value):
+        return _normalize_kardex_date_string(value, "fechaingreso")
+
+    def validate_fechaescritura(self, value):
+        return _normalize_kardex_date_string(value, "fechaescritura")
+
+    def validate_fechaminuta(self, value):
+        return _normalize_kardex_date_string(value, "fechaminuta")
+
 
 class KardexSerializer(serializers.ModelSerializer):
     """
@@ -130,6 +163,15 @@ class KardexSerializer(serializers.ModelSerializer):
             "fechaminuta",
             "nc",
         ]
+
+    def validate_fechaingreso(self, value):
+        return _normalize_kardex_date_string(value, "fechaingreso")
+
+    def validate_fechaescritura(self, value):
+        return _normalize_kardex_date_string(value, "fechaescritura")
+
+    def validate_fechaminuta(self, value):
+        return _normalize_kardex_date_string(value, "fechaminuta")
 
     def get_usuario(self, obj):
         usuarios_map = self.context.get("usuarios_map", {})

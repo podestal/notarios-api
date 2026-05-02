@@ -1754,6 +1754,13 @@ class TemplateManager:
 
     def __init__(self):
         self.storage_backend = get_document_storage_backend()
+        self.missing_template_message = (
+            "Esa plantilla no cuenta con un documento. Por favor, actualice su plantilla."
+        )
+        self.missing_document_message = (
+            "Ese documento no existe en el almacenamiento. "
+            "Por favor, genere nuevamente el documento o actualice su plantilla."
+        )
 
     def get_template_from_r2(self, template_id, filename):
         """
@@ -1766,6 +1773,9 @@ class TemplateManager:
         try:
             template_bytes = self.storage_backend.read_bytes(object_key)
             return template_bytes
+        except FileNotFoundError:
+            print(f"ERROR: Plantilla no encontrada en storage: {object_key}")
+            raise ValueError(self.missing_template_message)
         except Exception as e:
             print(f"ERROR: Failed to download template from R2: {e}")
             raise
@@ -1825,10 +1835,12 @@ class TemplateManager:
             print(f"DEBUG: Downloaded document from R2: {len(doc_bytes)} bytes")
             
             return doc_bytes
-            
+        except FileNotFoundError:
+            print(f"ERROR: Documento no encontrado en storage: {object_key}")
+            raise ValueError(self.missing_document_message)
         except Exception as e:
             print(f"ERROR: No se pudo descargar el documento de R2: {e}")
-            return None
+            raise
     
     def update_document_escrituracion(self, kardex, escrituracion_data, placeholder_processor):
         """
@@ -1847,8 +1859,6 @@ class TemplateManager:
         """
         # Download existing document from R2
         doc_bytes = self.get_document_from_r2(kardex)
-        if not doc_bytes:
-            raise ValueError(f"El documento __PROY__{kardex}.docx no existe. Debe generar el documento antes de actualizarlo.")
         
         # Load document
         buffer = io.BytesIO(doc_bytes)

@@ -3,6 +3,7 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import IO
+from botocore.exceptions import ClientError
 
 from .storage import (
     get_r2_bucket,
@@ -42,7 +43,13 @@ class R2StorageBackend(DocumentStorageBackend):
 
     def read_bytes(self, object_key: str) -> bytes:
         s3 = get_s3_client()
-        resp = s3.get_object(Bucket=get_r2_bucket(), Key=object_key)
+        try:
+            resp = s3.get_object(Bucket=get_r2_bucket(), Key=object_key)
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in ("404", "NoSuchKey", "NotFound"):
+                raise FileNotFoundError(f"Object not found: {object_key}") from e
+            raise
         return resp["Body"].read()
 
     def write_bytes(self, object_key: str, data: bytes) -> None:
