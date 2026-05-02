@@ -119,6 +119,43 @@ def _rewrite_encontraba_solicitante_preserving_format(document, replacement: str
             break
 
 
+def _find_corroborado_testigo_span(full: str) -> Optional[tuple]:
+    """Span [start, end) after '… CORROBORADO POR:' up to 'QUIEN INTERVIENE' (testigo a ruego line)."""
+    up = full.upper()
+    m = re.search(r'(?:CORRO+BORADO|COROBORADO)\s+POR\s*:', up)
+    if not m:
+        return None
+    j0 = m.end()
+    while j0 < len(full) and full[j0] in ' \t\n\r\f\v\u00a0\u200b':
+        j0 += 1
+    token = 'QUIEN INTERVIENE'
+    i_q = up.find(token, j0)
+    if i_q < 0:
+        return None
+    if i_q <= j0:
+        return None
+    return (j0, i_q)
+
+
+def _rewrite_corroborado_testigo_preserving_format(document, replacement: str) -> None:
+    """Replace glued testigo-a-ruego placeholders with comma+space separated text (preserves runs)."""
+    repl = (replacement or '').strip()
+    if not repl:
+        return
+    for paragraph in _iter_cert_domiciliario_paragraphs(document):
+        full = _paragraph_text_from_runs(paragraph)
+        upf = full.upper()
+        if 'QUIEN INTERVIENE' not in upf or 'POR:' not in upf:
+            continue
+        span = _find_corroborado_testigo_span(full)
+        if not span:
+            continue
+        start, end = span
+        insert = repl if repl.endswith((' ', '\t')) else repl + ' '
+        if _replace_span_preserving_runs(paragraph, start, end, insert):
+            break
+
+
 class CertDomiciliariosDocumentService(BaseR2DocumentService):
     """
     Service to generate and retrieve Certificación/Constatación Domiciliaria documents.
@@ -262,15 +299,35 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                 context['DATOS_TESTIGO'] = ''
 
             # Testigo aliases matching <I_...> tags in legacy template
-            context['I_NOM'] = context.get('NOM_TESTIGO', '')
+            nom_t = (context.get('NOM_TESTIGO') or '').strip()
+            tip_t = (context.get('TIPDOC_TESTIGO') or '').strip()
+            num_t = (context.get('NUMDOC_TESTIGO') or '').strip()
+            ubi_t = (context.get('UBIGEO_TESTIGO') or '').strip()
+            rog_t = 'QUIEN INTERVIENE EN CALIDAD DE TESTIGO A RUEGO'
+
+            context['I_NOM'] = nom_t
             context['I_NACIONALIDAD'] = ''
-            context['I_DOC'] = 'IDENTIFICADO CON'
-            context['DOC_I'] = f"{context.get('TIPDOC_TESTIGO', '')} N°".strip()
-            context['I_IDE'] = context.get('NUMDOC_TESTIGO', '')
+            # Trailing space avoids "CONDNI" when template glues {{I_DOC}}{{DOC_I}}
+            context['I_DOC'] = 'IDENTIFICADO CON '
+            context['DOC_I'] = f'{tip_t} N°'.strip() if tip_t else 'N°'
+            context['I_IDE'] = num_t
             context['I_OCUPACION'] = ''
             context['I_ESTADO_CIVIL'] = ''
-            context['I_DOMICILIO'] = (f"CON DOMICILIO EN {context.get('UBIGEO_TESTIGO', '')}").strip()
-            context['I_ROGADO'] = 'QUIEN INTERVIENE EN CALIDAD DE TESTIGO A RUEGO'
+            context['I_DOMICILIO'] = (f'CON DOMICILIO EN {ubi_t}').strip() if ubi_t else ''
+            context['I_ROGADO'] = rog_t
+
+            # One placeholder for updated templates; post-render uses clause without rog phrase
+            context['I_CORROBORADO_CLAUSE'] = ''
+            context['I_DESCRIPCION_LINEA'] = ''
+            if nom_t:
+                doc_bits = f'{tip_t} N°{num_t}'.strip() if tip_t else f'N°{num_t}'.strip()
+                ident = f'IDENTIFICADO CON {doc_bits}'.replace('  ', ' ').strip()
+                dom_line = (f'CON DOMICILIO EN {ubi_t}').strip() if ubi_t else ''
+                parts_c = [nom_t, ident]
+                if dom_line:
+                    parts_c.append(dom_line)
+                context['I_CORROBORADO_CLAUSE'] = ', '.join(parts_c) + ', '
+                context['I_DESCRIPCION_LINEA'] = ', '.join(parts_c + [rog_t])
 
             # Date alias for template expecting fec_letras_completa
             context['fec_letras_completa'] = context.get('FECHA_INGRESO_LETRAS', '')
@@ -322,6 +379,9 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
             doc.render(context)
             _rewrite_encontraba_solicitante_preserving_format(
                 doc, context.get('P_DESCRIPCION_CLIENTE_ACTO') or ''
+            )
+            _rewrite_corroborado_testigo_preserving_format(
+                doc, context.get('I_CORROBORADO_CLAUSE') or ''
             )
 
             buffer = io.BytesIO()
