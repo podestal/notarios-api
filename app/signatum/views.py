@@ -26,7 +26,7 @@ class SerieNotarialViewSet(viewsets.ModelViewSet):
         qs = self.get_queryset()
         idtipkar = request.query_params.get("idtipkar")
         if idtipkar:
-            qs = qs.filter(idtipkar=idtipkar)
+            qs = qs.filter(idtipkar=idtipkar, activo=True)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
