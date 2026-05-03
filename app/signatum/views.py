@@ -134,21 +134,25 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
         return (number + 1, 0)
 
     def _active_series_ranges(self, idtipkar: int):
-        ranges = []
-        series_qs = models.SerieNotarial.objects.filter(idtipkar=idtipkar, activo=True).order_by(
-            "created_at", "id"
+        """
+        For reservations, only the latest active purchased range applies (not a merge of all).
+        Latest = newest created_at, then highest id.
+        """
+        serie = (
+            models.SerieNotarial.objects.filter(idtipkar=idtipkar, activo=True)
+            .order_by("-created_at", "-id")
+            .first()
         )
-        for serie in series_qs:
-            ini = self._paper_num_side(serie.papel_ini)
-            fin = self._paper_num_side(serie.papel_fin)
-            if not ini or not fin:
-                continue
-            start_num = ini[0]
-            end_num = fin[0]
-            if end_num < start_num:
-                continue
-            ranges.append((start_num, end_num))
-        return ranges
+        if not serie:
+            return []
+        ini = self._paper_num_side(serie.papel_ini)
+        fin = self._paper_num_side(serie.papel_fin)
+        if not ini or not fin:
+            return []
+        start_num, end_num = ini[0], fin[0]
+        if end_num < start_num:
+            return []
+        return [(start_num, end_num)]
 
     def _proposed_papel_from_series(self, idtipkar: int):
         """
