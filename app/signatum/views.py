@@ -7,6 +7,8 @@ from rest_framework import status, viewsets
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+
+
 from . import correlatives, models, serializers
 
 
@@ -18,6 +20,15 @@ class NotarizationViewSet(viewsets.ModelViewSet):
 class SerieNotarialViewSet(viewsets.ModelViewSet):
     queryset = models.SerieNotarial.objects.all()
     serializer_class = serializers.SerieNotarialSerializer
+
+    def list(self, request, *args, **kwargs):
+        """Return series notarial; optional query ``idtipkar`` filters by tipo de kardex."""
+        qs = self.get_queryset()
+        idtipkar = request.query_params.get("idtipkar")
+        if idtipkar:
+            qs = qs.filter(idtipkar=idtipkar)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
 
 class NotarizationReservationViewSet(viewsets.ModelViewSet):
