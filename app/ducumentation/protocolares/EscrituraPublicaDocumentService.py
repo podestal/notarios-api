@@ -211,7 +211,7 @@ class EscrituraDocumentService:
                 text = text.rstrip(" ,;.") + ", "
             elif contractor_origen_fields.match(key) and text:
                 text = (
-                    "DECLARA QUE PARA ADQUISICION DEL PRESENTE BIEN MUEBLE "
+                    "DECLARA QUE EL DINERO PARA LA ADQUISICION DEL PRESENTE BIEN MUEBLE "
                     f"ES PROVENIENTE DE {text.rstrip(' ,;.')}"
                 )
             elif contractor_comma_space_estado_civil_fields.match(key) and text:
