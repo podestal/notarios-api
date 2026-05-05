@@ -162,6 +162,7 @@ class KardexSerializer(serializers.ModelSerializer):
             "estado_sisgen",
             "fechaminuta",
             "nc",
+            "fechaconclusion",
         ]
 
     def validate_fechaingreso(self, value):
