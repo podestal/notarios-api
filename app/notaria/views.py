@@ -115,6 +115,44 @@ def _reset_sisgen_for_kardex(kardex_code):
     )
 
 
+def _refresh_kardex_fechaconclusion_from_contratantes(kardex_code):
+    """
+    Set kardex.fechaconclusion to the most recent contratante.fechafirma for this kardex.
+    Supports both DD/MM/YYYY and YYYY-MM-DD stored date strings.
+    """
+    if not kardex_code:
+        return
+
+    latest_dt = None
+    latest_raw = ""
+    fecha_rows = models.Contratantes.objects.filter(kardex=kardex_code).values_list(
+        "fechafirma", flat=True
+    )
+
+    for fecha in fecha_rows:
+        raw = str(fecha or "").strip()
+        if not raw:
+            continue
+        parsed = None
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            continue
+        if latest_dt is None or parsed > latest_dt:
+            latest_dt = parsed
+            latest_raw = raw
+
+    if latest_dt is None:
+        models.Kardex.objects.filter(kardex=kardex_code).update(fechaconclusion="")
+        return
+
+    models.Kardex.objects.filter(kardex=kardex_code).update(fechaconclusion=latest_raw)
+
+
 class UsuariosViewSet(ModelViewSet):
     """
     ViewSet for the Usuarios model.
@@ -2297,6 +2335,7 @@ class ContratantesViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         _reset_sisgen_for_kardex(instance.kardex)
+        _refresh_kardex_fechaconclusion_from_contratantes(instance.kardex)
         return Response(serializer.data)
 
     @transaction.atomic
