@@ -107,6 +107,14 @@ def _normalize_condicion_entries(condicion_value):
     return normalized
 
 
+def _reset_sisgen_for_kardex(kardex_code):
+    if not kardex_code:
+        return
+    models.Kardex.objects.filter(kardex=kardex_code).exclude(estado_sisgen=0).update(
+        estado_sisgen=0
+    )
+
+
 class UsuariosViewSet(ModelViewSet):
     """
     ViewSet for the Usuarios model.
@@ -357,12 +365,16 @@ class KardexViewSet(ModelViewSet):
                 )
 
         response = super().update(request, *args, **kwargs)
+        kardex_instance = self.get_object()
+        _reset_sisgen_for_kardex(kardex_instance.kardex)
+        if isinstance(getattr(response, "data", None), dict):
+            response.data["estado_sisgen"] = 0
 
         if rid is not None:
             from signatum.services import finalize_notarization_from_reservation
 
             finalize_notarization_from_reservation(
-                kardex_instance=self.get_object(),
+                kardex_instance=kardex_instance,
                 reservation_id=rid,
                 user=request.user,
             )
@@ -2284,6 +2296,7 @@ class ContratantesViewSet(ModelViewSet):
         serializer = self.get_serializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        _reset_sisgen_for_kardex(instance.kardex)
         return Response(serializer.data)
 
     @transaction.atomic
@@ -2303,6 +2316,7 @@ class ContratantesViewSet(ModelViewSet):
         models.Contratantesxacto.objects.filter(idcontratante=instance.idcontratante).delete()
 
         instance.delete()
+        _reset_sisgen_for_kardex(instance.kardex)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
@@ -2421,6 +2435,7 @@ class ContratantesViewSet(ModelViewSet):
                 cliente2_serializer = serializers.Cliente2Serializer(data=cliente2_data)
                 cliente2_serializer.is_valid(raise_exception=True)
                 cliente2_serializer.save()
+                _reset_sisgen_for_kardex(data.get("kardex"))
 
                 # Return created contratante
                 transaction.savepoint_commit(sid)
@@ -2490,6 +2505,27 @@ class ContratantesxactoViewSet(ModelViewSet):
     queryset = models.Contratantesxacto.objects.all()
     serializer_class = serializers.ContratantesxactoSerializer
     pagination_class = pagination.KardexPagination
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        _reset_sisgen_for_kardex(instance.kardex)
+        return response
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        kardex_code = ""
+        if isinstance(getattr(response, "data", None), dict):
+            kardex_code = response.data.get("kardex")
+        _reset_sisgen_for_kardex(kardex_code)
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        kardex_code = instance.kardex
+        response = super().destroy(request, *args, **kwargs)
+        _reset_sisgen_for_kardex(kardex_code)
+        return response
 
     @action(detail=False, methods=["get"])
     def by_kardex(self, request):
@@ -2693,7 +2729,9 @@ class ClienteViewSet(ModelViewSet):
                     conyuge_client.idestcivil = idestcivil
                     conyuge_client.save()
 
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        _reset_sisgen_for_kardex(instance.kardex)
+        return response
 
 
 class Cliente2ViewSet(ModelViewSet):
@@ -2967,6 +3005,7 @@ class PatrimonialViewSet(ModelViewSet):
 
         # Remove the Patrimonial record
         instance.delete()
+        _reset_sisgen_for_kardex(kardex)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -2990,6 +3029,7 @@ class PatrimonialViewSet(ModelViewSet):
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
+            _reset_sisgen_for_kardex(serializer.instance.kardex)
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -3022,6 +3062,25 @@ class DetalleVehicularViewSet(ModelViewSet):
     queryset = models.Detallevehicular.objects.all()
     serializer_class = serializers.DetallevehicularSerializer
     pagination_class = pagination.KardexPagination
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if isinstance(getattr(response, "data", None), dict):
+            _reset_sisgen_for_kardex(response.data.get("kardex"))
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        _reset_sisgen_for_kardex(instance.kardex)
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        kardex_code = instance.kardex
+        response = super().destroy(request, *args, **kwargs)
+        _reset_sisgen_for_kardex(kardex_code)
+        return response
 
     @action(detail=False, methods=["get"])
     def by_kardex(self, request):
@@ -3070,6 +3129,25 @@ class DetallebienesViewSet(ModelViewSet):
     serializer_class = serializers.DetallebienesSerializer
     pagination_class = pagination.KardexPagination
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if isinstance(getattr(response, "data", None), dict):
+            _reset_sisgen_for_kardex(response.data.get("kardex"))
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        _reset_sisgen_for_kardex(instance.kardex)
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        kardex_code = instance.kardex
+        response = super().destroy(request, *args, **kwargs)
+        _reset_sisgen_for_kardex(kardex_code)
+        return response
+
     @action(detail=False, methods=["get"])
     def by_kardex(self, request):
         """
@@ -3096,6 +3174,25 @@ class PrediosViewSet(ModelViewSet):
     serializer_class = serializers.PrediosSerializer
     pagination_class = pagination.KardexPagination
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if isinstance(getattr(response, "data", None), dict):
+            _reset_sisgen_for_kardex(response.data.get("kardex"))
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        _reset_sisgen_for_kardex(instance.kardex)
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        kardex_code = instance.kardex
+        response = super().destroy(request, *args, **kwargs)
+        _reset_sisgen_for_kardex(kardex_code)
+        return response
+
     @action(detail=False, methods=["get"])
     def by_kardex(self, request):
         """
@@ -3121,6 +3218,25 @@ class DetallemediopagoViewSet(ModelViewSet):
     queryset = models.Detallemediopago.objects.all()
     serializer_class = serializers.DetallemediopagoSerializer
     pagination_class = pagination.KardexPagination
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if isinstance(getattr(response, "data", None), dict):
+            _reset_sisgen_for_kardex(response.data.get("kardex"))
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        _reset_sisgen_for_kardex(instance.kardex)
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        kardex_code = instance.kardex
+        response = super().destroy(request, *args, **kwargs)
+        _reset_sisgen_for_kardex(kardex_code)
+        return response
 
     @action(detail=False, methods=["get"])
     def by_kardex(self, request):
