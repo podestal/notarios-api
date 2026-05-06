@@ -17,6 +17,8 @@ from .utils.exceptions import DocumentSearchException
 from .services.book_search_service import BookSearchService
 from rest_framework.decorators import api_view
 import logging
+from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +167,16 @@ class SendToSISGENView(APIView):
 
     permission_classes = [IsAuthenticated, IsSuperuser]
 
+    @staticmethod
+    def _write_debug_xml(content: str, filename: str) -> None:
+        """
+        Persist SISGEN debug XML files in app/sisgen_xml_debug.
+        We keep timestamped filenames to avoid overwriting previous sends.
+        """
+        debug_dir = Path(__file__).resolve().parent / "sisgen_xml_debug"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        (debug_dir / filename).write_text(content or "", encoding="utf-8")
+
     def post(self, request):
         try:
             # Get parameters
@@ -203,6 +215,8 @@ class SendToSISGENView(APIView):
             # Process in batches (even for single document)
             for i in range(0, len(documents), batch_size):
                 batch = documents[i:i + batch_size]
+                batch_num = (i // batch_size) + 1
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                 try:
                     # Process batch
                     result = data_processor.process_documents_batch(batch)
@@ -210,15 +224,17 @@ class SendToSISGENView(APIView):
                     # Generate XML
                     xml_content = xml_generator.generate_document_xml(result['documents'])
                     if not xml_content:
-                        print(f'DEBUG: Failed to generate XML for batch {i//batch_size + 1}')
+                        print(f'DEBUG: Failed to generate XML for batch {batch_num}')
                         continue
+
+                    # Always persist outgoing XML for troubleshooting
+                    self._write_debug_xml(xml_content, f"request_batch_{batch_num}_{ts}.xml")
 
                     # Send to SISGEN
                     response = soap_client.send_documents(xml_content)
                     
-                    # Write response to file (keeping this for debugging)
-                    with open(f'response_batch_{i//batch_size + 1}.xml', 'w') as f:
-                        f.write(response.text)
+                    # Always persist SISGEN response XML for troubleshooting
+                    self._write_debug_xml(response.text, f"response_batch_{batch_num}_{ts}.xml")
                     
                     # Process SISGEN response
                     data_processor.update_document_statuses(response.text)
@@ -239,7 +255,7 @@ class SendToSISGENView(APIView):
                     combined_result['personas'].extend(result.get('personas', []))
                     
                 except Exception as e:
-                    print(f'DEBUG: Error processing batch {i//batch_size + 1}:', str(e))
+                    print(f'DEBUG: Error processing batch {batch_num}:', str(e))
                     # Continue with next batch instead of failing completely
                     continue
 
