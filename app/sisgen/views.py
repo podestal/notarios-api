@@ -177,6 +177,31 @@ class SendToSISGENView(APIView):
         debug_dir.mkdir(parents=True, exist_ok=True)
         (debug_dir / filename).write_text(content or "", encoding="utf-8")
 
+    @staticmethod
+    def _build_user_friendly_errors(batch_rows):
+        """
+        Convert SISGEN technical rows into user-friendly messages by kardex.
+        """
+        friendly = []
+        for row in batch_rows or []:
+            status_txt = (row.get("status") or "").upper()
+            if status_txt not in {"FALLIDO", "CON OBSERVACIONES"}:
+                continue
+            kardex = row.get("kardex") or ""
+            contrato = row.get("contrato") or ""
+            detalle = row.get("mensaje") or "SISGEN devolvio error sin detalle."
+            readable_status = "FALLIDO" if status_txt == "FALLIDO" else "OBSERVADO"
+            friendly.append(
+                {
+                    "kardex": kardex,
+                    "estado": readable_status,
+                    "contrato": contrato,
+                    "mensaje_usuario": f"{kardex}: {detalle}",
+                    "mensaje_tecnico": detalle,
+                }
+            )
+        return friendly
+
     def post(self, request):
         try:
             # Get parameters
@@ -204,6 +229,7 @@ class SendToSISGENView(APIView):
                 'messageDescription': '',
                 'data': [],
                 'errores': [],
+                'errores_sisgen_usuario': [],
                 'observaciones': [],
                 'personas': [],
                 'guardados': 0,
@@ -251,6 +277,9 @@ class SendToSISGENView(APIView):
                     
                     # Add any errors/observations from the batch
                     combined_result['errores'].extend(result.get('errores', []))
+                    combined_result['errores_sisgen_usuario'].extend(
+                        self._build_user_friendly_errors(batch_status.get('data', []))
+                    )
                     combined_result['observaciones'].extend(result.get('observaciones', []))
                     combined_result['personas'].extend(result.get('personas', []))
                     

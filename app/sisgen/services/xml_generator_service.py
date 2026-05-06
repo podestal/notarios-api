@@ -285,8 +285,13 @@ class SISGENXmlGenerator:
                         
                         if person.get("razonsocial"):
                             xml += f'\t\t\t\t<RazonSocial>{person.get("razonsocial", "")}</RazonSocial>\n'
-                        if person.get("contacempresa"):
-                            xml += f'\t\t\t\t<OtraActividad>{person.get("contacempresa", "")}</OtraActividad>\n'
+                        # SISGEN validates ObjetoSocial as mandatory for PersonaJuridica (RO06).
+                        # Prefer actmunicipal as main business/object field, fallback to contacempresa.
+                        objeto_social = (person.get("actmunicipal") or person.get("contacempresa") or "").strip()
+                        if objeto_social:
+                            xml += f'\t\t\t\t<ObjetoSocial>{objeto_social}</ObjetoSocial>\n'
+                            # Keep legacy field for backward compatibility with older templates/consumers.
+                            xml += f'\t\t\t\t<OtraActividad>{objeto_social}</OtraActividad>\n'
                         
                         # Add address if all required fields are present
                         if person.get("idubigeo") and person.get("domfiscal"):
