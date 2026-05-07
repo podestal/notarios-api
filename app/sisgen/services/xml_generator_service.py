@@ -6,7 +6,7 @@ import html
 import logging
 from typing import Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape
-from ..utils.constants import APP_CONSTANTS
+from ..utils.constants import APP_CONSTANTS, TIPO_KARDEX_SISGEN_MAPPING
 from datetime import datetime
 from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator
@@ -211,6 +211,21 @@ class SISGENXmlGenerator:
         if joined:
             return joined
         return (person.get("nombre") or "").strip()
+
+    def _tipo_instrumento_sisgen(self, doc: Dict) -> str:
+        """
+        SISGEN <TipoInstrumento>: E/C/V/G/T from kardex.idtipkar (legacy PHP tipokardex).
+        Was hardcoded E — broke transferencias vehiculares (idtipkar 3 → V).
+        """
+        raw = doc.get("idtipkar")
+        if raw is None or raw == "":
+            return "E"
+        try:
+            key = int(raw)
+        except (TypeError, ValueError):
+            self.logger.warning("idtipkar no numérico %r, usando E", raw)
+            return "E"
+        return TIPO_KARDEX_SISGEN_MAPPING.get(key, "E")
 
     def _clean_folio(self, folio: str) -> str:
         """Clean folio number by removing non-numeric characters"""
@@ -481,7 +496,7 @@ class SISGENXmlGenerator:
                 xml += f'\t\t<CodNotaria>{cod_notaria}</CodNotaria>\n'
                 xml += f'\t\t<NumKardex>{doc.get("kardex", "")}</NumKardex>\n'
                 xml += f'\t\t<FechaIngreso>{self._format_date(doc.get("fechaingreso", ""))}</FechaIngreso>\n'
-                xml += f'\t\t<TipoInstrumento>E</TipoInstrumento>\n'
+                xml += f'\t\t<TipoInstrumento>{self._tipo_instrumento_sisgen(doc)}</TipoInstrumento>\n'
                 xml += f'\t\t<NumDocumento>{doc.get("numescritura", "")}</NumDocumento>\n'
                 xml += f'\t\t<FechaInstrumento>{doc.get("fechaescritura", "")}</FechaInstrumento>\n'
                 xml += f'\t\t<NumFolios>{self._calculate_num_folios(doc)}</NumFolios>\n'
