@@ -2,6 +2,7 @@
 This module contains the XML generator service for the sisgen service.
 """
 
+import html
 import logging
 from typing import Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape
@@ -26,20 +27,60 @@ class SISGENXmlGenerator:
     def __init__(self):
         self.logger = logger
 
-    def _xml_pcdata(self, value: Optional[str]) -> str:
-        """Escape text for XML element character content."""
-        if value is None:
-            return ""
-        return escape(str(value).strip())
-
-    def _xml_pcdata_trunc(self, value: Optional[str], max_len: int) -> str:
-        """Trim, truncate to max_len codepoints, then XML-escape."""
+    def _unescape_db_markup(self, value: Optional[str]) -> str:
+        """
+        BD/UI a veces guardan entidades ya escapadas (&amp;), que al volver a
+        escapar quedan &amp;amp; en el XML y pueden romper validadores.
+        """
         if value is None:
             return ""
         s = str(value).strip()
+        for _ in range(6):
+            t = html.unescape(s)
+            if t == s:
+                break
+            s = t
+        return s.strip()
+
+    def _xml_pcdata(self, value: Optional[str]) -> str:
+        """Escape text for XML element character content."""
+        return escape(self._unescape_db_markup(value))
+
+    def _xml_pcdata_trunc(self, value: Optional[str], max_len: int) -> str:
+        """Trim, truncate to max_len codepoints, then XML-escape."""
+        s = self._unescape_db_markup(value)
         if max_len >= 0 and len(s) > max_len:
             s = s[:max_len]
         return escape(s)
+
+    def _normalize_sector_economico_token(self, raw: Optional[str]) -> str:
+        """
+        Valor para <SectorEconomico>:
+        - Subclase SUNAT numérica: 3–6 dígitos (ej. 4923).
+        - Tabla local `ciiu.coddivi`: una letra A–Q (ej. H=hoteles, I=transporte).
+        """
+        t = self._unescape_db_markup(raw).strip()
+        if not t:
+            return ""
+        if t.isdigit() and 3 <= len(t) <= 6:
+            return t
+        if len(t) == 1 and t.isalpha():
+            return t.upper()
+        return ""
+
+    def _persona_juridica_sector_economico(self, person: Dict) -> str:
+        """
+        xml_kardex.php emite <SectorEconomico> desde columna `ciuu`.
+
+        En cliente2 muchos guardan el sector en `actmunicipal`: puede ser la letra
+        `coddivi` de la tabla `ciiu`, o un código numérico SUNAT (véase serializer
+        actmunicipal ↔ ciiu). Ese valor va a SectorEconomico, no a OtraActividad.
+        """
+        for key in ("ciuu", "ciuu_empr"):
+            v = self._unescape_db_markup(person.get(key)).strip()
+            if v:
+                return v
+        return self._normalize_sector_economico_token(person.get("actmunicipal"))
 
     def _email_ok(self, addr: str) -> bool:
         if not addr or not addr.strip():
@@ -58,7 +99,11 @@ class SISGENXmlGenerator:
         (p. ej. "H") y el texto útil está en `contacempresa`. El patrón antiguo
         `(actmunicipal or contacempresa)` en Python tomaba "H" (truthy) y nunca
         leía contacempresa → RO06. Aquí se exige longitud mínima en actmunicipal.
-        También se filtra `objeto` corto por colisiones en JOIN (cx.*, cl.*).
+
+        Si `actmunicipal` es **solo una letra** (tabla `ciiu.coddivi`) o **solo dígitos**
+        (subclase SUNAT), va a <SectorEconomico>, no aquí.
+
+        RO06 si falta sector u objeto social descriptivo en <OtraActividad>.
         """
         # Texto largo típico de actividad / objeto (licencia municipal, etc.)
         min_descriptive = 3
@@ -69,13 +114,15 @@ class SISGENXmlGenerator:
             raw = person.get(key)
             if raw is None:
                 return ""
-            return str(raw).strip()
+            return self._unescape_db_markup(raw)
 
-        # 1) actmunicipal vs contacempresa (evitar código de 1 letra en actmunicipal)
         actmun = chunk("actmunicipal")
         contem = chunk("contacempresa")
-        if len(actmun) >= min_descriptive:
-            return actmun
+
+        # 1) actmunicipal reservado para <SectorEconomico> (letra A-Q o dígitos)
+        if not self._normalize_sector_economico_token(actmun):
+            if len(actmun) >= min_descriptive:
+                return actmun
         if len(contem) >= min_descriptive:
             return contem
 
@@ -106,6 +153,8 @@ class SISGENXmlGenerator:
             s = chunk(key)
             if not s or s in seen:
                 continue
+            if key == "actmunicipal" and self._normalize_sector_economico_token(s):
+                continue
             if key in ("objeto", "objsocial", "objetosocial") and len(s) < min_objeto_field:
                 continue
             if len(s) < min_descriptive:
@@ -119,6 +168,8 @@ class SISGENXmlGenerator:
         # 4) Último recurso: no enviar un solo carácter (RO06); mínimo descriptivo
         for key in merge_keys:
             s = chunk(key)
+            if key == "actmunicipal" and self._normalize_sector_economico_token(s):
+                continue
             if len(s) >= min_descriptive:
                 self.logger.warning(
                     "Persona jurídica id=%s: usando OtraActividad desde %s (revisar calidad); "
@@ -129,8 +180,9 @@ class SISGENXmlGenerator:
                 return s
 
         self.logger.error(
-            "Persona jurídica id=%s sin actmunicipal/contacempresa/objeto válido "
-            "para <OtraActividad> (RO06). Razón social=%r",
+            "Persona jurídica id=%s sin texto válido para <OtraActividad> "
+            "(y revise CIIU en actmunicipal/ciuu para <SectorEconomico>, RO06). "
+            "Razón social=%r",
             person.get("idcliente"),
             (person.get("razonsocial") or "")[:80],
         )
@@ -528,10 +580,18 @@ class SISGENXmlGenerator:
 
                         if person.get("razonsocial"):
                             xml += f'\t\t\t\t<RazonSocial>{self._xml_pcdata_trunc(person.get("razonsocial"), self.JUR_RAZON_SOCIAL_MAX)}</RazonSocial>\n'
-                        # Sector económico (CIIU) — mismo orden que xml_kardex.php
-                        ciuu_raw = person.get("ciuu") or person.get("ciuu_empr")
-                        if ciuu_raw not in (None, ""):
-                            xml += f'\t\t\t\t<SectorEconomico>{escape(str(ciuu_raw).strip())}</SectorEconomico>\n'
+                        # Sector económico: ciuu explícito, o actmunicipal = coddivi (A-Q) / dígitos SUNAT
+                        sector_eco = self._persona_juridica_sector_economico(person)
+                        if sector_eco:
+                            xml += f'\t\t\t\t<SectorEconomico>{escape(sector_eco)}</SectorEconomico>\n'
+                        else:
+                            self.logger.warning(
+                                "Persona jurídica id=%s (%s): sin valor para "
+                                "<SectorEconomico>; cargue ciuu o actmunicipal como "
+                                "coddivi (una letra, tabla ciiu) o código numérico SUNAT.",
+                                person.get("idcliente"),
+                                (person.get("razonsocial") or "")[:60],
+                            )
                         otra_actividad = self._persona_juridica_otra_actividad_text(person)
                         if otra_actividad:
                             xml += f'\t\t\t\t<OtraActividad>{self._xml_pcdata_trunc(otra_actividad, self.JUR_OTRA_ACTIVIDAD_MAX)}</OtraActividad>\n'
