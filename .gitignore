@@ -18,4 +18,10 @@ response-search.xml
 response.xml
 textparaenviar-uno.xml
 response_batch_*.xml
+textparaenviar*.xml
+textconerror*.xml
+erroresSISGEN*.xml
+request_batch_*.xml
+response_batch_*.xml
+app/sisgen/sisgen_xml_debug/
 *.pyc
