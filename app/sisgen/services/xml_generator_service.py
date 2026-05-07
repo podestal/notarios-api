@@ -4,16 +4,96 @@ This module contains the XML generator service for the sisgen service.
 
 import logging
 from typing import Dict, List, Optional, Tuple
+from xml.sax.saxutils import escape
 from ..utils.constants import APP_CONSTANTS
 from datetime import datetime
+from django.core.exceptions import ValidationError
+from django.core.validators import EmailValidator
 from django.db import connection
 
 logger = logging.getLogger(__name__)
 
 class SISGENXmlGenerator:
+    """Lengths aligned with legacy xml_kardex.php (mb_substr limits)."""
+    JUR_RAZON_SOCIAL_MAX = 120
+    JUR_OTRA_ACTIVIDAD_MAX = 50
+    JUR_TELEFONO_MAX = 20
+    JUR_PARTIDA_MAX = 12
+    JUR_RESTO_DIRECCION_MAX = 255
+
+    _email_validator = EmailValidator()
+
     def __init__(self):
         self.logger = logger
-    
+
+    def _xml_pcdata(self, value: Optional[str]) -> str:
+        """Escape text for XML element character content."""
+        if value is None:
+            return ""
+        return escape(str(value).strip())
+
+    def _xml_pcdata_trunc(self, value: Optional[str], max_len: int) -> str:
+        """Trim, truncate to max_len codepoints, then XML-escape."""
+        if value is None:
+            return ""
+        s = str(value).strip()
+        if max_len >= 0 and len(s) > max_len:
+            s = s[:max_len]
+        return escape(s)
+
+    def _email_ok(self, addr: str) -> bool:
+        if not addr or not addr.strip():
+            return False
+        try:
+            self._email_validator(addr.strip())
+            return True
+        except ValidationError:
+            return False
+
+    def _persona_juridica_otra_actividad_text(self, person: Dict) -> str:
+        """
+        xml_kardex.php maps columna `objeto` → <OtraActividad> (not <ObjetoSocial>).
+        Fallbacks cover cliente2-only payloads sin vista sisgen_temp_j.
+        """
+        for key in (
+            "objeto",
+            "actmunicipal",
+            "contacempresa",
+            "objsocial",
+            "objetosocial",
+        ):
+            raw = person.get(key)
+            if raw is None:
+                continue
+            s = str(raw).strip()
+            if s:
+                return s
+        return ""
+
+    def _persona_juridica_ubigeo_parts(self, person: Dict) -> Tuple[str, str, str]:
+        """Prefer departamento/provincia/distrito del vista PHP; si no, partir idubigeo."""
+        dep = person.get("departamento")
+        prov = person.get("provincia")
+        dist = person.get("distrito")
+        if dep not in (None, "") and prov not in (None, "") and dist not in (None, ""):
+            return str(dep).strip(), str(prov).strip(), str(dist).strip()
+        ubigeo = (person.get("idubigeo") or "").strip()
+        if len(ubigeo) == 6:
+            return ubigeo[:2], ubigeo[2:4], ubigeo[4:]
+        return "", "", ""
+
+    def _persona_natural_nombre(self, person: Dict) -> str:
+        """
+        Nombre(s) de pila para <Nombre>. xml_kardex.php usa el campo `nom`
+        (primer + segundo nombre); antes solo enviábamos prinom.
+        """
+        p1 = (person.get("prinom") or "").strip()
+        p2 = (person.get("segnom") or "").strip()
+        joined = " ".join(x for x in (p1, p2) if x).strip()
+        if joined:
+            return joined
+        return (person.get("nombre") or "").strip()
+
     def _clean_folio(self, folio: str) -> str:
         """Clean folio number by removing non-numeric characters"""
         if not folio:
@@ -159,6 +239,92 @@ class SISGENXmlGenerator:
         
         return "001"  # Default if not found or error
 
+    def _cuantia_operacion_total(self, doc: Dict, participants: List[Dict]) -> float:
+        """
+        Monto total de la operación para <CuantiaOperacion> / <CuantiaPago>.
+
+        xml_kardex.php toma `patrimonial.importetrans` por acto, no la suma de todas
+        las filas de contratantesxacto. Sumar todos los `participants` duplica cuando
+        hay varias filas cx para el mismo kardex (ítems/condiciones) o cuando varios
+        roles llevan el mismo monto informado.
+        """
+        kardex = doc.get("kardex")
+        codactos = (doc.get("codactos") or "").strip()
+
+        if kardex:
+            variants = []
+            if len(codactos) >= 3:
+                p3 = codactos[:3]
+                variants.extend([p3, p3.zfill(6)])
+            if len(codactos) >= 6:
+                variants.append(codactos[:6])
+
+            try:
+                with connection.cursor() as cursor:
+                    for vid in variants:
+                        if not vid:
+                            continue
+                        cursor.execute(
+                            """
+                            SELECT importetrans FROM patrimonial
+                            WHERE kardex = %s AND TRIM(idtipoacto) = TRIM(%s)
+                            LIMIT 1
+                            """,
+                            [kardex, vid],
+                        )
+                        row = cursor.fetchone()
+                        if row and row[0] is not None:
+                            val = float(row[0])
+                            if val > 0:
+                                return val
+
+                    cursor.execute(
+                        """
+                        SELECT importetrans FROM patrimonial
+                        WHERE kardex = %s
+                        ORDER BY itemmp
+                        LIMIT 1
+                        """,
+                        [kardex],
+                    )
+                    row = cursor.fetchone()
+                    if row and row[0] is not None:
+                        val = float(row[0])
+                        if val > 0:
+                            self.logger.warning(
+                                "CuantiaOperacion: usando patrimonial sin coincidencia "
+                                "exacta idtipoacto para kardex=%s codactos=%s",
+                                kardex,
+                                codactos,
+                            )
+                            return val
+            except Exception as e:
+                self.logger.error("Error leyendo patrimonial para cuantía: %s", e)
+
+        # Una fila por combinación lógica en cx (reduce duplicados por JOIN repetido)
+        seen = set()
+        fallback = 0.0
+        for p in participants:
+            key = (
+                p.get("idcontratante"),
+                p.get("item"),
+                p.get("idcondicion"),
+                str(p.get("idtipoacto") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            fallback += self._safe_float(p.get("monto", "0.00"))
+
+        self.logger.warning(
+            "CuantiaOperacion sin patrimonial válido para kardex=%s; "
+            "suma deduplicada por (idcontratante, item, idcondicion, idtipoacto), "
+            "filas=%s",
+            kardex,
+            len(seen),
+        )
+        return fallback
+
     def generate_document_xml(self, documents: List[Dict]) -> Optional[str]:
         """
         Generate XML for SISGEN service.
@@ -229,8 +395,9 @@ class SISGENXmlGenerator:
                         xml += '\t\t\t\t</DocIdentificativo>\n'
                         xml += '\t\t\t</DocsIdentificativos>\n'
                         
-                        if person.get("prinom"):
-                            xml += f'\t\t\t\t<Nombre>{person.get("prinom", "")}</Nombre>\n'
+                        nombre_natural = self._persona_natural_nombre(person)
+                        if nombre_natural:
+                            xml += f'\t\t\t\t<Nombre>{self._xml_pcdata(nombre_natural)}</Nombre>\n'
                         if person.get("apepat"):
                             xml += f'\t\t\t\t<PrimerApellido>{person.get("apepat", "")}</PrimerApellido>\n'
                         if person.get("apemat"):
@@ -277,32 +444,59 @@ class SISGENXmlGenerator:
                         xml += '\t\t\t</DocsIdentificativos>\n'
                         
                         xml += '\t\t\t\t<RegistroFacultades>\n'
-                        if person.get("idsedereg"):
-                            xml += f'\t\t\t\t\t<SedeRegistral>{person.get("idsedereg", "")}</SedeRegistral>\n'
+                        # PHP: sedereg vacío o "00" no emite sede
+                        sedereg_raw = person.get("sedereg", person.get("idsedereg"))
+                        sedereg_s = (
+                            str(sedereg_raw).strip()
+                            if sedereg_raw is not None
+                            else ""
+                        )
+                        if sedereg_s and sedereg_s != "00":
+                            xml += f'\t\t\t\t\t<SedeRegistral>{escape(sedereg_s)}</SedeRegistral>\n'
                         if person.get("numpartida"):
-                            xml += f'\t\t\t\t\t<PartidaRegistral>{person.get("numpartida", "")}</PartidaRegistral>\n'
+                            partida = str(person.get("numpartida", "")).strip()[
+                                : self.JUR_PARTIDA_MAX
+                            ]
+                            xml += f'\t\t\t\t\t<PartidaRegistral>{escape(partida)}</PartidaRegistral>\n'
                         xml += '\t\t\t\t</RegistroFacultades>\n'
-                        
+
                         if person.get("razonsocial"):
-                            xml += f'\t\t\t\t<RazonSocial>{person.get("razonsocial", "")}</RazonSocial>\n'
-                        # SISGEN XSD expects OtraActividad (ObjetoSocial is not a valid tag here).
-                        # Use actmunicipal as primary source, fallback to contacempresa.
-                        otra_actividad = (person.get("actmunicipal") or person.get("contacempresa") or "").strip()
+                            xml += f'\t\t\t\t<RazonSocial>{self._xml_pcdata_trunc(person.get("razonsocial"), self.JUR_RAZON_SOCIAL_MAX)}</RazonSocial>\n'
+                        # Sector económico (CIIU) — mismo orden que xml_kardex.php
+                        ciuu_raw = person.get("ciuu") or person.get("ciuu_empr")
+                        if ciuu_raw not in (None, ""):
+                            xml += f'\t\t\t\t<SectorEconomico>{escape(str(ciuu_raw).strip())}</SectorEconomico>\n'
+                        otra_actividad = self._persona_juridica_otra_actividad_text(person)
                         if otra_actividad:
-                            xml += f'\t\t\t\t<OtraActividad>{otra_actividad}</OtraActividad>\n'
-                        
-                        # Add address if all required fields are present
-                        if person.get("idubigeo") and person.get("domfiscal"):
+                            xml += f'\t\t\t\t<OtraActividad>{self._xml_pcdata_trunc(otra_actividad, self.JUR_OTRA_ACTIVIDAD_MAX)}</OtraActividad>\n'
+                        correo_raw = (person.get("correoemp") or person.get("mailempresa") or "").strip()
+                        if correo_raw and self._email_ok(correo_raw):
+                            xml += f'\t\t\t\t<Correo>{escape(correo_raw)}</Correo>\n'
+                        telempresa = (person.get("telempresa") or "").strip()
+                        if telempresa:
+                            tel_s = telempresa[: self.JUR_TELEFONO_MAX]
+                            xml += f'\t\t\t\t<Telefono>{escape(tel_s)}</Telefono>\n'
+
+                        # Dirección fiscal — PHP omite bloque si idubigeo es 999999; sin ResidePeru en jurídica
+                        ubigeo_key = (person.get("idubigeo") or "").strip()
+                        if (
+                            ubigeo_key
+                            and ubigeo_key != "999999"
+                            and person.get("domfiscal")
+                        ):
+                            dep_u, prov_u, dist_u = self._persona_juridica_ubigeo_parts(
+                                person
+                            )
                             xml += '\t\t\t\t<Direccion>\n'
-                            xml += '\t\t\t\t\t<ResidePeru>1</ResidePeru>\n'
                             xml += '\t\t\t\t\t<PaisResidencia>PE</PaisResidencia>\n'
                             xml += '\t\t\t\t<DireccionNacional>\n'
-                            ubigeo = person.get("idubigeo", "")
-                            if len(ubigeo) == 6:
-                                xml += f'\t\t\t\t\t<CodDepartamento>{ubigeo[:2]}</CodDepartamento>\n'
-                                xml += f'\t\t\t\t\t<CodProvincia>{ubigeo[2:4]}</CodProvincia>\n'
-                                xml += f'\t\t\t\t\t<CodDistrito>{ubigeo[4:]}</CodDistrito>\n'
-                            xml += f'\t\t\t\t\t<RestoDireccion>{person.get("domfiscal", "")}</RestoDireccion>\n'
+                            if dep_u:
+                                xml += f'\t\t\t\t\t<CodDepartamento>{escape(dep_u)}</CodDepartamento>\n'
+                            if prov_u:
+                                xml += f'\t\t\t\t\t<CodProvincia>{escape(prov_u)}</CodProvincia>\n'
+                            if dist_u:
+                                xml += f'\t\t\t\t\t<CodDistrito>{escape(dist_u)}</CodDistrito>\n'
+                            xml += f'\t\t\t\t\t<RestoDireccion>{self._xml_pcdata_trunc(person.get("domfiscal"), self.JUR_RESTO_DIRECCION_MAX)}</RestoDireccion>\n'
                             xml += '\t\t\t\t</DireccionNacional>\n'
                             xml += '\t\t\t\t</Direccion>\n'
                         xml += '\t\t\t</PersonaJuridica>\n'
@@ -406,7 +600,8 @@ class SISGENXmlGenerator:
                 
                 # Add CuantiaOperacion section
                 xml += '\t\t<CuantiaOperacion>\n'
-                total_monto = sum(self._safe_float(p.get("monto", "0.00")) for p in doc.get('participants', []))
+                participants_list = doc.get('participants', [])
+                total_monto = self._cuantia_operacion_total(doc, participants_list)
                 xml += f'\t\t\t<Cuantia>{total_monto:.2f}</Cuantia>\n'
                 xml += '\t\t\t<TipoMoneda>01</TipoMoneda>\n'
                 xml += '\t\t</CuantiaOperacion>\n'

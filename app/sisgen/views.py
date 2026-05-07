@@ -22,6 +22,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# When True, SendToSISGEN builds XML and returns the SOAP payload only — no HTTP call to SISGEN.
+SISGEN_DRY_RUN = False
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DocumentSearchView(APIView):
@@ -235,7 +238,9 @@ class SendToSISGENView(APIView):
                 'guardados': 0,
                 'fallidos': 0,
                 'observados': 0,
-                'processed_kardex': []
+                'processed_kardex': [],
+                'dry_run': SISGEN_DRY_RUN,
+                'sisgen_requests': [],
             }
 
             # Process in batches (even for single document)
@@ -256,26 +261,45 @@ class SendToSISGENView(APIView):
                     # Always persist outgoing XML for troubleshooting
                     self._write_debug_xml(xml_content, f"request_batch_{batch_num}_{ts}.xml")
 
-                    # Send to SISGEN
+                    if SISGEN_DRY_RUN:
+                        soap_req = soap_client.build_request(xml_content)
+                        combined_result['messageDescription'] = (
+                            'Dry run: no se envió a SISGEN. Revise sisgen_requests.'
+                        )
+                        combined_result['sisgen_requests'].append(
+                            {
+                                'batch': batch_num,
+                                'kardex_list': [doc['kardex'] for doc in batch],
+                                'url': soap_req['url'],
+                                'headers': soap_req['headers'],
+                                'soap_body': soap_req['soap_body'],
+                                'documentos_notariales_xml': xml_content,
+                            }
+                        )
+                        combined_result['processed_kardex'].extend(
+                            [doc['kardex'] for doc in batch]
+                        )
+                        combined_result['errores'].extend(result.get('errores', []))
+                        combined_result['observaciones'].extend(
+                            result.get('observaciones', [])
+                        )
+                        combined_result['personas'].extend(result.get('personas', []))
+                        continue
+
                     response = soap_client.send_documents(xml_content)
-                    
-                    # Always persist SISGEN response XML for troubleshooting
+
                     self._write_debug_xml(response.text, f"response_batch_{batch_num}_{ts}.xml")
-                    
-                    # Process SISGEN response
+
                     data_processor.update_document_statuses(response.text)
-                    
-                    # Get status for this batch
+
                     batch_status = data_processor.get_final_status()
-                    
-                    # Combine results
+
                     combined_result['data'].extend(batch_status.get('data', []))
                     combined_result['guardados'] += batch_status.get('guardados', 0)
                     combined_result['fallidos'] += batch_status.get('fallidos', 0)
                     combined_result['observados'] += batch_status.get('observados', 0)
                     combined_result['processed_kardex'].extend([doc['kardex'] for doc in batch])
-                    
-                    # Add any errors/observations from the batch
+
                     combined_result['errores'].extend(result.get('errores', []))
                     combined_result['errores_sisgen_usuario'].extend(
                         self._build_user_friendly_errors(batch_status.get('data', []))
