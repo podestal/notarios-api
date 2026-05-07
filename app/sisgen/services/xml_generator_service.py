@@ -52,22 +52,88 @@ class SISGENXmlGenerator:
 
     def _persona_juridica_otra_actividad_text(self, person: Dict) -> str:
         """
-        xml_kardex.php maps columna `objeto` → <OtraActividad> (not <ObjetoSocial>).
-        Fallbacks cover cliente2-only payloads sin vista sisgen_temp_j.
+        Objeto social va en <OtraActividad> (no existe <ObjetoSocial> en el XSD).
+
+        Caso frecuente en cliente2: `actmunicipal` trae solo un código de una letra
+        (p. ej. "H") y el texto útil está en `contacempresa`. El patrón antiguo
+        `(actmunicipal or contacempresa)` en Python tomaba "H" (truthy) y nunca
+        leía contacempresa → RO06. Aquí se exige longitud mínima en actmunicipal.
+        También se filtra `objeto` corto por colisiones en JOIN (cx.*, cl.*).
         """
-        for key in (
-            "objeto",
-            "actmunicipal",
-            "contacempresa",
-            "objsocial",
-            "objetosocial",
-        ):
+        # Texto largo típico de actividad / objeto (licencia municipal, etc.)
+        min_descriptive = 3
+        # `objeto` a veces viene corrupto o como código de 1 letra ("H") por JOIN/BD
+        min_objeto_field = 4
+
+        def chunk(key: str) -> str:
             raw = person.get(key)
             if raw is None:
-                continue
-            s = str(raw).strip()
-            if s:
+                return ""
+            return str(raw).strip()
+
+        # 1) actmunicipal vs contacempresa (evitar código de 1 letra en actmunicipal)
+        actmun = chunk("actmunicipal")
+        contem = chunk("contacempresa")
+        if len(actmun) >= min_descriptive:
+            return actmun
+        if len(contem) >= min_descriptive:
+            return contem
+
+        for key in ("impeorigen", "impmotivo"):
+            s = chunk(key)
+            if len(s) >= min_descriptive:
                 return s
+
+        # 2) objeto / alias solo si no parece un código basura
+        for key in ("objeto", "objsocial", "objetosocial"):
+            s = chunk(key)
+            if len(s) >= min_objeto_field:
+                return s
+
+        # 3) Combinar fragmentos no triviales (evita perder info si está partida)
+        merge_keys = (
+            "actmunicipal",
+            "contacempresa",
+            "impeorigen",
+            "impmotivo",
+            "objeto",
+            "objsocial",
+            "objetosocial",
+        )
+        seen = set()
+        parts: List[str] = []
+        for key in merge_keys:
+            s = chunk(key)
+            if not s or s in seen:
+                continue
+            if key in ("objeto", "objsocial", "objetosocial") and len(s) < min_objeto_field:
+                continue
+            if len(s) < min_descriptive:
+                continue
+            seen.add(s)
+            parts.append(s)
+        merged = ", ".join(parts) if parts else ""
+        if len(merged) >= min_descriptive:
+            return merged
+
+        # 4) Último recurso: no enviar un solo carácter (RO06); mínimo descriptivo
+        for key in merge_keys:
+            s = chunk(key)
+            if len(s) >= min_descriptive:
+                self.logger.warning(
+                    "Persona jurídica id=%s: usando OtraActividad desde %s (revisar calidad); "
+                    "ideal: actmunicipal u objeto social completo en cliente.",
+                    person.get("idcliente"),
+                    key,
+                )
+                return s
+
+        self.logger.error(
+            "Persona jurídica id=%s sin actmunicipal/contacempresa/objeto válido "
+            "para <OtraActividad> (RO06). Razón social=%r",
+            person.get("idcliente"),
+            (person.get("razonsocial") or "")[:80],
+        )
         return ""
 
     def _persona_juridica_ubigeo_parts(self, person: Dict) -> Tuple[str, str, str]:
