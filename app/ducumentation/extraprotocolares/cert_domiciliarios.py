@@ -255,7 +255,7 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
 
             # Aliases used by templates (lowercase, case-sensitive)
             context['numcrono2'] = formatted
-            context['P_NOM'] = context.get('NOMBRE_SOLIC', '')
+            context['P_NOM'] = context.get('NOMBRE_SOLIC') or ''
             # Gendered identity strings
             sex = (context.get('SEXO', '') or 'M').upper()
             tip_doc = context.get('TIP_DOC', '')
@@ -498,7 +498,7 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                     UPPER(cd.num_certificado) AS NUM_CERTI,
                     cd.fec_ingreso AS FEC_INGRESO,
                     UPPER(cd.num_formu) AS NUM_FORMU,
-                    CONCAT(c.prinom,' ',c.segnom,' ',c.apepat,' ',c.apemat) AS NOMBRE_SOLIC,
+                    UPPER(COALESCE(NULLIF(TRIM(cd.nombre_solic), ''), '')) AS NOMBRE_SOLIC,
                     UPPER(td.td_abrev) AS TIP_DOC,
                     UPPER(cd.numdoc_solic) AS NUM_DOC,
                     UPPER(cd.domic_solic) AS DIRECCION,
@@ -519,8 +519,8 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                     cd.numero_recibo,
                     cd.mes_facturado,
                     cd.recibo_empresa,
-                    c.sexo AS SEXO,
-                    n.descripcion AS NACIONALIDAD,
+                    cd.sexo AS SEXO,
+                    '' AS NACIONALIDAD,
                     -- Testigo fields (optional) via correlated selects
                     cd.nom_testigo AS NOM_TESTIGO,
                     (SELECT UPPER(td2.td_abrev)
@@ -533,11 +533,8 @@ class CertDomiciliariosDocumentService(BaseR2DocumentService):
                 FROM cert_domiciliario cd
                 LEFT JOIN tipodocumento td ON CONVERT(cd.tipdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
                                               CONVERT(td.codtipdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                LEFT JOIN cliente c ON CONVERT(cd.numdoc_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci =
-                                       CONVERT(c.numdoc USING utf8mb4) COLLATE utf8mb4_unicode_ci
                 LEFT JOIN ubigeo u ON CONVERT(u.coddis USING utf8mb4) COLLATE utf8mb4_unicode_ci =
                                       CONVERT(cd.distrito_solic USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                LEFT JOIN nacionalidades n ON CAST(c.nacionalidad AS UNSIGNED) = n.idnacionalidad
                 {where_clause}
                 LIMIT 1
                 """,
