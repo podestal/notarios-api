@@ -458,6 +458,92 @@ class SISGENXmlGenerator:
         )
         return fallback
 
+    def _acto_code_for_objects(self, doc: Dict) -> str:
+        """Use first 3 digits of codactos as current acto code."""
+        codactos = (doc.get("codactos") or "").strip()
+        if len(codactos) >= 3:
+            return codactos[:3]
+        return codactos
+
+    def _load_bienes_for_doc(self, doc: Dict) -> Dict[str, List[Dict]]:
+        """Load bienes from legacy tables for one kardex."""
+        kardex = (doc.get("kardex") or "").strip()
+        acto_code = self._acto_code_for_objects(doc)
+        bienes = {
+            "predios": [],
+            "vehiculos_bienes": [],
+            "vehiculos_detalle": [],
+            "otros": [],
+        }
+        if not kardex:
+            return bienes
+
+        with connection.cursor() as cursor:
+            # Predios urbanos (codbien 04)
+            cursor.execute(
+                """
+                SELECT db.detbien, db.idtipacto, db.fechaconst, db.pregistral, db.idsedereg,
+                       u.coddis, u.codprov, u.codpto
+                FROM detallebienes db
+                LEFT JOIN tipobien tb ON tb.idtipbien = db.idtipbien
+                LEFT JOIN ubigeo u ON u.coddis = db.coddis
+                WHERE db.kardex = %s AND tb.codbien = '04'
+                """,
+                [kardex],
+            )
+            cols = [c[0] for c in cursor.description]
+            bienes["predios"] = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+            # Vehiculos from detallebienes (codbien 09)
+            cursor.execute(
+                """
+                SELECT db.detbien, db.idtipacto, db.npsm, db.pregistral, db.idsedereg
+                FROM detallebienes db
+                LEFT JOIN tipobien tb ON tb.idtipbien = db.idtipbien
+                WHERE db.kardex = %s AND tb.codbien = '09'
+                """,
+                [kardex],
+            )
+            cols = [c[0] for c in cursor.description]
+            bienes["vehiculos_bienes"] = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+            # Vehiculos from detallevehicular
+            cursor.execute(
+                """
+                SELECT detveh, idtipacto, idplaca, numplaca, clase, marca, anofab, modelo,
+                       combustible, carroceria, color, motor, numcil, numserie, numrueda,
+                       pregistral, idsedereg
+                FROM detallevehicular
+                WHERE kardex = %s
+                """,
+                [kardex],
+            )
+            cols = [c[0] for c in cursor.description]
+            bienes["vehiculos_detalle"] = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+            # Otros objetos (codbien 99)
+            cursor.execute(
+                """
+                SELECT db.detbien, db.idtipacto, db.oespecific
+                FROM detallebienes db
+                LEFT JOIN tipobien tb ON tb.idtipbien = db.idtipbien
+                WHERE db.kardex = %s AND tb.codbien = '99'
+                """,
+                [kardex],
+            )
+            cols = [c[0] for c in cursor.description]
+            bienes["otros"] = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+        # operation objects should align with current acto when possible
+        if acto_code:
+            for key in ("predios", "vehiculos_bienes", "otros"):
+                bienes[key] = [
+                    b
+                    for b in bienes[key]
+                    if str(b.get("idtipacto") or "").strip() in {acto_code, acto_code.zfill(6)}
+                ]
+        return bienes
+
     def generate_document_xml(self, documents: List[Dict]) -> Optional[str]:
         """
         Generate XML for SISGEN service.
@@ -484,6 +570,7 @@ class SISGENXmlGenerator:
             for doc in documents:
                 if not self._validate_document(doc):
                     continue
+                bienes = self._load_bienes_for_doc(doc)
                 
                 xml += '\t<DocumentoNotarial>\n'
                 
@@ -643,6 +730,80 @@ class SISGENXmlGenerator:
                         xml += '\t\t\t</PersonaJuridica>\n'
                     xml += '\t\t</PersonasJuridicas>\n'
 
+                if bienes["predios"]:
+                    xml += '\t\t<PrediosUrbanos>\n'
+                    for predio in bienes["predios"]:
+                        xml += f'\t\t\t<PredioUrbano id="{predio.get("detbien", "")}">\n'
+                        xml += '\t\t\t\t<TipoConstruccion>6</TipoConstruccion>\n'
+                        xml += '\t\t\t\t<IdentificacionPredio>\n'
+                        if predio.get("idsedereg"):
+                            xml += f'\t\t\t\t\t<SedeRegistral>{escape(str(predio.get("idsedereg", "")).strip())}</SedeRegistral>\n'
+                        if predio.get("pregistral"):
+                            xml += f'\t\t\t\t\t<PartidaRegistral>{escape(str(predio.get("pregistral", "")).strip())}</PartidaRegistral>\n'
+                        xml += '\t\t\t\t</IdentificacionPredio>\n'
+                        if predio.get("codpto"):
+                            xml += '\t\t\t\t<DireccionUrbana>\n'
+                            xml += f'\t\t\t\t\t<CodDepartamento>{escape(str(predio.get("codpto", "")).strip())}</CodDepartamento>\n'
+                            xml += f'\t\t\t\t\t<CodProvincia>{escape(str(predio.get("codprov", "")).strip())}</CodProvincia>\n'
+                            xml += f'\t\t\t\t\t<CodDistrito>{escape(str(predio.get("coddis", "")).strip())}</CodDistrito>\n'
+                            xml += '\t\t\t\t</DireccionUrbana>\n'
+                        xml += '\t\t\t</PredioUrbano>\n'
+                    xml += '\t\t</PrediosUrbanos>\n'
+
+                vehiculos_all = bienes["vehiculos_bienes"] + bienes["vehiculos_detalle"]
+                if vehiculos_all:
+                    xml += '\t\t<Vehiculos>\n'
+                    for veh in bienes["vehiculos_bienes"]:
+                        xml += f'\t\t\t<Vehiculo id="{veh.get("detbien", "")}">\n'
+                        xml += '\t\t\t\t<TipoVehiculo>4</TipoVehiculo>\n'
+                        xml += '\t\t\t\t<TipoIdentificacionVehiculo>1</TipoIdentificacionVehiculo>\n'
+                        if veh.get("npsm"):
+                            xml += f'\t\t\t\t<NumPlaca>{escape(str(veh.get("npsm", "")).strip())}</NumPlaca>\n'
+                        if veh.get("idsedereg"):
+                            xml += f'\t\t\t\t<SedeRegistral>{escape(str(veh.get("idsedereg", "")).strip())}</SedeRegistral>\n'
+                        if veh.get("pregistral"):
+                            xml += f'\t\t\t\t<PartidaRegistral>{escape(str(veh.get("pregistral", "")).strip())}</PartidaRegistral>\n'
+                        xml += '\t\t\t</Vehiculo>\n'
+
+                    for veh in bienes["vehiculos_detalle"]:
+                        xml += f'\t\t\t<Vehiculo id="{veh.get("detveh", "")}">\n'
+                        xml += '\t\t\t\t<TipoVehiculo>4</TipoVehiculo>\n'
+                        tipo_ident = "1" if (veh.get("idplaca") or "").strip() == "P" else "2"
+                        xml += f'\t\t\t\t<TipoIdentificacionVehiculo>{tipo_ident}</TipoIdentificacionVehiculo>\n'
+                        if veh.get("numplaca"):
+                            xml += f'\t\t\t\t<NumPlaca>{escape(str(veh.get("numplaca", "")).strip())}</NumPlaca>\n'
+                        for tag, key in (
+                            ("Clase", "clase"),
+                            ("Marca", "marca"),
+                            ("AnoFabricacion", "anofab"),
+                            ("Modelo", "modelo"),
+                            ("Combustible", "combustible"),
+                            ("Carroceria", "carroceria"),
+                            ("Color", "color"),
+                            ("Motor", "motor"),
+                            ("NumCilindros", "numcil"),
+                            ("NumSerie", "numserie"),
+                            ("NumRueda", "numrueda"),
+                        ):
+                            if veh.get(key):
+                                xml += f'\t\t\t\t<{tag}>{escape(str(veh.get(key, "")).strip())}</{tag}>\n'
+                        if veh.get("idsedereg"):
+                            xml += f'\t\t\t\t<SedeRegistral>{escape(str(veh.get("idsedereg", "")).strip())}</SedeRegistral>\n'
+                        if veh.get("pregistral"):
+                            xml += f'\t\t\t\t<PartidaRegistral>{escape(str(veh.get("pregistral", "")).strip())}</PartidaRegistral>\n'
+                        xml += '\t\t\t</Vehiculo>\n'
+                    xml += '\t\t</Vehiculos>\n'
+
+                if bienes["otros"]:
+                    xml += '\t\t<OtrosObjetos>\n'
+                    for otro in bienes["otros"]:
+                        xml += f'\t\t\t<OtroObjeto id="{otro.get("detbien", "")}">\n'
+                        if otro.get("oespecific"):
+                            xml += f'\t\t\t\t<Descripcion>{self._xml_pcdata(otro.get("oespecific"))}</Descripcion>\n'
+                        xml += '\t\t\t\t<ClaseObjeto>7</ClaseObjeto>\n'
+                        xml += '\t\t\t</OtroObjeto>\n'
+                    xml += '\t\t</OtrosObjetos>\n'
+
                 xml += '\t</Maestros>\n'
 
                 # Add Operaciones section
@@ -651,6 +812,26 @@ class SISGENXmlGenerator:
                 xml += f'\t\t\t<CodActoJuridico>{doc.get("cod_ancert", "")}</CodActoJuridico>\n'
                 xml += '\t\t<Operantes>\n'
                 xml += '\t\t\t<Objetos>\n'
+                for predio in bienes["predios"]:
+                    xml += '\t\t\t\t<Objeto>\n'
+                    xml += f'\t\t\t\t\t<IdMaestro>{predio.get("detbien", "")}</IdMaestro>\n'
+                    if predio.get("fechaconst"):
+                        xml += '\t\t\t\t\t<DetalleObjeto>\n'
+                        xml += f'\t\t\t\t\t\t<FechaAdquisicion>{self._format_date(predio.get("fechaconst", ""))}</FechaAdquisicion>\n'
+                        xml += '\t\t\t\t\t</DetalleObjeto>\n'
+                    xml += '\t\t\t\t</Objeto>\n'
+                for veh in bienes["vehiculos_bienes"]:
+                    xml += '\t\t\t\t<Objeto>\n'
+                    xml += f'\t\t\t\t\t<IdMaestro>{veh.get("detbien", "")}</IdMaestro>\n'
+                    xml += '\t\t\t\t</Objeto>\n'
+                for otro in bienes["otros"]:
+                    xml += '\t\t\t\t<Objeto>\n'
+                    xml += f'\t\t\t\t\t<IdMaestro>{otro.get("detbien", "")}</IdMaestro>\n'
+                    xml += '\t\t\t\t</Objeto>\n'
+                for veh in bienes["vehiculos_detalle"]:
+                    xml += '\t\t\t\t<Objeto>\n'
+                    xml += f'\t\t\t\t\t<IdMaestro>{veh.get("detveh", "")}</IdMaestro>\n'
+                    xml += '\t\t\t\t</Objeto>\n'
                 xml += '\t\t\t</Objetos>\n'
                 xml += '\t\t\t<Intervenciones>\n'
                 

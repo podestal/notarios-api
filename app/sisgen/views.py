@@ -24,7 +24,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # When True, SendToSISGEN builds XML and returns the SOAP payload only — no HTTP call to SISGEN.
-SISGEN_DRY_RUN = False
+SISGEN_DRY_RUN = True
 
 
 @method_decorator(csrf_exempt, name='dispatch')
