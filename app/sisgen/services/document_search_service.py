@@ -546,7 +546,10 @@ class DocumentSearchService:
         
         # Validate required contact information
         if not any([person.get('telfijo'), person.get('telcel'), person.get('email')]):
-            self._add_person_error(kardex, f"{person_id}: Falta información de contacto")
+            self._add_person_error(
+                kardex,
+                f"{person_id}: Falta información de contacto (registre al menos uno: telfijo, telcel o email)",
+            )
         
         # Validate address
         if not person.get('direccion') or not person.get('idubigeo'):
@@ -572,7 +575,10 @@ class DocumentSearchService:
         
         # Validate contact information
         if not person.get('telempresa') and not person.get('mailempresa'):
-            self._add_person_error(kardex, f"{person_id}: Falta información de contacto de la empresa")
+            self._add_person_error(
+                kardex,
+                f"{person_id}: Falta información de contacto de la empresa (registre al menos uno: telempresa o mailempresa)",
+            )
 
     def _get_participants_for_kardex(self, kardex: str) -> List[Dict]:
         """Get participants data for a kardex"""
@@ -590,7 +596,9 @@ class DocumentSearchService:
                         cl.idprofesion, cl.detaprofesion,
                         cl.idcargoprofe, cl.profocupa, cl.dirfer,
                         cl.idubigeo, cl.cumpclie AS fechanaci,
-                        cl.razonsocial, cl.domfiscal
+                        cl.razonsocial, cl.domfiscal,
+                        cl.fechaconstitu, cl.idsedereg, cl.numpartida,
+                        cl.telempresa, cl.mailempresa
                     FROM contratantesxacto cx
                     LEFT JOIN cliente2 cl ON cx.idcontratante = cl.idcontratante
                     WHERE cx.kardex = %s

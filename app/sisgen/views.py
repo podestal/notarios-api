@@ -15,6 +15,7 @@ from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
 from .utils.exceptions import DocumentSearchException
 from .services.book_search_service import BookSearchService
+from .models import SisgenValidationCache
 from rest_framework.decorators import api_view
 import logging
 from datetime import datetime
@@ -325,3 +326,86 @@ class SendToSISGENView(APIView):
                 'error': 1,
                 'message': f'Internal server error: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SisgenValidationRecalculateView(APIView):
+    """
+    Recalculate and upsert search-validation errors for one kardex.
+    """
+
+    # permission_classes = [IsAuthenticated, IsSuperuser]
+
+    @staticmethod
+    def _recalculate_and_upsert(kardex: str, idkardex_filter: str, user):
+        service = DocumentSearchService()
+        docs = service._execute_batch_query([kardex])
+
+        if idkardex_filter:
+            docs = [d for d in docs if str(d.get("idkardex", "")) == idkardex_filter]
+
+        if not docs:
+            return None
+
+        service.kardex_errors = {}
+        service.kardex_observations = {}
+        service.person_errors = {}
+        service.pdt_errors = {}
+
+        try:
+            service._validate_document_data(docs)
+            service._validate_person_data(docs)
+            service._validate_pdt_data(docs)
+        except Exception as exc:
+            logger.warning("Validation warning for kardex %s: %s", kardex, exc)
+
+        processed = service._process_documents(docs, filters={})
+        processed_doc = processed[0]
+
+        payload = {
+            "kardex": processed_doc.get("kardex", kardex),
+            "idkardex": str(processed_doc.get("idkardex", "")),
+            "errores": processed_doc.get("errores", []),
+            "observaciones": processed_doc.get("observaciones", []),
+            "personas": processed_doc.get("personas", []),
+            "uif_validation": processed_doc.get("uif_validation", {}),
+            "pdt_validation": processed_doc.get("pdt_validation", {}),
+        }
+
+        cache, _ = SisgenValidationCache.objects.update_or_create(
+            kardex=payload["kardex"],
+            defaults={
+                "idkardex": payload["idkardex"],
+                "payload": payload,
+                "updated_by": user if user.is_authenticated else None,
+            },
+        )
+        return cache
+
+    def post(self, request):
+        kardex = str(request.data.get("kardex", "")).strip()
+        idkardex_filter = str(request.data.get("idkardex", "")).strip()
+
+        if not kardex:
+            return Response(
+                {"error": 1, "message": "kardex is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cache = self._recalculate_and_upsert(kardex, idkardex_filter, request.user)
+        if cache is None:
+            return Response(
+                {"error": 1, "message": "Document not found for provided kardex/idkardex"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(
+            {
+                "error": 0,
+                "message": "Validation recalculated",
+                "kardex": cache.kardex,
+                "idkardex": cache.idkardex,
+                "updated_at": cache.updated_at,
+                "payload": cache.payload,
+            }
+        )
