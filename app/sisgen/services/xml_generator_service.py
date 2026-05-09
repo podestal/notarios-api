@@ -4,13 +4,16 @@ This module contains the XML generator service for the sisgen service.
 
 import html
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from xml.sax.saxutils import escape
 from ..utils.constants import APP_CONSTANTS, TIPO_KARDEX_SISGEN_MAPPING
 from datetime import datetime
 from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator
 from django.db import connection
+from django.db.utils import DatabaseError
+
+from notaria.constants import FORMAS_PAGO, MONEDAS, OPORTUNIDADES_PAGO
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,8 @@ class SISGENXmlGenerator:
     """Lengths aligned with legacy xml_kardex.php (mb_substr limits)."""
     JUR_RAZON_SOCIAL_MAX = 120
     JUR_OTRA_ACTIVIDAD_MAX = 50
+    # XSD Origen (OrigenFondosType) maxLength 40
+    ORIGEN_FONDOS_MAX = 40
     JUR_TELEFONO_MAX = 20
     JUR_PARTIDA_MAX = 12
     JUR_RESTO_DIRECCION_MAX = 255
@@ -90,6 +95,146 @@ class SISGENXmlGenerator:
             return True
         except ValidationError:
             return False
+
+    def _legacy_text_short(self, raw: Optional[str], max_len: int) -> str:
+        """Legacy PHP-style cleanup for OtraProfesion / OtroCargo (trim, collapse noise)."""
+        s = self._unescape_db_markup(raw)
+        for ch in ("(", ")", "/"):
+            s = s.replace(ch, "")
+        while "  " in s:
+            s = s.replace("  ", " ")
+        s = s.strip()
+        if max_len >= 0 and len(s) > max_len:
+            s = s[:max_len]
+        return s
+
+    def _telefono_natural_legacy_ok(self, tel: Optional[str]) -> bool:
+        """PHP ValidarIsTelefono: dígitos después de quitar () y -."""
+        if not tel or not str(tel).strip():
+            return False
+        valor = (
+            str(tel)
+            .replace("(", "")
+            .replace(")", "")
+            .replace("-", "")
+            .strip()
+        )
+        return valor.isdigit()
+
+    def _tipo_doc_natural_para_xml(self, person: Dict, doc: Dict) -> str:
+        """
+        Legacy PersonaNatural: mapea tipo 15 → 10; respeta instrumento 2 solo en validación PHP,
+        pero el mapeo 15→10 se aplica en la salida XML del PHP original.
+        """
+        raw = person.get("idtipdoc")
+        if raw is None or str(raw).strip() == "":
+            return ""
+        tip_str = str(raw).strip()
+        if tip_str == "15":
+            tip_str = "10"
+        if tip_str.isdigit():
+            return str(int(tip_str)).zfill(2)
+        return tip_str
+
+    def _tipo_doc_juridico_para_xml(self, person: Dict, doc: Dict) -> str:
+        """Legacy ValidarDocumentoJuridica: fuerza 08 si RUC 11 dígitos; tipo vacío+sin doc → 10."""
+        tipo_inst = str(doc.get("idtipkar") or "").strip()
+        tip_raw = person.get("idtipdoc")
+        numdoc = (person.get("numdoc") or "").strip()
+        tip_str = "" if tip_raw is None else str(tip_raw).strip()
+
+        if tipo_inst == "2":
+            return tip_str.zfill(2) if tip_str.isdigit() else tip_str
+
+        if tip_str == "":
+            if numdoc == "":
+                tip_str = "10"
+            else:
+                return ""
+        elif numdoc == "":
+            tnorm = tip_str.zfill(2) if tip_str.isdigit() else tip_str
+            if tnorm not in ("10", "15"):
+                pass
+        else:
+            tnorm = tip_str.zfill(2) if tip_str.isdigit() else tip_str
+            if tnorm != "08" and len(numdoc) == 11 and numdoc.isdigit():
+                tip_str = "08"
+
+        if tip_str.isdigit():
+            return str(int(tip_str)).zfill(2)
+        return tip_str
+
+    def _pais_nacionalidad_codigo(self, person: Dict) -> Optional[str]:
+        """Legacy: <PaisNacionalidad> usa codnacion (tabla nacionalidades), no 'PE' fijo."""
+        raw = person.get("nacionalidad")
+        if raw is None or str(raw).strip() == "":
+            return None
+        s = str(raw).strip()
+        try:
+            with connection.cursor() as cursor:
+                if s.isdigit():
+                    cursor.execute(
+                        "SELECT codnacion FROM nacionalidades WHERE idnacionalidad = %s LIMIT 1",
+                        [int(s)],
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT codnacion FROM nacionalidades WHERE TRIM(UPPER(codnacion)) = TRIM(UPPER(%s)) LIMIT 1",
+                        [s],
+                    )
+                row = cursor.fetchone()
+                if row and row[0] and str(row[0]).strip():
+                    return str(row[0]).strip()
+        except Exception:
+            self.logger.warning("No se pudo resolver codnacion para nacionalidad=%r", s)
+        if len(s) <= 4 and s.isalpha():
+            return s.upper()
+        return None
+
+    def _profesion_cod_natural(self, person: Dict) -> Optional[str]:
+        """Profesión: idprofesion → codprof; si falta, coincide desprofesion con detaprofesion."""
+        ip = person.get("idprofesion")
+        if ip not in (None, "", 0, "0"):
+            cod = self._get_valid_profession_code(str(ip))
+            if cod and cod != "001":
+                return cod
+        det = (person.get("detaprofesion") or "").strip()
+        if not det:
+            return None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT codprof FROM profesiones
+                    WHERE TRIM(UPPER(desprofesion)) = TRIM(UPPER(%s))
+                    LIMIT 1
+                    """,
+                    [det],
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return str(row[0]).strip().zfill(3)
+        except Exception as e:
+            self.logger.warning("profesion por detaprofesion: %s", e)
+        return None
+
+    def _cargo_cod_natural(self, person: Dict) -> Optional[str]:
+        """Cargo natural: idcargoprofe → codcargoprofe (tabla cargoprofe)."""
+        cid = person.get("idcargoprofe")
+        if cid in (None, "", 0, "0"):
+            return None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT codcargoprofe FROM cargoprofe WHERE idcargoprofe = %s LIMIT 1",
+                    [cid],
+                )
+                row = cursor.fetchone()
+                if row and row[0] is not None and str(row[0]).strip():
+                    return str(row[0]).strip()
+        except Exception as e:
+            self.logger.warning("cargo natural: %s", e)
+        return None
 
     def _persona_juridica_otra_actividad_text(self, person: Dict) -> str:
         """
@@ -188,17 +333,55 @@ class SISGENXmlGenerator:
         )
         return ""
 
+    def _solo_digitos(self, raw) -> str:
+        """Solo dígitos para ubigeo / códigos geo (BD a veces trae guiones o texto)."""
+        if raw is None:
+            return ""
+        return "".join(c for c in str(raw).strip() if c.isdigit())
+
+    def _clip_cod_geo_dos(self, x: str) -> str:
+        """Un código geo XSD [0-9]{2}: '4'→'04', '040102' erróneo en un campo→últimos 2."""
+        if not x:
+            return ""
+        if len(x) <= 2:
+            return x.zfill(2)
+        return x[-2:]
+
+    def _partes_ubigeo_pe(
+        self,
+        idubigeo_raw=None,
+        departamento=None,
+        provincia=None,
+        distrito=None,
+    ) -> Tuple[str, str, str]:
+        """
+        XSD CodDepartamento/CodProvincia/CodDistrito: patrón [0-9]{2} cada uno.
+        Si `distrito` (o otro campo) trae el ubigeo de 6 dígitos pegado, se parte.
+        """
+        ub = self._solo_digitos(idubigeo_raw)
+        if len(ub) == 6:
+            return ub[:2], ub[2:4], ub[4:6]
+        dep = self._solo_digitos(departamento)
+        prov = self._solo_digitos(provincia)
+        dist = self._solo_digitos(distrito)
+        for blob in (dist, dep, prov):
+            if len(blob) == 6:
+                return blob[:2], blob[2:4], blob[4:6]
+
+        return (
+            self._clip_cod_geo_dos(dep),
+            self._clip_cod_geo_dos(prov),
+            self._clip_cod_geo_dos(dist),
+        )
+
     def _persona_juridica_ubigeo_parts(self, person: Dict) -> Tuple[str, str, str]:
-        """Prefer departamento/provincia/distrito del vista PHP; si no, partir idubigeo."""
-        dep = person.get("departamento")
-        prov = person.get("provincia")
-        dist = person.get("distrito")
-        if dep not in (None, "") and prov not in (None, "") and dist not in (None, ""):
-            return str(dep).strip(), str(prov).strip(), str(dist).strip()
-        ubigeo = (person.get("idubigeo") or "").strip()
-        if len(ubigeo) == 6:
-            return ubigeo[:2], ubigeo[2:4], ubigeo[4:]
-        return "", "", ""
+        """Departamento/provincia/distrito para XML SISGEN (2 dígitos c/u)."""
+        return self._partes_ubigeo_pe(
+            person.get("idubigeo"),
+            person.get("departamento"),
+            person.get("provincia"),
+            person.get("distrito"),
+        )
 
     def _persona_natural_nombre(self, person: Dict) -> str:
         """
@@ -299,11 +482,14 @@ class SISGENXmlGenerator:
             return "00000000", "00000000000"
 
     def _get_tipo_intervencion_desc(self, role: str, acto_juridico: str = None, participant_data: Dict = None) -> Tuple[str, str]:
-        """Get intervention type and description from database"""
+        """TipoIntervencion por rol; DescripcionIntervencion desde actocondicion / vista PHP."""
         try:
-            # Get tipo_intervencion based on role
             tipo_int = '1' if role == 'O' else '2' if role == 'B' else '3'
-            
+
+            cod_cond = self._codconsisgen_from_actocondicion(participant_data or {})
+            if cod_cond:
+                return tipo_int, cod_cond
+
             # For acto_juridico 0909 (ACLARACION), use specific mappings
             if acto_juridico == '0909':
                 with connection.cursor() as cursor:
@@ -351,6 +537,485 @@ class SISGENXmlGenerator:
             self.logger.error(f"Error getting intervention description: {str(e)}")
             return '1', '001'  # default
 
+    def _codconsisgen_from_actocondicion(self, participant: Optional[Dict]) -> Optional[str]:
+        """
+        Código SISGEN para <DescripcionIntervencion>: tabla actocondicion.codconsisgen
+        (legacy PHP / vista sisgen_intervenciones_* por condición).
+        """
+        if not participant:
+            return None
+        raw = participant.get("idcondicion")
+        if raw is None or str(raw).strip() == "":
+            return None
+        idc = str(raw).strip()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT codconsisgen FROM actocondicion
+                    WHERE TRIM(idcondicion) = TRIM(%s)
+                    LIMIT 1
+                    """,
+                    [idc],
+                )
+                row = cursor.fetchone()
+                if row and row[0] is not None and str(row[0]).strip():
+                    cod = str(row[0]).strip()
+                    return cod.zfill(3) if cod.isdigit() else cod
+        except DatabaseError as e:
+            self.logger.warning("actocondicion no disponible o error DB: %s", e)
+        except Exception as e:
+            self.logger.error("Error leyendo codconsisgen: %s", e)
+        # Vista opcional (algunas instalaciones PHP)
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT condicionnsisgen FROM sisgen_intervenciones_6
+                    WHERE TRIM(idcondicion) = TRIM(%s)
+                    LIMIT 1
+                    """,
+                    [idc],
+                )
+                row = cursor.fetchone()
+                if row and row[0] is not None and str(row[0]).strip():
+                    cod = str(row[0]).strip()
+                    return cod.zfill(3) if cod.isdigit() else cod
+        except DatabaseError:
+            pass
+        return None
+
+    def _resolve_patrimonial_for_doc(self, doc: Dict) -> Optional[Dict]:
+        """
+        Primera fila patrimonial del acto (importetrans, idmon, itemmp, fpago).
+        Alineado con xml_kardex.php por kardex + idtipoacto derivado de codactos.
+        """
+        kardex = doc.get("kardex")
+        codactos = (doc.get("codactos") or "").strip()
+        if not kardex:
+            return None
+        variants = []
+        if len(codactos) >= 3:
+            p3 = codactos[:3]
+            variants.extend([p3, p3.zfill(6)])
+        if len(codactos) >= 6:
+            variants.append(codactos[:6])
+
+        try:
+            with connection.cursor() as cursor:
+                for vid in variants:
+                    if not vid:
+                        continue
+                    cursor.execute(
+                        """
+                        SELECT importetrans, idmon, itemmp, fpago,
+                               nminuta, idoppago, exhibiomp
+                        FROM patrimonial
+                        WHERE kardex = %s AND TRIM(idtipoacto) = TRIM(%s)
+                        LIMIT 1
+                        """,
+                        [kardex, vid],
+                    )
+                    row = cursor.fetchone()
+                    if row and row[0] is not None and float(row[0]) > 0:
+                        return {
+                            "importetrans": float(row[0]),
+                            "idmon": row[1],
+                            "itemmp": row[2],
+                            "fpago": row[3],
+                            "nminuta": row[4],
+                            "idoppago": row[5],
+                            "exhibiomp": row[6],
+                        }
+                cursor.execute(
+                    """
+                    SELECT importetrans, idmon, itemmp, fpago,
+                           nminuta, idoppago, exhibiomp
+                    FROM patrimonial
+                    WHERE kardex = %s
+                    ORDER BY itemmp
+                    LIMIT 1
+                    """,
+                    [kardex],
+                )
+                row = cursor.fetchone()
+                if row and row[0] is not None and float(row[0]) > 0:
+                    self.logger.warning(
+                        "Patrimonial: coincidencia laxa idtipoacto para kardex=%s codactos=%s",
+                        kardex,
+                        codactos,
+                    )
+                    return {
+                        "importetrans": float(row[0]),
+                        "idmon": row[1],
+                        "itemmp": row[2],
+                        "fpago": row[3],
+                        "nminuta": row[4],
+                        "idoppago": row[5],
+                        "exhibiomp": row[6],
+                    }
+        except Exception as e:
+            self.logger.error("Error leyendo patrimonial: %s", e)
+        return None
+
+    def _sisgen_codmon_from_idmon(self, idmon) -> str:
+        """Codificación SISGEN de moneda (MONEDAS.codmon), fallback soles."""
+        if idmon is None or idmon == "":
+            return "01"
+        try:
+            k = int(idmon)
+        except (TypeError, ValueError):
+            return "01"
+        if k == 0:
+            return "01"
+        meta = MONEDAS.get(k)
+        if meta and meta.get("codmon"):
+            return str(meta["codmon"]).zfill(2)
+        return "01"
+
+    def _detalle_mediopago_rows(
+        self, kardex: Optional[str], itemmp: Optional[str]
+    ) -> List[Dict]:
+        """Filas detallemediopago ligadas al item patrimonial (ValidarMoneda / medios)."""
+        if not kardex:
+            return []
+        try:
+            with connection.cursor() as cursor:
+                if itemmp not in (None, ""):
+                    cursor.execute(
+                        """
+                        SELECT codmepag, fpago, importemp, idmon
+                        FROM detallemediopago
+                        WHERE kardex = %s AND TRIM(IFNULL(itemmp,'')) = TRIM(IFNULL(%s,''))
+                        ORDER BY detmp
+                        """,
+                        [kardex, itemmp],
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT codmepag, fpago, importemp, idmon
+                        FROM detallemediopago
+                        WHERE kardex = %s
+                        ORDER BY detmp
+                        """,
+                        [kardex],
+                    )
+                cols = [c[0] for c in cursor.description]
+                return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.warning("detallemediopago no legible kardex=%s: %s", kardex, e)
+            return []
+
+    def _forma_pago_sisgen(self, fpago_raw) -> str:
+        """Letra FormaPago XSD (C/P/S…); default contado."""
+        if fpago_raw is None or str(fpago_raw).strip() == "":
+            return "C"
+        s = str(fpago_raw).strip().upper()
+        return s[0] if s else "C"
+
+    def _fecha_firma_element_xml(self, row: Dict, indent_tabs: str) -> str:
+        """
+        Emite FechaFirma solo con fecha XSD-válida (yyyy-mm-dd). Cadena vacía o no parseable:
+        no se emite el elemento — SISGEN rechaza <FechaFirma></FechaFirma> (cvc-datatype-valid date).
+        Si la clave no viene en row o es None, tampoco se emite.
+        """
+        if "fechafirma" not in row:
+            return ""
+        raw = row.get("fechafirma")
+        if raw is None:
+            return ""
+        s = str(raw).strip()
+        if not s:
+            return ""
+        fd = self._format_date(s)
+        if not fd:
+            return ""
+        return f"{indent_tabs}<FechaFirma>{fd}</FechaFirma>\n"
+
+    def _tiporepresentacion_es_representante(self, participant: Dict) -> bool:
+        """contratantes.tiporepresentacion numérica 1 / '01'; evita marcar '02' u otros códigos."""
+        t = str(participant.get("tiporepresentacion") or "").strip()
+        if not t:
+            return False
+        try:
+            return int(t, 10) == 1
+        except ValueError:
+            return False
+
+    def _idcontratanterp_coincide(
+        self, rep_principal_raw, principal_idcontratante
+    ) -> bool:
+        if principal_idcontratante is None or rep_principal_raw is None:
+            return False
+        pid = str(principal_idcontratante).strip()
+        raw = str(rep_principal_raw).strip()
+        if not pid or not raw:
+            return False
+        if pid == raw:
+            return True
+        for token in raw.replace(";", ",").split(","):
+            if token.strip() == pid:
+                return True
+        return False
+
+    def _representantes_filas_directas(
+        self, todos_participantes: List[Dict], principal_idcontratante
+    ) -> List[Dict]:
+        """Filas contratantes con tiporepresentación activa que representan al principal."""
+        out: List[Dict] = []
+        for p in todos_participantes:
+            if not self._tiporepresentacion_es_representante(p):
+                continue
+            if self._idcontratanterp_coincide(
+                p.get("idcontratanterp"), principal_idcontratante
+            ):
+                out.append(p)
+        return out
+
+    def _representante_recursive_xml(
+        self,
+        rep: Dict,
+        todos_participantes: List[Dict],
+        indent_representante: int,
+        depth: int,
+    ) -> str:
+        """
+        Representante con cadena RepresentanteRepresentante (representante de representante).
+        indent_representante: nivel de tabuladores antes de <Representante>.
+        """
+        max_rr_depth = 6
+        skip_nested = depth > max_rr_depth
+        if skip_nested:
+            self.logger.warning(
+                "Representantes anidados truncados en profundidad %s idcontratante=%s",
+                depth,
+                rep.get("idcontratante"),
+            )
+
+        TAB = "\t"
+        t_r = TAB * indent_representante
+        t_r1 = TAB * (indent_representante + 1)
+        t_r2 = TAB * (indent_representante + 2)
+
+        xml_parts: List[str] = [f"{t_r}<Representante>\n"]
+        xml_parts.append(f'{t_r1}<IdMaestro>{rep.get("idcliente", "")}</IdMaestro>\n')
+
+        rep_part = rep.get("numpartidareg") or rep.get("numpartida")
+        if rep.get("inscrito") == "1" and (rep.get("idsedereg") or rep_part):
+            xml_parts.append(f"{t_r1}<InscripcionRepresentacion>\n")
+            if rep.get("idsedereg"):
+                xml_parts.append(
+                    f'{t_r2}<SedeRegistral>{rep.get("idsedereg", "")}</SedeRegistral>\n'
+                )
+            if rep_part:
+                xml_parts.append(
+                    f'{t_r2}<PartidaRegistral>{escape(str(rep_part).strip())}'
+                    f"</PartidaRegistral>\n"
+                )
+            xml_parts.append(f"{t_r1}</InscripcionRepresentacion>\n")
+
+        xml_parts.append(self._fecha_firma_element_xml(rep, t_r1))
+
+        nested = (
+            []
+            if skip_nested
+            else self._representantes_filas_directas(
+                todos_participantes, rep.get("idcontratante")
+            )
+        )
+        if nested:
+            xml_parts.append(f"{t_r1}<Representantes>\n")
+            for nr in nested:
+                xml_parts.append(f"{t_r2}<RepresentanteRepresentante>\n")
+                xml_parts.append(
+                    self._representante_recursive_xml(
+                        nr,
+                        todos_participantes,
+                        indent_representante + 3,
+                        depth + 1,
+                    )
+                )
+                xml_parts.append(f"{t_r2}</RepresentanteRepresentante>\n")
+            xml_parts.append(f"{t_r1}</Representantes>\n")
+
+        xml_parts.append(f"{t_r}</Representante>\n")
+        return "".join(xml_parts)
+
+    def _representantes_bajo_sujeto_xml(
+        self,
+        principal_idcontratante,
+        todos_participantes: List[Dict],
+    ) -> str:
+        """Bloque <Representantes> bajo <Sujeto> con soporte R-de-R."""
+        reps = self._representantes_filas_directas(
+            todos_participantes, principal_idcontratante
+        )
+        base_wrap = "\t" * 7
+        base_row = 8
+        xml_parts = [f"{base_wrap}<Representantes>\n"]
+        for rep in reps:
+            xml_parts.append(
+                self._representante_recursive_xml(
+                    rep, todos_participantes, indent_representante=base_row, depth=0
+                )
+            )
+        xml_parts.append(f"{base_wrap}</Representantes>\n")
+        return "".join(xml_parts)
+
+    def _participante_marcador_no_interviniente(self, p: Dict) -> bool:
+        """
+        Flags opcionales de BD/vistas PHP (repre, firma, visita == 'N') fuera de uif='N'
+        para evitar confundir con rol SUNAT en garantías.
+        """
+        if str(p.get("repre") or "").strip().upper() == "N":
+            return True
+        if str(p.get("firma") or "").strip().upper() == "N":
+            return True
+        if str(p.get("visita") or "").strip().upper() == "N":
+            return True
+        return False
+
+    def _coleccion_no_interviniente_ids(
+        self,
+        participants: List[Dict],
+        sujeto_id_maestro_emisor_ids: Set[str],
+    ) -> List[str]:
+        """Ids Maestro declarados como no intervinientes (marcadores + cónyuges casados)."""
+        collected: List[str] = []
+        seen: Set[str] = set()
+
+        def push(cid: str) -> None:
+            cid = cid.strip()
+            if not cid or cid == "0" or cid in seen:
+                return
+            if cid in sujeto_id_maestro_emisor_ids:
+                return
+            seen.add(cid)
+            collected.append(cid)
+
+        for p in participants:
+            ic = str(p.get("idcliente") or "").strip()
+            if self._participante_marcador_no_interviniente(p) and ic:
+                push(ic)
+
+        for p in participants:
+            if str(p.get("tipper") or "").strip().upper() != "N":
+                continue
+            if str(p.get("idestcivil") or "").strip() != "2":
+                continue
+            cy = str(p.get("conyuge") or "").strip()
+            if not cy or cy in ("0", "0000000000"):
+                continue
+            uif_role = (p.get("uif") or "").strip().upper()
+            if uif_role == "R":
+                continue
+            push(cy)
+
+        return sorted(collected)
+
+    def _cuantia_origen_participant(
+        self, participant: Dict, doc: Dict, pat_row: Optional[Dict]
+    ) -> float:
+        """Monto línea intervención: cx.monto; si falta y hay un solo sujeto con fondo, usa patrimonial."""
+        cuantia = self._safe_float(participant.get("monto", "0.00"))
+        if cuantia > 0:
+            return cuantia
+        if not pat_row or not participant.get("ofondo"):
+            return cuantia
+        parts = doc.get("participants") or []
+        with_fondo = [
+            p
+            for p in parts
+            if (p.get("uif") or "").strip().upper() in ("O", "B")
+            and (p.get("ofondo") or "").strip()
+        ]
+        if len(with_fondo) == 1:
+            return float(pat_row["importetrans"])
+        return cuantia
+
+    def _doc_requires_renta_impuesto_xml(self, doc: Dict) -> bool:
+        """
+        PHP: preguntas renta (pregu*) en XML cuando aplica UIF/SUNAT al acto.
+        Alineado con la lógica relajada de validación _sisgen_skip_uif_money_checks.
+        """
+        au = (doc.get("actouif") or "").strip().upper()
+        if au in ("N", "NO", "0", "NINGUNO", "-"):
+            return False
+        if au:
+            return True
+        asn = (doc.get("actosunat") or "").strip().upper()
+        return bool(asn and asn not in ("N", "NO", "0", "-"))
+
+    def _normalize_pregunta_renta_xml(self, raw) -> str:
+        """Normaliza pregu1..3 de tabla renta a 0/1 para elementos SISGEN."""
+        if raw is None:
+            return "0"
+        s = str(raw).strip().upper()
+        if not s:
+            return "0"
+        if s in ("1", "S", "SI", "Y", "YES", "TRUE"):
+            return "1"
+        if s in ("0", "N", "NO"):
+            return "0"
+        if s[0].isdigit():
+            return "0" if s[0] == "0" else "1"
+        return "0"
+
+    def _renta_map_for_kardex(
+        self, kardex: Optional[str], idcontratantes: List[str]
+    ) -> Dict[str, Dict]:
+        """Última fila renta por contratante (MAX idrenta), kardex + idcontratante."""
+        cleaned = sorted(
+            {str(x).strip() for x in idcontratantes if x is not None and str(x).strip()}
+        )
+        if not kardex or not cleaned:
+            return {}
+        placeholders = ",".join(["%s"] * len(cleaned))
+        sql = f"""
+            SELECT r.idcontratante, r.pregu1, r.pregu2, r.pregu3
+            FROM renta r
+            INNER JOIN (
+                SELECT idcontratante, MAX(idrenta) AS mx
+                FROM renta
+                WHERE kardex = %s AND idcontratante IN ({placeholders})
+                GROUP BY idcontratante
+            ) z ON z.idcontratante = r.idcontratante
+                AND z.mx = r.idrenta
+                AND r.kardex = %s
+        """
+        params = [kardex, *cleaned, kardex]
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                out: Dict[str, Dict] = {}
+                for row in cursor.fetchall():
+                    ic = str(row[0]).strip()
+                    out[ic] = {"pregu1": row[1], "pregu2": row[2], "pregu3": row[3]}
+                return out
+        except Exception as e:
+            self.logger.warning("No se pudo cargar renta para kardex=%s: %s", kardex, e)
+            return {}
+
+    def _renta_impuesto_triplet_xml(
+        self,
+        participant: Dict,
+        renta_map: Dict[str, Dict],
+        use_db: bool,
+    ) -> Tuple[str, str, str]:
+        """pregu1→Renta3Cat, pregu2→CasaEnajenante, pregu3→ImpuestoCero."""
+        if not use_db:
+            return ("0", "0", "0")
+        ic = str(participant.get("idcontratante") or "").strip()
+        row = renta_map.get(ic)
+        if not row:
+            return ("0", "0", "0")
+        return (
+            self._normalize_pregunta_renta_xml(row.get("pregu1")),
+            self._normalize_pregunta_renta_xml(row.get("pregu2")),
+            self._normalize_pregunta_renta_xml(row.get("pregu3")),
+        )
+
     def _get_valid_profession_code(self, code: str) -> str:
         """Get valid SISGEN profession code from database"""
         if not code:
@@ -381,58 +1046,12 @@ class SISGENXmlGenerator:
         hay varias filas cx para el mismo kardex (ítems/condiciones) o cuando varios
         roles llevan el mismo monto informado.
         """
+        pat = self._resolve_patrimonial_for_doc(doc)
+        if pat and pat.get("importetrans"):
+            return float(pat["importetrans"])
+
         kardex = doc.get("kardex")
         codactos = (doc.get("codactos") or "").strip()
-
-        if kardex:
-            variants = []
-            if len(codactos) >= 3:
-                p3 = codactos[:3]
-                variants.extend([p3, p3.zfill(6)])
-            if len(codactos) >= 6:
-                variants.append(codactos[:6])
-
-            try:
-                with connection.cursor() as cursor:
-                    for vid in variants:
-                        if not vid:
-                            continue
-                        cursor.execute(
-                            """
-                            SELECT importetrans FROM patrimonial
-                            WHERE kardex = %s AND TRIM(idtipoacto) = TRIM(%s)
-                            LIMIT 1
-                            """,
-                            [kardex, vid],
-                        )
-                        row = cursor.fetchone()
-                        if row and row[0] is not None:
-                            val = float(row[0])
-                            if val > 0:
-                                return val
-
-                    cursor.execute(
-                        """
-                        SELECT importetrans FROM patrimonial
-                        WHERE kardex = %s
-                        ORDER BY itemmp
-                        LIMIT 1
-                        """,
-                        [kardex],
-                    )
-                    row = cursor.fetchone()
-                    if row and row[0] is not None:
-                        val = float(row[0])
-                        if val > 0:
-                            self.logger.warning(
-                                "CuantiaOperacion: usando patrimonial sin coincidencia "
-                                "exacta idtipoacto para kardex=%s codactos=%s",
-                                kardex,
-                                codactos,
-                            )
-                            return val
-            except Exception as e:
-                self.logger.error("Error leyendo patrimonial para cuantía: %s", e)
 
         # Una fila por combinación lógica en cx (reduce duplicados por JOIN repetido)
         seen = set()
@@ -450,10 +1069,11 @@ class SISGENXmlGenerator:
             fallback += self._safe_float(p.get("monto", "0.00"))
 
         self.logger.warning(
-            "CuantiaOperacion sin patrimonial válido para kardex=%s; "
+            "CuantiaOperacion sin patrimonial válido para kardex=%s codactos=%s; "
             "suma deduplicada por (idcontratante, item, idcondicion, idtipoacto), "
             "filas=%s",
             kardex,
+            codactos,
             len(seen),
         )
         return fallback
@@ -544,17 +1164,390 @@ class SISGENXmlGenerator:
                 ]
         return bienes
 
-    def generate_document_xml(self, documents: List[Dict]) -> Optional[str]:
+    def _medios_pago_filas_enriquecidas(self, kardex: Optional[str]) -> List[Dict]:
+        """
+        Legado PHP: detallemediopago + patrimonial + mediospago + bancos por kardex.
+        Si el JOIN falla (tablas/columnas distintas), cae al SELECT simple de detallemediopago.
+        """
+        if not kardex:
+            return []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        dmp.detmp,
+                        dmp.codmepag,
+                        dmp.fpago AS dmp_fpago,
+                        dmp.importemp,
+                        dmp.idmon AS dmp_idmon,
+                        dmp.foperacion,
+                        dmp.idbancos,
+                        dmp.documentos,
+                        dmp.itemmp,
+                        mp.sunat AS mp_sunat,
+                        mp.desmpagos AS mp_des,
+                        pat.fpago AS pat_fpago,
+                        pat.idoppago AS pat_idoppago,
+                        pat.exhibiomp AS pat_exhibiomp,
+                        ban.desbanco AS ban_des
+                    FROM detallemediopago dmp
+                    LEFT JOIN mediospago mp ON mp.codmepag = dmp.codmepag
+                    LEFT JOIN patrimonial pat
+                        ON pat.kardex = dmp.kardex
+                        AND TRIM(IFNULL(pat.itemmp, '')) = TRIM(IFNULL(dmp.itemmp, ''))
+                    LEFT JOIN bancos ban ON ban.idbancos = dmp.idbancos
+                    WHERE dmp.kardex = %s
+                    ORDER BY dmp.detmp
+                    """,
+                    [kardex],
+                )
+                cols = [c[0] for c in cursor.description]
+                return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except DatabaseError as e:
+            self.logger.warning(
+                "Medios de pago enriquecidos no disponibles kardex=%s: %s",
+                kardex,
+                e,
+            )
+            return self._detalle_mediopago_rows(kardex, None)
+
+    NOMBRE_CONTRATO_MAX = 200
+
+    def _forma_pago_codigo_fpago(self, fp_raw) -> str:
+        """Letra FormaPago desde código fpago patrimonial/detalle (FORMAS_PAGO)."""
+        if fp_raw is None or str(fp_raw).strip() == "":
+            return "C"
+        key = str(fp_raw).strip()
+        meta = FORMAS_PAGO.get(key)
+        if meta and meta.get("codigo"):
+            return str(meta["codigo"]).strip()[:1] or "C"
+        return self._forma_pago_sisgen(fp_raw)
+
+    def _momento_pago_codigo(self, idoppago_raw) -> str:
+        """MomentoPago numérico desde patrimonial.idoppago / oporpago (tabla oportunidades)."""
+        if idoppago_raw is None or str(idoppago_raw).strip() == "":
+            return "1"
+        try:
+            idx = int(str(idoppago_raw).strip(), 10)
+            meta = OPORTUNIDADES_PAGO.get(idx)
+            if meta and meta.get("codoppago"):
+                co = str(meta["codoppago"]).strip()
+                if co.isdigit():
+                    return str(int(co, 10))
+                return co[:2] if co else "1"
+            return "1"
+        except (ValueError, TypeError):
+            return "1"
+
+    def _descripcion_momento_pago(self, idoppago_raw) -> str:
+        try:
+            idx = int(str(idoppago_raw).strip(), 10)
+            return (OPORTUNIDADES_PAGO.get(idx) or {}).get("desoppago", "") or ""
+        except (ValueError, TypeError):
+            return ""
+
+    def _justificado_manifestado_medio(
+        self, exhib_row, exhib_pat_fallback
+    ) -> str:
+        ex = (
+            exhib_row
+            if exhib_row is not None and str(exhib_row).strip() != ""
+            else exhib_pat_fallback
+        )
+        s = str(ex or "").strip().upper()
+        if s in ("0", "N", "NO"):
+            return "0"
+        return "1"
+
+    def _entidad_financiera_codigo(self, row: Dict) -> str:
+        bid = row.get("idbancos")
+        if bid is not None and str(bid).strip() != "":
+            try:
+                return str(int(str(bid).strip(), 10)).zfill(5)
+            except ValueError:
+                s = str(bid).strip()
+                return (s[:5]).zfill(5) if s else "00002"
+        return "00002"
+
+    def _id_pago_medio(self, row: Dict) -> str:
+        doc = str(row.get("documentos") or "").strip()
+        if doc.isdigit():
+            return doc[:15]
+        det = row.get("detmp")
+        if det is not None and str(det).strip():
+            return str(det).strip()[:15]
+        return "0"
+
+    def _medio_pago_codigo(self, r: Dict) -> str:
+        ms = r.get("mp_sunat")
+        if ms is not None and str(ms).strip().isdigit():
+            return str(int(str(ms).strip(), 10)).zfill(3)
+        cm = r.get("codmepag")
+        if cm is not None and str(cm).strip().isdigit():
+            return str(int(str(cm).strip(), 10)).zfill(3)
+        return "001"
+
+    def _nombre_contrato_sisgen(self, doc: Dict) -> str:
+        """PHP: desacto (tiposdeacto) truncado; fallback texto contrato en kardex."""
+        des = self._unescape_db_markup(doc.get("desacto"))
+        if des and des.strip():
+            return escape(des.strip()[: self.NOMBRE_CONTRATO_MAX])
+        c = (doc.get("contrato") or "").strip().strip(" /")
+        return escape(c[: self.NOMBRE_CONTRATO_MAX])
+
+    def _fecha_minuta_sisgen(
+        self,
+        doc: Dict,
+        pat_row: Optional[Dict],
+        mp_rows: List[Dict],
+    ) -> str:
+        """PHP: patrimonial.nminuta o fecha operación detallemediopago; fallback fecha escritura."""
+        candidates = []
+        if pat_row:
+            candidates.append(pat_row.get("nminuta"))
+        if mp_rows:
+            candidates.append(mp_rows[0].get("foperacion"))
+        candidates.append(doc.get("fechaescritura"))
+        for c in candidates:
+            if c is None or str(c).strip() == "":
+                continue
+            fd = self._format_date(str(c).strip())
+            if fd:
+                return fd
+        return self._format_date(str(doc.get("fechaescritura") or "").strip()) or ""
+
+    def _medios_pagos_xml_for_doc(
+        self,
+        doc: Dict,
+        pat_row: Optional[Dict],
+        mp_rows: List[Dict],
+        tipo_moneda_doc: str,
+        total_monto: float,
+    ) -> str:
+        fecha_esc_default = (
+            self._format_date(doc.get("fechaescritura", "") or "") or ""
+        )
+        fp_pat = pat_row.get("fpago") if pat_row else None
+        idopp_pat = pat_row.get("idoppago") if pat_row else None
+        exhib_pat = pat_row.get("exhibiomp") if pat_row else None
+
+        xml_parts = ["\t\t<MediosPagos>\n"]
+        if mp_rows:
+            for r in mp_rows:
+                medio = self._medio_pago_codigo(r)
+                fp_use = r.get("pat_fpago") or r.get("dmp_fpago") or fp_pat
+                forma = self._forma_pago_codigo_fpago(fp_use)
+                idopp_use = r.get("pat_idoppago") if r.get("pat_idoppago") not in (
+                    None,
+                    "",
+                ) else idopp_pat
+                momento = self._momento_pago_codigo(idopp_use)
+                desc_mom = self._descripcion_momento_pago(idopp_use)
+                cuant_mp = self._safe_float(str(r.get("importemp") or "0"), default=0.0)
+                mon_mp = self._sisgen_codmon_from_idmon(r.get("dmp_idmon"))
+                justif = self._justificado_manifestado_medio(
+                    r.get("pat_exhibiomp"), exhib_pat
+                )
+                fecha_op = (
+                    self._format_date(str(r.get("foperacion") or "").strip())
+                    or fecha_esc_default
+                )
+                id_pago = self._id_pago_medio(r)
+                entidad = self._entidad_financiera_codigo(r)
+
+                xml_parts.append("\t\t<MediosPago>\n")
+                xml_parts.append(f"\t\t\t<MedioPago>{medio}</MedioPago>\n")
+                xml_parts.append(f"\t\t\t<FormaPago>{forma}</FormaPago>\n")
+                xml_parts.append(f"\t\t\t<MomentoPago>{momento}</MomentoPago>\n")
+                if desc_mom:
+                    xml_parts.append(
+                        f"\t\t\t<DescripcionMomentoPago>"
+                        f"{escape(desc_mom[:200])}</DescripcionMomentoPago>\n"
+                    )
+                xml_parts.append(f"\t\t\t<CuantiaPago>{cuant_mp:.2f}</CuantiaPago>\n")
+                xml_parts.append(f"\t\t\t<TipoMonedaPago>{mon_mp}</TipoMonedaPago>\n")
+                xml_parts.append(
+                    f"\t\t\t<JustificadoManifestado>{justif}</JustificadoManifestado>\n"
+                )
+                xml_parts.append(f"\t\t\t<FechaPago>{fecha_op}</FechaPago>\n")
+                xml_parts.append(f"\t\t\t<IdPago>{escape(id_pago)}</IdPago>\n")
+                xml_parts.append(
+                    f"\t\t\t<EntidadFinanciera>{entidad}</EntidadFinanciera>\n"
+                )
+                xml_parts.append("\t\t</MediosPago>\n")
+        else:
+            forma_pat = self._forma_pago_codigo_fpago(fp_pat)
+            xml_parts.append("\t\t<MediosPago>\n")
+            xml_parts.append("\t\t\t<MedioPago>001</MedioPago>\n")
+            xml_parts.append(f"\t\t\t<FormaPago>{forma_pat}</FormaPago>\n")
+            momento_f = self._momento_pago_codigo(idopp_pat)
+            xml_parts.append(f"\t\t\t<MomentoPago>{momento_f}</MomentoPago>\n")
+            dm = self._descripcion_momento_pago(idopp_pat)
+            if dm:
+                xml_parts.append(
+                    f"\t\t\t<DescripcionMomentoPago>"
+                    f"{escape(dm[:200])}</DescripcionMomentoPago>\n"
+                )
+            xml_parts.append(f"\t\t\t<CuantiaPago>{total_monto:.2f}</CuantiaPago>\n")
+            xml_parts.append(
+                f"\t\t\t<TipoMonedaPago>{tipo_moneda_doc}</TipoMonedaPago>\n"
+            )
+            just_stub = self._justificado_manifestado_medio(
+                exhib_pat if pat_row else None, None
+            )
+            xml_parts.append(
+                f"\t\t\t<JustificadoManifestado>{just_stub}</JustificadoManifestado>\n"
+            )
+            xml_parts.append(f"\t\t\t<FechaPago>{fecha_esc_default}</FechaPago>\n")
+            xml_parts.append("\t\t\t<IdPago>0</IdPago>\n")
+            xml_parts.append("\t\t\t<EntidadFinanciera>00002</EntidadFinanciera>\n")
+            xml_parts.append("\t\t</MediosPago>\n")
+        xml_parts.append("\t\t</MediosPagos>\n")
+        return "".join(xml_parts)
+
+    def _collect_assembly_errors(self, doc: Dict) -> List[str]:
+        """Validaciones de armado XML (legado PHP antes del envío)."""
+        errs: List[str] = []
+        cod_a = str(doc.get("cod_ancert") or "").strip()
+        kardex = doc.get("kardex")
+
+        # Mismo criterio que NumFolios en XML: _clean_folio + enteros (PHP/legado suele
+        # guardar folios con sufijos o texto; int(float(...)) fallaba y bloqueaba el envío).
+        try:
+            fi_s = self._clean_folio(
+                str(doc.get("folioini") if doc.get("folioini") is not None else "")
+            )
+            ff_s = self._clean_folio(
+                str(doc.get("foliofin") if doc.get("foliofin") is not None else "")
+            )
+            fi = int(fi_s)
+            ff = int(ff_s)
+        except (TypeError, ValueError):
+            errs.append("folios no numéricos")
+        else:
+            if ff < fi:
+                errs.append("folio final menor que inicial")
+
+        if cod_a != "0919":
+            for p in doc.get("participants") or []:
+                ic = p.get("idcontratante")
+                if p.get("idcondicion") is None or str(p.get("idcondicion")).strip() == "":
+                    errs.append(f"participante sin condición (idcontratante={ic})")
+                if p.get("uif") is None or str(p.get("uif")).strip() == "":
+                    errs.append(f"participante sin UIF (idcontratante={ic})")
+
+        num_esc = str(doc.get("numescritura") or "").strip()
+        id_tip = doc.get("idtipkar")
+        if kardex and num_esc:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT COUNT(*) FROM kardex
+                        WHERE TRIM(numescritura) = TRIM(%s)
+                          AND kardex <> %s
+                          AND IFNULL(idtipkar, -1) = IFNULL(%s, -1)
+                        """,
+                        [num_esc, kardex, id_tip],
+                    )
+                    row = cursor.fetchone()
+                    if row and int(row[0]) > 0:
+                        errs.append(
+                            f"número de escritura duplicado ({num_esc}) en otro kardex "
+                            "con el mismo tipo de instrumento"
+                        )
+            except Exception as e:
+                self.logger.warning("Validación escritura duplicada no ejecutada: %s", e)
+
+        return errs
+
+    def _xml_seccion_documento(self, doc: Dict) -> str:
+        """Bloque <Documento>...</Documento> reutilizable."""
+        notary_data = doc.get("notary_data", {})
+        cod_notario, cod_notaria = self._get_notary_codes(notary_data)
+        parts = ["\t<Documento>\n"]
+        parts.append(f"\t\t<CodNotario>{cod_notario}</CodNotario>\n")
+        parts.append(f"\t\t<CodNotaria>{cod_notaria}</CodNotaria>\n")
+        parts.append(f'\t\t<NumKardex>{doc.get("kardex", "")}</NumKardex>\n')
+        parts.append(
+            f'\t\t<FechaIngreso>{self._format_date(doc.get("fechaingreso", ""))}</FechaIngreso>\n'
+        )
+        parts.append(
+            f"\t\t<TipoInstrumento>{self._tipo_instrumento_sisgen(doc)}</TipoInstrumento>\n"
+        )
+        parts.append(f'\t\t<NumDocumento>{doc.get("numescritura", "")}</NumDocumento>\n')
+        parts.append(
+            f'\t\t<FechaInstrumento>{doc.get("fechaescritura", "")}</FechaInstrumento>\n'
+        )
+        parts.append(
+            f'\t\t<NumFolios>{self._calculate_num_folios(doc)}</NumFolios>\n'
+        )
+        if doc.get("fechaconclusion"):
+            parts.append(
+                f'\t\t<FechaConclusion>{self._format_date(doc.get("fechaconclusion", ""))}</FechaConclusion>\n'
+            )
+        parts.append("\t</Documento>\n")
+        return "".join(parts)
+
+    def _documento_notarial_xml_minimo_0919(self, doc: Dict) -> str:
+        """Atajo PHP cod_ancert == 0919: XML reducido."""
+        pat_row = self._resolve_patrimonial_for_doc(doc)
+        tipo_moneda_doc = self._sisgen_codmon_from_idmon(
+            pat_row.get("idmon") if pat_row else None
+        )
+        mp_rows = self._medios_pago_filas_enriquecidas(doc.get("kardex"))
+        total_monto = self._cuantia_operacion_total(doc, doc.get("participants") or [])
+        nombre_c = self._nombre_contrato_sisgen(doc)
+        fecha_m = self._fecha_minuta_sisgen(doc, pat_row, mp_rows)
+
+        parts = ["\t<DocumentoNotarial>\n"]
+        parts.append(self._xml_seccion_documento(doc))
+        parts.append("\t<Maestros>\n\t</Maestros>\n")
+        parts.append("\t<Operaciones>\n")
+        parts.append(f'\t\t<Operacion id="{doc.get("codactos", "")}">\n')
+        parts.append(f'\t\t\t<CodActoJuridico>{doc.get("cod_ancert", "")}</CodActoJuridico>\n')
+        parts.append("\t\t\t<Operantes>\n")
+        parts.append("\t\t\t\t<Objetos>\n\t\t\t\t</Objetos>\n")
+        parts.append("\t\t\t\t<Intervenciones>\n\t\t\t\t</Intervenciones>\n")
+        parts.append("\t\t\t\t<NoIntervinientes>\n\t\t\t\t</NoIntervinientes>\n")
+        parts.append("\t\t\t</Operantes>\n")
+        parts.append("\t\t\t<CuantiaOperacion>\n")
+        parts.append(f"\t\t\t\t<Cuantia>{total_monto:.2f}</Cuantia>\n")
+        parts.append(f"\t\t\t\t<TipoMoneda>{tipo_moneda_doc}</TipoMoneda>\n")
+        parts.append("\t\t\t</CuantiaOperacion>\n")
+        parts.append(
+            self._medios_pagos_xml_for_doc(
+                doc, pat_row, mp_rows, tipo_moneda_doc, total_monto
+            )
+        )
+        parts.append(f"\t\t\t<NombreContrato>{nombre_c}</NombreContrato>\n")
+        parts.append(f"\t\t\t<FechaMinuta>{fecha_m}</FechaMinuta>\n")
+        parts.append("\t\t</Operacion>\n")
+        parts.append("\t</Operaciones>\n")
+        parts.append("\t</DocumentoNotarial>\n")
+        return "".join(parts)
+
+    def generate_document_xml(self, documents: List[Dict]) -> Tuple[Optional[str], List[str]]:
         """
         Generate XML for SISGEN service.
-        Returns None if required data is missing.
+
+        Returns (xml, issues). ``xml`` is None when nothing was emitted (solo shell
+        ``DocumentosNotariales`` sin ``DocumentoNotarial``): SISGEN suele responder
+        solo ``OK`` sin ``GUARDADO`` porque no hubo documentos en el CDATA.
+
+        ``issues`` lista razones por cada documento omitido (validación / armado) y,
+        si hay XML parcial, también incluye los que se saltaron en el mismo batch.
         """
+        issues: List[str] = []
         try:
             # Validate documents have required data
             if not documents:
                 self.logger.error("No documents provided")
-                return None
-            
+                return None, ["No documents provided"]
+
+            docs_emitted = 0
+
             # Start XML document
             xml = '<?xml version="1.0" ?>\n'
             xml += '<DocumentosNotariales xmlns="http://sisgen.notarios.org.pe/SISGEN/XML" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://sisgen.notarios.org.pe/SISGEN/XML C:\\SISGEN\\SISGEN_V2_RO\\documentos_notariales.xsd">\n'
@@ -568,28 +1561,32 @@ class SISGENXmlGenerator:
 
             # Process each document
             for doc in documents:
+                kdx = doc.get("kardex", "?")
                 if not self._validate_document(doc):
+                    msg = f"kardex {kdx}: datos incompletos (validación previa)"
+                    issues.append(msg)
                     continue
+                asm_errs = self._collect_assembly_errors(doc)
+                if asm_errs:
+                    for err in asm_errs:
+                        self.logger.error(
+                            "Armado XML omitido kardex=%s: %s",
+                            doc.get("kardex"),
+                            err,
+                        )
+                    issues.append(
+                        f"kardex {kdx}: " + "; ".join(asm_errs)
+                    )
+                    continue
+                if str(doc.get("cod_ancert") or "").strip() == "0919":
+                    xml += self._documento_notarial_xml_minimo_0919(doc)
+                    docs_emitted += 1
+                    continue
+
                 bienes = self._load_bienes_for_doc(doc)
                 
                 xml += '\t<DocumentoNotarial>\n'
-                
-                # Add Documento section
-                xml += '\t<Documento>\n'
-                notary_data = doc.get('notary_data', {})
-                # Format notary codes correctly
-                cod_notario, cod_notaria = self._get_notary_codes(notary_data)
-                xml += f'\t\t<CodNotario>{cod_notario}</CodNotario>\n'
-                xml += f'\t\t<CodNotaria>{cod_notaria}</CodNotaria>\n'
-                xml += f'\t\t<NumKardex>{doc.get("kardex", "")}</NumKardex>\n'
-                xml += f'\t\t<FechaIngreso>{self._format_date(doc.get("fechaingreso", ""))}</FechaIngreso>\n'
-                xml += f'\t\t<TipoInstrumento>{self._tipo_instrumento_sisgen(doc)}</TipoInstrumento>\n'
-                xml += f'\t\t<NumDocumento>{doc.get("numescritura", "")}</NumDocumento>\n'
-                xml += f'\t\t<FechaInstrumento>{doc.get("fechaescritura", "")}</FechaInstrumento>\n'
-                xml += f'\t\t<NumFolios>{self._calculate_num_folios(doc)}</NumFolios>\n'
-                if doc.get("fechaconclusion"):
-                    xml += f'\t\t<FechaConclusion>{self._format_date(doc.get("fechaconclusion", ""))}</FechaConclusion>\n'
-                xml += '\t</Documento>\n'
+                xml += self._xml_seccion_documento(doc)
 
                 # Add Maestros section
                 xml += '\t<Maestros>\n'
@@ -609,7 +1606,9 @@ class SISGENXmlGenerator:
                         xml += f'\t\t\t<PersonaNatural id="{person.get("idcliente", "")}">\n'
                         xml += '\t\t\t<DocsIdentificativos>\n'
                         xml += '\t\t\t\t<DocIdentificativo>\n'
-                        xml += f'\t\t\t\t\t<TipoDocIdentidad>{str(person.get("idtipdoc", "")).zfill(2)}</TipoDocIdentidad>\n'
+                        tdoc_nat = self._tipo_doc_natural_para_xml(person, doc)
+                        if tdoc_nat:
+                            xml += f'\t\t\t\t\t<TipoDocIdentidad>{tdoc_nat}</TipoDocIdentidad>\n'
                         if person.get("numdoc"):
                             xml += f'\t\t\t\t\t<NumDocIdentificativo>{person.get("numdoc", "")}</NumDocIdentificativo>\n'
                         xml += '\t\t\t\t</DocIdentificativo>\n'
@@ -622,17 +1621,51 @@ class SISGENXmlGenerator:
                             xml += f'\t\t\t\t<PrimerApellido>{person.get("apepat", "")}</PrimerApellido>\n'
                         if person.get("apemat"):
                             xml += f'\t\t\t\t<SegundoApellido>{person.get("apemat", "")}</SegundoApellido>\n'
-                        if person.get("sexo"):
-                            xml += f'\t\t\t\t<Genero>{"V" if person.get("sexo") == "M" else "M"}</Genero>\n'
-                        if person.get("idestcivil"):
-                            xml += f'\t\t\t\t<EstadoCivil>{person.get("idestcivil", "")}</EstadoCivil>\n'
-                        if person.get("nacionalidad"):
-                            xml += f'\t\t\t\t<PaisNacionalidad>PE</PaisNacionalidad>\n'
+                        sexo_val = person.get("sexo") or person.get("gen")
+                        if sexo_val:
+                            xml += f'\t\t\t\t<Genero>{"V" if sexo_val == "M" else "M"}</Genero>\n'
+                        id_est = person.get("idestcivil")
+                        if id_est not in (None, "", 0):
+                            xml += f'\t\t\t\t<EstadoCivil>{id_est}</EstadoCivil>\n'
+                        cony_id = (person.get("conyuge") or "").strip()
+                        uif_role = (person.get("uif") or "").strip().upper()
+                        if (
+                            str(id_est) == "2"
+                            and uif_role != "R"
+                            and cony_id
+                            and cony_id != "0"
+                        ):
+                            xml += f'\t\t\t\t<Conyuge>{escape(cony_id)}</Conyuge>\n'
+                        nac_cod = self._pais_nacionalidad_codigo(person)
+                        if nac_cod:
+                            xml += f'\t\t\t\t<PaisNacionalidad>{escape(nac_cod)}</PaisNacionalidad>\n'
                         if person.get("cumpclie"):
                             xml += f'\t\t\t\t<FechaNacimiento>{self._format_date(person.get("cumpclie", ""))}</FechaNacimiento>\n'
-                        if person.get("idprofesion"):
-                            xml += f'\t\t\t\t<Profesion>{self._get_valid_profession_code(person.get("idprofesion", ""))}</Profesion>\n'
-                        xml += '\t\t\t\t<Cargo>998</Cargo>\n'
+                        prof_cod = self._profesion_cod_natural(person)
+                        if prof_cod:
+                            xml += f'\t\t\t\t<Profesion>{prof_cod}</Profesion>\n'
+                        if prof_cod == "999":
+                            det_prof = self._legacy_text_short(person.get("detaprofesion"), 50)
+                            if det_prof:
+                                xml += f'\t\t\t\t<OtraProfesion>{self._xml_pcdata(det_prof)}</OtraProfesion>\n'
+                            else:
+                                xml += '\t\t\t\t<OtraProfesion>OTROS</OtraProfesion>\n'
+                        cargo_cod = self._cargo_cod_natural(person)
+                        if cargo_cod:
+                            xml += f'\t\t\t\t<Cargo>{escape(cargo_cod)}</Cargo>\n'
+                        if cargo_cod == "999":
+                            det_cargo = self._legacy_text_short(person.get("profocupa"), 50)
+                            if det_cargo:
+                                xml += f'\t\t\t\t<OtroCargo>{self._xml_pcdata(det_cargo)}</OtroCargo>\n'
+                            else:
+                                xml += '\t\t\t\t<OtroCargo>OTROS</OtroCargo>\n'
+                        email_nat = (person.get("email") or "").strip()
+                        if email_nat and self._email_ok(email_nat):
+                            xml += f'\t\t\t\t<Correo>{escape(email_nat)}</Correo>\n'
+                        telcel = (person.get("telcel") or "").strip()
+                        if telcel and self._telefono_natural_legacy_ok(telcel):
+                            tel_s = telcel[: self.JUR_TELEFONO_MAX]
+                            xml += f'\t\t\t\t<Telefono>{escape(tel_s)}</Telefono>\n'
                         
                         # Add address if all required fields are present
                         if person.get("idubigeo") and person.get("direccion"):
@@ -640,11 +1673,11 @@ class SISGENXmlGenerator:
                             xml += '\t\t\t\t\t<ResidePeru>1</ResidePeru>\n'
                             xml += '\t\t\t\t\t<PaisResidencia>PE</PaisResidencia>\n'
                             xml += '\t\t\t\t<DireccionNacional>\n'
-                            ubigeo = person.get("idubigeo", "")
+                            ubigeo = self._solo_digitos(person.get("idubigeo"))
                             if len(ubigeo) == 6:
                                 xml += f'\t\t\t\t\t<CodDepartamento>{ubigeo[:2]}</CodDepartamento>\n'
                                 xml += f'\t\t\t\t\t<CodProvincia>{ubigeo[2:4]}</CodProvincia>\n'
-                                xml += f'\t\t\t\t\t<CodDistrito>{ubigeo[4:]}</CodDistrito>\n'
+                                xml += f'\t\t\t\t\t<CodDistrito>{ubigeo[4:6]}</CodDistrito>\n'
                             xml += f'\t\t\t\t\t<RestoDireccion>{person.get("direccion", "")}</RestoDireccion>\n'
                             xml += '\t\t\t\t</DireccionNacional>\n'
                             xml += '\t\t\t\t</Direccion>\n'
@@ -657,7 +1690,9 @@ class SISGENXmlGenerator:
                         xml += f'\t\t\t<PersonaJuridica id="{person.get("idcliente", "")}">\n'
                         xml += '\t\t\t<DocsIdentificativos>\n'
                         xml += '\t\t\t\t<DocIdentificativo>\n'
-                        xml += f'\t\t\t\t\t<TipoDocIdentidad>{str(person.get("idtipdoc", "")).zfill(2)}</TipoDocIdentidad>\n'
+                        tdoc_jur = self._tipo_doc_juridico_para_xml(person, doc)
+                        if tdoc_jur:
+                            xml += f'\t\t\t\t\t<TipoDocIdentidad>{tdoc_jur}</TipoDocIdentidad>\n'
                         if person.get("numdoc"):
                             xml += f'\t\t\t\t\t<NumDocIdentificativo>{person.get("numdoc", "")}</NumDocIdentificativo>\n'
                         xml += '\t\t\t\t</DocIdentificativo>\n'
@@ -673,10 +1708,11 @@ class SISGENXmlGenerator:
                         )
                         if sedereg_s and sedereg_s != "00":
                             xml += f'\t\t\t\t\t<SedeRegistral>{escape(sedereg_s)}</SedeRegistral>\n'
-                        if person.get("numpartida"):
-                            partida = str(person.get("numpartida", "")).strip()[
-                                : self.JUR_PARTIDA_MAX
-                            ]
+                        num_part_jur = person.get("numpartidareg") or person.get(
+                            "numpartida"
+                        )
+                        if num_part_jur:
+                            partida = str(num_part_jur).strip()[: self.JUR_PARTIDA_MAX]
                             xml += f'\t\t\t\t\t<PartidaRegistral>{escape(partida)}</PartidaRegistral>\n'
                         xml += '\t\t\t\t</RegistroFacultades>\n'
 
@@ -743,9 +1779,20 @@ class SISGENXmlGenerator:
                         xml += '\t\t\t\t</IdentificacionPredio>\n'
                         if predio.get("codpto"):
                             xml += '\t\t\t\t<DireccionUrbana>\n'
-                            xml += f'\t\t\t\t\t<CodDepartamento>{escape(str(predio.get("codpto", "")).strip())}</CodDepartamento>\n'
-                            xml += f'\t\t\t\t\t<CodProvincia>{escape(str(predio.get("codprov", "")).strip())}</CodProvincia>\n'
-                            xml += f'\t\t\t\t\t<CodDistrito>{escape(str(predio.get("coddis", "")).strip())}</CodDistrito>\n'
+                            pcpto = self._solo_digitos(predio.get("codpto"))
+                            pprov = self._solo_digitos(predio.get("codprov"))
+                            pdis = self._solo_digitos(predio.get("coddis"))
+                            if len(pdis) == 6:
+                                pcpto, pprov, pdis = pdis[:2], pdis[2:4], pdis[4:6]
+                            elif len(pcpto) == 6:
+                                pcpto, pprov, pdis = pcpto[:2], pcpto[2:4], pcpto[4:6]
+
+                            cod_dep_p = self._clip_cod_geo_dos(pcpto)
+                            cod_prv_p = self._clip_cod_geo_dos(pprov)
+                            cod_dis_p = self._clip_cod_geo_dos(pdis)
+                            xml += f'\t\t\t\t\t<CodDepartamento>{escape(cod_dep_p)}</CodDepartamento>\n'
+                            xml += f'\t\t\t\t\t<CodProvincia>{escape(cod_prv_p)}</CodProvincia>\n'
+                            xml += f'\t\t\t\t\t<CodDistrito>{escape(cod_dis_p)}</CodDistrito>\n'
                             xml += '\t\t\t\t</DireccionUrbana>\n'
                         xml += '\t\t\t</PredioUrbano>\n'
                     xml += '\t\t</PrediosUrbanos>\n'
@@ -806,6 +1853,19 @@ class SISGENXmlGenerator:
 
                 xml += '\t</Maestros>\n'
 
+                pat_row = self._resolve_patrimonial_for_doc(doc)
+                tipo_moneda_doc = self._sisgen_codmon_from_idmon(
+                    pat_row.get("idmon") if pat_row else None
+                )
+                mp_rows = self._medios_pago_filas_enriquecidas(doc.get("kardex"))
+                idc_for_renta = [
+                    str(p.get("idcontratante")).strip()
+                    for p in (doc.get("participants") or [])
+                    if p.get("idcontratante") is not None and str(p.get("idcontratante")).strip()
+                ]
+                renta_map = self._renta_map_for_kardex(doc.get("kardex"), idc_for_renta)
+                requires_renta_impuesto = self._doc_requires_renta_impuesto_xml(doc)
+
                 # Add Operaciones section
                 xml += '\t<Operaciones>\n'
                 xml += f'\t\t<Operacion id="{doc.get("codactos", "")}">\n'
@@ -834,6 +1894,8 @@ class SISGENXmlGenerator:
                     xml += '\t\t\t\t</Objeto>\n'
                 xml += '\t\t\t</Objetos>\n'
                 xml += '\t\t\t<Intervenciones>\n'
+
+                emitidos_sujeto_id_maestro: Set[str] = set()
                 
                 # Group participants by role and condition
                 participants_by_role = {}
@@ -866,14 +1928,26 @@ class SISGENXmlGenerator:
                     for participant in participants:
                         xml += '\t\t\t\t\t\t<Sujeto>\n'
                         xml += f'\t\t\t\t\t\t\t<IdMaestro>{participant.get("idcliente", "")}</IdMaestro>\n'
+                        _mid_s = str(participant.get("idcliente") or "").strip()
+                        if _mid_s:
+                            emitidos_sujeto_id_maestro.add(_mid_s)
                         
                         # Add OrigenFondos
                         if participant.get("ofondo"):
+                            cuantia_o = self._cuantia_origen_participant(
+                                participant, doc, pat_row
+                            )
                             xml += '\t\t\t\t\t\t\t<OrigenFondos>\n'
                             xml += '\t\t\t\t\t\t\t\t<OrigenFondo>\n'
-                            xml += f'\t\t\t\t\t\t\t\t\t<Origen>{participant.get("ofondo", "").upper()}</Origen>\n'
-                            xml += f'\t\t\t\t\t\t\t\t\t<CuantiaOrigen>{self._safe_float(participant.get("monto", "0.00")):.2f}</CuantiaOrigen>\n'
-                            xml += '\t\t\t\t\t\t\t\t\t<TipoMonedaPago>01</TipoMonedaPago>\n'
+                            origen_u = self._legacy_text_short(
+                                participant.get("ofondo"), self.ORIGEN_FONDOS_MAX
+                            ).upper()
+                            xml += (
+                                "\t\t\t\t\t\t\t\t\t"
+                                f"<Origen>{escape(origen_u)}</Origen>\n"
+                            )
+                            xml += f'\t\t\t\t\t\t\t\t\t<CuantiaOrigen>{cuantia_o:.2f}</CuantiaOrigen>\n'
+                            xml += f'\t\t\t\t\t\t\t\t\t<TipoMonedaPago>{tipo_moneda_doc}</TipoMonedaPago>\n'
                             xml += '\t\t\t\t\t\t\t\t</OrigenFondo>\n'
                             xml += '\t\t\t\t\t\t\t</OrigenFondos>\n'
                         
@@ -882,41 +1956,48 @@ class SISGENXmlGenerator:
                             xml += f'\t\t\t\t\t\t\t\t<PorcentajeDerecho>{self._safe_float(participant.get("porcentaje", "100")):.2f}</PorcentajeDerecho>\n'
                         xml += '\t\t\t\t\t\t\t</Derecho>\n'
                         
-                        # Add tax flags for otorgantes
+                        # Renta / impuestos (tabla renta.pregu1..3; PHP por kardex+idcontratante)
                         if role == 'O':
-                            xml += '\t\t\t\t\t\t\t<Renta3Cat>0</Renta3Cat>\n'
-                            xml += '\t\t\t\t\t\t\t<CasaEnajenante>0</CasaEnajenante>\n'
-                            xml += '\t\t\t\t\t\t\t<ImpuestoCero>0</ImpuestoCero>\n'
+                            r3, ce, iz = self._renta_impuesto_triplet_xml(
+                                participant,
+                                renta_map,
+                                use_db=requires_renta_impuesto,
+                            )
+                            xml += f'\t\t\t\t\t\t\t<Renta3Cat>{r3}</Renta3Cat>\n'
+                            xml += f'\t\t\t\t\t\t\t<CasaEnajenante>{ce}</CasaEnajenante>\n'
+                            xml += f'\t\t\t\t\t\t\t<ImpuestoCero>{iz}</ImpuestoCero>\n'
+                        elif role == 'B' and requires_renta_impuesto:
+                            r3, ce, iz = self._renta_impuesto_triplet_xml(
+                                participant, renta_map, use_db=True
+                            )
+                            xml += f'\t\t\t\t\t\t\t<Renta3Cat>{r3}</Renta3Cat>\n'
+                            xml += f'\t\t\t\t\t\t\t<CasaEnajenante>{ce}</CasaEnajenante>\n'
+                            xml += f'\t\t\t\t\t\t\t<ImpuestoCero>{iz}</ImpuestoCero>\n'
                         
-                        # Add Representantes section
-                        xml += '\t\t\t\t\t\t\t<Representantes>\n'
-                        # Find representatives for this participant
-                        reps = [p for p in doc.get('participants', []) if p.get('tiporepresentacion') == '1' and p.get('idcontratanterp') == participant.get('idcontratante')]
-                        for rep in reps:
-                            xml += '\t\t\t\t\t\t\t\t<Representante>\n'
-                            xml += f'\t\t\t\t\t\t\t\t\t<IdMaestro>{rep.get("idcliente", "")}</IdMaestro>\n'
-                            if rep.get("inscrito") == "1" and (rep.get("idsedereg") or rep.get("numpartida")):
-                                xml += '\t\t\t\t\t\t\t\t\t<InscripcionRepresentacion>\n'
-                                if rep.get("idsedereg"):
-                                    xml += f'\t\t\t\t\t\t\t\t\t\t<SedeRegistral>{rep.get("idsedereg", "")}</SedeRegistral>\n'
-                                if rep.get("numpartida"):
-                                    xml += f'\t\t\t\t\t\t\t\t\t\t<PartidaRegistral>{rep.get("numpartida", "")}</PartidaRegistral>\n'
-                                xml += '\t\t\t\t\t\t\t\t\t</InscripcionRepresentacion>\n'
-                            if rep.get("fechafirma"):
-                                xml += f'\t\t\t\t\t\t\t\t\t<FechaFirma>{self._format_date(rep.get("fechafirma", ""))}</FechaFirma>\n'
-                            xml += '\t\t\t\t\t\t\t\t</Representante>\n'
-                        xml += '\t\t\t\t\t\t\t</Representantes>\n'
+                        xml += self._representantes_bajo_sujeto_xml(
+                            participant.get("idcontratante"),
+                            doc.get("participants") or [],
+                        )
                         
-                        if participant.get("fechafirma"):
-                            xml += f'\t\t\t\t\t\t\t<FechaFirma>{self._format_date(participant.get("fechafirma", ""))}</FechaFirma>\n'
+                        xml += self._fecha_firma_element_xml(
+                            participant, "\t\t\t\t\t\t\t"
+                        )
                         xml += '\t\t\t\t\t\t</Sujeto>\n'
                     xml += '\t\t\t\t\t</Sujetos>\n'
                     xml += '\t\t\t\t</Intervencion>\n'
 
                 xml += '\t\t\t</Intervenciones>\n'
                 
-                # Add NoIntervinientes section
+                # NoIntervinientes: marcadores PHP (repre/firma/visita 'N') + cónyuge casado
+                ni_ids = self._coleccion_no_interviniente_ids(
+                    doc.get("participants") or [],
+                    emitidos_sujeto_id_maestro,
+                )
                 xml += '\t\t\t<NoIntervinientes>\n'
+                for nid in ni_ids:
+                    xml += '\t\t\t\t<NoInterviniente>\n'
+                    xml += f'\t\t\t\t\t<IdMaestro>{nid}</IdMaestro>\n'
+                    xml += '\t\t\t\t</NoInterviniente>\n'
                 xml += '\t\t\t</NoIntervinientes>\n'
                 xml += '\t\t</Operantes>\n'
                 
@@ -925,31 +2006,34 @@ class SISGENXmlGenerator:
                 participants_list = doc.get('participants', [])
                 total_monto = self._cuantia_operacion_total(doc, participants_list)
                 xml += f'\t\t\t<Cuantia>{total_monto:.2f}</Cuantia>\n'
-                xml += '\t\t\t<TipoMoneda>01</TipoMoneda>\n'
+                xml += f'\t\t\t<TipoMoneda>{tipo_moneda_doc}</TipoMoneda>\n'
                 xml += '\t\t</CuantiaOperacion>\n'
                 
-                # Add MediosPagos section
-                xml += '\t\t<MediosPagos>\n'
-                xml += '\t\t<MediosPago>\n'
-                xml += '\t\t\t<MedioPago>001</MedioPago>\n'
-                xml += '\t\t\t<FormaPago>C</FormaPago>\n'
-                xml += '\t\t\t<MomentoPago>1</MomentoPago>\n'
-                xml += f'\t\t\t<CuantiaPago>{total_monto:.2f}</CuantiaPago>\n'
-                xml += '\t\t\t<TipoMonedaPago>01</TipoMonedaPago>\n'
-                xml += '\t\t\t<JustificadoManifestado>1</JustificadoManifestado>\n'
-                xml += f'\t\t\t<FechaPago>{doc.get("fechaescritura", "")}</FechaPago>\n'
-                xml += '\t\t\t<IdPago>0746978</IdPago>\n'
-                xml += '\t\t\t<EntidadFinanciera>00002</EntidadFinanciera>\n'
-                xml += '\t\t</MediosPago>\n'
-                xml += '\t\t</MediosPagos>\n'
-                
-                # Add contract details
-                xml += f'\t\t\t<NombreContrato>{doc.get("contrato", "").strip(" /")}</NombreContrato>\n'
-                xml += f'\t\t\t<FechaMinuta>{doc.get("fechaescritura", "")}</FechaMinuta>\n'
+                xml += self._medios_pagos_xml_for_doc(
+                    doc, pat_row, mp_rows, tipo_moneda_doc, total_monto
+                )
+
+                nombre_contrato_xml = self._nombre_contrato_sisgen(doc)
+                fecha_minuta_xml = self._fecha_minuta_sisgen(doc, pat_row, mp_rows)
+                xml += f"\t\t\t<NombreContrato>{nombre_contrato_xml}</NombreContrato>\n"
+                xml += f"\t\t\t<FechaMinuta>{fecha_minuta_xml}</FechaMinuta>\n"
                 
                 xml += '\t\t</Operacion>\n'
                 xml += '\t</Operaciones>\n'
                 xml += '\t</DocumentoNotarial>\n'
+                docs_emitted += 1
+
+            if docs_emitted == 0:
+                self.logger.error(
+                    "Ningún DocumentoNotarial emitido (%s documentos en batch); "
+                    "no enviar a SISGEN (respuesta sería OK sin GUARDADO).",
+                    len(documents),
+                )
+                if not issues:
+                    issues.append(
+                        "Ningún documento incluido en el XML (revisar logs de validación)."
+                    )
+                return None, issues
 
             xml += '</DocumentosNotariales>'
             
@@ -965,11 +2049,11 @@ class SISGENXmlGenerator:
                 f.write(xml)
             
             logger.debug("Generated XML content")
-            return xml
+            return xml, issues
 
         except Exception as e:
             logger.error(f"Error generating XML: {str(e)}")
-            return None
+            return None, issues + [str(e)]
     
     def _validate_document(self, doc: Dict) -> bool:
         """Validate document has all required data"""

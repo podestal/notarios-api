@@ -24,7 +24,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # When True, SendToSISGEN builds XML and returns the SOAP payload only — no HTTP call to SISGEN.
-SISGEN_DRY_RUN = True
+SISGEN_DRY_RUN = False
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -253,10 +253,17 @@ class SendToSISGENView(APIView):
                     # Process batch
                     result = data_processor.process_documents_batch(batch)
                     
-                    # Generate XML
-                    xml_content = xml_generator.generate_document_xml(result['documents'])
+                    # Generate XML (None si todos omitidos → no enviar; SISGEN respondería OK sin GUARDADO)
+                    xml_content, xml_issues = xml_generator.generate_document_xml(
+                        result['documents']
+                    )
+                    if xml_issues:
+                        combined_result['errores'].extend(xml_issues)
                     if not xml_content:
-                        print(f'DEBUG: Failed to generate XML for batch {batch_num}')
+                        print(
+                            f'DEBUG: Failed to generate XML for batch {batch_num}: '
+                            f'{xml_issues}'
+                        )
                         continue
 
                     # Always persist outgoing XML for troubleshooting

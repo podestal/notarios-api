@@ -247,6 +247,7 @@ class DocumentSearchService:
                    k.estado_sisgen, k.idtipkar, k.fechaingreso, k.codactos,
                    k.contrato, k.folioini, k.foliofin, k.fechaconclusion,
                    ta.actouif, ta.actosunat,
+                   IFNULL(ta.desacto, '') AS desacto,
                    cn.codnotario, cn.codoficial, cn.coduif,
                    CONCAT(cn.nombre, ' ', cn.apellido) as nombre_notario,
                    cn.direccion as direccion_notario,
@@ -425,15 +426,64 @@ class DocumentSearchService:
             
             # Validate UIF data
             self._validate_uif_data(doc)
+            self._validate_detalle_mediopago_moneda(kardex)
             
             self.logger.debug(f"After validation for kardex {kardex}:")
             self.logger.debug(f"Errors: {self.kardex_errors.get(kardex, [])}")
             self.logger.debug(f"Observations: {self.kardex_observations.get(kardex, [])}")
 
+    def _sisgen_skip_uif_money_checks(self, doc: Dict) -> bool:
+        """
+        PHP validarUIFSUNAT: si el tipo de acto no aplica UIF (actouif explícito),
+        no se exigen montos ni origen de fondos en contratantesxacto.
+        """
+        au = (doc.get("actouif") or "").strip().upper()
+        return au in ("N", "NO", "0", "NINGUNO", "-")
+
+    def _validate_detalle_mediopago_moneda(self, kardex: str):
+        """ValidarMoneda-style: moneda en detallemediopago requiere importemp > 0."""
+        if not kardex:
+            return
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT importemp, idmon FROM detallemediopago
+                    WHERE kardex = %s
+                    """,
+                    [kardex],
+                )
+                for importemp, idmon in cursor.fetchall():
+                    ims = str(idmon).strip() if idmon is not None else ""
+                    if ims in ("", "0", "None"):
+                        continue
+                    try:
+                        amt = float(importemp or 0)
+                    except (TypeError, ValueError):
+                        amt = 0.0
+                    if amt <= 0:
+                        self._add_error(
+                            kardex,
+                            "detallemediopago: moneda informada sin importe válido",
+                        )
+        except Exception as e:
+            self.logger.warning(
+                "No se pudo validar detallemediopago para kardex %s: %s",
+                kardex,
+                e,
+            )
+
     def _validate_uif_data(self, doc: Dict):
         """Validate UIF-related data"""
         kardex = doc.get('kardex', '')
         self.logger.debug(f"Validating UIF data for kardex: {kardex}")
+
+        if self._sisgen_skip_uif_money_checks(doc):
+            self.logger.debug(
+                "Saltando validaciones UIF monetarias (actouif no aplica) kardex=%s",
+                kardex,
+            )
+            return
         
         try:
             # Get UIF data for the kardex
@@ -488,6 +538,7 @@ class DocumentSearchService:
         for doc in documents:
             kardex = doc.get('kardex', '')
             self.logger.debug(f"Validating person data for kardex: {kardex}")
+            skip_uif_strict = self._sisgen_skip_uif_money_checks(doc)
             
             # Get participants data using the kardex
             participants = self._get_participants_for_kardex(kardex)
@@ -509,7 +560,9 @@ class DocumentSearchService:
                         self._add_person_error(kardex, f"{person_id}: Falta primer nombre")
                     
                     # Additional validations for natural persons
-                    self._validate_natural_person(kardex, participant)
+                    self._validate_natural_person(
+                        kardex, participant, skip_uif_strict=skip_uif_strict
+                    )
                 
                 # Validate juridical person data
                 elif participant.get('tipper') == 'J':
@@ -522,12 +575,16 @@ class DocumentSearchService:
                         self._add_person_error(kardex, f"{person_id}: Falta razón social")
                     
                     # Additional validations for juridical persons
-                    self._validate_juridical_person(kardex, participant)
+                    self._validate_juridical_person(
+                        kardex, participant, skip_uif_strict=skip_uif_strict
+                    )
             
             self.logger.debug(f"After person validation for kardex {kardex}:")
             self.logger.debug(f"Person errors: {self.person_errors.get(kardex, [])}")
 
-    def _validate_natural_person(self, kardex: str, person: Dict):
+    def _validate_natural_person(
+        self, kardex: str, person: Dict, skip_uif_strict: bool = False
+    ):
         """Additional validations for natural persons"""
         # Format person name
         nombre = f"{person.get('prinom', '')} {person.get('segnom', '')} {person.get('apepat', '')} {person.get('apemat', '')}".strip()
@@ -544,8 +601,10 @@ class DocumentSearchService:
             if doc_number and len(doc_number) > 12:
                 self._add_person_error(kardex, f"{person_id}: Formato de CE inválido")
         
-        # Validate required contact information
-        if not any([person.get('telfijo'), person.get('telcel'), person.get('email')]):
+        # Contacto (PHP lo condiciona a actos con UIF / SUNAT según validarUIFSUNAT)
+        if not skip_uif_strict and not any(
+            [person.get('telfijo'), person.get('telcel'), person.get('email')]
+        ):
             self._add_person_error(
                 kardex,
                 f"{person_id}: Falta información de contacto (registre al menos uno: telfijo, telcel o email)",
@@ -555,7 +614,9 @@ class DocumentSearchService:
         if not person.get('direccion') or not person.get('idubigeo'):
             self._add_person_error(kardex, f"{person_id}: Información de dirección incompleta")
 
-    def _validate_juridical_person(self, kardex: str, person: Dict):
+    def _validate_juridical_person(
+        self, kardex: str, person: Dict, skip_uif_strict: bool = False
+    ):
         """Additional validations for juridical persons"""
         # Format company name
         razon_social = person.get('razonsocial', '').strip()
@@ -570,11 +631,13 @@ class DocumentSearchService:
         if not person.get('fechaconstitu'):
             self._add_person_error(kardex, f"{person_id}: Falta fecha de constitución")
         
-        if not person.get('idsedereg') or not person.get('numpartida'):
+        num_part = person.get('numpartidareg') or person.get('numpartida')
+        if not person.get('idsedereg') or not num_part:
             self._add_person_error(kardex, f"{person_id}: Falta información registral")
         
-        # Validate contact information
-        if not person.get('telempresa') and not person.get('mailempresa'):
+        if not skip_uif_strict and not person.get('telempresa') and not person.get(
+            'mailempresa'
+        ):
             self._add_person_error(
                 kardex,
                 f"{person_id}: Falta información de contacto de la empresa (registre al menos uno: telempresa o mailempresa)",
@@ -632,6 +695,7 @@ class DocumentSearchService:
                    k.estado_sisgen, k.idtipkar, k.fechaingreso, k.codactos,
                    k.contrato, k.folioini, k.foliofin, k.fechaconclusion,
                    ta.actouif, ta.actosunat,
+                   IFNULL(ta.desacto, '') AS desacto,
                    -- Add notary data
                    cn.codnotario, cn.codoficial, cn.coduif,
                    CONCAT(cn.nombre, ' ', cn.apellido) as nombre_notario,
@@ -871,6 +935,7 @@ class DocumentSearchService:
             'cod_ancert': doc['cod_ancert'] or '',
             'actouif': doc['actouif'] or '',
             'actosunat': doc['actosunat'] or '',
+            'desacto': doc.get('desacto') or '',
             'notary_data': {
                 'codnotario': doc['codnotario'],
                 'codoficial': doc['codoficial'],

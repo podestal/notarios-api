@@ -114,7 +114,8 @@ class DataProcessorService:
         query = """
             SELECT k.*, 
                    IF(ta.cod_ancert IS NULL,'',ta.cod_ancert) AS cod_ancert,
-                   ta.actouif, ta.actosunat
+                   ta.actouif, ta.actosunat,
+                   IFNULL(ta.desacto, '') AS desacto
             FROM kardex k
             LEFT JOIN tiposdeacto ta ON SUBSTRING(k.codactos,1,3) = ta.idtipoacto
             WHERE k.kardex = %s AND k.idkardex = %s
