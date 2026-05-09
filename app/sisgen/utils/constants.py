@@ -29,9 +29,9 @@ DB_CONFIG = {
 
 # Application Constants
 APP_CONSTANTS = {
-    'PROVIDER_NAME': 'CNL',
-    'APP_NAME': 'SISNOT',
-    'APP_VERSION': '2.7'
+    'PROVIDER_NAME': os.getenv('PROVIDER_NAME', 'PROVIDER'),
+    'APP_NAME': os.getenv('APP_NAME', 'APP'),
+    'APP_VERSION': os.getenv('APP_VERSION', '1.1')
 }
 
 # Estado SISGEN Mapping
