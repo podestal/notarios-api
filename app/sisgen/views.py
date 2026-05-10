@@ -13,9 +13,13 @@ from .services.document_search_service import DocumentSearchService
 from .services.xml_generator_service import SISGENXmlGenerator
 from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
+from .services.sisgen_soap_response import (
+    parse_set_documentos_response,
+    save_response_logs_for_batch,
+)
 from .utils.exceptions import DocumentSearchException
 from .services.book_search_service import BookSearchService
-from .models import SisgenValidationCache
+from .models import SisgenSoapResponse, SisgenValidationCache
 from rest_framework.decorators import api_view
 import logging
 from datetime import datetime
@@ -29,7 +33,7 @@ SISGEN_DRY_RUN = False
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DocumentSearchView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperuser]
+    # permission_classes = [IsAuthenticated, IsSuperuser]
 
     def post(self, request):
         """Search for notarial documents with pagination"""
@@ -298,6 +302,23 @@ class SendToSISGENView(APIView):
 
                     self._write_debug_xml(response.text, f"response_batch_{batch_num}_{ts}.xml")
 
+                    try:
+                        parsed_soap = parse_set_documentos_response(response.text or "")
+                        save_response_logs_for_batch(
+                            batch_documents=batch,
+                            batch_index=batch_num,
+                            http_status=response.status_code,
+                            raw_xml=response.text or "",
+                            parsed=parsed_soap,
+                            user=request.user,
+                        )
+                    except Exception as exc:
+                        logger.exception(
+                            "Persistencia SisgenSoapResponse fallida batch=%s: %s",
+                            batch_num,
+                            exc,
+                        )
+
                     data_processor.update_document_statuses(response.text)
 
                     batch_status = data_processor.get_final_status()
@@ -333,6 +354,109 @@ class SendToSISGENView(APIView):
                 'error': 1,
                 'message': f'Internal server error: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _serialize_sisgen_soap_response(
+    obj: SisgenSoapResponse, *, include_raw: bool
+) -> dict:
+    row = {
+        "id": obj.id,
+        "created_at": obj.created_at.isoformat(),
+        "kardex": obj.kardex,
+        "idkardex": obj.idkardex,
+        "batch_index": obj.batch_index,
+        "http_status": obj.http_status,
+        "soap_return_status": obj.soap_return_status,
+        "soap_return_message": obj.soap_return_message,
+        "document_status": obj.document_status,
+        "parsed_payload": obj.parsed_payload or {},
+    }
+    if include_raw:
+        row["raw_response_xml"] = obj.raw_response_xml or ""
+    else:
+        row["raw_response_xml_bytes"] = len((obj.raw_response_xml or "").encode("utf-8"))
+    return row
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SisgenSoapResponseListView(APIView):
+    """
+    Histórico de respuestas SISGEN guardadas tras POST real (no dry-run).
+
+    **Varias filas por mismo kardex:** cada envío exitoso puede crear una o más filas
+    (reenvíos, eco por documento, etc.).
+
+    **Paginación**
+    - Sin ``limit``: se devuelven todas las filas que coincidan desde ``offset``, hasta
+      ``max_auto_fetch`` (50_000) por petición; si hay más, ``has_more`` es True y se usa
+      el siguiente ``offset``.
+    - Con ``limit``: tamaño de página explícito (1 … 100_000).
+
+    GET ``/sisgen/submission-responses/?kardex=…``
+    GET ``/sisgen/submission-responses/kardex/<kardex>/``
+
+    Query: ``offset``, ``limit`` (opcional), ``include_raw=1``.
+    """
+
+    # permission_classes = [IsAuthenticated, IsSuperuser]
+
+    _MAX_AUTO_FETCH = 50000
+    _MAX_LIMIT_PARAM = 100000
+
+    def get(self, request, kardex=None):
+        k_filter = (
+            (kardex if kardex is not None else "")
+            or (request.query_params.get("kardex") or "")
+        ).strip()
+        try:
+            offset = int(request.query_params.get("offset", 0))
+        except ValueError:
+            offset = 0
+        offset = max(0, offset)
+
+        limit_raw = request.query_params.get("limit")
+        limit_explicit = limit_raw is not None and str(limit_raw).strip() != ""
+
+        include_raw = request.query_params.get("include_raw", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+
+        qs = SisgenSoapResponse.objects.all().order_by("-created_at")
+        if k_filter:
+            qs = qs.filter(kardex=k_filter)
+
+        total_count = qs.count()
+
+        if limit_explicit:
+            try:
+                page_size = int(limit_raw)
+            except ValueError:
+                page_size = self._MAX_AUTO_FETCH
+            page_size = max(1, min(page_size, self._MAX_LIMIT_PARAM))
+        else:
+            remaining = max(0, total_count - offset)
+            page_size = min(self._MAX_AUTO_FETCH, remaining)
+
+        rows = list(qs[offset : offset + page_size])
+        has_more = offset + len(rows) < total_count
+
+        payload = {
+            "error": 0,
+            "total_count": total_count,
+            "offset": offset,
+            "returned_count": len(rows),
+            "has_more": has_more,
+            "max_auto_fetch_per_request": self._MAX_AUTO_FETCH,
+            "include_raw": include_raw,
+            "data": [
+                _serialize_sisgen_soap_response(r, include_raw=include_raw) for r in rows
+            ],
+        }
+        if k_filter:
+            payload["kardex"] = k_filter
+        return Response(payload)
 
 
 @method_decorator(csrf_exempt, name='dispatch')

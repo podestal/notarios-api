@@ -416,15 +416,27 @@ class SISGENXmlGenerator:
             return "0"
         return ''.join(c for c in folio if c.isdigit()) or "0"
 
+    def _num_folios_libro_notarial_pe(self, folio_ini: int, folio_fin: int) -> int:
+        """
+        Folios útiles entre folioini y foliofin en libros con secuencia anverso/vuelta
+        por cada número hasta el siguiente: 1 → 1vta → 2 → 2vta → 3 ⇒ 5 (no 3).
+
+        Fórmula: 2 * (folio_fin - folio_ini) + 1 cuando folio_fin >= folio_ini.
+        Un solo número de folio (ini == fin) cuenta como 1.
+        """
+        if folio_fin < folio_ini:
+            return 1
+        return max(1, 2 * (folio_fin - folio_ini) + 1)
+
     def _calculate_num_folios(self, doc: Dict) -> int:
-        """Calculate number of folios handling non-numeric characters"""
+        """NumFolios para SISGEN; usa convención libro PE (anverso + vueltas entre números)."""
         try:
             folio_ini = self._clean_folio(doc.get("folioini", "0"))
             folio_fin = self._clean_folio(doc.get("foliofin", "0"))
-            
-            num_folios = int(folio_fin) - int(folio_ini)
-            return max(1, num_folios + 1)  # Ensure at least 1 folio
-        except:
+            fi = int(folio_ini)
+            ff = int(folio_fin)
+            return self._num_folios_libro_notarial_pe(fi, ff)
+        except Exception:
             return 1
 
     def _add_participant_condition(self, participant: Dict) -> str:

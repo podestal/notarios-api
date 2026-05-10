@@ -1001,40 +1001,60 @@ class DocumentSearchService:
         except Exception:
             return str(datetime_value)
     
+    @staticmethod
+    def _numescritura_int(val) -> Optional[int]:
+        """DB suele devolver numescritura como str ('03'); necesario para huecos en estado=5."""
+        if val is None:
+            return None
+        s = "".join(c for c in str(val).strip() if c.isdigit())
+        if not s:
+            return None
+        try:
+            return int(s)
+        except ValueError:
+            return None
+
     def _handle_all_documents_case(self, documents: List[Dict]) -> List[Dict]:
-        """Handle special case for estado = 5"""
+        """Handle special case for estado = 5 (huecos entre números de escritura)."""
         if not documents:
             return documents
-        
-        processed = []
-        prev_num = None
-        
+
+        processed: List[Dict] = []
+        prev_int: Optional[int] = None
+
         for i, doc in enumerate(documents):
-            current_num = doc['numescritura']
-            
-            if prev_num is not None and current_num != prev_num + 1:
-                # Add gap document
-                processed.append({
-                    'numescritura': prev_num + 1,
-                    'idkardex': '',
-                    'kardex': '',
-                    'idtipkar': '',
-                    'fechaingreso': '',
-                    'fechaescritura': '',
-                    'cod_ancert': f'-10--{i}',
-                    'folioini': '',
-                    'fechaconclusion': '',
-                    'codactos': '',
-                    'contrato': '',
-                    'estado_sisgen': '-1',
-                    'actouif': '',
-                    'actosunat': '',
-                    'notary_data': {} # Ensure notary data is empty for gap documents
-                })
-            
+            cur_int = self._numescritura_int(doc.get("numescritura"))
+
+            if (
+                prev_int is not None
+                and cur_int is not None
+                and cur_int != prev_int + 1
+            ):
+                gap = prev_int + 1
+                processed.append(
+                    {
+                        "numescritura": str(gap),
+                        "idkardex": "",
+                        "kardex": "",
+                        "idtipkar": "",
+                        "fechaingreso": "",
+                        "fechaescritura": "",
+                        "cod_ancert": f"-10--{i}",
+                        "folioini": "",
+                        "fechaconclusion": "",
+                        "codactos": "",
+                        "contrato": "",
+                        "estado_sisgen": "-1",
+                        "actouif": "",
+                        "actosunat": "",
+                        "notary_data": {},
+                    }
+                )
+
             processed.append(doc)
-            prev_num = current_num
-        
+            if cur_int is not None:
+                prev_int = cur_int
+
         return processed
     
     def _get_estado_display(self, estado: int) -> str:
