@@ -61,14 +61,18 @@ class DocumentSearchView(APIView):
                         
                         service = BookSearchService()
                         search_info = service.initialize_search(filters_to_use)
+                        # Honor requested page (curl/API sin cookie no tiene sesión → antes forzaba page=1)
                         data, error_details, page_status = service.get_page(
-                            search_info['search_id'], 
-                            page=1
+                            search_info["search_id"],
+                            page=page,
                         )
-                        
+
                         # Update page_status to indicate session restart
-                        page_status['session_restarted'] = True
-                        page_status['message'] = 'Search session was restarted with previous filters'
+                        page_status["session_restarted"] = True
+                        page_status["message"] = (
+                            "Search session was restarted with previous filters; "
+                            "use pagination.search_id from this response for following pages."
+                        )
                 else:
                     # New search
                     service = BookSearchService()
@@ -109,14 +113,17 @@ class DocumentSearchView(APIView):
                     
                     service = DocumentSearchService()
                     search_info = service.initialize_search(filters_to_use)
+                    # Same session note as libros: sin Cookie de sesión se recrea el search pero debe respetarse page.
                     data, error_details, page_status = service.get_page(
-                        search_info['search_id'], 
-                        page=1
+                        search_info["search_id"],
+                        page=page,
                     )
-                    
-                    # Update page_status to indicate session restart
-                    page_status['session_restarted'] = True
-                    page_status['message'] = 'Search session was restarted with previous filters'
+
+                    page_status["session_restarted"] = True
+                    page_status["message"] = (
+                        "Search session was restarted with previous filters; "
+                        "use pagination.search_id from this response for following pages."
+                    )
             else:
                 # New search
                 service = DocumentSearchService()
