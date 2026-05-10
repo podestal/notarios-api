@@ -36,12 +36,13 @@ APP_CONSTANTS = {
 
 # Estado SISGEN Mapping
 ESTADO_SISGEN_MAPPING = {
+    -1: 'Hueco (sin expediente en secuencia)',
     0: 'No Enviado',
     1: 'Enviado',
     2: 'Enviado(Observado)',
     3: 'No Enviado(Fallido)',
     4: 'Sin Código ANCERT',
-    5: 'Todos'
+    5: 'Todos',
 }
 
 # Tipo Kardex SISGEN Mapping

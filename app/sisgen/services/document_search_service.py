@@ -5,6 +5,7 @@ This module contains the document search service for the sisgen service.
 from typing import Dict, List, Tuple, Optional
 import logging
 import json
+from decimal import Decimal
 from datetime import datetime
 from django.db import connection
 from ..utils.exceptions import DocumentSearchException, ValidationException
@@ -113,7 +114,9 @@ class DocumentSearchService:
                 conditions, params = self._build_filter_conditions(self.validated_filters)
                 if conditions:
                     query += " AND " + " AND ".join(conditions)
-                query += " ORDER BY k.numescritura"  # Ensure consistent ordering
+                query += (
+                    " ORDER BY CAST(NULLIF(TRIM(k.numescritura), '') AS UNSIGNED), k.kardex"
+                )
                 
                 cursor.execute(query, params)
                 documents = cursor.fetchall()
@@ -268,6 +271,26 @@ class DocumentSearchService:
             self.logger.error(f"Database query error: {str(e)}")
             raise DocumentSearchException(f"Database query failed: {str(e)}")
 
+    @staticmethod
+    def _reference_date_in_range_sql(fecha_desde: str, fecha_hasta: str) -> Tuple[str, List]:
+        """
+        Rango por fecha de referencia del expediente.
+
+        ``k.fechaescritura`` es VARCHAR y en legado viene en ISO (YYYY-MM-DD) o DD/MM/YYYY;
+        un ``BETWEEN`` lexicográfico sobre strings excluye filas válidas. En vehículos a veces
+        ``fechaescritura`` viene vacío y la fecha útil está en ``fechaconclusion`` / ``fechainstrumento``.
+        """
+        sql = """(
+            COALESCE(
+                STR_TO_DATE(NULLIF(TRIM(k.fechaescritura), ''), '%%Y-%%m-%%d'),
+                STR_TO_DATE(NULLIF(TRIM(k.fechaescritura), ''), '%%d/%%m/%%Y'),
+                STR_TO_DATE(NULLIF(TRIM(k.fechaconclusion), ''), '%%d/%%m/%%Y'),
+                STR_TO_DATE(NULLIF(TRIM(k.fechainstrumento), ''), '%%d/%%m/%%Y'),
+                STR_TO_DATE(NULLIF(TRIM(k.fechainstrumento), ''), '%%Y-%%m-%%d')
+            ) BETWEEN CAST(%s AS DATE) AND CAST(%s AS DATE)
+        )"""
+        return sql, [fecha_desde, fecha_hasta]
+
     def _build_filter_conditions(self, filters: Dict) -> Tuple[List[str], List]:
         """Extract filter conditions from _build_sql_query"""
         conditions = []
@@ -275,8 +298,11 @@ class DocumentSearchService:
         
         # Date range
         if filters.get('fechaDesde') and filters.get('fechaHasta'):
-            conditions.append("k.fechaescritura BETWEEN %s AND %s")
-            params.extend([filters['fechaDesde'], filters['fechaHasta']])
+            ds, ps = self._reference_date_in_range_sql(
+                filters["fechaDesde"], filters["fechaHasta"]
+            )
+            conditions.append(ds)
+            params.extend(ps)
         
         # Instrument type
         if filters.get('tipoInstrumento'):
@@ -716,10 +742,13 @@ class DocumentSearchService:
         # Debug incoming filters
         self.logger.debug(f"Building query with filters: {filters}")
         
-        # Date range - handle both YYYY-MM-DD and DD/MM/YYYY formats
+        # Date range (ver _reference_date_in_range_sql)
         if filters.get('fechaDesde') and filters.get('fechaHasta'):
-            conditions.append("k.fechaescritura BETWEEN %s AND %s")
-            params.extend([filters['fechaDesde'], filters['fechaHasta']])
+            ds, ps = self._reference_date_in_range_sql(
+                filters["fechaDesde"], filters["fechaHasta"]
+            )
+            conditions.append(ds)
+            params.extend(ps)
             self.logger.debug(f"Date range: {filters['fechaDesde']} to {filters['fechaHasta']}")
         
         # Instrument type
@@ -1057,9 +1086,55 @@ class DocumentSearchService:
 
         return processed
     
-    def _get_estado_display(self, estado: int) -> str:
-        """Get display text for estado_sisgen"""
-        return ESTADO_SISGEN_MAPPING.get(estado, 'Desconocido')
+    @staticmethod
+    def _normalize_estado_sisgen_code(estado) -> Optional[int]:
+        """
+        Unifica tipos que vienen de MySQL/cursors: '', Decimal, str '0', bytes, etc.
+
+        Cadena vacía: en muchos legados el campo queda '' pero el filtro SQL
+        ``estado_sisgen = 0`` igual los devuelve por coerción MySQL; en Python
+        ``int('')`` fallaba y la UI mostraba «Desconocido».
+        """
+        if estado is None:
+            return None
+        if isinstance(estado, bytes):
+            estado = estado.decode("utf-8", errors="ignore").strip()
+        if isinstance(estado, Decimal):
+            try:
+                return int(estado)
+            except (ValueError, OverflowError, ArithmeticError):
+                return None
+        if isinstance(estado, float):
+            if estado != estado:  # NaN
+                return None
+            try:
+                return int(estado)
+            except ValueError:
+                return None
+        if isinstance(estado, str):
+            s = estado.strip()
+            if s == "":
+                return 0
+            if s.upper() in {"NULL", "NONE", "-"}:
+                return None
+            try:
+                return int(float(s)) if "." in s else int(s)
+            except ValueError:
+                return None
+        try:
+            return int(estado)
+        except (TypeError, ValueError):
+            return None
+
+    def _get_estado_display(self, estado) -> str:
+        """Etiqueta para UI según código numérico en kardex.estado_sisgen."""
+        key = self._normalize_estado_sisgen_code(estado)
+        if key is None:
+            return "Sin estado SISGEN"
+        label = ESTADO_SISGEN_MAPPING.get(key)
+        if label is not None:
+            return label
+        return f"Código {key} (sin etiqueta)"
 
     def _generate_debug_xml(self, data: List[Dict], error_details: Dict, filters: Dict):
         """Generate XML file for debugging"""
