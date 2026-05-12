@@ -266,7 +266,13 @@ class DocumentSearchService:
             with connection.cursor() as cursor:
                 cursor.execute(query, [tuple(kardex_list)])
                 columns = [col[0] for col in cursor.description]
-                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                # IN (...) does not preserve order; keep same order as initialize_search
+                # (numeric numescritura, then kardex).
+                order = {kx: i for i, kx in enumerate(kardex_list)}
+                tail = len(kardex_list)
+                rows.sort(key=lambda r: order.get(r.get("kardex"), tail))
+                return rows
         except Exception as e:
             self.logger.error(f"Database query error: {str(e)}")
             raise DocumentSearchException(f"Database query failed: {str(e)}")
@@ -797,7 +803,9 @@ class DocumentSearchService:
         if conditions:
             base_query += " AND " + " AND ".join(conditions)
         
-        base_query += " ORDER BY CAST(k.numescritura AS UNSIGNED)"
+        base_query += (
+            " ORDER BY CAST(NULLIF(TRIM(k.numescritura), '') AS UNSIGNED), k.kardex"
+        )
         
         self.logger.debug(f"Final SQL Query: {base_query}")
         self.logger.debug(f"SQL Params: {params}")
