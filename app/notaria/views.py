@@ -153,6 +153,56 @@ def _refresh_kardex_fechaconclusion_from_contratantes(kardex_code):
     models.Kardex.objects.filter(kardex=kardex_code).update(fechaconclusion=latest_raw)
 
 
+def _sync_cliente_from_cliente2(cliente2_obj, force_overrides=None):
+    """
+    Keep legacy `cliente` row aligned with updates made on `cliente2`.
+
+    We mirror only shared columns between both models and upsert by `idcliente`.
+    """
+    if not cliente2_obj:
+        return
+
+    idcliente = str(getattr(cliente2_obj, "idcliente", "") or "").strip()
+    numdoc = str(getattr(cliente2_obj, "numdoc", "") or "").strip()
+    if not idcliente and not numdoc:
+        return
+
+    cliente_fields = {
+        f.name
+        for f in models.Cliente._meta.concrete_fields
+        if f.name != "idcliente"
+    }
+    cliente2_fields = {
+        f.name
+        for f in models.Cliente2._meta.concrete_fields
+        if f.name not in {"idcliente", "idcontratante"}
+    }
+    shared = cliente_fields & cliente2_fields
+    payload = {name: getattr(cliente2_obj, name) for name in shared}
+    if force_overrides:
+        payload.update({k: v for k, v in force_overrides.items() if k in shared})
+
+    # Link by numdoc first (requested behavior); fallback to cliente2.idcliente.
+    target = None
+    if numdoc:
+        q = models.Cliente.objects.filter(numdoc=numdoc)
+        target = q.order_by("-idcliente").first()
+        if target is not None:
+            # Keep all duplicated cliente rows for this numdoc in sync.
+            q.update(**payload)
+
+    if target is not None:
+        if str(getattr(cliente2_obj, "idcliente", "") or "").strip() != target.idcliente:
+            # Keep linkage aligned after resolving by numdoc.
+            models.Cliente2.objects.filter(pk=cliente2_obj.pk).update(idcliente=target.idcliente)
+        return
+
+    # No cliente by numdoc; fallback to historical idcliente linkage.
+    if not idcliente:
+        return
+    models.Cliente.objects.update_or_create(idcliente=idcliente, defaults=payload)
+
+
 class UsuariosViewSet(ModelViewSet):
     """
     ViewSet for the Usuarios model.
@@ -2787,6 +2837,57 @@ class Cliente2ViewSet(ModelViewSet):
         if self.request.method == "POST":
             return serializers.CreateCliente2Serializer
         return serializers.Cliente2Serializer
+
+    @staticmethod
+    def _debug_cliente2_payload(request, action_name: str) -> None:
+        """Temporary debug trace to inspect incoming cliente2 update payloads."""
+        payload = request.data if hasattr(request, "data") else {}
+        if hasattr(payload, "dict"):
+            try:
+                payload = payload.dict()
+            except Exception:
+                payload = dict(payload)
+        if not isinstance(payload, dict):
+            print(f"DEBUG cliente2 {action_name}: payload type={type(payload).__name__}")
+            return
+
+        keys = sorted(payload.keys())
+        print(f"DEBUG cliente2 {action_name}: fields={keys}")
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, str):
+                print(
+                    f"DEBUG cliente2 {action_name}: {key}={value!r} len={len(value)}"
+                )
+            else:
+                print(
+                    f"DEBUG cliente2 {action_name}: {key}={value!r} type={type(value).__name__}"
+                )
+
+    def update(self, request, *args, **kwargs):
+        self._debug_cliente2_payload(request, "PUT")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._debug_cliente2_payload(request, "PATCH")
+        return super().partial_update(request, *args, **kwargs)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        updated_cliente2 = serializer.save()
+        detaprofesion_in = serializer.validated_data.get("detaprofesion", None)
+        if detaprofesion_in is not None:
+            # Force requested detail in cliente2 as well.
+            models.Cliente2.objects.filter(pk=updated_cliente2.pk).update(
+                detaprofesion=detaprofesion_in
+            )
+        # DB triggers/procedures can mutate cliente2 fields after UPDATE.
+        # Reload to sync cliente with the true persisted state.
+        updated_cliente2.refresh_from_db()
+        overrides = {}
+        if detaprofesion_in is not None:
+            overrides["detaprofesion"] = detaprofesion_in
+        _sync_cliente_from_cliente2(updated_cliente2, force_overrides=overrides)
 
     @action(detail=False, methods=["get"])
     def by_dni(self, request):
