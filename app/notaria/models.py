@@ -1097,3 +1097,35 @@ class Confinotario(models.Model):
     class Meta:
         managed = False
         db_table = 'confinotario'
+
+
+class Tiposdeacto(models.Model):
+    idtipoacto = models.CharField(max_length=6)
+    actosunat = models.CharField(max_length=25, blank=True, null=True)
+    actouif = models.CharField(max_length=25, blank=True, null=True)
+    idtipkar = models.IntegerField()
+    desacto = models.CharField(max_length=300)
+    umbral = models.IntegerField(blank=True, null=True)
+    impuestos = models.IntegerField(blank=True, null=True)
+    idcalnot = models.IntegerField(blank=True, null=True)
+    idecalreg = models.IntegerField(blank=True, null=True)
+    idmodelo = models.IntegerField(blank=True, null=True)
+    rol_part = models.CharField(max_length=10, blank=True, null=True)
+    indicador = models.CharField(max_length=5, blank=True, null=True)
+    codigo_ancert = models.CharField(max_length=10, blank=True, null=True)
+    codigo_visual = models.CharField(max_length=6, blank=True, null=True)
+    tipobien_admitido = models.CharField(max_length=10, blank=True, null=True)
+    mediospago = models.CharField(max_length=1, blank=True, null=True)
+    cuantia = models.CharField(max_length=1, blank=True, null=True)
+    origenfondo = models.CharField(max_length=1, blank=True, null=True)
+    oporpago1 = models.CharField(max_length=1, blank=True, null=True)
+    impuestorenta = models.CharField(max_length=1, blank=True, null=True)
+    tipoplantilla_default = models.CharField(max_length=1, blank=True, null=True)
+    nativo = models.CharField(max_length=1, blank=True, null=True)
+    novalidapatri = models.CharField(max_length=1, blank=True, null=True)
+    flag = models.CharField(max_length=1, blank=True, null=True)
+    cod_ancert = models.CharField(max_length=10, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tiposdeacto'

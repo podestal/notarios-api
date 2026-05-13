@@ -1228,3 +1228,13 @@ class ConfinotarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Confinotario
         fields = "__all__"
+
+
+class TiposdeactoSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Tiposdeacto model.
+    """
+
+    class Meta:
+        model = models.Tiposdeacto
+        fields = "__all__"

@@ -53,5 +53,6 @@ router.register('libros', views.LibrosViewSet, basename='libros')
 router.register('tipolibro', views.TipolibroViewSet, basename='tipolibro')
 router.register('cert_domiciliario', views.CertDomiciliarioViewSet, basename='cert_domiciliario')
 router.register('confinotario', views.ConfinotarioViewSet, basename='confinotario')
+router.register('tiposdeacto', views.TiposdeactoViewSet, basename='tiposdeacto')
 
 urlpatterns = router.urls

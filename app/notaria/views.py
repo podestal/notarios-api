@@ -4976,3 +4976,41 @@ class ConfinotarioViewSet(ModelViewSet):
         if denied:
             return denied
         return super().destroy(request, *args, **kwargs)
+
+
+class TiposdeactoViewSet(ModelViewSet):
+    """
+    ViewSet for the Tiposdeacto model.
+
+    List is paginated (see KardexPagination: ``page``, ``page_size`` query params).
+
+    Optional query filters for ``GET`` list:
+
+    - ``desacto`` — substring match (case-insensitive) on ``desacto``
+    - ``idtipoacto`` — exact match on ``idtipoacto``
+    - ``idtipkar`` — exact match on ``idtipkar`` (integer)
+    """
+
+    queryset = models.Tiposdeacto.objects.all().order_by("idtipoacto")
+    serializer_class = serializers.TiposdeactoSerializer
+    pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action != "list":
+            return qs
+        p = self.request.query_params
+        desacto = p.get("desacto")
+        if desacto:
+            qs = qs.filter(desacto__icontains=desacto.strip())
+        idtipoacto = p.get("idtipoacto")
+        if idtipoacto is not None and idtipoacto != "":
+            qs = qs.filter(idtipoacto=idtipoacto.strip())
+        idtipkar = p.get("idtipkar")
+        if idtipkar is not None and idtipkar != "":
+            try:
+                qs = qs.filter(idtipkar=int(idtipkar))
+            except (TypeError, ValueError):
+                qs = qs.none()
+        return qs

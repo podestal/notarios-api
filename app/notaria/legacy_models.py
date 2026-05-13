@@ -8,27 +8,33 @@
 from django.db import models
 
 
-class Confinotario(models.Model):
-    idnotar = models.AutoField(primary_key=True)
-    nombre = models.CharField(max_length=200)
-    apellido = models.CharField(max_length=200)
-    telefono = models.CharField(max_length=20)
-    correo = models.CharField(max_length=200)
-    ruc = models.CharField(max_length=1000)
-    direccion = models.TextField(blank=True, null=True)
-    distrito = models.CharField(max_length=1000, blank=True, null=True)
-    codnotario = models.CharField(max_length=15, blank=True, null=True)
-    codoficial = models.CharField(max_length=15, blank=True, null=True)
-    coduif = models.CharField(max_length=15, blank=True, null=True)
-    islima = models.IntegerField(db_column='isLima', blank=True, null=True)  # Field name made lowercase.
-    cajaemail = models.CharField(db_column='cajaEmail', max_length=300, blank=True, null=True)  # Field name made lowercase.
-    passwordemail = models.CharField(db_column='passwordEmail', max_length=100, blank=True, null=True)  # Field name made lowercase.
-    ubigeo = models.CharField(max_length=300, blank=True, null=True)
-    ructest = models.CharField(db_column='rucTest', max_length=300, blank=True, null=True)  # Field name made lowercase.
-    provincia = models.CharField(max_length=150, blank=True, null=True)
-    departamento = models.CharField(max_length=150, blank=True, null=True)
-    abrev = models.CharField(max_length=50, blank=True, null=True)
+class Tiposdeacto(models.Model):
+    idtipoacto = models.CharField(max_length=6)
+    actosunat = models.CharField(max_length=25, blank=True, null=True)
+    actouif = models.CharField(max_length=25, blank=True, null=True)
+    idtipkar = models.IntegerField()
+    desacto = models.CharField(max_length=300)
+    umbral = models.IntegerField(blank=True, null=True)
+    impuestos = models.IntegerField(blank=True, null=True)
+    idcalnot = models.IntegerField(blank=True, null=True)
+    idecalreg = models.IntegerField(blank=True, null=True)
+    idmodelo = models.IntegerField(blank=True, null=True)
+    rol_part = models.CharField(max_length=10, blank=True, null=True)
+    indicador = models.CharField(max_length=5, blank=True, null=True)
+    codigo_ancert = models.CharField(max_length=10, blank=True, null=True)
+    codigo_visual = models.CharField(max_length=6, blank=True, null=True)
+    tipobien_admitido = models.CharField(max_length=10, blank=True, null=True)
+    mediospago = models.CharField(max_length=1, blank=True, null=True)
+    cuantia = models.CharField(max_length=1, blank=True, null=True)
+    origenfondo = models.CharField(max_length=1, blank=True, null=True)
+    oporpago1 = models.CharField(max_length=1, blank=True, null=True)
+    impuestorenta = models.CharField(max_length=1, blank=True, null=True)
+    tipoplantilla_default = models.CharField(max_length=1, blank=True, null=True)
+    nativo = models.CharField(max_length=1, blank=True, null=True)
+    novalidapatri = models.CharField(max_length=1, blank=True, null=True)
+    flag = models.CharField(max_length=1, blank=True, null=True)
+    cod_ancert = models.CharField(max_length=10, blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'confinotario'
+        db_table = 'tiposdeacto'
