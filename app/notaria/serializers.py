@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from . import models
 from django.db import IntegrityError
+from django.db.models import IntegerField, Max
+from django.db.models.functions import Cast
 from .constants import MONEDAS
 from datetime import datetime
 
@@ -1230,11 +1232,39 @@ class ConfinotarioSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+def next_tiposdeacto_idtipoacto() -> str:
+    """
+    Next idtipoacto like legacy PHP: MAX(CAST(idtipoacto AS int)) + 1, stringified.
+    """
+    agg = models.Tiposdeacto.objects.annotate(
+        _num_id=Cast("idtipoacto", IntegerField())
+    ).aggregate(m=Max("_num_id"))
+    m = agg["m"]
+    if m is None:
+        m = 0
+    return str(int(m) + 1)
+
+
 class TiposdeactoSerializer(serializers.ModelSerializer):
     """
     Serializer for the Tiposdeacto model.
+
+    On create, ``idtipoacto`` is assigned automatically (client value ignored).
+    ``indicador`` and ``rol_part`` are stored in uppercase (create and update).
     """
 
     class Meta:
         model = models.Tiposdeacto
         fields = "__all__"
+        read_only_fields = ("idtipoacto",)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        for fname in ("indicador", "rol_part"):
+            if fname in attrs and attrs[fname] not in (None, ""):
+                attrs[fname] = str(attrs[fname]).upper()
+        return attrs
+
+    def create(self, validated_data):
+        validated_data["idtipoacto"] = next_tiposdeacto_idtipoacto()
+        return super().create(validated_data)

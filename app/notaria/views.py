@@ -4989,6 +4989,9 @@ class TiposdeactoViewSet(ModelViewSet):
     - ``desacto`` — substring match (case-insensitive) on ``desacto``
     - ``idtipoacto`` — exact match on ``idtipoacto``
     - ``idtipkar`` — exact match on ``idtipkar`` (integer)
+
+    ``POST`` (create): ``idtipoacto`` is auto-generated (max numeric id + 1, as legacy PHP).
+    ``indicador`` and ``rol_part`` are normalized to uppercase on save.
     """
 
     queryset = models.Tiposdeacto.objects.all().order_by("idtipoacto")
