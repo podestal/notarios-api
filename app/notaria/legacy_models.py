@@ -9,7 +9,7 @@ from django.db import models
 
 
 class Tiposdeacto(models.Model):
-    idtipoacto = models.CharField(max_length=6)
+    idtipoacto = models.CharField(primary_key=True, max_length=6)
     actosunat = models.CharField(max_length=25, blank=True, null=True)
     actouif = models.CharField(max_length=25, blank=True, null=True)
     idtipkar = models.IntegerField()
