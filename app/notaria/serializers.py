@@ -641,14 +641,45 @@ class TiposDeActosSerializer(serializers.ModelSerializer):
         ]
 
 
+def next_actocondicion_idcondicion() -> str:
+    """
+    Next idcondicion like legacy PHP: MAX(CAST(idcondicion AS int)) + 1, stringified.
+    """
+    agg = models.Actocondicion.objects.annotate(
+        _num_id=Cast("idcondicion", IntegerField())
+    ).aggregate(m=Max("_num_id"))
+    m = agg["m"]
+    if m is None:
+        m = 0
+    return str(int(m) + 1)
+
+
 class ActoCondicionSerializer(serializers.ModelSerializer):
     """
     Serializer for the ActoCondicion model.
+
+    On create, ``idcondicion`` is assigned automatically (client value ignored).
+    When ``parte`` is sent, the same value is stored in ``parte_generacion``.
+    ``condicion`` and ``condicionsisgen`` are stored in uppercase (create and update).
     """
 
     class Meta:
         model = models.Actocondicion
         fields = "__all__"
+        read_only_fields = ("idcondicion",)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if "parte" in attrs:
+            attrs["parte_generacion"] = attrs["parte"]
+        for fname in ("condicion", "condicionsisgen"):
+            if fname in attrs and attrs[fname] not in (None, ""):
+                attrs[fname] = str(attrs[fname]).upper()
+        return attrs
+
+    def create(self, validated_data):
+        validated_data["idcondicion"] = next_actocondicion_idcondicion()
+        return super().create(validated_data)
 
 
 class DetalleActosKardexSerializer(serializers.ModelSerializer):

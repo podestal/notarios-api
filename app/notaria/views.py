@@ -2933,9 +2933,13 @@ class TiposDeActosViewSet(ModelViewSet):
 class ActoCondicionViewSet(ModelViewSet):
     """
     ViewSet for the ActoCondicion model.
+
+    ``POST`` (create): ``idcondicion`` is auto-generated (max numeric id + 1, as legacy PHP).
+    ``parte`` is mirrored into ``parte_generacion`` on create and update.
+    ``condicion`` and ``condicionsisgen`` are normalized to uppercase on save.
     """
 
-    queryset = models.Actocondicion.objects.all()
+    queryset = models.Actocondicion.objects.all().order_by("idcondicion")
     serializer_class = serializers.ActoCondicionSerializer
 
     @action(detail=False, methods=["get"])
