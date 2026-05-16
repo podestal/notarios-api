@@ -5010,7 +5010,7 @@ class TiposdeactoViewSet(ModelViewSet):
     - ``idtipkar`` — exact match on ``idtipkar`` (integer)
 
     ``POST`` (create): ``idtipoacto`` is auto-generated (max numeric id + 1, as legacy PHP).
-    ``indicador`` and ``rol_part`` are normalized to uppercase on save.
+    ``desacto``, ``indicador``, and ``rol_part`` are normalized to uppercase on save.
     ``codigo_visual`` / ``codigoVisual`` is trimmed and stored as ``""`` when empty (not NULL).
     """
 

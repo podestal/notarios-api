@@ -1300,7 +1300,7 @@ class TiposdeactoSerializer(serializers.ModelSerializer):
     Serializer for the Tiposdeacto model.
 
     On create, ``idtipoacto`` is assigned automatically (client value ignored).
-    ``indicador`` and ``rol_part`` are stored in uppercase (create and update).
+    ``desacto``, ``indicador``, and ``rol_part`` are stored in uppercase (create and update).
     ``codigo_visual`` accepts ``codigoVisual`` (camelCase) from the client; empty
     values are stored as ``""``, not NULL.
     """
@@ -1318,7 +1318,7 @@ class TiposdeactoSerializer(serializers.ModelSerializer):
         if "codigo_visual" in attrs:
             v = attrs.get("codigo_visual")
             attrs["codigo_visual"] = "" if v is None else str(v).strip()[:6]
-        for fname in ("indicador", "rol_part"):
+        for fname in ("desacto", "indicador", "rol_part"):
             if fname in attrs and attrs[fname] not in (None, ""):
                 attrs[fname] = str(attrs[fname]).upper()
         return attrs
