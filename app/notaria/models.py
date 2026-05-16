@@ -427,10 +427,10 @@ class Actocondicion(models.Model):
     parte = models.CharField(max_length=20, blank=True, default="")
     uif = models.CharField(max_length=20, blank=True, null=True)
     formulario = models.CharField(max_length=20, blank=True, default="")
-    montop = models.CharField(max_length=20, blank=True, null=True)
+    montop = models.CharField(max_length=20, blank=True, default="")
     totorgante = models.CharField(max_length=2, blank=True, null=True)
-    condicionsisgen = models.CharField(max_length=100, blank=True, null=True)
-    codconsisgen = models.CharField(max_length=5, blank=True, null=True)
+    condicionsisgen = models.CharField(max_length=100, blank=True, default="")
+    codconsisgen = models.CharField(max_length=5, blank=True, default="")
     parte_generacion = models.CharField(max_length=1, blank=True, null=True)
 
     class Meta:
@@ -1094,7 +1094,7 @@ class Tiposdeacto(models.Model):
     rol_part = models.CharField(max_length=10, blank=True, null=True)
     indicador = models.CharField(max_length=5, blank=True, null=True)
     codigo_ancert = models.CharField(max_length=10, blank=True, null=True)
-    codigo_visual = models.CharField(max_length=6, blank=True, null=True)
+    codigo_visual = models.CharField(max_length=6, blank=True, default="")
     tipobien_admitido = models.CharField(max_length=10, blank=True, null=True)
     mediospago = models.CharField(max_length=1, blank=True, null=True)
     cuantia = models.CharField(max_length=1, blank=True, null=True)

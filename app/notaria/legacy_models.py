@@ -22,7 +22,7 @@ class Tiposdeacto(models.Model):
     rol_part = models.CharField(max_length=10, blank=True, null=True)
     indicador = models.CharField(max_length=5, blank=True, null=True)
     codigo_ancert = models.CharField(max_length=10, blank=True, null=True)
-    codigo_visual = models.CharField(max_length=6, blank=True, null=True)
+    codigo_visual = models.CharField(max_length=6, blank=True, default="")
     tipobien_admitido = models.CharField(max_length=10, blank=True, null=True)
     mediospago = models.CharField(max_length=1, blank=True, null=True)
     cuantia = models.CharField(max_length=1, blank=True, null=True)

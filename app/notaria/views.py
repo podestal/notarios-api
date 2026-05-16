@@ -1756,7 +1756,7 @@ class KardexViewSet(ModelViewSet):
                             parte=condicion.parte,
                             uif=condicion.uif,
                             formulario=_condicion.formulario,
-                            montop=condicion.montop,
+                            montop=condicion.montop or "",
                         )
                         updates_performed[
                             "contratantesxacto_condition_updates"
@@ -2090,7 +2090,7 @@ class KardexViewSet(ModelViewSet):
                             parte=condicion.parte,
                             uif=condicion.uif,
                             formulario=_contratantesxacto_formulario_from_acto(condicion),
-                            montop=condicion.montop,
+                            montop=condicion.montop or "",
                         )
                         updates_performed[
                             "contratantesxacto_condition_updates"
@@ -2371,7 +2371,7 @@ class ContratantesViewSet(ModelViewSet):
                     "monto": "",
                     "opago": "",
                     "ofondo": "",
-                    "montop": acto_condicion.montop,
+                    "montop": acto_condicion.montop or "",
                 },
             )
 
@@ -2467,7 +2467,7 @@ class ContratantesViewSet(ModelViewSet):
                             "monto": "",
                             "opago": "",
                             "ofondo": "",
-                            "montop": acto_condicion.montop,
+                            "montop": acto_condicion.montop or "",
                         },
                     )
 
@@ -2948,8 +2948,9 @@ class ActoCondicionViewSet(ModelViewSet):
 
     ``POST`` (create): ``idcondicion`` is auto-generated (max numeric id + 1, as legacy PHP).
     ``parte`` is mirrored into ``parte_generacion`` on create and update when ``parte`` is sent.
-    ``condicion`` and ``condicionsisgen`` are normalized to uppercase on save.
-    ``parte`` and ``formulario`` are stored as ``""`` when missing or null (no NULL inserts).
+    ``condicion``, ``condicionsisgen``, and ``codconsisgen`` are normalized to uppercase on save.
+    ``parte``, ``formulario``, ``montop``, SISGEN fields (``condicionsisgen``, ``codconsisgen``)
+    use ``""`` when missing or null (no NULL inserts).
     ``descripcion`` is always set equal to ``condicion`` on save.
     """
 
@@ -5010,6 +5011,7 @@ class TiposdeactoViewSet(ModelViewSet):
 
     ``POST`` (create): ``idtipoacto`` is auto-generated (max numeric id + 1, as legacy PHP).
     ``indicador`` and ``rol_part`` are normalized to uppercase on save.
+    ``codigo_visual`` / ``codigoVisual`` is trimmed and stored as ``""`` when empty (not NULL).
     """
 
     queryset = models.Tiposdeacto.objects.all().order_by("idtipoacto")

@@ -660,8 +660,9 @@ class ActoCondicionSerializer(serializers.ModelSerializer):
 
     On create, ``idcondicion`` is assigned automatically (client value ignored).
     When ``parte`` is sent, the same value is stored in ``parte_generacion``.
-    ``condicion`` and ``condicionsisgen`` are stored in uppercase (create and update).
-    ``parte`` and ``formulario`` are stored as empty string when omitted or null (not NULL in DB).
+    ``condicion``, ``condicionsisgen``, and ``codconsisgen`` are normalized to uppercase on save.
+    ``parte``, ``formulario``, ``montop``, ``condicionsisgen``, and ``codconsisgen`` are stored
+    as empty string when omitted or null (not NULL in DB).
     ``descripcion`` is always kept equal to ``condicion`` on save.
     """
 
@@ -672,13 +673,13 @@ class ActoCondicionSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        for fname in ("condicion", "condicionsisgen"):
-            if fname in attrs and attrs[fname] not in (None, ""):
-                attrs[fname] = str(attrs[fname]).upper()
-        for fname in ("parte", "formulario"):
+        for fname in ("parte", "formulario", "montop", "condicionsisgen", "codconsisgen"):
             if fname in attrs:
                 v = attrs.get(fname)
                 attrs[fname] = "" if v is None else str(v).strip()
+        for fname in ("condicion", "condicionsisgen", "codconsisgen"):
+            if fname in attrs and attrs[fname] not in (None, ""):
+                attrs[fname] = str(attrs[fname]).upper()
         if "parte" in attrs:
             attrs["parte_generacion"] = attrs["parte"]
         condicion_effective = attrs.get("condicion")
@@ -692,6 +693,9 @@ class ActoCondicionSerializer(serializers.ModelSerializer):
         validated_data["idcondicion"] = next_actocondicion_idcondicion()
         validated_data.setdefault("parte", "")
         validated_data.setdefault("formulario", "")
+        validated_data.setdefault("montop", "")
+        validated_data.setdefault("condicionsisgen", "")
+        validated_data.setdefault("codconsisgen", "")
         validated_data.setdefault("parte_generacion", validated_data.get("parte", ""))
         validated_data["descripcion"] = validated_data.get("condicion", "")
         return super().create(validated_data)
@@ -1297,6 +1301,8 @@ class TiposdeactoSerializer(serializers.ModelSerializer):
 
     On create, ``idtipoacto`` is assigned automatically (client value ignored).
     ``indicador`` and ``rol_part`` are stored in uppercase (create and update).
+    ``codigo_visual`` accepts ``codigoVisual`` (camelCase) from the client; empty
+    values are stored as ``""``, not NULL.
     """
 
     class Meta:
@@ -1306,6 +1312,12 @@ class TiposdeactoSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        iv = getattr(self, "initial_data", None) or {}
+        if "codigo_visual" not in attrs and "codigoVisual" in iv:
+            attrs["codigo_visual"] = iv.get("codigoVisual")
+        if "codigo_visual" in attrs:
+            v = attrs.get("codigo_visual")
+            attrs["codigo_visual"] = "" if v is None else str(v).strip()[:6]
         for fname in ("indicador", "rol_part"):
             if fname in attrs and attrs[fname] not in (None, ""):
                 attrs[fname] = str(attrs[fname]).upper()
@@ -1313,4 +1325,10 @@ class TiposdeactoSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data["idtipoacto"] = next_tiposdeacto_idtipoacto()
+        validated_data.setdefault("codigo_visual", "")
         return super().create(validated_data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["codigoVisual"] = data.get("codigo_visual") or ""
+        return data
