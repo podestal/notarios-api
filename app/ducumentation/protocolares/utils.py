@@ -404,6 +404,7 @@ class DocumentFormatter:
             "ASOCIADO",  # Added for constitution documents
             "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
             "SOLICITANTE/BENEFICIARIO",  # No Contenciosos
+            "CONTRAYENTE",  # Matrimonio / capitulaciones
         }
 
         ACQUIRER_ROLES = {
@@ -413,6 +414,7 @@ class DocumentFormatter:
             "ANTICIPADO",
             "ADJUDICATARIO",
             "USUFRUCTUARIO",
+            "TESTIGO",
             "TESTIGO A RUEGO",
             "ADQUIRIENTE",
             "ACREEDOR",

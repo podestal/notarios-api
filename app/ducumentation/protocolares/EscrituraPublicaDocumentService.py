@@ -168,10 +168,13 @@ class EscrituraDocumentService:
             r"^(P|C)_(NACIONALIDAD(_\d+)?|DOC(_\d+)?)$"
         )
         contractor_origen_fields = re.compile(r"^(P|C)_(ORIGEN_FONDO(_\d+)?)$")
-        contractor_comma_space_estado_civil_fields = re.compile(
-            r"^(P|C)_(ESTADO_CIVIL(_\d+)?)$"
+        contractor_comma_space_ocupacion_estado_fields = re.compile(
+            r"^(P|C)_(OCUPACION(_\d+)?|ESTADO_CIVIL(_\d+)?)$"
         )
-        contractor_no_trailing_space_fields = re.compile(r"^(P|C)_(OCUPACION(_\d+)?)$")
+        # Alias: older edits referenced this name on the elif below.
+        contractor_comma_space_estado_civil_fields = (
+            contractor_comma_space_ocupacion_estado_fields
+        )
         contractor_empty_fields = re.compile(r"^(P|C)_(DOC_LETRAS(_\d+)?|IDE(_\d+)?)$")
 
         def _compact_spaces(text: str) -> str:
@@ -214,10 +217,8 @@ class EscrituraDocumentService:
                     "DECLARA QUE EL DINERO PARA LA ADQUISICION DEL PRESENTE BIEN MUEBLE "
                     f"ES PROVENIENTE DE {text.rstrip(' ,;.')}"
                 )
-            elif contractor_comma_space_estado_civil_fields.match(key) and text:
+            elif contractor_comma_space_ocupacion_estado_fields.match(key) and text:
                 text = text.rstrip(" ,;.") + ", "
-            elif contractor_no_trailing_space_fields.match(key) and text:
-                text = text.rstrip(" ,;.")
             elif re.match(r"^(P|C)_", key) or key in {"CALIDAD_P", "CALIDAD_C"}:
                 text = _compact_spaces(text)
 
