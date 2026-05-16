@@ -1755,7 +1755,7 @@ class KardexViewSet(ModelViewSet):
                         ).update(
                             parte=condicion.parte,
                             uif=condicion.uif,
-                            formulario=_contratantesxacto_formulario_from_acto(condicion),
+                            formulario=_condicion.formulario,
                             montop=condicion.montop,
                         )
                         updates_performed[
@@ -2367,7 +2367,7 @@ class ContratantesViewSet(ModelViewSet):
                     "parte": acto_condicion.parte,
                     "porcentaje": "",
                     "uif": acto_condicion.uif,
-                    "formulario": _contratantesxacto_formulario_from_acto(acto_condicion),
+                    "formulario": acto_condicion.formulario,
                     "monto": "",
                     "opago": "",
                     "ofondo": "",
@@ -2947,8 +2947,10 @@ class ActoCondicionViewSet(ModelViewSet):
     ViewSet for the ActoCondicion model.
 
     ``POST`` (create): ``idcondicion`` is auto-generated (max numeric id + 1, as legacy PHP).
-    ``parte`` is mirrored into ``parte_generacion`` on create and update.
+    ``parte`` is mirrored into ``parte_generacion`` on create and update when ``parte`` is sent.
     ``condicion`` and ``condicionsisgen`` are normalized to uppercase on save.
+    ``parte`` and ``formulario`` are stored as ``""`` when missing or null (no NULL inserts).
+    ``descripcion`` is always set equal to ``condicion`` on save.
     """
 
     queryset = models.Actocondicion.objects.all().order_by("idcondicion")
