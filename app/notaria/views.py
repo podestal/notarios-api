@@ -107,6 +107,18 @@ def _normalize_condicion_entries(condicion_value):
     return normalized
 
 
+def _contratantesxacto_formulario_from_acto(condicion):
+    """
+    ``contratantesxacto.formulario`` is NOT NULL in legacy MariaDB; ``actocondicion.formulario``
+    may be NULL when conditions are created without that field.
+    """
+    v = getattr(condicion, "formulario", None)
+    if v is None:
+        return ""
+    s = str(v).strip()
+    return s[:2] if len(s) > 2 else s
+
+
 def _reset_sisgen_for_kardex(kardex_code):
     if not kardex_code:
         return
@@ -1743,7 +1755,7 @@ class KardexViewSet(ModelViewSet):
                         ).update(
                             parte=condicion.parte,
                             uif=condicion.uif,
-                            formulario=condicion.formulario,
+                            formulario=_contratantesxacto_formulario_from_acto(condicion),
                             montop=condicion.montop,
                         )
                         updates_performed[
@@ -2077,7 +2089,7 @@ class KardexViewSet(ModelViewSet):
                         ).update(
                             parte=condicion.parte,
                             uif=condicion.uif,
-                            formulario=condicion.formulario,
+                            formulario=_contratantesxacto_formulario_from_acto(condicion),
                             montop=condicion.montop,
                         )
                         updates_performed[
@@ -2355,7 +2367,7 @@ class ContratantesViewSet(ModelViewSet):
                     "parte": acto_condicion.parte,
                     "porcentaje": "",
                     "uif": acto_condicion.uif,
-                    "formulario": acto_condicion.formulario,
+                    "formulario": _contratantesxacto_formulario_from_acto(acto_condicion),
                     "monto": "",
                     "opago": "",
                     "ofondo": "",
@@ -2451,7 +2463,7 @@ class ContratantesViewSet(ModelViewSet):
                             "parte": acto_condicion.parte,
                             "porcentaje": "",
                             "uif": acto_condicion.uif,
-                            "formulario": acto_condicion.formulario,
+                            "formulario": _contratantesxacto_formulario_from_acto(acto_condicion),
                             "monto": "",
                             "opago": "",
                             "ofondo": "",
