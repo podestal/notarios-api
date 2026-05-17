@@ -1,10 +1,20 @@
+x-logging: &default-logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "10"
+    compress: "true"
+
 services:
   app:
     build: .
     restart: unless-stopped
+    logging: *default-logging
     volumes:
       - ./app:/app
       - ./mediafiles:/vol/media
+      # Host document store (DOC_STORAGE_LOCAL_ROOT) — required when DOC_STORAGE_BACKEND=local
+      - ${DOC_STORAGE_LOCAL_ROOT}:${DOC_STORAGE_LOCAL_ROOT}
     ports:
       - "8001:8000"
     environment:
@@ -29,11 +39,14 @@ services:
       - APP_NAME=${APP_NAME}
       - APP_VERSION=${APP_VERSION}
       - KARDEX_ABBREVIATIONS=${KARDEX_ABBREVIATIONS}
+      - DOC_STORAGE_BACKEND=${DOC_STORAGE_BACKEND}
+      - DOC_STORAGE_LOCAL_ROOT=${DOC_STORAGE_LOCAL_ROOT}
     depends_on:
       - db
 
   db:
     image: mariadb:10.5
+    logging: *default-logging
     environment:
       MARIADB_ROOT_PASSWORD: ${DATABASE_PASSWORD}
       MARIADB_DATABASE: ${DATABASE_NAME}
