@@ -250,7 +250,7 @@ class KardexViewSet(ModelViewSet):
 
     serializer_class = serializers.KardexSerializer
     pagination_class = pagination.KardexPagination
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """
@@ -1758,7 +1758,7 @@ class KardexViewSet(ModelViewSet):
                         ).update(
                             parte=condicion.parte,
                             uif=condicion.uif,
-                            formulario=_condicion.formulario,
+                            formulario=_contratantesxacto_formulario_from_acto(condicion),
                             montop=condicion.montop or "",
                         )
                         updates_performed[
@@ -2321,6 +2321,7 @@ class TipoKarViewSet(ModelViewSet):
 
     queryset = models.Tipokar.objects.all()
     serializer_class = serializers.TipoKarSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class ContratantesViewSet(ModelViewSet):
@@ -2331,6 +2332,7 @@ class ContratantesViewSet(ModelViewSet):
     queryset = models.Contratantes.objects.all()
     serializer_class = serializers.ContratantesSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -2609,6 +2611,7 @@ class ContratantesxactoViewSet(ModelViewSet):
     queryset = models.Contratantesxacto.objects.all()
     serializer_class = serializers.ContratantesxactoSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
@@ -2959,6 +2962,7 @@ class ActoCondicionViewSet(ModelViewSet):
 
     queryset = models.Actocondicion.objects.all().order_by("idcondicion")
     serializer_class = serializers.ActoCondicionSerializer
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"])
     def by_tipoacto(self, request):
@@ -3096,7 +3100,6 @@ class UbigeoViewSet(ModelViewSet):
     queryset = models.Ubigeo.objects.all()
     serializer_class = serializers.UbigeoSerializer
     permission_classes = [IsAuthenticated]
-    # pagination_class = pagination.KardexPagination
 
 
 class SedesRegistralesViewSet(ModelViewSet):
@@ -3128,6 +3131,7 @@ class PatrimonialViewSet(ModelViewSet):
     queryset = models.Patrimonial.objects.all()
     serializer_class = serializers.PatrimonialSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
         """Update a Patrimonial record.
@@ -3224,6 +3228,7 @@ class DetalleVehicularViewSet(ModelViewSet):
     queryset = models.Detallevehicular.objects.all()
     serializer_class = serializers.DetallevehicularSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
@@ -3290,6 +3295,7 @@ class DetallebienesViewSet(ModelViewSet):
     queryset = models.Detallebienes.objects.all()
     serializer_class = serializers.DetallebienesSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
@@ -3335,6 +3341,7 @@ class PrediosViewSet(ModelViewSet):
     queryset = models.Predios.objects.all()
     serializer_class = serializers.PrediosSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
@@ -3380,6 +3387,7 @@ class DetallemediopagoViewSet(ModelViewSet):
     queryset = models.Detallemediopago.objects.all()
     serializer_class = serializers.DetallemediopagoSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
@@ -3452,6 +3460,7 @@ class TemplateViewSet(ModelViewSet):
     queryset = models.TplTemplate.objects.all()
     serializer_class = serializers.TemplateSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
     lookup_field = "pktemplate"
     lookup_url_kwarg = "pk"
 
@@ -3794,6 +3803,7 @@ class LegalizacionViewSet(ModelViewSet):
     queryset = models.Legalizacion.objects.all().order_by("-idlegalizacion")
     serializer_class = serializers.LegalizacionSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def list(self, request, *args, **kwargs):
         dateFrom = request.query_params.get("dateFrom", "")
@@ -3820,6 +3830,7 @@ class PermiViajeViewSet(ModelViewSet):
     queryset = models.PermiViaje.objects.all().order_by("-id_viaje")
     serializer_class = serializers.PermiViajeSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method in ["POST", "PUT", "PATCH"]:
@@ -4030,6 +4041,7 @@ class ViajeContratantesViewSet(ModelViewSet):
     queryset = models.ViajeContratantes.objects.all()
     serializer_class = serializers.ViajeContratantesSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -4061,6 +4073,7 @@ class IngresoPoderesViewSet(ModelViewSet):
     queryset = models.IngresoPoderes.objects.all().order_by("-id_poder")
     serializer_class = serializers.IngresoPoderesSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method in ["POST", "PUT", "PATCH"]:
@@ -4200,6 +4213,7 @@ class PoderesFueraregViewSet(ModelViewSet):
     queryset = models.PoderesFuerareg.objects.all().order_by("-id_fuerareg")
     serializer_class = serializers.PoderesFueraregSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"])
     def by_poder(self, request):
@@ -4257,6 +4271,7 @@ class PoderesPensionViewSet(ModelViewSet):
     queryset = models.PoderesPension.objects.all().order_by("-id_pension")
     serializer_class = serializers.PoderesPensionSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"])
     def by_poder(self, request):
@@ -4281,6 +4296,7 @@ class PoderesContratantesViewSet(ModelViewSet):
     queryset = models.PoderesContratantes.objects.all()
     serializer_class = serializers.PoderesContratantesSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"])
     def by_poder(self, request):
@@ -4477,6 +4493,7 @@ class LibrosViewSet(ModelViewSet):
     queryset = models.Libros.objects.all().order_by("-id")
     serializer_class = serializers.LibrosSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"], url_path="reporte")
     def reporte(self, request):
@@ -4705,6 +4722,7 @@ class TipolibroViewSet(ModelViewSet):
 
     queryset = models.Tipolibro.objects.all()
     serializer_class = serializers.TipolibroSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class CertDomiciliarioViewSet(ModelViewSet):
@@ -4715,6 +4733,7 @@ class CertDomiciliarioViewSet(ModelViewSet):
     queryset = models.CertDomiciliario.objects.all().order_by("-id_domiciliario")
     serializer_class = serializers.CertDomiciliarioSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"], url_path="reporte")
     def reporte(self, request):
@@ -4841,6 +4860,7 @@ class RentaViewSet(ModelViewSet):
     queryset = models.Renta.objects.all()
     serializer_class = serializers.RentaSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -4938,6 +4958,7 @@ class FormularioViewSet(ModelViewSet):
     queryset = models.Formulario.objects.all()
     serializer_class = serializers.FormularioSerializer
     pagination_class = pagination.KardexPagination
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"])
     def by_renta(self, request):
