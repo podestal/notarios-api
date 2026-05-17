@@ -1,4 +1,5 @@
 from rest_framework_nested import routers
+from core.views import UserSummaryViewSet
 from . import views
 
 """
@@ -10,6 +11,7 @@ It includes the URL patterns for the Notaria app's views.
 router = routers.DefaultRouter()
 
 router.register('usuarios', views.UsuariosViewSet, basename='usuarios')
+router.register('users', UserSummaryViewSet, basename='users')
 router.register('permisos', views.PermisosUsuariosViewSet, basename='permisos')
 router.register('kardex', views.KardexViewSet, basename='kardex')
 router.register('tipokar', views.TipoKarViewSet, basename='tipokar')

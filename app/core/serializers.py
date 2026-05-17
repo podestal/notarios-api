@@ -12,10 +12,12 @@ from django.template.loader import render_to_string
 
 user = get_user_model()
 
+
 class CreateUserSerializer(UserCreateSerializer):
 
     class Meta(UserCreateSerializer.Meta):
         fields = ['idusuario', 'username', 'email', 'password', 'notary', 'first_name', 'last_name']
+
 
 class UserSerializer(BasedUserSerializer):
     class Meta(BasedUserSerializer.Meta):
@@ -29,3 +31,15 @@ class UserSerializer(BasedUserSerializer):
             'is_staff',
             'is_superuser',
         ]
+
+
+class UserSummarySerializer(serializers.ModelSerializer):
+    """
+    Safe, read-only user fields for dropdowns and display labels.
+    Does not expose passwords or legacy usuarios data.
+    """
+
+    class Meta:
+        model = user
+        fields = ['idusuario', 'username', 'first_name', 'last_name', 'email']
+        read_only_fields = fields

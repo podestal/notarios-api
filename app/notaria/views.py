@@ -349,8 +349,11 @@ class KardexViewSet(ModelViewSet):
         user_ids = set(obj.idusuario for obj in page_kardex)
         kardex_ids = set(obj.kardex for obj in page_kardex)
 
-        usuarios_map = {
-            u.idusuario: u for u in models.Usuarios.objects.filter(idusuario__in=user_ids)
+        from django.contrib.auth import get_user_model
+
+        users_map = {
+            u.idusuario: u
+            for u in get_user_model().objects.filter(idusuario__in=user_ids)
         }
 
         contratantes = models.Contratantes.objects.filter(kardex__in=kardex_ids).values(
@@ -375,7 +378,7 @@ class KardexViewSet(ModelViewSet):
             page_kardex,
             many=True,
             context={
-                "usuarios_map": usuarios_map,
+                "users_map": users_map,
                 "contratantes_map": contratantes_map,
                 "clientes_map": clientes_map,
             },

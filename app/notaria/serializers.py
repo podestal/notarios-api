@@ -177,10 +177,11 @@ class KardexSerializer(serializers.ModelSerializer):
         return _normalize_kardex_date_string(value, "fechaminuta")
 
     def get_usuario(self, obj):
-        usuarios_map = self.context.get("usuarios_map", {})
-        usuario = usuarios_map.get(obj.idusuario)
-        if usuario:
-            return f"{usuario.prinom} {usuario.segnom} " f"{usuario.apepat} {usuario.apemat}"
+        users_map = self.context.get("users_map", {})
+        user = users_map.get(obj.idusuario)
+        if user:
+            name = f"{user.first_name} {user.last_name}".strip()
+            return name or user.username
         return ""
 
     def get_cliente(self, obj):
