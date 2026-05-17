@@ -14,20 +14,17 @@ python manage.py wait_for_db
 
 
 if [ "$ENVIRONMENT" = "development" ]; then
-    # echo "Starting server with Gunicorn for development..."
-    # exec gunicorn notarios.wsgi:application \
-    #     --workers 4 \
-    #     --bind 0.0.0.0:8000 \
-    #     --access-logfile - \
-    #     --error-logfile - \
-    #     --log-level info \
-    #     --capture-output
     echo "Starting server with Dev server for development..."
     exec python manage.py runserver 0.0.0.0:8000
 else
-    echo "Starting server with Daphne for testing..."
-    # exec gunicorn notarios.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
-    exec daphne -b 0.0.0.0 -p 8000 notarios.asgi:application
+    echo "Starting server with Gunicorn ..."
+    exec gunicorn notarios.wsgi:application \
+        --workers 4 \
+        --bind 0.0.0.0:8000 \
+        --access-logfile - \
+        --error-logfile - \
+        --log-level info \
+        --capture-output
 fi
 
 
