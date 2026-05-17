@@ -13,6 +13,8 @@ services:
     volumes:
       - ./app:/app
       - ./mediafiles:/vol/media
+      # Host document store (DOC_STORAGE_LOCAL_ROOT) — required when DOC_STORAGE_BACKEND=local
+      - ${DOC_STORAGE_LOCAL_ROOT}:${DOC_STORAGE_LOCAL_ROOT}
     ports:
       - "8001:8000"
     environment:
