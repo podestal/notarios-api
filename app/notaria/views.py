@@ -127,6 +127,26 @@ def _reset_sisgen_for_kardex(kardex_code):
     )
 
 
+def _reset_sisgen_for_cliente(idcliente):
+    """Reset SISGEN on every kardex where this master cliente appears as contratante."""
+    if not idcliente:
+        return
+    contratante_ids = models.Cliente2.objects.filter(idcliente=idcliente).values_list(
+        "idcontratante", flat=True
+    )
+    if not contratante_ids:
+        return
+    kardex_codes = (
+        models.Contratantes.objects.filter(idcontratante__in=contratante_ids)
+        .exclude(kardex__isnull=True)
+        .exclude(kardex="")
+        .values_list("kardex", flat=True)
+        .distinct()
+    )
+    for kardex_code in kardex_codes:
+        _reset_sisgen_for_kardex(kardex_code)
+
+
 def _refresh_kardex_fechaconclusion_from_contratantes(kardex_code):
     """
     Set kardex.fechaconclusion to the most recent contratante.fechafirma for this kardex.
@@ -2837,7 +2857,7 @@ class ClienteViewSet(ModelViewSet):
                     conyuge_client.save()
 
         response = super().update(request, *args, **kwargs)
-        _reset_sisgen_for_kardex(instance.kardex)
+        _reset_sisgen_for_cliente(instance.idcliente)
         return response
 
 
