@@ -3480,7 +3480,7 @@ class TemplateViewSet(ModelViewSet):
     queryset = models.TplTemplate.objects.all()
     serializer_class = serializers.TemplateSerializer
     pagination_class = pagination.KardexPagination
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
     lookup_field = "pktemplate"
     lookup_url_kwarg = "pk"
 
