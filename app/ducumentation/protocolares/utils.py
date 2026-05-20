@@ -402,6 +402,8 @@ class DocumentFormatter:
             "PROPIETARIO",
             "ASOCIANTE",
             "ASOCIADO",  # Added for constitution documents
+            "SOCIO",
+            "SOCIOS",  # Escrituras: socios → otorgantes (P_)
             "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
             "SOLICITANTE/BENEFICIARIO",  # No Contenciosos
             "CONTRAYENTE",  # Matrimonio / capitulaciones
