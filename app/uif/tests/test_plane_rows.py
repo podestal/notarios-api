@@ -138,6 +138,7 @@ class PlaneRowBuilderTests(SimpleTestCase):
         self.assertEqual(rows[0]["item_51"], "0.00")
         self.assertEqual(rows[0]["item_52"], "1000.50")
         self.assertEqual(rows[0]["item_6"], "20260415")
+        self.assertEqual(rows[0]["item_10"], "20260415")
 
     @patch.object(PlaneRowBuilder, "_bien_registral", return_value=("N", "", ""))
     @patch.object(PlaneRowBuilder, "_load_contratantes")

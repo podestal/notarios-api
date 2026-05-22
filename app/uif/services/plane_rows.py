@@ -661,7 +661,7 @@ class PlaneRowBuilder:
 
         fecha_nac = ""
         if tipper == "N" and cliente.cumpclie:
-            fecha_nac = _format_date_ddmmyyyy(cliente.cumpclie)
+            fecha_nac = _format_date_yyyymmdd(cliente.cumpclie)
 
         cod_estado = ""
         if tipper == "N" and cliente.idestcivil:
@@ -706,7 +706,7 @@ class PlaneRowBuilder:
         firma_flag = ""
         if contratante:
             firma_flag = str(contratante.firma or "").strip()
-            fecha_firma = _format_date_ddmmyyyy(contratante.fechafirma)
+            fecha_firma = _format_date_yyyymmdd(contratante.fechafirma)
 
         conclusion = op["conclusion"]
         if not is_complementary and tipper == "N" and (

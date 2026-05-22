@@ -5,6 +5,7 @@ UIF report generation — Excel and plane (archivo plano) files.
 import base64
 import io
 import logging
+import re
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,71 @@ from uif.services.report_data import get_uif_report_data, select_report_records
 
 logger = logging.getLogger(__name__)
 
+# Excel shows human-readable dates; plane file keeps compact UIF formats.
+EXCEL_DATE_ITEM_NUMBERS = (6, 7, 8, 10, 27)
+# kardex + UIF items 1..57
+EXCEL_TOTAL_COLUMNS = 58
+# PHP substr() limits per item (Excel grid); dates allow full DD/MM/YYYY.
+EXCEL_FIELD_LIMITS = {
+    1: 30,
+    2: 8,
+    3: 1,
+    4: 2,
+    5: 6,
+    6: 8,
+    7: 6,
+    8: 8,
+    9: 1,
+    10: 8,
+    11: 1,
+    12: 4,
+    13: 1,
+    14: 1,
+    15: 1,
+    16: 1,
+    17: 1,
+    18: 1,
+    19: 1,
+    20: 1,
+    21: 20,
+    22: 11,
+    23: 120,
+    24: 40,
+    25: 40,
+    26: 2,
+    27: 10,
+    28: 1,
+    29: 3,
+    30: 40,
+    31: 4,
+    32: 3,
+    33: 2,
+    34: 12,
+    35: 150,
+    36: 2,
+    37: 2,
+    38: 2,
+    39: 40,
+    40: 1,
+    41: 40,
+    42: 40,
+    43: 40,
+    44: 2,
+    45: 3,
+    46: 1,
+    47: 2,
+    48: 40,
+    49: 40,
+    50: 3,
+    51: 18,
+    52: 18,
+    53: 18,
+    54: 6,
+    55: 1,
+    56: 2,
+    57: 12,
+}
+
 
 class UifReportService:
     """Excel + plane UIF reports (PHP `_arrObjRo` parity via `reportPolicy=all`)."""
@@ -31,7 +97,7 @@ class UifReportService:
         self.header_fill = PatternFill(start_color="254061", end_color="254061", fill_type="solid")
         self.subheader_fill = PatternFill(start_color="376091", end_color="376091", fill_type="solid")
         self.header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        self.data_alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        self.data_alignment = Alignment(horizontal="left", vertical="center", wrap_text=False)
         self.border = Border(
             left=Side(border_style="thin"),
             right=Side(border_style="thin"),
@@ -86,12 +152,13 @@ class UifReportService:
         ws = wb.active
         ws.title = "REGISTRO DE OPERACIONES UIF"
 
-        for col in range(1, 58):
+        for col in range(1, EXCEL_TOTAL_COLUMNS + 1):
             ws.column_dimensions[get_column_letter(col)].width = 12
-        for col, width in {23: 40, 30: 40, 35: 40, 49: 40}.items():
+        for col, width in {6: 12, 8: 12, 10: 12, 27: 12, 23: 40, 30: 40, 35: 40, 49: 40}.items():
             ws.column_dimensions[get_column_letter(col)].width = width
 
         self._add_excel_headers(ws)
+        ws.freeze_panes = "C5"
         date_range = self._report_date_range(data)
         plane_rows = PlaneRowBuilder().build_rows(
             self._report_records(data),
@@ -100,7 +167,8 @@ class UifReportService:
         )
         current_row = 5
         for plane_row in plane_rows:
-            self._add_excel_data_row(ws, current_row, plane_row)
+            excel_row = self._plane_row_to_excel_row(plane_row)
+            self._add_excel_data_row(ws, current_row, excel_row)
             current_row += 1
 
         output = io.BytesIO()
@@ -265,6 +333,43 @@ class UifReportService:
         }
 
     @staticmethod
+    def _to_excel_display_date(value) -> str:
+        """Plane/PHP compact dates → DD/MM/YYYY for Excel (legacy PHP grid)."""
+        if value is None:
+            return ""
+        if hasattr(value, "strftime"):
+            return value.strftime("%d/%m/%Y")
+        text = str(value).strip()
+        if not text:
+            return ""
+        digits = re.sub(r"\D", "", text)
+        if len(digits) == 8:
+            try:
+                if int(digits[4:6]) <= 12 and int(digits[:4]) > 1900:
+                    return datetime.strptime(digits, "%Y%m%d").strftime("%d/%m/%Y")
+            except ValueError:
+                pass
+            try:
+                if int(digits[2:4]) <= 12:
+                    return datetime.strptime(digits, "%d%m%Y").strftime("%d/%m/%Y")
+            except ValueError:
+                pass
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                return datetime.strptime(text[:10], fmt).strftime("%d/%m/%Y")
+            except ValueError:
+                continue
+        return text
+
+    def _plane_row_to_excel_row(self, plane_row: Dict[str, str]) -> Dict[str, str]:
+        """Same row structure as plane/_arrObjRo; dates formatted for Excel display."""
+        row = dict(plane_row)
+        for num in EXCEL_DATE_ITEM_NUMBERS:
+            key = f"item_{num}"
+            row[key] = self._to_excel_display_date(row.get(key, ""))
+        return row
+
+    @staticmethod
     def _format_date(value) -> str:
         if not value:
             return ""
@@ -310,6 +415,8 @@ class UifReportService:
             current_col += span
 
         headers_row2 = [
+            ("", 1),
+            ("", 1),
             ("Numero Registro de la Operacion", 1),
             ("Tipo de envio del RO", 1),
             ("Instrumento Publico Notarial Protocolar (IPNP)", 7),
@@ -364,27 +471,9 @@ class UifReportService:
             self._style_header_cell(cell, fill=self.subheader_fill)
 
     def _add_excel_data_row(self, ws, row_num: int, record: Dict[str, str]):
-        limits = {
-            1: 30,
-            2: 8,
-            3: 1,
-            4: 2,
-            5: 6,
-            6: 8,
-            7: 6,
-            8: 8,
-            9: 1,
-            10: 8,
-            21: 20,
-            23: 120,
-            51: 18,
-            52: 18,
-            53: 18,
-            54: 6,
-        }
         data = [record.get("kardex", "")]
         for i in range(1, 58):
-            lim = limits.get(i, 40)
+            lim = EXCEL_FIELD_LIMITS.get(i, 40)
             data.append(str(record.get(f"item_{i}", ""))[:lim])
 
         for col, value in enumerate(data, 1):
