@@ -102,6 +102,69 @@ OPERATION_ROLE_PATTERN = re.compile(r"^[OGFN]")
 PARTICIPANT_UIF_ROLES = frozenset({"O", "B", "R"})
 ISO_MONEDA_FALLBACK = {1: "PEN", 2: "USD"}
 
+# RoClass::generateFileRo fixed widths (SUNAT body line = 858 chars).
+PHP_PLANE_FIELD_WIDTHS = {
+    1: 8,
+    2: 8,
+    3: 1,
+    4: 2,
+    5: 6,
+    6: 8,
+    7: 6,
+    8: 8,
+    9: 1,
+    10: 8,
+    11: 1,
+    12: 4,
+    13: 1,
+    14: 1,
+    15: 1,
+    16: 1,
+    17: 1,
+    18: 1,
+    19: 1,
+    20: 1,
+    21: 20,
+    22: 11,
+    23: 120,
+    24: 40,
+    25: 40,
+    26: 2,
+    27: 8,
+    28: 1,
+    29: 3,
+    30: 40,
+    31: 4,
+    32: 3,
+    33: 2,
+    34: 12,
+    35: 150,
+    36: 2,
+    37: 2,
+    38: 2,
+    39: 40,
+    40: 1,
+    41: 40,
+    42: 40,
+    43: 40,
+    44: 2,
+    45: 3,
+    46: 1,
+    47: 2,
+    48: 40,
+    49: 40,
+    50: 3,
+    51: 18,
+    52: 18,
+    53: 18,
+    54: 6,
+    55: 1,
+    56: 2,
+    57: 12,
+}
+PLANE_BODY_LINE_LENGTH = sum(PHP_PLANE_FIELD_WIDTHS.values())
+PLANE_HEADER_LINE_LENGTH = 57
+
 
 def _format_amount(value, decimals: int = 2) -> str:
     try:
@@ -722,6 +785,7 @@ class PlaneRowBuilder:
         origen_fondo = remplace_string_ro(cxa.ofondo or "", 1).upper()[:40]
 
         moneda_part = "" if representante == "R" else op["moneda"]
+        telefono = self._participant_phone(cliente)
 
         return {
             "item_9": conclusion,
@@ -752,7 +816,7 @@ class PlaneRowBuilder:
             "item_36": dep,
             "item_37": prov,
             "item_38": dist,
-            "item_39": "",
+            "item_39": telefono,
             "item_40": participacion[:1],
             "item_41": ap_pat[:40],
             "item_42": ap_mat[:40],
@@ -771,6 +835,15 @@ class PlaneRowBuilder:
             "item_56": "",
             "item_57": "",
         }
+
+    @staticmethod
+    def _participant_phone(cliente: Cliente2) -> str:
+        """PHP item 39 — teléfono del participante (celular / fijo / oficina)."""
+        for attr in ("telcel", "telfijo", "telofi"):
+            raw = str(getattr(cliente, attr, None) or "").strip()
+            if raw:
+                return remplace_string_ro(raw, 1)[:40]
+        return ""
 
     def _persona_que_representa(self, contratante: Optional[Contratantes], role: str) -> str:
         if role != "R" or not contratante or not contratante.idcontratanterp:

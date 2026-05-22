@@ -2,11 +2,14 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
-from uif.services.plane_rows import PlaneRowBuilder
+from uif.services.plane_rows import PLANE_BODY_LINE_LENGTH, PlaneRowBuilder
 from uif.services.ro_text import remplace_string_ro
 
 
 class PlaneRowBuilderTests(SimpleTestCase):
+    def test_php_plane_body_line_length_constant(self):
+        self.assertEqual(PLANE_BODY_LINE_LENGTH, 858)
+
     def test_reemplace_string_ro_accents(self):
         self.assertEqual(remplace_string_ro("José"), "Jose")
 
@@ -60,6 +63,9 @@ class PlaneRowBuilderTests(SimpleTestCase):
                     domfiscal="",
                     idubigeo="",
                     conyuge="",
+                    telcel="999888777",
+                    telfijo="",
+                    telofi="",
                 ),
                 "contratante": MagicMock(
                     firma="1",
@@ -139,6 +145,7 @@ class PlaneRowBuilderTests(SimpleTestCase):
         self.assertEqual(rows[0]["item_52"], "1000.50")
         self.assertEqual(rows[0]["item_6"], "20260415")
         self.assertEqual(rows[0]["item_10"], "20260415")
+        self.assertEqual(rows[0]["item_39"], "999888777")
 
     @patch.object(PlaneRowBuilder, "_bien_registral", return_value=("N", "", ""))
     @patch.object(PlaneRowBuilder, "_load_contratantes")

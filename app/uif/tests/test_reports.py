@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 from openpyxl import load_workbook
 
+from uif.services.plane_rows import PLANE_BODY_LINE_LENGTH
 from uif.services.reports import EXCEL_TOTAL_COLUMNS, UifReportService
 
 
@@ -45,16 +46,15 @@ class ReportTransformTests(SimpleTestCase):
         self.assertEqual(excel_row["item_27"], "15/01/1990")
         self.assertEqual(excel_row["item_9"], "C")
 
-    def test_plane_row_has_expected_width(self):
+    def test_plane_row_has_php_body_line_length(self):
         service = UifReportService()
-        specs = [
-            type("Spec", (), {"number_of_data": 1, "column_length": 8})(),
-            type("Spec", (), {"number_of_data": 2, "column_length": 8})(),
-            type("Spec", (), {"number_of_data": 3, "column_length": 1})(),
-        ]
-        row_values = {"item_1": "1", "item_2": "1", "item_3": "I"}
-        line = service._format_plane_row(row_values, specs)
-        self.assertEqual(len(line), 17)
+        row_values = {f"item_{i}": "" for i in range(1, 58)}
+        row_values["item_1"] = "1"
+        row_values["item_2"] = "1"
+        row_values["item_3"] = "I"
+        line = service._format_plane_row(row_values)
+        self.assertEqual(len(line), PLANE_BODY_LINE_LENGTH)
+        self.assertEqual(PLANE_BODY_LINE_LENGTH, 858)
 
     def test_report_records_prefers_active_list(self):
         service = UifReportService()

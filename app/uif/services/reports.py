@@ -17,7 +17,13 @@ from openpyxl.utils import get_column_letter
 
 from notaria.models import Confinotario
 from uif.models import RoDataField
-from uif.services.plane_rows import PLANE_FIELD_PAD, PlaneRowBuilder
+from uif.services.plane_rows import (
+    PHP_PLANE_FIELD_WIDTHS,
+    PLANE_BODY_LINE_LENGTH,
+    PLANE_FIELD_PAD,
+    PLANE_HEADER_LINE_LENGTH,
+    PlaneRowBuilder,
+)
 from uif.services.report_data import get_uif_report_data, select_report_records
 
 logger = logging.getLogger(__name__)
@@ -201,14 +207,13 @@ class UifReportService:
         header_core = (
             f"050104     {year}{month}{day}012               {codigo_uif}{codigo_oficial}"
         )
-        header_line = header_core.ljust(57)
+        header_line = header_core.rjust(PLANE_HEADER_LINE_LENGTH)[:PLANE_HEADER_LINE_LENGTH]
 
         response = HttpResponse(content_type="text/plain; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         response["X-Filename"] = filename
         response.write(f"{header_line}\r\n")
 
-        specs = self._plane_field_specs()
         date_range = self._report_date_range(data)
         plane_rows = PlaneRowBuilder().build_rows(
             self._report_records(data),
@@ -216,7 +221,7 @@ class UifReportService:
             range_end=date_range[1],
         )
         for row_values in plane_rows:
-            line = self._format_plane_row(row_values, specs)
+            line = self._format_plane_row(row_values)
             response.write(f"{line}\r\n")
 
         return response
@@ -234,19 +239,28 @@ class UifReportService:
             "content_type": "text/plain",
         }
 
-    def _format_plane_row(self, row_values: Dict[str, str], specs: List[RoDataField]) -> str:
+    def _format_plane_row(
+        self, row_values: Dict[str, str], specs: Optional[List[RoDataField]] = None
+    ) -> str:
+        """Fixed-width body line — widths/padding match RoClass::generateFileRo."""
+        del specs  # kept for callers; canonical widths come from PHP_PLANE_FIELD_WIDTHS
         parts = []
-        for spec in specs:
-            num = int(spec.number_of_data)
-            width = int(spec.column_length or 1)
-            key = f"item_{num}"
-            raw = str(row_values.get(key, row_values.get(f"field_{num}", "")))
+        for num in range(1, 58):
+            width = PHP_PLANE_FIELD_WIDTHS[num]
+            raw = str(row_values.get(f"item_{num}", row_values.get(f"field_{num}", "")))
             pad = PLANE_FIELD_PAD.get(num, "L")
             if pad == "R":
                 parts.append(raw[:width].rjust(width))
             else:
                 parts.append(raw[:width].ljust(width))
-        return "".join(parts)
+        line = "".join(parts)
+        if len(line) != PLANE_BODY_LINE_LENGTH:
+            logger.warning(
+                "Plane row length %s != expected %s",
+                len(line),
+                PLANE_BODY_LINE_LENGTH,
+            )
+        return line
 
     def _transform_record_for_excel(
         self, record: Dict[str, Any], row_index: int = 1
