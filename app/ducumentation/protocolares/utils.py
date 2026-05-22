@@ -7,6 +7,7 @@ import io
 from docx import Document
 from docx.shared import RGBColor
 from docxtpl import DocxTemplate
+from ducumentation.constants import ROLE_LABELS
 from ducumentation.storage_backends import get_document_storage_backend
 
 
@@ -697,9 +698,11 @@ class DocumentFormatter:
             if tipper not in {"N", "J"}:
                 tipper = "N"
 
+            condicion_label = self._normalize_condicion_label(condicion)
+
             contractor = {
-                "condiciones": condicion,
-                "condicion_str": condicion,  # For role checking
+                "condiciones": condicion_label or condicion,
+                "condicion_str": condicion_label or condicion,  # For role checking + CALIDAD
                 "nombres": nombre,
                 "nacionalidad": nacionalidad,
                 "tipoDocumento": tipo_doc,
@@ -997,6 +1000,61 @@ class DocumentFormatter:
             contractor_data[f"RUC_{idx}"] = ""
             contractor_data[f"DOMICILIO_EMPRESA_{idx}"] = ""
 
+    def _normalize_condicion_label(self, condicion_raw: str) -> str:
+        """
+        Resolve actocondicion label for CALIDAD placeholders.
+        Handles act names (PODERDANTE) and legacy ids stored on contratantes (119.5593/).
+        """
+        text = (condicion_raw or "").strip().upper()
+        if not text:
+            return ""
+
+        if text in ROLE_LABELS:
+            return text.rstrip("/")
+
+        head = text.split("/")[0].split(".")[0].strip()
+        if head in ROLE_LABELS:
+            return head
+
+        id_match = re.match(r"^(\d+)", head)
+        if id_match:
+            try:
+                from notaria.models import Actocondicion
+
+                label = (
+                    Actocondicion.objects.filter(idcondicion=id_match.group(1))
+                    .values_list("condicion", flat=True)
+                    .first()
+                )
+                if label:
+                    return str(label).strip().upper()
+            except Exception:
+                pass
+
+        return head
+
+    def _calidad_label_for_contractors(self, contractors) -> str:
+        """CALIDAD_P / CALIDAD_C from actocondicion (PODERDANTE, APODERADO, etc.), not VENDEDOR/COMPRADOR."""
+        if not contractors:
+            return ""
+
+        cond = self._normalize_condicion_label(
+            contractors[0].get("condicion_str") or contractors[0].get("condiciones") or ""
+        )
+        if not cond:
+            return ""
+
+        genders = [c.get("sexo", "M") for c in contractors]
+        all_women = all(g == "F" for g in genders)
+        plural = len(contractors) >= 2
+
+        labels = ROLE_LABELS.get(cond)
+        if labels:
+            if plural:
+                return labels["F_PL"] if all_women else labels["M_PL"]
+            return labels["F"] if all_women else labels["M"]
+        return cond
+
     def _get_articles_and_grammar(self, contractors, role_prefix):
         """
         Generate gender-based articles and grammar
@@ -1011,6 +1069,7 @@ class DocumentFormatter:
         
         # Determine if all women (for proper grammar)
         all_women = all(g == "F" for g in genders)
+        calidad = self._calidad_label_for_contractors(contractors)
         
         # Generate articles based on gender and number
         articles = {}
@@ -1020,19 +1079,10 @@ class DocumentFormatter:
             if all_women:
                 articles[f"EL_{role_prefix}"] = "LAS"
                 articles[f"INICIO_{role_prefix}"] = "SEÑORAS"
-                # Set CALIDAD based on role and gender
-                if role_prefix == "P":
-                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDORAS"
-                else:
-                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADORAS"
             else:
                 articles[f"EL_{role_prefix}"] = "LOS"
                 articles[f"INICIO_{role_prefix}"] = "SEÑORES"
-                # Set CALIDAD based on role and gender
-                if role_prefix == "P":
-                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDORES"
-                else:
-                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADORES"
+            articles[f"CALIDAD_{role_prefix}"] = calidad
             
             articles[f"ES_{role_prefix}"] = "ES"
             articles[f"S_{role_prefix}"] = "S"
@@ -1052,11 +1102,7 @@ class DocumentFormatter:
             if all_women:
                 articles[f"EL_{role_prefix}"] = "LA"
                 articles[f"INICIO_{role_prefix}"] = "SEÑORA"
-                # Set CALIDAD based on role and gender (covers multiple document types)
-                if role_prefix == "P":
-                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDORA"
-                else:
-                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADORA"
+                articles[f"CALIDAD_{role_prefix}"] = calidad
                 # Female singular
                 articles[f"O_A_{role_prefix}"] = "A"
                 articles[f"O_ERON_{role_prefix}"] = "A"
@@ -1065,11 +1111,7 @@ class DocumentFormatter:
             else:
                 articles[f"EL_{role_prefix}"] = "EL"
                 articles[f"INICIO_{role_prefix}"] = "SEÑOR"
-                # Set CALIDAD based on role and gender (covers multiple document types)
-                if role_prefix == "P":
-                    articles[f"CALIDAD_{role_prefix}"] = "VENDEDOR"
-                else:
-                    articles[f"CALIDAD_{role_prefix}"] = "COMPRADOR"
+                articles[f"CALIDAD_{role_prefix}"] = calidad
                 # Male singular
                 articles[f"O_A_{role_prefix}"] = "O"
                 articles[f"O_ERON_{role_prefix}"] = "O"

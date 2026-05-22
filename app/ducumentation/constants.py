@@ -16,6 +16,7 @@ ROLE_LABELS = {
     'CONYUGE':       {'M': 'CÓNYUGE',       'F': 'CÓNYUGE',        'M_PL': 'CÓNYUGES',        'F_PL': 'CÓNYUGES'},
     'TESTIGO':       {'M': 'TESTIGO',       'F': 'TESTIGO',        'M_PL': 'TESTIGOS',        'F_PL': 'TESTIGOS'},
     'OTORGANTE':     {'M': 'OTORGANTE',     'F': 'OTORGANTE',      'M_PL': 'OTORGANTES',      'F_PL': 'OTORGANTES'},
+    'PODERDANTE':    {'M': 'PODERDANTE',    'F': 'PODERDANTE',     'M_PL': 'PODERDANTES',     'F_PL': 'PODERDANTES'},
     'FIDEICOMITENTE':{'M': 'FIDEICOMITENTE','F': 'FIDEICOMITENTE', 'M_PL': 'FIDEICOMITENTES', 'F_PL': 'FIDEICOMITENTES'},
     'FIDEICOMISARIO':{'M': 'FIDEICOMISARIO','F': 'FIDEICOMISARIA', 'M_PL': 'FIDEICOMISARIOS', 'F_PL': 'FIDEICOMISARIAS'},
     'SOCIO':         {'M': 'SOCIO',         'F': 'SOCIA',          'M_PL': 'SOCIOS',          'F_PL': 'SOCIAS'},
