@@ -1,10 +1,10 @@
 """
-UIF error dashboard — Phase 1: RoClass loadData staging + validation on `ro` rows.
+UIF error dashboard — Phase 3: ro_validation_by_act + nested RO error metadata.
 """
 
 import logging
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from django.utils import timezone
 from rest_framework import status
@@ -12,14 +12,14 @@ from rest_framework.response import Response
 
 from notaria import models
 from uif.services.date_utils import parse_date_range
+from uif.services.generate_data import RoGenerateDataService
+from uif.services.keys import patrimonial_key
 from uif.services.load_data import RoLoadDataService
+from uif.models import FpagoUif
+from uif.services.ro_validator import RoEligibleRowValidator
 from uif.services.staging import RoStagedRecord
 
 logger = logging.getLogger(__name__)
-
-
-def patrimonial_key(kardex: str, act_code: str) -> Tuple[str, str]:
-    return (kardex, str(act_code).zfill(3))
 
 
 class UifDashboardService:
@@ -67,6 +67,7 @@ class UifDashboardService:
         # Only the active tab carries rows; other lists are empty (summary keeps totals).
         response_data = {
             "lista_errores": paginated_data if filter_type == "errors" else [],
+            "lista_errores_agrupados": payload.get("lista_errores_agrupados", {}),
             "lista_kardex_ro": paginated_data if filter_type == "ro" else [],
             "lista_kardex_no_envian": paginated_data if filter_type == "no_envian" else [],
             "summary": payload["summary"],
@@ -112,99 +113,88 @@ class UifDashboardService:
         }
 
         kardex_numbers = list({s.kardex for s in ro_records})
-        patrimonial_map, contratantes_map, clientes_map, contratantesxacto_map = (
-            self._bulk_fetch_related(kardex_numbers, list(all_act_codes))
+        (
+            patrimonial_map,
+            contratantes_map,
+            clientes_map,
+            contratantesxacto_map,
+            detalle_medio_pago_map,
+            fpago_codigo_map,
+        ) = self._bulk_fetch_related(kardex_numbers, list(all_act_codes))
+
+        generate_service = RoGenerateDataService()
+        eligible_ro, below_threshold_ro = generate_service.partition_by_threshold(
+            ro_records, patrimonial_map
         )
 
+        row_validator = RoEligibleRowValidator()
         errors: List[dict] = []
         valid_kardex_ro: List[dict] = []
-        error_summary = {
-            "missing_uif_code": 0,
-            "missing_escritura_number": 0,
-            "missing_conclusion_date": 0,
-            "missing_patrimonial_data": 0,
-            "invalid_act_codes": 0,
-            "currency_without_amount": 0,
-            "amount_mismatch": 0,
-            "missing_participant_amount": 0,
-        }
+        report_kardex_ro: List[dict] = []
+        error_summary: Dict[str, int] = {"below_threshold": 0}
 
-        seen_kardex_escritura: set = set()
-        seen_kardex_conclusion: set = set()
-
-        for staged in ro_records:
+        for staged in eligible_ro:
             tipo_acto = tipos_acto_map.get(staged.cod_acto)
             act_description = loader.act_description(staged.cod_acto)
-
             record_data = self._staged_to_record(staged, tipo_acto, act_description)
+            record_data.update(
+                self._get_patrimonial_summary(staged.kardex, staged.cod_acto, patrimonial_map)
+            )
 
-            patrimonial_errors = self._validate_patrimonial_data(
-                staged.kardex,
-                staged.cod_acto,
+            row_errors = row_validator.validate_row(
+                staged,
                 act_description,
                 patrimonial_map,
                 contratantes_map,
                 clientes_map,
                 contratantesxacto_map,
+                detalle_medio_pago_map,
+                fpago_codigo_map,
+                range_start=start_date,
+                range_end=end_date,
             )
 
-            if patrimonial_errors:
-                errors.extend(patrimonial_errors)
-                for error in patrimonial_errors:
-                    et = error.get("error_type")
-                    if et in error_summary:
-                        error_summary[et] += 1
+            if row_errors:
+                errors.extend(row_errors)
+                record_data["has_validation_errors"] = True
+                record_data["validation_error_count"] = len(row_errors)
+                record_data["status"] = "with_errors"
             else:
-                patrimonial_data = self._get_patrimonial_summary(
-                    staged.kardex, staged.cod_acto, patrimonial_map
-                )
-                record_data.update(patrimonial_data)
+                record_data["has_validation_errors"] = False
+                record_data["validation_error_count"] = 0
                 valid_kardex_ro.append(record_data)
 
-            escritura_key = (staged.id_kardex, staged.cod_acto)
-            if (
-                (not staged.numero_escritura or str(staged.numero_escritura).strip() == "")
-                and escritura_key not in seen_kardex_escritura
-            ):
-                seen_kardex_escritura.add(escritura_key)
-                errors.append(
-                    {
-                        "idkardex": staged.id_kardex,
-                        "kardex": staged.kardex,
-                        "act": act_description,
-                        "status": "invalid",
-                        "error_type": "missing_escritura_number",
-                        "error_description": "Número de escritura faltante",
-                    }
-                )
-                error_summary["missing_escritura_number"] += 1
+            # PHP generateFileRo uses _arrObjRo (all generateData rows), not only zero-error acts.
+            report_kardex_ro.append(record_data)
 
-            if not staged.fecha_conclusion and escritura_key not in seen_kardex_conclusion:
-                seen_kardex_conclusion.add(escritura_key)
-                errors.append(
-                    {
-                        "idkardex": staged.id_kardex,
-                        "kardex": staged.kardex,
-                        "act": act_description,
-                        "status": "invalid",
-                        "error_type": "missing_conclusion_date",
-                        "error_description": "Fecha de conclusión faltante",
-                    }
-                )
-                error_summary["missing_conclusion_date"] += 1
+        breakdown, errors_grouped = row_validator.summarize_errors(errors)
+        for key, count in breakdown.items():
+            error_summary[key] = error_summary.get(key, 0) + count
 
         kardex_no_envian = [self._ro_not_to_api(r, loader) for r in ro_not_records]
+        kardex_no_envian.extend(
+            self._below_threshold_to_api(r, loader, patrimonial_map) for r in below_threshold_ro
+        )
+        error_summary["below_threshold"] = len(below_threshold_ro)
 
         return {
             "lista_errores": errors,
+            "lista_errores_agrupados": errors_grouped,
             "lista_kardex_ro": valid_kardex_ro,
+            "lista_kardex_report": report_kardex_ro,
             "lista_kardex_no_envian": kardex_no_envian,
             "summary": {
                 "total_kardex": kardex_records.count(),
                 "total_errors": len(errors),
                 "total_valid_ro": len(valid_kardex_ro),
+                "total_report_ro": len(report_kardex_ro),
+                "total_report_with_errors": sum(
+                    1 for r in report_kardex_ro if r.get("has_validation_errors")
+                ),
                 "total_no_envian": len(kardex_no_envian),
                 "total_ro_staged": len(ro_records),
+                "total_ro_eligible": len(eligible_ro),
+                "total_ro_below_threshold": len(below_threshold_ro),
                 "total_ro_not_staged": len(ro_not_records),
                 "error_breakdown": error_summary,
                 "date_range": {
@@ -220,7 +210,8 @@ class UifDashboardService:
                 "processed_at": timezone.now().isoformat(),
                 "include_valid_records": include_valid,
                 "engine": "uif",
-                "phase": 1,
+                "phase": 6,
+                "report_policy_default": "all",
             },
         }
 
@@ -264,11 +255,21 @@ class UifDashboardService:
             "reason": "Acto sin código UIF (ro_not)",
         }
 
+    def _below_threshold_to_api(
+        self, staged: RoStagedRecord, loader: RoLoadDataService, patrimonial_map: Dict
+    ) -> dict:
+        record = self._ro_not_to_api(staged, loader)
+        record["reason"] = "Monto por debajo del umbral UIF (ro=0)"
+        record["uif_code"] = staged.uif_code
+        record.update(self._get_patrimonial_summary(staged.kardex, staged.cod_acto, patrimonial_map))
+        return record
+
     def _bulk_fetch_related(self, kardex_numbers: List[str], act_codes: List[str]):
         patrimonial_map = {}
         if kardex_numbers and act_codes:
+            act_filter = list({*act_codes, *[str(a).zfill(3) for a in act_codes]})
             for patrimonial in models.Patrimonial.objects.filter(
-                kardex__in=kardex_numbers, idtipoacto__in=act_codes
+                kardex__in=kardex_numbers, idtipoacto__in=act_filter
             ):
                 key = patrimonial_key(patrimonial.kardex, str(patrimonial.idtipoacto))
                 patrimonial_map[key] = patrimonial
@@ -289,118 +290,34 @@ class UifDashboardService:
 
         contratantesxacto_map = {}
         if all_contratante_ids and kardex_numbers and act_codes:
+            act_filter = list({*act_codes, *[str(a).zfill(3) for a in act_codes]})
             for cxa in models.Contratantesxacto.objects.filter(
                 kardex__in=kardex_numbers,
-                idtipoacto__in=act_codes,
+                idtipoacto__in=act_filter,
                 idcontratante__in=all_contratante_ids,
             ):
                 key = f"{cxa.kardex}_{cxa.idtipoacto}_{cxa.idcontratante}"
                 contratantesxacto_map[key] = cxa
+                key_z = f"{cxa.kardex}_{str(cxa.idtipoacto).zfill(3)}_{cxa.idcontratante}"
+                contratantesxacto_map[key_z] = cxa
 
-        return patrimonial_map, contratantes_map, clientes_map, contratantesxacto_map
+        detalle_medio_pago_map = {}
+        if kardex_numbers:
+            for detalle in models.Detallemediopago.objects.filter(kardex__in=kardex_numbers):
+                detalle_medio_pago_map.setdefault(detalle.kardex, []).append(detalle)
 
-    def _validate_patrimonial_data(
-        self,
-        kardex: str,
-        act_code: str,
-        act_description: str,
-        patrimonial_map,
-        contratantes_map,
-        clientes_map,
-        contratantesxacto_map,
-    ) -> List[dict]:
-        patrimonial_errors = []
-        try:
-            patrimonial = patrimonial_map.get(patrimonial_key(kardex, act_code))
-            if not patrimonial:
-                return patrimonial_errors
+        fpago_codigo_map = {
+            str(row.id_fpago): (row.codigo or "") for row in FpagoUif.objects.all()
+        }
 
-            contratantes = contratantes_map.get(kardex, [])
-            act_code_padded = str(act_code).zfill(3)
-
-            if patrimonial.idmon and patrimonial.idmon != "":
-                if not patrimonial.importetrans or patrimonial.importetrans == 0:
-                    for contratante in contratantes:
-                        cliente = clientes_map.get(contratante.idcontratante)
-                        if cliente:
-                            nombre = (
-                                cliente.nombre
-                                or cliente.razonsocial
-                                or f"Contratante {contratante.idcontratante}"
-                            )
-                            patrimonial_errors.append(
-                                {
-                                    "idkardex": patrimonial.kardex,
-                                    "kardex": kardex,
-                                    "act": act_description,
-                                    "status": "invalid",
-                                    "error_type": "currency_without_amount",
-                                    "error_description": (
-                                        f"{nombre}, código de moneda no se debe informar sin montos"
-                                    ),
-                                }
-                            )
-
-            if patrimonial.importetrans and patrimonial.importetrans > 0:
-                total_contratante_amounts = 0
-                for contratante in contratantes:
-                    cliente = clientes_map.get(contratante.idcontratante)
-                    if not cliente:
-                        continue
-                    nombre = (
-                        cliente.nombre
-                        or cliente.razonsocial
-                        or f"Contratante {contratante.idcontratante}"
-                    )
-                    contratante_acto_key = (
-                        f"{kardex}_{act_code_padded}_{contratante.idcontratante}"
-                    )
-                    contratante_acto = contratantesxacto_map.get(
-                        f"{kardex}_{act_code}_{contratante.idcontratante}"
-                    ) or contratantesxacto_map.get(contratante_acto_key)
-
-                    if contratante_acto and contratante_acto.monto:
-                        try:
-                            total_contratante_amounts += float(contratante_acto.monto)
-                        except (ValueError, TypeError):
-                            pass
-                    else:
-                        patrimonial_errors.append(
-                            {
-                                "idkardex": patrimonial.kardex,
-                                "kardex": kardex,
-                                "act": act_description,
-                                "status": "invalid",
-                                "error_type": "missing_participant_amount",
-                                "error_description": f"{nombre} Monto por Participante",
-                            }
-                        )
-
-                if total_contratante_amounts > 0:
-                    patrimonial_total = float(patrimonial.importetrans)
-                    if abs(total_contratante_amounts - patrimonial_total) > 0.01:
-                        direction = (
-                            "otorgantes"
-                            if total_contratante_amounts > patrimonial_total
-                            else "beneficierios"
-                        )
-                        patrimonial_errors.append(
-                            {
-                                "idkardex": patrimonial.kardex,
-                                "kardex": kardex,
-                                "act": act_description,
-                                "status": "invalid",
-                                "error_type": "amount_mismatch",
-                                "error_description": (
-                                    f"La suma de los montos de los contratantes {direction} "
-                                    f"supera el monto total de la operacion: {patrimonial_total:.2f}"
-                                ),
-                            }
-                        )
-        except Exception as exc:
-            logger.warning("Error validating patrimonial data for kardex %s: %s", kardex, exc)
-
-        return patrimonial_errors
+        return (
+            patrimonial_map,
+            contratantes_map,
+            clientes_map,
+            contratantesxacto_map,
+            detalle_medio_pago_map,
+            fpago_codigo_map,
+        )
 
     def _get_patrimonial_summary(self, kardex_number: str, act_code: str, patrimonial_map) -> dict:
         defaults = {
