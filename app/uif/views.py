@@ -70,7 +70,7 @@ class UifReportExcelView(APIView):
     reportPolicy: all (default, PHP _arrObjRo) | clean (zero field errors only).
     """
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         initial_date = request.query_params.get("initialDate")
