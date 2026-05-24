@@ -43,6 +43,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from docx.shared import RGBColor, Pt
 from .storage import sanitize_uploaded_docx_filename
+from .storage_backends import (
+    proyecto_document_filename,
+    proyecto_document_open_url,
+    read_proyecto_document_bytes,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -412,21 +417,16 @@ def update_document_by_tipkar(request):
                 response["Content-Disposition"] = f'attachment; filename="__PROY__{kardex}.docx"'
                 return response
 
-            # Fallback: stream updated file from R2 after successful update.
-            object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
-            s3 = boto3.client(
-                "s3",
-                endpoint_url=os.environ.get("CLOUDFLARE_R2_ENDPOINT"),
-                aws_access_key_id=os.environ.get("CLOUDFLARE_R2_ACCESS_KEY"),
-                aws_secret_access_key=os.environ.get("CLOUDFLARE_R2_SECRET_KEY"),
-                config=Config(signature_version="s3v4"),
-                region_name="auto",
-            )
-            s3_response = s3.get_object(
-                Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"),
-                Key=object_key,
-            )
-            doc_content = s3_response["Body"].read()
+            # Fallback: stream updated file from configured storage after successful update.
+            doc_content = read_proyecto_document_bytes(kardex)
+            if doc_content is None:
+                return Response(
+                    {
+                        "success": False,
+                        "message": "Documento actualizado no encontrado en almacenamiento",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             download_response = HttpResponse(
                 doc_content,
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -478,8 +478,15 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         return Response(serializer.data)
 
     def _create_open_mode_response(self, request, kardex):
-        """Helper method to create 'open' mode JSON response"""
-        download_url = f"https://{request.get_host()}/docs/download/{kardex}/__PROY__{kardex}.docx"
+        """Helper method to create 'open' mode JSON response."""
+        presigned = proyecto_document_open_url(kardex)
+        if presigned:
+            download_url = presigned
+        else:
+            download_url = (
+                f"{request.scheme}://{request.get_host()}"
+                f"/docs/download/{kardex}/{proyecto_document_filename(kardex)}"
+            )
         response = JsonResponse(
             {
                 "status": "success",
@@ -600,29 +607,9 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         generate_method = getattr(service, service_config["method"])
         return generate_method(template_id, kardex, action, mode)
 
-    def _get_document_from_r2(self, kardex):
-        """Helper method to retrieve document from R2 if it exists"""
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
-        print(f"DEBUG: Checking if document exists in R2: {object_key}")
-        
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=os.environ.get("CLOUDFLARE_R2_ENDPOINT"),
-            aws_access_key_id=os.environ.get("CLOUDFLARE_R2_ACCESS_KEY"),
-            aws_secret_access_key=os.environ.get("CLOUDFLARE_R2_SECRET_KEY"),
-            config=Config(signature_version="s3v4"),
-            region_name="auto",
-        )
-        
-        try:
-            s3_response = s3.get_object(
-                Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"), Key=object_key
-            )
-            print(f"DEBUG: Document found in R2")
-            return s3_response["Body"].read()
-        except Exception as e:
-            print(f"DEBUG: Document not found in R2: {e}")
-            return None
+    def _get_stored_project_document(self, kardex):
+        """Retrieve __PROY__{kardex}.docx from local filesystem or R2 (per env)."""
+        return read_proyecto_document_bytes(kardex)
 
     def _create_download_response(self, doc_content, kardex):
         """Helper method to create download response"""
@@ -638,8 +625,7 @@ class DocumentosGeneradosViewSet(ModelViewSet):
     @action(detail=False, methods=["get"], url_path="open-document")
     def open_document(self, request):
         """
-        Will look for the document in the r2 storage, and if it exists, it will return the document
-        If it doesn't exist, it will generate the document from the template, save it in R2, and return the document
+        Load an existing project document from configured storage (local or R2), or generate it.
         """
         template_id = request.query_params.get("template_id")
         kardex = request.query_params.get("kardex", "ACT401-2025")
@@ -662,11 +648,10 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         except ValueError:
             return HttpResponse({"error": "Invalid template_id format."}, status=400)
 
-        # Try to get existing document from R2
-        doc_content = self._get_document_from_r2(kardex)
-        
+        doc_content = self._get_stored_project_document(kardex)
+
         if doc_content:
-            # Document exists in R2, return it
+            # Document exists in storage, return it
             # Log the open action
             models.DocumentosLogs.objects.create(
                 kardex=kardex,
@@ -785,41 +770,33 @@ def get_s3_client():
 # @permission_classes([IsAuthenticated])
 def download_docx(request, kardex, kardex2):
     """
-    Secure endpoint to stream a docx file from R2 to the user.
-    Only authenticated users can access. Returns 404 if not found.
+    Stream a protocolares project docx from configured storage (local filesystem or R2).
     """
-    import boto3
-    import os
     import time
-    from botocore.client import Config
-    from django.http import FileResponse, Http404, HttpResponse
+    from django.http import FileResponse, Http404
+
+    if kardex != kardex2:
+        raise Http404("Document not found")
 
     start_time = time.time()
-
-    object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/__PROY__{kardex}.docx"
-
-    try:
-        s3 = get_s3_client()
-        s3_response = s3.get_object(Bucket=os.environ.get("CLOUDFLARE_R2_BUCKET"), Key=object_key)
-        file_stream = s3_response["Body"]
-        response = FileResponse(
-            file_stream,
-            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-        response["Content-Disposition"] = f'inline; filename="__PROY__{kardex}.docx"'
-        # Add caching headers for better performance
-        response["Cache-Control"] = "public, max-age=3600"  # Cache for 1 hour
-        response["ETag"] = f'"{kardex}"'
-
-        # Log performance metrics
-        elapsed_time = time.time() - start_time
-        print(f"DEBUG: download_docx took {elapsed_time:.2f} seconds for kardex: {kardex}")
-
-        return response
-    except s3.exceptions.NoSuchKey:
+    doc_content = read_proyecto_document_bytes(kardex)
+    if doc_content is None:
         raise Http404("Document not found")
-    except Exception as e:
-        return HttpResponse(f"Error: {str(e)}", status=500)
+
+    response = FileResponse(
+        io.BytesIO(doc_content),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    filename = proyecto_document_filename(kardex)
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
+    response["Cache-Control"] = "public, max-age=3600"
+    response["ETag"] = f'"{kardex}"'
+    response["Access-Control-Allow-Origin"] = "*"
+
+    elapsed_time = time.time() - start_time
+    print(f"DEBUG: download_docx took {elapsed_time:.2f} seconds for kardex: {kardex}")
+
+    return response
 
 
 @api_view(["GET"])

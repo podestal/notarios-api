@@ -1,9 +1,13 @@
 import io
+import logging
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import IO
+from typing import IO, Optional
+
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 from .storage import (
     get_r2_bucket,
@@ -115,13 +119,77 @@ class LocalFsStorageBackend(DocumentStorageBackend):
         return ""
 
 
+_backend_instance: Optional[DocumentStorageBackend] = None
+
+
 def get_document_storage_backend() -> DocumentStorageBackend:
     """
     Storage backend selector.
     Phase 1 default is R2 (no behavior change).
     """
-    backend = (os.environ.get("DOC_STORAGE_BACKEND") or "r2").strip().lower()
+    global _backend_instance
+    if _backend_instance is not None:
+        return _backend_instance
+
+    raw_backend = os.environ.get("DOC_STORAGE_BACKEND")
+    backend = (raw_backend or "r2").strip().lower()
+
     if backend == "local":
         root = (os.environ.get("DOC_STORAGE_LOCAL_ROOT") or "C:/documentos/gc").strip()
-        return LocalFsStorageBackend(root)
-    return R2StorageBackend()
+        _backend_instance = LocalFsStorageBackend(root)
+        logger.info(
+            "Document storage: LOCAL filesystem (DOC_STORAGE_BACKEND=local, root=%s)",
+            root,
+        )
+        return _backend_instance
+
+    if backend != "r2":
+        logger.warning(
+            "Unknown DOC_STORAGE_BACKEND=%r; falling back to Cloudflare R2",
+            raw_backend,
+        )
+
+    bucket = get_r2_bucket()
+    prefix = (os.environ.get("CLOUDFLARE_R2_MAIN_URL") or "").strip() or "(none)"
+    _backend_instance = R2StorageBackend()
+    logger.info(
+        "Document storage: Cloudflare R2 (DOC_STORAGE_BACKEND=%s, bucket=%s, prefix=%s)",
+        raw_backend or "(unset, default r2)",
+        bucket,
+        prefix,
+    )
+    return _backend_instance
+
+
+def proyecto_document_filename(kardex: str) -> str:
+    return f"__PROY__{kardex}.docx"
+
+
+def proyecto_document_object_key(kardex: str) -> str:
+    """Object key for protocolares project docs (matches TemplateManager paths)."""
+    prefix = (os.environ.get("CLOUDFLARE_R2_MAIN_URL") or "").strip().strip("/")
+    filename = proyecto_document_filename(kardex)
+    if prefix:
+        return f"{prefix}/documentos/{filename}"
+    return f"documentos/{filename}"
+
+
+def read_proyecto_document_bytes(kardex: str) -> Optional[bytes]:
+    """Read __PROY__{kardex}.docx from the configured storage backend, or None if missing."""
+    backend = get_document_storage_backend()
+    object_key = proyecto_document_object_key(kardex)
+    if not backend.exists(object_key):
+        return None
+    try:
+        return backend.read_bytes(object_key)
+    except FileNotFoundError:
+        return None
+
+
+def proyecto_document_open_url(kardex: str, expires_in: int = 3600) -> str:
+    """
+    URL for opening a project document in Word.
+    R2: presigned URL. Local: empty (caller should use the Django download route).
+    """
+    backend = get_document_storage_backend()
+    return backend.open_url(proyecto_document_object_key(kardex), expires_in=expires_in)
