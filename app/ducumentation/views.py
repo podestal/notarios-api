@@ -42,8 +42,13 @@ from docxcompose.properties import CustomProperties
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from docx.shared import RGBColor, Pt
-from .storage import sanitize_uploaded_docx_filename
+from .storage import (
+    build_object_key,
+    default_folder_documentos,
+    sanitize_uploaded_docx_filename,
+)
 from .storage_backends import (
+    get_document_storage_backend,
     proyecto_document_filename,
     proyecto_document_open_url,
     read_proyecto_document_bytes,
@@ -1179,66 +1184,56 @@ class ExtraprotocolaresViewSet(ModelViewSet):
 @require_http_methods(["POST"])
 def save_doc(request):
     """
-    Save changes made in Word document back to R2 bucket
-    Receives a file upload and saves it to the R2 storage
+    Save changes made in Word to the configured document store (DOC_STORAGE_BACKEND).
+    Uses the same path layout as generate/upload flows: {MAIN_URL}/documentos/{filename}.
     """
     try:
-        # Check if file was uploaded
         if "file" not in request.FILES:
             return JsonResponse({"status": "error", "message": "No file uploaded"}, status=400)
 
         uploaded_file = request.FILES["file"]
 
-        # Validate file type
         if not uploaded_file.name.endswith(".docx"):
             return JsonResponse(
                 {"status": "error", "message": "Only .docx files are allowed"}, status=400
             )
 
-        # Sanitize filename: macOS '(n)', Windows '-n' duplicate markers, trim basename
         filename = uploaded_file.name
         try:
             sanitized_filename = sanitize_uploaded_docx_filename(filename)
         except Exception:
             sanitized_filename = filename
 
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/documentos/{sanitized_filename}"
+        object_key = build_object_key(default_folder_documentos(), sanitized_filename)
+        storage_backend = (os.environ.get("DOC_STORAGE_BACKEND") or "r2").strip().lower()
 
-        print(f"DEBUG: Saving document to R2: {object_key}")
+        print(f"DEBUG: Saving document ({storage_backend}): {object_key}")
         print(f"DEBUG: Filename (original): {filename}")
         print(f"DEBUG: Filename (sanitized): {sanitized_filename}")
         print(f"DEBUG: File size: {uploaded_file.size} bytes")
 
-        # Create S3 client
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=os.environ.get("CLOUDFLARE_R2_ENDPOINT"),
-            aws_access_key_id=os.environ.get("CLOUDFLARE_R2_ACCESS_KEY"),
-            aws_secret_access_key=os.environ.get("CLOUDFLARE_R2_SECRET_KEY"),
-            config=Config(signature_version="s3v4"),
-            region_name="auto",
-        )
-
-        # Upload file to R2
         try:
-            s3.upload_fileobj(uploaded_file, os.environ.get("CLOUDFLARE_R2_BUCKET"), object_key)
+            uploaded_file.seek(0)
+            get_document_storage_backend().upload_fileobj(object_key, uploaded_file)
 
-            print(f"DEBUG: Successfully saved document to R2: {object_key}")
+            print(f"DEBUG: Successfully saved document ({storage_backend}): {object_key}")
 
             return JsonResponse(
                 {
                     "status": "success",
                     "message": "Document saved successfully",
                     "filename": sanitized_filename,
+                    "storage_path": object_key,
+                    "storage_backend": storage_backend,
                     "r2_path": object_key,
                     "file_size": uploaded_file.size,
                 }
             )
 
         except Exception as e:
-            print(f"DEBUG: Error uploading to R2: {e}")
+            print(f"DEBUG: Error saving document ({storage_backend}): {e}")
             return JsonResponse(
-                {"status": "error", "message": f"Failed to save document to R2: {str(e)}"},
+                {"status": "error", "message": f"Failed to save document: {str(e)}"},
                 status=500,
             )
 
