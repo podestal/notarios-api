@@ -275,7 +275,8 @@ class Contratantesxacto(models.Model):
     idtipoacto = models.CharField(max_length=6, null=True, blank=True)
     idcontratante = models.CharField(max_length=10, null=True, blank=True)
     item = models.IntegerField()
-    idcondicion = models.CharField(max_length=3, null=True, blank=True)
+    # Legacy catalog uses numeric ids (often >999); DB may be INT or wider VARCHAR.
+    idcondicion = models.CharField(max_length=10, null=True, blank=True)
     parte = models.CharField(max_length=3, null=True, blank=True)
     porcentaje = models.CharField(max_length=50, null=True, blank=True)
     uif = models.CharField(max_length=5, null=True, blank=True)
@@ -420,7 +421,7 @@ class Cliente2(models.Model):
 
 
 class Actocondicion(models.Model):
-    idcondicion = models.CharField(primary_key=True, max_length=3)
+    idcondicion = models.CharField(primary_key=True, max_length=10)
     idtipoacto = models.CharField(max_length=6)
     condicion = models.CharField(max_length=100)
     descripcion = models.CharField(max_length=100, blank=True, default="")
