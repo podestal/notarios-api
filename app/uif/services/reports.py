@@ -248,8 +248,9 @@ class UifReportService:
         for num in range(1, 58):
             width = PHP_PLANE_FIELD_WIDTHS[num]
             raw = str(row_values.get(f"item_{num}", row_values.get(f"field_{num}", "")))
+            # PHP STR_PAD_LEFT → rjust; STR_PAD_RIGHT → ljust (RoClass::generateFileRo).
             pad = PLANE_FIELD_PAD.get(num, "L")
-            if pad == "R":
+            if pad == "L":
                 parts.append(raw[:width].rjust(width))
             else:
                 parts.append(raw[:width].ljust(width))

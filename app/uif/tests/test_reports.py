@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 from openpyxl import load_workbook
 
-from uif.services.plane_rows import PLANE_BODY_LINE_LENGTH
+from uif.services.plane_rows import PLANE_BODY_LINE_LENGTH, PLANE_FIELD_PAD, PHP_PLANE_FIELD_WIDTHS
 from uif.services.reports import EXCEL_TOTAL_COLUMNS, UifReportService
 
 
@@ -55,6 +55,45 @@ class ReportTransformTests(SimpleTestCase):
         line = service._format_plane_row(row_values)
         self.assertEqual(len(line), PLANE_BODY_LINE_LENGTH)
         self.assertEqual(PLANE_BODY_LINE_LENGTH, 858)
+
+    def test_plane_row_padding_matches_php_str_pad(self):
+        """RoClass::generateFileRo — STR_PAD_LEFT=rjust, STR_PAD_RIGHT=ljust."""
+        service = UifReportService()
+        row_values = {f"item_{i}": "" for i in range(1, 58)}
+        row_values.update(
+            {
+                "item_1": "1",
+                "item_2": "7",
+                "item_3": "I",
+                "item_4": "E",
+                "item_5": "619",
+                "item_50": "PEN",
+                "item_51": "20000.00",
+                "item_52": "0.00",
+            }
+        )
+        line = service._format_plane_row(row_values)
+        self.assertEqual(len(line), PLANE_BODY_LINE_LENGTH)
+        self.assertTrue(line.startswith("       1       7IE 619   "))
+        idx = line.index("PEN")
+        self.assertEqual(line[idx : idx + 3], "PEN")
+        self.assertEqual(line[idx + 3 : idx + 21], "          20000.00")
+        self.assertEqual(line[idx + 21 : idx + 39], "              0.00")
+
+    def test_plane_field_pad_map_matches_php_generate_file_ro(self):
+        """Sanity: PLANE_FIELD_PAD letters match PHP str_pad constants per field."""
+        php_left = {
+            1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 26,
+            27, 28, 29, 31, 32, 33, 34, 36, 37, 38, 40, 44, 45, 46, 47, 50, 51, 52,
+            53, 54, 55, 56, 57,
+        }
+        php_right = {4, 5, 21, 23, 24, 25, 30, 35, 39, 41, 42, 43, 48, 49}
+        for num in range(1, 58):
+            self.assertIn(num, PHP_PLANE_FIELD_WIDTHS)
+            if num in php_left:
+                self.assertEqual(PLANE_FIELD_PAD[num], "L")
+            else:
+                self.assertEqual(PLANE_FIELD_PAD[num], "R")
 
     def test_report_records_prefers_active_list(self):
         service = UifReportService()
