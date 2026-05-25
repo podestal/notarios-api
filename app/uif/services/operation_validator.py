@@ -1,5 +1,8 @@
 """
 Operation-level RoClass validations (patrimonial + detallemediopago).
+
+Parity rule: errors must match RoClass / `ro_validation_by_act`; do not invent
+required-field rules that PHP does not surface in generateData.
 """
 
 import logging
@@ -24,6 +27,7 @@ from uif.services.ro_validation_rules import (
     FIELD_OPORTUNIDAD_PAGO,
     RoValidationRulesRepository,
     matches_mysql_regexp,
+    oportunidad_pago_validation_value,
     validation_code,
 )
 from uif.models import FpagoUif
@@ -207,8 +211,7 @@ class RoOperationValidator:
 
         rule_opp = self.rules.get(uif_code, FIELD_OPORTUNIDAD_PAGO)
         if rule_opp:
-            opp = patrimonial.idoppago or ""
-            opp_check = "V" if str(opp).strip() == "" else str(opp).strip()
+            opp_check = oportunidad_pago_validation_value(patrimonial.idoppago)
             if validation_code(opp_check, rule_opp.data_value):
                 errors.append(
                     build_ro_error(
@@ -229,7 +232,8 @@ class RoOperationValidator:
                         detail_value=rule_opp.detail_value or "",
                     )
                 )
-            if str(opp).strip() == "99" and not (patrimonial.des_idoppago or "").strip():
+            opp_raw = str(patrimonial.idoppago or "").strip()
+            if opp_raw == "99" and not (patrimonial.des_idoppago or "").strip():
                 errors.append(
                     build_ro_error(
                         id_kardex=staged.id_kardex,

@@ -1,6 +1,10 @@
 from django.test import SimpleTestCase
 
-from uif.services.ro_validation_rules import matches_mysql_regexp, validation_code
+from uif.services.ro_validation_rules import (
+    matches_mysql_regexp,
+    oportunidad_pago_validation_value,
+    validation_code,
+)
 
 
 class RegexpRuleTests(SimpleTestCase):
@@ -18,3 +22,10 @@ class RegexpRuleTests(SimpleTestCase):
         pattern = "C|P|S"
         self.assertTrue(matches_mysql_regexp("C", pattern))
         self.assertFalse(matches_mysql_regexp("X", pattern))
+
+    def test_oportunidad_vacio_catalog_id_maps_to_v_for_validation(self):
+        self.assertEqual(oportunidad_pago_validation_value(""), "V")
+        self.assertEqual(oportunidad_pago_validation_value(10), "V")
+        self.assertEqual(oportunidad_pago_validation_value("10"), "V")
+        self.assertEqual(oportunidad_pago_validation_value(1), "01")
+        self.assertEqual(validation_code(oportunidad_pago_validation_value(10), "V"), 0)

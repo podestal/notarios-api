@@ -5,6 +5,7 @@ Load and apply rules from `ro_validation_by_act` (MySQL REGEXP parity).
 import re
 from typing import Dict, Optional, Tuple
 
+from notaria.constants import OPORTUNIDADES_PAGO
 from uif.models import RoDataField, RoValidationByAct
 
 # fkDataField / numberOfData aliases used in RoClass generateData SQL.
@@ -94,3 +95,24 @@ def matches_mysql_regexp(value: str, pattern: Optional[str]) -> bool:
 def validation_code(value: str, pattern: Optional[str]) -> int:
     """0 = OK, else returns field error (PHP: REGEXP != 0 THEN 0 ELSE field)."""
     return 0 if matches_mysql_regexp(value, pattern) else 1
+
+
+def oportunidad_pago_validation_value(idoppago) -> str:
+    """
+    Value checked against ro_validation_by_act field 47 (PHP generateData SQL).
+
+    RoClass uses: IF(patrimonial.idoppago = '', 'V', patrimonial.idoppago).
+    Catalog id 10 is ``VACIO`` (``codoppago`` empty) — same semantics as empty → ``V``.
+    """
+    raw = "" if idoppago is None else str(idoppago).strip()
+    if raw == "":
+        return "V"
+    try:
+        meta = OPORTUNIDADES_PAGO.get(int(raw))
+    except (TypeError, ValueError):
+        return raw
+    if meta and not str(meta.get("codoppago") or "").strip():
+        return "V"
+    cod = str(meta.get("codoppago") or "").strip()
+    return cod if cod else raw
+

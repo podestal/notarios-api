@@ -52,3 +52,29 @@ class OperationValidatorTests(SimpleTestCase):
             fpago_codigo_map={"99": ""},
         )
         self.assertTrue(any(e["error_type"] == "invalid_forma_pago" for e in errors))
+
+    def test_oportunidad_vacio_id_10_passes_when_rule_expects_v(self):
+        """Act 053-style rules: patrimonial.idoppago=10 (VACIO) validates as V."""
+        rules = RoValidationRulesRepository()
+        rules._loaded = True
+        rules._rules = {
+            ("053", 47): MagicMock(data_value="V", detail_value="VACIO"),
+        }
+        validator = RoOperationValidator(rules)
+        pat = MagicMock(
+            fpago="4",
+            idoppago="10",
+            des_idoppago="",
+            idmon=1,
+            importetrans=Decimal("137000"),
+            exhibiomp="No",
+        )
+        staged = _staged(uif_code="053", cod_acto="119")
+        errors = validator.validate(
+            staged=staged,
+            act_description="TRANSFERENCIA DE ACCIONES SOCIALES A TITULO GRATUITO",
+            patrimonial=pat,
+            detalle_medio_pago_rows=[],
+            fpago_codigo_map={"4": "D"},
+        )
+        self.assertFalse(any(e["error_type"] == "invalid_oportunidad_pago" for e in errors))

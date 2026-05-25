@@ -1,5 +1,10 @@
 """
-RoClass generateData participant field validations (items 10–38, 21–22 extras).
+RoClass::generateData participant field validations (items 10–43).
+
+Parity rule: every dashboard error here must correspond to PHP behavior — either
+a `validationN` / `CASE WHEN` in the contratante SQL, or `ro_validation_by_act`
+(REGEXP via `validation_code`). Do not add "helpful" required-field checks that
+PHP does not emit (e.g. firma/fechafirma on tipo I: PHP only sets plane item 9 to N).
 """
 
 import logging
@@ -103,7 +108,7 @@ def _format_date_ddmmyyyy(value) -> str:
 
 
 class ParticipantFieldsValidator:
-    """Field-level RO errors for contratantes O/B/R (tipo envío I)."""
+    """Field-level RO errors for contratantes O/B/R — mirrors RoClass SQL, not new rules."""
 
     def __init__(self, rules: Optional[RoValidationRulesRepository] = None):
         self.rules = rules or RoValidationRulesRepository()
