@@ -7,6 +7,8 @@ from typing import List, Optional, Tuple
 
 from notaria.models import Detallemediopago, Kardex
 
+from uif.services.keys import normalize_act_code
+
 
 def parse_fecha_firma(value) -> Optional[date]:
     if not value:
@@ -41,11 +43,11 @@ def group_medios_for_act(
     kardex: str, cod_acto: str, detalle_rows: List[Detallemediopago]
 ) -> Tuple[List[dict], str]:
     """Returns (grouped medios, tipo_acto for participant filter)."""
-    act_variants = {cod_acto, str(cod_acto).zfill(3), str(cod_acto).lstrip("0")}
+    act_code = normalize_act_code(cod_acto)
     grouped: dict = {}
     tipo_acto = cod_acto
     for det in detalle_rows:
-        if str(det.tipacto or "") not in act_variants:
+        if normalize_act_code(str(det.tipacto or "")) != act_code:
             continue
         key = (det.codmepag, det.tipacto)
         if key not in grouped:

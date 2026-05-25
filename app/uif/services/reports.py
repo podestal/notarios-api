@@ -17,12 +17,14 @@ from openpyxl.utils import get_column_letter
 
 from notaria.models import Confinotario
 from uif.models import RoDataField
+from uif.services.keys import resolve_instrumento_letter
 from uif.services.plane_rows import (
     PHP_PLANE_FIELD_WIDTHS,
     PLANE_BODY_LINE_LENGTH,
     PLANE_FIELD_PAD,
     PLANE_HEADER_LINE_LENGTH,
     PlaneRowBuilder,
+    format_plane_body_line,
 )
 from uif.services.report_data import get_uif_report_data, select_report_records
 
@@ -221,7 +223,7 @@ class UifReportService:
             range_end=date_range[1],
         )
         for row_values in plane_rows:
-            line = self._format_plane_row(row_values)
+            line = format_plane_body_line(row_values)
             response.write(f"{line}\r\n")
 
         return response
@@ -243,30 +245,13 @@ class UifReportService:
         self, row_values: Dict[str, str], specs: Optional[List[RoDataField]] = None
     ) -> str:
         """Fixed-width body line — widths/padding match RoClass::generateFileRo."""
-        del specs  # kept for callers; canonical widths come from PHP_PLANE_FIELD_WIDTHS
-        parts = []
-        for num in range(1, 58):
-            width = PHP_PLANE_FIELD_WIDTHS[num]
-            raw = str(row_values.get(f"item_{num}", row_values.get(f"field_{num}", "")))
-            # PHP STR_PAD_LEFT → rjust; STR_PAD_RIGHT → ljust (RoClass::generateFileRo).
-            pad = PLANE_FIELD_PAD.get(num, "L")
-            if pad == "L":
-                parts.append(raw[:width].rjust(width))
-            else:
-                parts.append(raw[:width].ljust(width))
-        line = "".join(parts)
-        if len(line) != PLANE_BODY_LINE_LENGTH:
-            logger.warning(
-                "Plane row length %s != expected %s",
-                len(line),
-                PLANE_BODY_LINE_LENGTH,
-            )
-        return line
+        del specs
+        return format_plane_body_line(row_values)
 
     def _transform_record_for_excel(
         self, record: Dict[str, Any], row_index: int = 1
     ) -> Dict[str, str]:
-        tipo_instrumento = {1: "E", 3: "T", 4: "G"}.get(record.get("idtipkar"), "SIN INICIAL")
+        tipo_instrumento = resolve_instrumento_letter(record)
 
         fecha_escritura = self._format_date(record.get("fechaescritura"))
         fecha_conclusion = self._format_date(record.get("fechaconclusion"))
@@ -291,7 +276,7 @@ class UifReportService:
             "item_1": str(row_index),
             "item_2": str(row_index),
             "item_3": str(record.get("tipo", "I"))[:1] or "I",
-            "item_4": tipo_instrumento[:2],
+            "item_4": tipo_instrumento[:1],
             "item_5": str(record.get("numescritura", ""))[:6],
             "item_6": fecha_escritura,
             "item_7": "",

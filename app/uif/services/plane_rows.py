@@ -32,7 +32,7 @@ from uif.services.complementary import (
     has_medios_for_act,
 )
 from uif.services.conyuge_fields import resolve_conyuge_fields
-from uif.services.keys import patrimonial_key
+from uif.services.keys import normalize_act_code, patrimonial_key, resolve_instrumento_letter
 from uif.services.ro_text import remplace_string_ro
 
 logger = logging.getLogger(__name__)
@@ -220,6 +220,27 @@ def _conclusion_flag(fecha_conclusion) -> str:
     return "N" if text in ("", "None") else "C"
 
 
+def format_plane_body_line(row_values: Dict[str, str]) -> str:
+    """RoClass::generateFileRo — 858-char body line with PHP str_pad parity."""
+    parts = []
+    for num in range(1, 58):
+        width = PHP_PLANE_FIELD_WIDTHS[num]
+        raw = str(row_values.get(f"item_{num}", row_values.get(f"field_{num}", "")))
+        pad = PLANE_FIELD_PAD.get(num, "L")
+        if pad == "L":
+            parts.append(raw[:width].rjust(width))
+        else:
+            parts.append(raw[:width].ljust(width))
+    line = "".join(parts)
+    if len(line) != PLANE_BODY_LINE_LENGTH:
+        logger.warning(
+            "Plane row length %s != expected %s",
+            len(line),
+            PLANE_BODY_LINE_LENGTH,
+        )
+    return line
+
+
 class PlaneRowBuilder:
     """Builds plane-file rows exactly like RoClass::_arrObjRo (medios + participantes)."""
 
@@ -365,7 +386,7 @@ class PlaneRowBuilder:
                 continue
 
             inscripcion, zona_bien, partida_bien = self._bien_registral(
-                kardex, cod_acto, ro.get("tipo_instrumento") or ro.get("idtipkar")
+                kardex, cod_acto, ro
             )
 
             registration_number += 1
@@ -489,7 +510,7 @@ class PlaneRowBuilder:
 
         return {
             "tipo_envio": str(ro.get("tipo", "I") or "I")[:1],
-            "ipnp": str(ro.get("tipo_instrumento") or "")[:2],
+            "ipnp": resolve_instrumento_letter(ro),
             "num_escritura": str(ro.get("numescritura") or ""),
             "fecha_escritura": fecha_esc,
             "conclusion": conclusion,
@@ -504,34 +525,34 @@ class PlaneRowBuilder:
         }
 
     def _bien_registral(
-        self, kardex: str, cod_acto: str, tipo_instrumento
+        self, kardex: str, cod_acto: str, ro: Dict[str, Any]
     ) -> Tuple[str, str, str]:
-        ipnp = str(tipo_instrumento or "")[:1]
-        act_variants = {cod_acto, str(cod_acto).zfill(3), str(cod_acto).lstrip("0")}
+        ipnp = resolve_instrumento_letter(ro)
+        act_code = normalize_act_code(cod_acto)
 
         if ipnp == "T":
             qs = Detallevehicular.objects.filter(kardex=kardex)
             for row in qs:
-                if str(row.idtipacto or "") in act_variants:
+                if normalize_act_code(str(row.idtipacto or "")) == act_code:
                     has = bool(
                         str(row.idsedereg or "").strip()
                         and str(row.pregistral or "").strip()
                     )
                     return (
                         "I" if has else "N",
-                        str(row.idsedereg or "")[:2],
+                        str(row.idsedereg or "").zfill(2)[:2],
                         remplace_string_ro(row.pregistral or "")[:12],
                     )
         else:
             for row in Detallebienes.objects.filter(kardex=kardex):
-                if str(row.idtipacto or "") in act_variants:
+                if normalize_act_code(str(row.idtipacto or "")) == act_code:
                     has = bool(
                         str(row.idsedereg or "").strip()
                         and str(row.pregistral or "").strip()
                     )
                     return (
                         "I" if has else "N",
-                        str(row.idsedereg or "")[:2],
+                        str(row.idsedereg or "").zfill(2)[:2],
                         remplace_string_ro(row.pregistral or "")[:12],
                     )
         return "N", "", ""
@@ -539,10 +560,11 @@ class PlaneRowBuilder:
     def _group_medios(
         self, kardex: str, cod_acto: str, detalles: List[Detallemediopago]
     ) -> List[dict]:
-        act_variants = {cod_acto, str(cod_acto).zfill(3), str(cod_acto).lstrip("0")}
+        """PHP: WHERE detallemediopago.tipacto = '$codAct' GROUP BY codmepag, tipacto."""
+        act_code = normalize_act_code(cod_acto)
         grouped: Dict[Tuple, dict] = {}
         for det in detalles:
-            if str(det.tipacto or "") not in act_variants:
+            if normalize_act_code(str(det.tipacto or "")) != act_code:
                 continue
             key = (det.codmepag, det.tipacto)
             if key not in grouped:
@@ -702,7 +724,7 @@ class PlaneRowBuilder:
         numero_ruc = ""
         if tipper == "J":
             if cliente.idtipdoc == 8:
-                numero_ruc = str(cliente.numdoc or "")
+                numero_ruc = str(cliente.numdoc or "")[:11]
             elif cliente.idtipdoc == 10:
                 numero_ruc = "99999999999"
 
@@ -798,8 +820,8 @@ class PlaneRowBuilder:
             "item_18": condicion_residencia[:1],
             "item_19": tipo_persona[:1],
             "item_20": cod_tipo_doc[:1],
-            "item_21": numero_doc[:20],
-            "item_22": numero_ruc[:11],
+            "item_21": numero_doc[:20] if tipper == "N" else "",
+            "item_22": numero_ruc[:11] if tipper == "J" else "",
             "item_23": apepat[:120],
             "item_24": apemat[:40],
             "item_25": nombres[:40],
