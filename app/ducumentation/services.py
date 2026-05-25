@@ -18,6 +18,7 @@ from notaria.constants import MONEDAS, OPORTUNIDADES_PAGO, FORMAS_PAGO
 from .utils import NumberToLetterConverter
 import time
 from django.db import connection
+from ducumentation.storage_backends import read_tpl_template_bytes
 
 # Cached S3 client to avoid recreating on every request
 _s3_client = None
@@ -241,32 +242,7 @@ class VehicleTransferDocumentService:
         return text.strip()
     
     def _get_template_from_r2(self, template_id: int) -> bytes:
-        """
-        Get template from R2 storage (placeholder for your existing logic)
-        """
-        template = TplTemplate.objects.get(pktemplate=template_id)
-        s3 = boto3.client(
-            's3',
-            endpoint_url=os.environ.get('CLOUDFLARE_R2_ENDPOINT'),
-            aws_access_key_id=os.environ.get('CLOUDFLARE_R2_ACCESS_KEY'),
-            aws_secret_access_key=os.environ.get('CLOUDFLARE_R2_SECRET_KEY'),
-            config=Config(signature_version='s3v4'),
-            region_name='auto',
-        )
-        
-        # Template path in simplified structure
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
-        
-        try:
-            s3_response = s3.get_object(
-                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), 
-                Key=object_key
-            )
-            return s3_response['Body'].read()
-        except Exception as e:
-            # Log the error and return a 404 or raise
-            print(f'Template not found in R2: {e}')
-            raise FileNotFoundError(f"Template not found in R2: {object_key}")
+        return read_tpl_template_bytes(template_id)
     
     def get_document_data(self, num_kardex: str) -> Dict[str, Any]:
         """
@@ -975,26 +951,7 @@ class NonContentiousDocumentService:
                         clean_runs(paragraph.runs)
 
     def _get_template_from_r2(self, template_id: int) -> bytes:
-        """
-        Get template from R2 storage for non-contentious documents
-        """
-        template = TplTemplate.objects.get(pktemplate=template_id)
-        
-        # Use cached S3 client
-        s3 = get_s3_client()
-        
-        # Template path in simplified structure
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
-        
-        try:
-            s3_response = s3.get_object(
-                Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), 
-                Key=object_key
-            )
-            return s3_response['Body'].read()
-        except Exception as e:
-            print(f"Error getting template from R2: {e}")
-            raise FileNotFoundError(f"Template not found: {template.filename}")
+        return read_tpl_template_bytes(template_id)
 
     def get_document_data(self, num_kardex: str, idtipoacto: str) -> Dict[str, Any]:
         """
@@ -2028,22 +1985,8 @@ class TestamentoDocumentService:
         return {}
 
     def _get_template_from_r2(self, template_id: int) -> bytes:
-        """
-        Get template from R2 storage - same as VehicleTransferDocumentService
-        """
-        template = TplTemplate.objects.get(pktemplate=template_id)
-        s3 = get_s3_client()
-        
-        # Template path in simplified structure
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
-        
-        try:
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return response['Body'].read()
-        except Exception as e:
-            print(f"Error downloading template from R2: {e}")
-            raise
-
+        return read_tpl_template_bytes(template_id)
+    
     def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
         """
         Process the document template with data - SAME AS VehicleTransferDocumentService
@@ -2821,21 +2764,8 @@ class GarantiasMobiliariasDocumentService:
         }
 
     def _get_template_from_r2(self, template_id: int) -> bytes:
-        """
-        Get template from R2 storage - same as other services
-        """
-        template = TplTemplate.objects.get(pktemplate=template_id)
-        s3 = get_s3_client()
-        
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
-        
-        try:
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            return response['Body'].read()
-        except Exception as e:
-            print(f"Error downloading template from R2: {e}")
-            raise
-
+        return read_tpl_template_bytes(template_id)
+    
     def _process_document(self, template_bytes: bytes, data: Dict[str, str]) -> Document:
         """
         Process the document template with data - same as other services
@@ -3819,24 +3749,9 @@ class EscrituraPublicaDocumentService:
         }
 
     def _get_template_from_r2(self, template_id: int) -> bytes:
-        """
-        Get template from R2 storage - simple approach without XML fixing
-        """
-        template = TplTemplate.objects.get(pktemplate=template_id)
-        s3 = get_s3_client()
-        
-        object_key = f"{os.environ.get('CLOUDFLARE_R2_MAIN_URL')}/plantillas/{template.filename}"
-        print(f"DEBUG: Template file: {template.filename}")
-        
-        try:
-            response = s3.get_object(Bucket=os.environ.get('CLOUDFLARE_R2_BUCKET'), Key=object_key)
-            template_bytes = response['Body'].read()
-            print(f"DEBUG: Successfully downloaded template: {len(template_bytes)} bytes")
-            
-            return template_bytes
-        except Exception as e:
-            print(f"Error downloading template from R2: {e}")
-            raise
+        template_bytes = read_tpl_template_bytes(template_id)
+        print(f"DEBUG: Successfully downloaded template: {len(template_bytes)} bytes")
+        return template_bytes
 
 
 

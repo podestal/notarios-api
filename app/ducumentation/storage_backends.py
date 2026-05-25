@@ -41,6 +41,10 @@ class DocumentStorageBackend(ABC):
     def open_url(self, object_key: str, expires_in: int = 3600) -> str:
         raise NotImplementedError
 
+    @abstractmethod
+    def delete(self, object_key: str) -> None:
+        raise NotImplementedError
+
 
 class R2StorageBackend(DocumentStorageBackend):
     """Current production behavior backed by Cloudflare R2."""
@@ -78,6 +82,10 @@ class R2StorageBackend(DocumentStorageBackend):
             Params={"Bucket": get_r2_bucket(), "Key": object_key},
             ExpiresIn=expires_in,
         )
+
+    def delete(self, object_key: str) -> None:
+        s3 = get_s3_client()
+        s3.delete_object(Bucket=get_r2_bucket(), Key=object_key)
 
 
 class LocalFsStorageBackend(DocumentStorageBackend):
@@ -117,6 +125,11 @@ class LocalFsStorageBackend(DocumentStorageBackend):
         # Local backend does not provide open/presigned URLs.
         # Keep endpoints stable by returning empty URL; callers should use mode=download.
         return ""
+
+    def delete(self, object_key: str) -> None:
+        path = self._abs(object_key)
+        if path.is_file():
+            path.unlink()
 
 
 _backend_instance: Optional[DocumentStorageBackend] = None
@@ -184,6 +197,20 @@ def read_proyecto_document_bytes(kardex: str) -> Optional[bytes]:
         return backend.read_bytes(object_key)
     except FileNotFoundError:
         return None
+
+
+def read_tpl_template_bytes(template_id: int) -> bytes:
+    """Read a TplTemplate .docx from the configured storage backend (local or R2)."""
+    from notaria.models import TplTemplate
+
+    from .storage import object_key_for_tpl_template_row
+
+    tpl = TplTemplate.objects.get(pktemplate=template_id)
+    object_key = object_key_for_tpl_template_row(tpl.urltemplate, tpl.filename)
+    try:
+        return get_document_storage_backend().read_bytes(object_key)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Template not found: {object_key}") from e
 
 
 def proyecto_document_open_url(kardex: str, expires_in: int = 3600) -> str:

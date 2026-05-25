@@ -152,27 +152,33 @@ def object_key_for_tpl_template_row(urltemplate: str | None, filename: str | Non
 	raise ValueError("Template has no usable urltemplate or filename")
 
 
+def read_bytes_from_storage(object_key: str) -> bytes:
+	"""Download an object via DOC_STORAGE_BACKEND (local filesystem or R2)."""
+	from .storage_backends import get_document_storage_backend
+
+	return get_document_storage_backend().read_bytes(object_key)
+
+
+def upload_fileobj_to_storage(fileobj: IO[bytes], object_key: str) -> None:
+	"""Upload a file-like object via DOC_STORAGE_BACKEND (local filesystem or R2)."""
+	from .storage_backends import get_document_storage_backend
+
+	fileobj.seek(0)
+	get_document_storage_backend().upload_fileobj(object_key, fileobj)
+
+
+def delete_storage_object(object_key: str) -> None:
+	"""Delete an object via DOC_STORAGE_BACKEND (local filesystem or R2)."""
+	from .storage_backends import get_document_storage_backend
+
+	get_document_storage_backend().delete(object_key)
+
+
 def read_bytes_from_r2(object_key: str) -> bytes:
-	"""
-	Download an object from R2 into memory. Raises FileNotFoundError if missing.
-	"""
-	bucket = get_r2_bucket()
-	s3 = get_s3_client()
-	try:
-		resp = s3.get_object(Bucket=bucket, Key=object_key)
-	except ClientError as e:
-		code = e.response.get("Error", {}).get("Code", "")
-		if code in ("404", "NoSuchKey", "NotFound"):
-			raise FileNotFoundError(f"Object not found in R2: {object_key}") from e
-		raise
-	body = resp["Body"]
-	return body.read()
+	"""Backward-compatible alias for read_bytes_from_storage."""
+	return read_bytes_from_storage(object_key)
 
 
 def upload_fileobj_to_r2(fileobj: IO[bytes], object_key: str) -> None:
-	"""
-	Upload a file-like object to R2 under the given object_key.
-	Raises on error.
-	"""
-	s3 = get_s3_client()
-	s3.upload_fileobj(fileobj, get_r2_bucket(), object_key)
+	"""Backward-compatible alias for upload_fileobj_to_storage."""
+	upload_fileobj_to_storage(fileobj, object_key)

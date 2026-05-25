@@ -55,14 +55,13 @@ from .constants import get_kardex_abbreviation_map
 from ducumentation.storage import (
     build_object_key,
     default_folder_plantillas,
+    delete_storage_object,
     docx_filename_from_name_template,
     full_object_key_from_stored_relative,
-    get_r2_bucket,
-    get_s3_client,
     object_key_for_tpl_template_row,
-    read_bytes_from_r2,
+    read_bytes_from_storage,
     sanitize_copy_suffix_base,
-    upload_fileobj_to_r2,
+    upload_fileobj_to_storage,
     validate_folder_path,
 )
 
@@ -2664,7 +2663,7 @@ class TemplateViewSet(ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """
-        Delete TplTemplate DB row and best-effort delete its related R2 template file.
+        Delete TplTemplate DB row and best-effort delete its related template file.
         """
         tpl = self.get_object()
         object_key = None
@@ -2676,13 +2675,12 @@ class TemplateViewSet(ModelViewSet):
 
         if object_key:
             try:
-                s3 = get_s3_client()
-                s3.delete_object(Bucket=get_r2_bucket(), Key=object_key)
-                logger.info("TEMPLATE_DELETE: deleted R2 object %s", object_key)
+                delete_storage_object(object_key)
+                logger.info("TEMPLATE_DELETE: deleted storage object %s", object_key)
             except Exception as exc:
                 # Do not block DB deletion if file is already missing or delete fails.
                 logger.warning(
-                    "TEMPLATE_DELETE: failed to delete R2 object %s | error=%s",
+                    "TEMPLATE_DELETE: failed to delete storage object %s | error=%s",
                     object_key,
                     str(exc),
                 )
@@ -2693,9 +2691,9 @@ class TemplateViewSet(ModelViewSet):
     @action(detail=True, methods=["get"], url_path="file")
     def template_file(self, request, pk=None):
         """
-        GET: download the .docx from R2 using this template row (resolved key; see
+        GET: download the .docx using this template row (resolved key; see
         ``object_key_for_tpl_template_row`` in ducumentation.storage).
-        Prefer ``GET .../r2-file/`` when you know the exact R2 path and do not need the DB row.
+        Prefer ``GET .../r2-file/`` when you know the exact path and do not need the DB row.
         """
         tpl = self.get_object()
         return self._download_template_file(tpl)
@@ -2703,7 +2701,7 @@ class TemplateViewSet(ModelViewSet):
     @action(detail=False, methods=["get"], url_path="r2-file")
     def r2_file(self, request):
         """
-        Download a file directly from R2 — no TplTemplate DB row.
+        Download a file from configured storage — no TplTemplate DB row.
 
         Query (one of):
 
@@ -2751,14 +2749,14 @@ class TemplateViewSet(ModelViewSet):
             )
 
         try:
-            data = read_bytes_from_r2(object_key)
+            data = read_bytes_from_storage(object_key)
         except FileNotFoundError:
             return Response(
-                {"detail": "File not found in R2.", "object_key": object_key},
+                {"detail": "File not found in storage.", "object_key": object_key},
                 status=404,
             )
         except Exception as e:
-            logger.exception("R2_FILE_GET: read failed")
+            logger.exception("TEMPLATE_FILE_GET: read failed")
             return Response({"detail": str(e)}, status=500)
 
         if not attachment_name.lower().endswith(".docx"):
@@ -2780,14 +2778,14 @@ class TemplateViewSet(ModelViewSet):
         except ValueError as e:
             return Response({"detail": str(e)}, status=400)
         try:
-            data = read_bytes_from_r2(object_key)
+            data = read_bytes_from_storage(object_key)
         except FileNotFoundError:
             return Response(
-                {"detail": "Template file not found in R2.", "object_key": object_key},
+                {"detail": "Template file not found in storage.", "object_key": object_key},
                 status=404,
             )
         except Exception as e:
-            logger.exception("TEMPLATE_FILE_GET: R2 read failed")
+            logger.exception("TEMPLATE_FILE_GET: read failed")
             return Response({"detail": str(e)}, status=500)
         name = (tpl.filename or "template.docx").strip() or "template.docx"
         resp = FileResponse(
@@ -2803,7 +2801,7 @@ class TemplateViewSet(ModelViewSet):
 
     def _handle_template_upload(self, request):
         """
-        Shared handler for template upload to R2 + DB upsert.
+        Shared handler for template upload (local or R2) + DB upsert.
         """
         logger.info("TEMPLATE_UPLOAD: request received")
         logger.info("TEMPLATE_UPLOAD: data keys=%s", list(request.data.keys()))
@@ -2843,11 +2841,11 @@ class TemplateViewSet(ModelViewSet):
         )
 
         try:
-            upload_fileobj_to_r2(uploaded_file, object_key)
-            logger.info("TEMPLATE_UPLOAD: upload to R2 successful")
+            upload_fileobj_to_storage(uploaded_file, object_key)
+            logger.info("TEMPLATE_UPLOAD: upload successful object_key=%s", object_key)
         except Exception as e:
-            logger.exception("TEMPLATE_UPLOAD: upload to R2 failed: %s", str(e))
-            return Response({"status": "error", "message": f"R2 upload failed: {str(e)}"}, status=500)
+            logger.exception("TEMPLATE_UPLOAD: upload failed: %s", str(e))
+            return Response({"status": "error", "message": f"Upload failed: {str(e)}"}, status=500)
 
         # Keep nametemplate aligned with the requested template name; filename stores .docx
         codeacts = request.data.get("codeActs") or request.data.get("codeacts")
@@ -2903,7 +2901,7 @@ class TemplateViewSet(ModelViewSet):
     def create(self, request, *args, **kwargs):
         """
         Support file uploads through the standard POST /templates/ endpoint too.
-        If multipart contains a file, route through R2 upload flow.
+        If multipart contains a file, route through storage upload flow.
         """
         if "file" in request.FILES:
             return self._handle_template_upload(request)
@@ -2928,7 +2926,7 @@ class TemplateViewSet(ModelViewSet):
     @action(detail=False, methods=["post"], url_path="upload")
     def upload_template(self, request):
         """
-        Upload a template file to R2 '/plantillas' using nameTemplate as filename.
+        Upload a template file to plantillas storage using nameTemplate as filename.
         - Expects multipart/form-data with:
           - file: .docx file
           - nameTemplate: string (used as base filename)
