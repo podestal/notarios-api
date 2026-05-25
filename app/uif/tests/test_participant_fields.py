@@ -105,6 +105,29 @@ class ParticipantFieldsValidatorTests(SimpleTestCase):
         )
         self.assertEqual(errors, [])
 
+    def test_natural_person_without_firma_does_not_raise_missing_fecha_firma(self):
+        """PHP parity: missing firma/fechafirma only affects plane conclusion N, not RO errors."""
+        staged = self._staged()
+        contratante = MagicMock(
+            idcontratante="1",
+            idcontratanterp="",
+            inscrito=None,
+            firma="0",
+            fechafirma="",
+            idsedereg="",
+            numpartida="",
+        )
+        cliente = self._cliente_natural()
+        cxa = MagicMock(uif="O", monto="100")
+        errors = self.validator.validate(
+            staged=staged,
+            act_description="TRANSFERENCIA DE ACCIONES SOCIALES A TITULO GRATUITO",
+            contratantes_map={"K1": [contratante]},
+            clientes_map={"1": cliente},
+            contratantesxacto_map={"K1_094_1": cxa},
+        )
+        self.assertFalse(any(e["error_type"] == "missing_fecha_firma" for e in errors))
+
     @patch.object(ParticipantFieldsValidator, "_resolve_persona_que_representa", return_value="O")
     def test_representante_missing_inscrito(self, _mock_rep):
         staged = self._staged()

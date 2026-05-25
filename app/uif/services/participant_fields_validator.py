@@ -257,7 +257,6 @@ class ParticipantFieldsValidator:
                     staged=staged,
                     act_description=act_description,
                     uif_code=uif_code,
-                    is_complementary=(tipo == "C"),
                     cod_acto_spouse=cod_acto_spouse,
                 )
             )
@@ -362,7 +361,6 @@ class ParticipantFieldsValidator:
         staged,
         act_description: str,
         uif_code: str,
-        is_complementary: bool = False,
         cod_acto_spouse: str = "",
     ) -> List[dict]:
         errors: List[dict] = []
@@ -636,22 +634,11 @@ class ParticipantFieldsValidator:
                     f"{nombre}: distrito requerido",
                 )
 
-        firma = str(contratante.firma or "").strip()
+        # RoClass does not block export when firma/fechafirma are missing on tipo I:
+        # it only sets item 9 conclusion to N for PN (see plane_rows._participant_fields).
+        # Complementaria (C) already limits participants via firma_in_report_range at collection.
         fecha_firma = _format_date_ddmmyyyy(contratante.fechafirma)
-        if is_complementary:
-            if not fecha_firma:
-                add(
-                    FIELD_FECHA_FIRMA,
-                    "missing_fecha_firma",
-                    f"{nombre}: fecha de firma del participante requerida",
-                )
-        elif tipper == "N" and (firma in ("0", "") or not fecha_firma):
-            add(
-                FIELD_FECHA_FIRMA,
-                "missing_fecha_firma",
-                f"{nombre}: fecha de firma del participante requerida",
-            )
-        elif not fecha_firma and contratante.fechafirma:
+        if not fecha_firma and contratante.fechafirma:
             add(
                 FIELD_FECHA_FIRMA,
                 "invalid_fecha_firma",
