@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'ducumentation',
     'sisgen',
     'uif',
+    'compliance',
     'notaria',
     'viajes',
     'signatum',

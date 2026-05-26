@@ -33,6 +33,7 @@ urlpatterns += [
     path('api-docs/', include('ducumentation.urls')),
     path('sisgen/', include('sisgen.urls')),
     path('uif/', include('uif.urls')),
+    path('compliance/', include('compliance.urls')),
     path('viajes/', include('viajes.urls')),
     path('auth/', include('djoser.urls')),
     path('auth/', include('djoser.urls.jwt')),
