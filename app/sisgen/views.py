@@ -31,6 +31,72 @@ logger = logging.getLogger(__name__)
 SISGEN_DRY_RUN = False
 
 
+def _status_ui_from_document_status(status_text: str) -> str:
+    s = (status_text or "").strip().upper()
+    if s == "GUARDADO":
+        return "guardado"
+    if s == "CON OBSERVACIONES":
+        return "observado"
+    if s == "FALLIDO":
+        return "fallido"
+    return "pendiente"
+
+
+def _extract_submission_errors(parsed_payload: dict) -> list:
+    if not isinstance(parsed_payload, dict):
+        return []
+    doc = parsed_payload.get("document") or {}
+    errs = doc.get("errors")
+    if isinstance(errs, list) and errs:
+        return errs
+    summary = parsed_payload.get("summary") or {}
+    docs = summary.get("documents") or []
+    merged = []
+    for d in docs:
+        for e in (d.get("errors") or []):
+            if e not in merged:
+                merged.append(e)
+    return merged
+
+
+def _attach_last_submission_status(rows: list) -> list:
+    kardexes = [str(r.get("kardex") or "").strip() for r in rows if str(r.get("kardex") or "").strip()]
+    if not kardexes:
+        return rows
+
+    seen = set()
+    ordered_unique = []
+    for k in kardexes:
+        if k not in seen:
+            seen.add(k)
+            ordered_unique.append(k)
+
+    latest_by_kardex = {}
+    qs = SisgenSoapResponse.objects.filter(kardex__in=ordered_unique).order_by(
+        "kardex", "-created_at"
+    )
+    for obj in qs:
+        if obj.kardex not in latest_by_kardex:
+            errors = _extract_submission_errors(obj.parsed_payload or {})
+            latest_by_kardex[obj.kardex] = {
+                "exists": True,
+                "created_at": obj.created_at.isoformat(),
+                "batch_index": obj.batch_index,
+                "http_status": obj.http_status,
+                "soap_return_status": obj.soap_return_status,
+                "soap_return_message": obj.soap_return_message,
+                "document_status": obj.document_status,
+                "status_ui": _status_ui_from_document_status(obj.document_status),
+                "errors": errors,
+                "has_errors": bool(errors),
+            }
+
+    for row in rows:
+        k = str(row.get("kardex") or "").strip()
+        row["sisgen_last_submission"] = latest_by_kardex.get(k, {"exists": False})
+    return rows
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class DocumentSearchView(APIView):
     # permission_classes = [IsAuthenticated, IsSuperuser]
@@ -91,7 +157,7 @@ class DocumentSearchView(APIView):
                 
                 return Response({
                     'error': 0,
-                    'data': data,
+                    'data': _attach_last_submission_status(data),
                     'pagination': page_status,
                     'errores': error_details.get('book_errors', []),
                     'observaciones': error_details.get('observations', [])
@@ -142,7 +208,7 @@ class DocumentSearchView(APIView):
             
             return Response({
                 'error': 0,
-                'data': data,
+                'data': _attach_last_submission_status(data),
                 'pagination': page_status,
                 'errores': error_details.get('kardex_errors', []),
                 'observaciones': error_details.get('observations', []),
