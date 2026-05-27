@@ -1236,26 +1236,31 @@ class SISGENXmlGenerator:
             return str(meta["codigo"]).strip()[:1] or "C"
         return self._forma_pago_sisgen(fp_raw)
 
-    def _momento_pago_codigo(self, idoppago_raw) -> str:
-        """MomentoPago numérico desde patrimonial.idoppago / oporpago (tabla oportunidades)."""
+    def _momento_pago_codigo(self, idoppago_raw) -> Optional[str]:
+        """MomentoPago numérico desde patrimonial.idoppago (catálogo OPORTUNIDADES_PAGO)."""
         if idoppago_raw is None or str(idoppago_raw).strip() == "":
-            return "1"
+            return None
         try:
             idx = int(str(idoppago_raw).strip(), 10)
             meta = OPORTUNIDADES_PAGO.get(idx)
-            if meta and meta.get("codoppago"):
-                co = str(meta["codoppago"]).strip()
-                if co.isdigit():
-                    return str(int(co, 10))
-                return co[:2] if co else "1"
-            return "1"
+            if not meta or not str(meta.get("codoppago") or "").strip():
+                return None
+            co = str(meta["codoppago"]).strip()
+            if co.isdigit():
+                return str(int(co, 10))
+            return co[:2] if co else None
         except (ValueError, TypeError):
-            return "1"
+            return None
 
     def _descripcion_momento_pago(self, idoppago_raw) -> str:
+        if idoppago_raw is None or str(idoppago_raw).strip() == "":
+            return ""
         try:
             idx = int(str(idoppago_raw).strip(), 10)
-            return (OPORTUNIDADES_PAGO.get(idx) or {}).get("desoppago", "") or ""
+            meta = OPORTUNIDADES_PAGO.get(idx) or {}
+            if not str(meta.get("codoppago") or "").strip():
+                return ""
+            return meta.get("desoppago", "") or ""
         except (ValueError, TypeError):
             return ""
 
@@ -1371,7 +1376,10 @@ class SISGENXmlGenerator:
                 xml_parts.append("\t\t<MediosPago>\n")
                 xml_parts.append(f"\t\t\t<MedioPago>{medio}</MedioPago>\n")
                 xml_parts.append(f"\t\t\t<FormaPago>{forma}</FormaPago>\n")
-                xml_parts.append(f"\t\t\t<MomentoPago>{momento}</MomentoPago>\n")
+                if momento is not None:
+                    xml_parts.append(
+                        f"\t\t\t<MomentoPago>{momento}</MomentoPago>\n"
+                    )
                 if desc_mom:
                     xml_parts.append(
                         f"\t\t\t<DescripcionMomentoPago>"
@@ -1394,7 +1402,10 @@ class SISGENXmlGenerator:
             xml_parts.append("\t\t\t<MedioPago>001</MedioPago>\n")
             xml_parts.append(f"\t\t\t<FormaPago>{forma_pat}</FormaPago>\n")
             momento_f = self._momento_pago_codigo(idopp_pat)
-            xml_parts.append(f"\t\t\t<MomentoPago>{momento_f}</MomentoPago>\n")
+            if momento_f is not None:
+                xml_parts.append(
+                    f"\t\t\t<MomentoPago>{momento_f}</MomentoPago>\n"
+                )
             dm = self._descripcion_momento_pago(idopp_pat)
             if dm:
                 xml_parts.append(
