@@ -562,7 +562,7 @@ class Patrimonial(models.Model):
     nregistral = models.CharField(max_length=50, blank=True, null=True)
     idsedereg = models.CharField(max_length=3)
     fpago = models.CharField(max_length=3)
-    idoppago = models.CharField(max_length=5)
+    idoppago = models.CharField(max_length=5, blank=True, null=True)
     ofondos = models.CharField(max_length=150, blank=True, null=True)
     item = models.IntegerField()
     des_idoppago = models.CharField(max_length=50, blank=True, null=True)
