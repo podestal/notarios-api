@@ -95,48 +95,15 @@ class RoOperationValidator:
                 patrimonial, staged, act_description, uif_code, fpago_codigo_map
             )
         )
-        errors.extend(
-            self._validate_medios_pago_required(
-                staged, act_description, uif_code, detalle_medio_pago_rows
-            )
-        )
+        # PHP generateData: medios errors only via ro_validation_by_act (fields 44/53)
+        # and when exhibiomp indicates medios — not an unconditional detallemediopago
+        # row requirement (generateFileRo only omits plane operation lines without rows).
         errors.extend(
             self._validate_medios_pago(
                 patrimonial, staged, act_description, uif_code, detalle_medio_pago_rows
             )
         )
         return errors
-
-    def _validate_medios_pago_required(
-        self, staged, act_description, uif_code, detalle_rows
-    ) -> List[dict]:
-        """RoClass: kardex must have detallemediopago rows (tipo I and C)."""
-        if str(getattr(staged, "tipo", "I")) not in ("I", "C"):
-            return []
-        act_code = str(staged.cod_acto).zfill(3)
-        rows = [
-            r
-            for r in detalle_rows
-            if r.kardex == staged.kardex
-            and str(r.tipacto or "").zfill(3) == act_code
-        ]
-        if rows:
-            return []
-        return [
-            build_ro_error(
-                id_kardex=staged.id_kardex,
-                kardex=staged.kardex,
-                act=act_description,
-                codacto=staged.cod_acto,
-                uif_code=uif_code,
-                error_type="missing_medio_pago_rows",
-                error_description="El kardex no tiene fila de T. de Pago/T. de Fondo",
-                field_number=1,
-                code_element=CODE_ELEMENT_MISSING_PAYMENT_ROWS,
-                row_type=ROW_TYPE_OPERATION,
-                is_correctable=False,
-            )
-        ]
 
     def _validate_escritura(self, staged, act_description, uif_code, cod_acto) -> List[dict]:
         num = staged.numero_escritura

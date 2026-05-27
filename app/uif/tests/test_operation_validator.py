@@ -78,3 +78,57 @@ class OperationValidatorTests(SimpleTestCase):
             fpago_codigo_map={"4": "D"},
         )
         self.assertFalse(any(e["error_type"] == "invalid_oportunidad_pago" for e in errors))
+
+    def test_gratuito_sin_detalle_medio_no_unconditional_missing_rows(self):
+        """K2-style: act 053, fpago N, idoppago vacío, exhibiomp No — PHP does not block RO."""
+        rules = RoValidationRulesRepository()
+        rules._loaded = True
+        rules._rules = {
+            ("053", 46): MagicMock(data_value="N|D", detail_value="NO APLICA|DONACION"),
+            ("053", 47): MagicMock(data_value="V", detail_value="VACIO"),
+        }
+        validator = RoOperationValidator(rules)
+        pat = MagicMock(
+            fpago="5",
+            idoppago="",
+            des_idoppago="",
+            idmon=1,
+            importetrans=Decimal("137000"),
+            exhibiomp="No",
+        )
+        staged = _staged(uif_code="053", cod_acto="119")
+        errors = validator.validate(
+            staged=staged,
+            act_description="TRANSFERENCIA DE ACCIONES SOCIALES A TITULO GRATUITO",
+            patrimonial=pat,
+            detalle_medio_pago_rows=[],
+            fpago_codigo_map={"5": "N"},
+        )
+        self.assertFalse(
+            any(e["error_type"] == "missing_medio_pago_rows" for e in errors)
+        )
+
+    def test_exhibiomp_si_sin_detalle_medio_still_errors(self):
+        """When medios are exhibited, missing detallemediopago rows is still an error."""
+        rules = RoValidationRulesRepository()
+        rules._loaded = True
+        rules._rules = {}
+        validator = RoOperationValidator(rules)
+        pat = MagicMock(
+            fpago="1",
+            idoppago="1",
+            des_idoppago="",
+            idmon=1,
+            importetrans=Decimal("1000"),
+            exhibiomp="Si",
+        )
+        errors = validator.validate(
+            staged=_staged(),
+            act_description="COMPRA VENTA",
+            patrimonial=pat,
+            detalle_medio_pago_rows=[],
+            fpago_codigo_map={"1": "C"},
+        )
+        self.assertTrue(
+            any(e["error_type"] == "missing_medio_pago_rows" for e in errors)
+        )
