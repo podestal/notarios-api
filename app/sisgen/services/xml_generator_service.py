@@ -693,11 +693,23 @@ class SISGENXmlGenerator:
             return []
         try:
             with connection.cursor() as cursor:
+                cols_sql = """
+                        SELECT
+                            detmp,
+                            codmepag,
+                            fpago AS dmp_fpago,
+                            importemp,
+                            idmon AS dmp_idmon,
+                            foperacion,
+                            idbancos,
+                            documentos,
+                            itemmp
+                        FROM detallemediopago
+                """
                 if itemmp not in (None, ""):
                     cursor.execute(
-                        """
-                        SELECT codmepag, fpago, importemp, idmon
-                        FROM detallemediopago
+                        cols_sql
+                        + """
                         WHERE kardex = %s AND TRIM(IFNULL(itemmp,'')) = TRIM(IFNULL(%s,''))
                         ORDER BY detmp
                         """,
@@ -705,9 +717,8 @@ class SISGENXmlGenerator:
                     )
                 else:
                     cursor.execute(
-                        """
-                        SELECT codmepag, fpago, importemp, idmon
-                        FROM detallemediopago
+                        cols_sql
+                        + """
                         WHERE kardex = %s
                         ORDER BY detmp
                         """,
@@ -719,12 +730,12 @@ class SISGENXmlGenerator:
             self.logger.warning("detallemediopago no legible kardex=%s: %s", kardex, e)
             return []
 
-    def _forma_pago_sisgen(self, fpago_raw) -> str:
-        """Letra FormaPago XSD (C/P/S…); default contado."""
+    def _forma_pago_sisgen(self, fpago_raw) -> Optional[str]:
+        """Letra FormaPago cuando fpago no está en FORMAS_PAGO (valor ya en BD)."""
         if fpago_raw is None or str(fpago_raw).strip() == "":
-            return "C"
+            return None
         s = str(fpago_raw).strip().upper()
-        return s[0] if s else "C"
+        return s[0] if s else None
 
     def _fecha_firma_element_xml(self, row: Dict, indent_tabs: str) -> str:
         """
@@ -1226,14 +1237,15 @@ class SISGENXmlGenerator:
 
     NOMBRE_CONTRATO_MAX = 200
 
-    def _forma_pago_codigo_fpago(self, fp_raw) -> str:
-        """Letra FormaPago desde código fpago patrimonial/detalle (FORMAS_PAGO)."""
+    def _forma_pago_codigo_fpago(self, fp_raw) -> Optional[str]:
+        """Letra FormaPago desde fpago en BD (catálogo FORMAS_PAGO / detalle). Sin default."""
         if fp_raw is None or str(fp_raw).strip() == "":
-            return "C"
+            return None
         key = str(fp_raw).strip()
         meta = FORMAS_PAGO.get(key)
         if meta and meta.get("codigo"):
-            return str(meta["codigo"]).strip()[:1] or "C"
+            cod = str(meta["codigo"]).strip()[:1]
+            return cod if cod else None
         return self._forma_pago_sisgen(fp_raw)
 
     def _momento_pago_codigo(self, idoppago_raw) -> Optional[str]:
@@ -1277,33 +1289,46 @@ class SISGENXmlGenerator:
             return "0"
         return "1"
 
-    def _entidad_financiera_codigo(self, row: Dict) -> str:
+    def _entidad_financiera_codigo(self, row: Dict) -> Optional[str]:
         bid = row.get("idbancos")
-        if bid is not None and str(bid).strip() != "":
-            try:
-                return str(int(str(bid).strip(), 10)).zfill(5)
-            except ValueError:
-                s = str(bid).strip()
-                return (s[:5]).zfill(5) if s else "00002"
-        return "00002"
+        if bid is None or str(bid).strip() == "":
+            return None
+        try:
+            return str(int(str(bid).strip(), 10)).zfill(5)
+        except ValueError:
+            s = str(bid).strip()
+            return (s[:5]).zfill(5) if s else None
 
-    def _id_pago_medio(self, row: Dict) -> str:
+    def _id_pago_medio(self, row: Dict) -> Optional[str]:
         doc = str(row.get("documentos") or "").strip()
         if doc.isdigit():
             return doc[:15]
         det = row.get("detmp")
         if det is not None and str(det).strip():
             return str(det).strip()[:15]
-        return "0"
+        return None
 
-    def _medio_pago_codigo(self, r: Dict) -> str:
+    def _medio_pago_codigo(self, r: Dict) -> Optional[str]:
+        """Código SISGEN desde mediospago.sunat o detallemediopago.codmepag (sin default)."""
         ms = r.get("mp_sunat")
         if ms is not None and str(ms).strip().isdigit():
             return str(int(str(ms).strip(), 10)).zfill(3)
         cm = r.get("codmepag")
         if cm is not None and str(cm).strip().isdigit():
             return str(int(str(cm).strip(), 10)).zfill(3)
-        return "001"
+        return None
+
+    def _sisgen_codmon_from_idmon_optional(self, idmon) -> Optional[str]:
+        if idmon is None or str(idmon).strip() in ("", "0"):
+            return None
+        try:
+            k = int(idmon)
+        except (TypeError, ValueError):
+            return None
+        meta = MONEDAS.get(k)
+        if meta and meta.get("codmon"):
+            return str(meta["codmon"]).zfill(2)
+        return None
 
     def _nombre_contrato_sisgen(self, doc: Dict) -> str:
         """PHP: desacto (tiposdeacto) truncado; fallback texto contrato en kardex."""
@@ -1334,6 +1359,80 @@ class SISGENXmlGenerator:
                 return fd
         return self._format_date(str(doc.get("fechaescritura") or "").strip()) or ""
 
+    def _medio_pago_xml_block(
+        self,
+        r: Dict,
+        *,
+        fp_pat,
+        idopp_pat,
+        exhib_pat,
+    ) -> Optional[str]:
+        """
+        Un bloque <MediosPago> por fila detallemediopago.
+        Sin filas en BD o sin código de medio → no se emite nada inventado.
+        """
+        medio = self._medio_pago_codigo(r)
+        if not medio:
+            self.logger.warning(
+                "detallemediopago sin codmepag/mediospago.sunat (detmp=%s)",
+                r.get("detmp"),
+            )
+            return None
+
+        fp_use = r.get("dmp_fpago") or r.get("pat_fpago") or fp_pat
+        forma = self._forma_pago_codigo_fpago(fp_use)
+        if not forma:
+            self.logger.warning(
+                "detallemediopago sin fpago válido (detmp=%s)", r.get("detmp")
+            )
+            return None
+
+        mon_mp = self._sisgen_codmon_from_idmon_optional(r.get("dmp_idmon"))
+        if not mon_mp:
+            self.logger.warning(
+                "detallemediopago sin idmon válido (detmp=%s)", r.get("detmp")
+            )
+            return None
+
+        idopp_use = r.get("pat_idoppago")
+        if idopp_use in (None, ""):
+            idopp_use = idopp_pat
+        momento = self._momento_pago_codigo(idopp_use)
+        desc_mom = self._descripcion_momento_pago(idopp_use)
+        cuant_mp = self._safe_float(str(r.get("importemp") or "0"), default=0.0)
+        justif = self._justificado_manifestado_medio(
+            r.get("pat_exhibiomp"), exhib_pat
+        )
+        fecha_op = self._format_date(str(r.get("foperacion") or "").strip())
+        id_pago = self._id_pago_medio(r)
+        entidad = self._entidad_financiera_codigo(r)
+
+        parts = ["\t\t<MediosPago>\n"]
+        parts.append(f"\t\t\t<MedioPago>{medio}</MedioPago>\n")
+        parts.append(f"\t\t\t<FormaPago>{forma}</FormaPago>\n")
+        if momento is not None:
+            parts.append(f"\t\t\t<MomentoPago>{momento}</MomentoPago>\n")
+        if desc_mom:
+            parts.append(
+                f"\t\t\t<DescripcionMomentoPago>"
+                f"{escape(desc_mom[:200])}</DescripcionMomentoPago>\n"
+            )
+        parts.append(f"\t\t\t<CuantiaPago>{cuant_mp:.2f}</CuantiaPago>\n")
+        parts.append(f"\t\t\t<TipoMonedaPago>{mon_mp}</TipoMonedaPago>\n")
+        parts.append(
+            f"\t\t\t<JustificadoManifestado>{justif}</JustificadoManifestado>\n"
+        )
+        if fecha_op:
+            parts.append(f"\t\t\t<FechaPago>{fecha_op}</FechaPago>\n")
+        if id_pago:
+            parts.append(f"\t\t\t<IdPago>{escape(id_pago)}</IdPago>\n")
+        if entidad:
+            parts.append(
+                f"\t\t\t<EntidadFinanciera>{entidad}</EntidadFinanciera>\n"
+            )
+        parts.append("\t\t</MediosPago>\n")
+        return "".join(parts)
+
     def _medios_pagos_xml_for_doc(
         self,
         doc: Dict,
@@ -1342,92 +1441,29 @@ class SISGENXmlGenerator:
         tipo_moneda_doc: str,
         total_monto: float,
     ) -> str:
-        fecha_esc_default = (
-            self._format_date(doc.get("fechaescritura", "") or "") or ""
-        )
+        del tipo_moneda_doc, total_monto  # solo datos por fila detallemediopago
+        if not mp_rows:
+            return ""
+
         fp_pat = pat_row.get("fpago") if pat_row else None
         idopp_pat = pat_row.get("idoppago") if pat_row else None
         exhib_pat = pat_row.get("exhibiomp") if pat_row else None
 
-        xml_parts = ["\t\t<MediosPagos>\n"]
-        if mp_rows:
-            for r in mp_rows:
-                medio = self._medio_pago_codigo(r)
-                fp_use = r.get("pat_fpago") or r.get("dmp_fpago") or fp_pat
-                forma = self._forma_pago_codigo_fpago(fp_use)
-                idopp_use = r.get("pat_idoppago") if r.get("pat_idoppago") not in (
-                    None,
-                    "",
-                ) else idopp_pat
-                momento = self._momento_pago_codigo(idopp_use)
-                desc_mom = self._descripcion_momento_pago(idopp_use)
-                cuant_mp = self._safe_float(str(r.get("importemp") or "0"), default=0.0)
-                mon_mp = self._sisgen_codmon_from_idmon(r.get("dmp_idmon"))
-                justif = self._justificado_manifestado_medio(
-                    r.get("pat_exhibiomp"), exhib_pat
-                )
-                fecha_op = (
-                    self._format_date(str(r.get("foperacion") or "").strip())
-                    or fecha_esc_default
-                )
-                id_pago = self._id_pago_medio(r)
-                entidad = self._entidad_financiera_codigo(r)
+        blocks: List[str] = []
+        for r in mp_rows:
+            block = self._medio_pago_xml_block(
+                r,
+                fp_pat=fp_pat,
+                idopp_pat=idopp_pat,
+                exhib_pat=exhib_pat,
+            )
+            if block:
+                blocks.append(block)
 
-                xml_parts.append("\t\t<MediosPago>\n")
-                xml_parts.append(f"\t\t\t<MedioPago>{medio}</MedioPago>\n")
-                xml_parts.append(f"\t\t\t<FormaPago>{forma}</FormaPago>\n")
-                if momento is not None:
-                    xml_parts.append(
-                        f"\t\t\t<MomentoPago>{momento}</MomentoPago>\n"
-                    )
-                if desc_mom:
-                    xml_parts.append(
-                        f"\t\t\t<DescripcionMomentoPago>"
-                        f"{escape(desc_mom[:200])}</DescripcionMomentoPago>\n"
-                    )
-                xml_parts.append(f"\t\t\t<CuantiaPago>{cuant_mp:.2f}</CuantiaPago>\n")
-                xml_parts.append(f"\t\t\t<TipoMonedaPago>{mon_mp}</TipoMonedaPago>\n")
-                xml_parts.append(
-                    f"\t\t\t<JustificadoManifestado>{justif}</JustificadoManifestado>\n"
-                )
-                xml_parts.append(f"\t\t\t<FechaPago>{fecha_op}</FechaPago>\n")
-                xml_parts.append(f"\t\t\t<IdPago>{escape(id_pago)}</IdPago>\n")
-                xml_parts.append(
-                    f"\t\t\t<EntidadFinanciera>{entidad}</EntidadFinanciera>\n"
-                )
-                xml_parts.append("\t\t</MediosPago>\n")
-        else:
-            forma_pat = self._forma_pago_codigo_fpago(fp_pat)
-            xml_parts.append("\t\t<MediosPago>\n")
-            xml_parts.append("\t\t\t<MedioPago>001</MedioPago>\n")
-            xml_parts.append(f"\t\t\t<FormaPago>{forma_pat}</FormaPago>\n")
-            momento_f = self._momento_pago_codigo(idopp_pat)
-            if momento_f is not None:
-                xml_parts.append(
-                    f"\t\t\t<MomentoPago>{momento_f}</MomentoPago>\n"
-                )
-            dm = self._descripcion_momento_pago(idopp_pat)
-            if dm:
-                xml_parts.append(
-                    f"\t\t\t<DescripcionMomentoPago>"
-                    f"{escape(dm[:200])}</DescripcionMomentoPago>\n"
-                )
-            xml_parts.append(f"\t\t\t<CuantiaPago>{total_monto:.2f}</CuantiaPago>\n")
-            xml_parts.append(
-                f"\t\t\t<TipoMonedaPago>{tipo_moneda_doc}</TipoMonedaPago>\n"
-            )
-            just_stub = self._justificado_manifestado_medio(
-                exhib_pat if pat_row else None, None
-            )
-            xml_parts.append(
-                f"\t\t\t<JustificadoManifestado>{just_stub}</JustificadoManifestado>\n"
-            )
-            xml_parts.append(f"\t\t\t<FechaPago>{fecha_esc_default}</FechaPago>\n")
-            xml_parts.append("\t\t\t<IdPago>0</IdPago>\n")
-            xml_parts.append("\t\t\t<EntidadFinanciera>00002</EntidadFinanciera>\n")
-            xml_parts.append("\t\t</MediosPago>\n")
-        xml_parts.append("\t\t</MediosPagos>\n")
-        return "".join(xml_parts)
+        if not blocks:
+            return ""
+
+        return "\t\t<MediosPagos>\n" + "".join(blocks) + "\t\t</MediosPagos>\n"
 
     def _collect_assembly_errors(self, doc: Dict) -> List[str]:
         """Validaciones de armado XML (legado PHP antes del envío)."""
