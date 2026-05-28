@@ -1362,36 +1362,23 @@ class SISGENXmlGenerator:
 
     def _codigo_medio_pago_sisgen_xml(self, row: Dict) -> Tuple[Optional[str], bool]:
         """
-        Código para <MedioPago>: legado usa mediospago.cod_sisgen; si falta, sunat.
-
-        Returns (codigo, es_vacio_explicito). es_vacio → emitir <MedioPago></MedioPago>.
+        Código para <MedioPago>: legado PHP (kardexml) usa solo mediospago.cod_sisgen
+        (alias idmediop). Si vacío o 0 → no se emite <MedioPago>; no usa codmepag ni sunat.
         """
-        if row.get("medio_vacio"):
-            return "", True
-
-        des = str(row.get("desmpagos") or row.get("mp_des") or "").strip().upper()
-        if des == "VACIO":
-            return "", True
-
-        cm = row.get("codmepag")
-        try:
-            if cm is not None and int(cm) == self.MEDIO_PAGO_VACIO_CODMEPAG:
-                return "", True
-        except (TypeError, ValueError):
-            pass
-
-        for key in ("mp_cod_sisgen", "cod_sisgen", "mp_sunat", "sunat"):
+        for key in ("mp_cod_sisgen", "cod_sisgen"):
             val = row.get(key)
-            if val is not None and str(val).strip().isdigit():
-                return str(int(str(val).strip(), 10)).zfill(3), False
-
-        if cm is not None and str(cm).strip().isdigit():
-            return str(int(str(cm).strip(), 10)).zfill(3), False
-
+            if val is None:
+                continue
+            s = str(val).strip()
+            if not s or s == "0":
+                continue
+            if s.isdigit():
+                return str(int(s, 10)).zfill(3), False
+            return s, False
         return None, False
 
     def _medio_pago_codigo(self, r: Dict) -> Optional[str]:
-        """None = no emitir tag; '' = VACIO (tag vacío)."""
+        """None = omitir etiqueta <MedioPago> (comportamiento legado)."""
         cod, _vacio = self._codigo_medio_pago_sisgen_xml(r)
         return cod
 
@@ -1575,15 +1562,9 @@ class SISGENXmlGenerator:
     ) -> Optional[str]:
         """
         Un bloque <MediosPago> por fila detallemediopago.
-        Sin filas en BD o sin código de medio → no se emite nada inventado.
+        Sin cod_sisgen (p. ej. codmepag=100) → se omite solo <MedioPago>, no el bloque.
         """
         medio = self._medio_pago_codigo(r)
-        if medio is None:
-            self.logger.warning(
-                "detallemediopago sin codmepag/mediospago (detmp=%s)",
-                r.get("detmp"),
-            )
-            return None
 
         fp_use = r.get("dmp_fpago") or r.get("pat_fpago") or fp_pat
         forma = self._forma_pago_codigo_fpago(fp_use)
@@ -1614,7 +1595,8 @@ class SISGENXmlGenerator:
         entidad = self._entidad_financiera_codigo(r)
 
         parts = ["\t\t<MediosPago>\n"]
-        parts.append(f"\t\t\t<MedioPago>{escape(medio)}</MedioPago>\n")
+        if medio is not None and str(medio).strip() not in ("", "0"):
+            parts.append(f"\t\t\t<MedioPago>{escape(medio)}</MedioPago>\n")
         parts.append(f"\t\t\t<FormaPago>{forma}</FormaPago>\n")
         if momento is not None:
             parts.append(f"\t\t\t<MomentoPago>{momento}</MomentoPago>\n")
