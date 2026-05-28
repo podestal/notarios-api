@@ -1480,17 +1480,25 @@ class SISGENXmlGenerator:
         self, doc: Dict, pat_row: Optional[Dict]
     ) -> bool:
         """
-        PHP xml_kardex: si tiposdeacto.mediospago = N no arma bloque; si S (o acto con
-        cuantía) sí — SISGEN rechaza CodActoJuridico 0215 sin <MediosPagos>.
+        DB-driven rule:
+        - If tiposdeacto marks UIF/SUNAT applicability, MediosPagos is required.
+        - Fallback to tiposdeacto.mediospago flag when present.
         """
+        del pat_row
+        au = (doc.get("actouif") or "").strip().upper()
+        if au not in ("", "N", "NO", "0", "NINGUNO", "-"):
+            return True
+
+        asn = (doc.get("actosunat") or "").strip().upper()
+        if asn not in ("", "N", "NO", "0", "NINGUNO", "-"):
+            return True
+
         flag = self._tiposdeacto_mediospago_flag(doc)
-        if flag == "N":
+        if flag in ("S", "1", "SI", "Y", "YES", "TRUE", "T"):
+            return True
+        if flag in ("N", "NO", "0", "FALSE", "F"):
             return False
-        if flag in ("S", "1"):
-            return True
-        if pat_row and float(pat_row.get("importetrans") or 0) > 0:
-            return True
-        return bool(str(doc.get("cod_ancert") or "").strip())
+        return False
 
     def _resolve_medio_pago_patrimonial(
         self, pat_row: Dict, doc: Dict
@@ -1654,34 +1662,13 @@ class SISGENXmlGenerator:
             if block:
                 blocks.append(block)
 
-        if not blocks and pat_row and self._acto_requiere_medios_pago_xml(doc, pat_row):
-            synthetic = self._synthetic_medio_row_from_patrimonial(pat_row, doc)
-            if synthetic:
-                block = self._medio_pago_xml_block(
-                    synthetic,
-                    fp_pat=fp_pat,
-                    idopp_pat=idopp_pat,
-                    exhib_pat=exhib_pat,
-                )
-                if block:
-                    blocks.append(block)
-                else:
-                    self.logger.warning(
-                        "MediosPago patrimonial incompleto kardex=%s cod_ancert=%s",
-                        doc.get("kardex"),
-                        doc.get("cod_ancert"),
-                    )
-            else:
-                self.logger.warning(
-                    "Sin detallemediopago y sin codigo mediospago en catalogo "
-                    "kardex=%s cod_ancert=%s fpago=%s",
-                    doc.get("kardex"),
-                    doc.get("cod_ancert"),
-                    fp_pat,
-                )
-
-        if not blocks:
+        if not self._acto_requiere_medios_pago_xml(doc, pat_row):
             return ""
+
+        # Legacy behavior: when the act requires medios but there are no detail rows,
+        # emit an empty container only (no MediosPago children).
+        if not blocks:
+            return "\t\t<MediosPagos>\n\t\t</MediosPagos>\n"
 
         return "\t\t<MediosPagos>\n" + "".join(blocks) + "\t\t</MediosPagos>\n"
 
