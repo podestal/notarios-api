@@ -1484,34 +1484,45 @@ class SISGENXmlGenerator:
         self, pat_row: Dict, doc: Dict
     ) -> Optional[str]:
         """
-        Sin detallemediopago: código SUNAT desde catálogo mediospago según patrimonial
-        (forma NO APLICA, donación, efectivo sin exhibición, etc.) — no hardcode 001.
+        Sin detallemediopago: mediospago.sunat desde catálogo según patrimonial.
+
+        fpago 5 (NO APLICA) + idoppago vacío + exhibiomp No NO debe mapear a efectivo
+        008/009 — eso era un fallthrough incorrecto. Efectivo solo aplica a fpago contado
+        (u otras formas onerosas), no a actos gratuitos / NO APLICA.
         """
+        del doc
         fp = str(pat_row.get("fpago") or "").strip()
         exhib = str(pat_row.get("exhibiomp") or "").strip().upper()
 
-        if fp == "5":
-            for frag in ("NO APLICA", "DONACION", "DONACI"):
-                cod = self._lookup_mediospago_sunat_by_descripcion(frag)
-                if cod:
-                    return cod
-        if fp == "4":
-            cod = self._lookup_mediospago_sunat_by_descripcion("DONACION")
-            if cod:
-                return cod
-
-        if exhib in ("NO", "N", "0"):
-            for cm in (8, 9):
+        def by_codmepag(*codes: int) -> Optional[str]:
+            for cm in codes:
                 cod = self._lookup_mediospago_sunat_by_codmepag(cm)
                 if cod:
                     return cod
+            return None
 
-        for cm in (99, 11, 10, 1):
-            cod = self._lookup_mediospago_sunat_by_codmepag(cm)
-            if cod:
-                return cod
+        def by_desc(*fragments: str) -> Optional[str]:
+            for frag in fragments:
+                cod = self._lookup_mediospago_sunat_by_descripcion(frag)
+                if cod:
+                    return cod
+            return None
 
-        return None
+        # Forma de pago NO APLICA (fpago=5) — típico K2 / 0215 gratuito
+        if fp == "5":
+            return (
+                by_desc("NO APLICA", "NO APLICA.", "N/A")
+                or by_codmepag(99, 1)
+            )
+
+        if fp == "4":
+            return by_desc("DONACION", "DONACI") or by_codmepag(99, 1)
+
+        # Contado u otras formas onerosas sin detalle: efectivo solo si no exhibió medio
+        if exhib in ("NO", "N", "0") and fp in ("1", "2", "3", ""):
+            return by_codmepag(8, 9) or by_codmepag(1, 99)
+
+        return by_codmepag(1, 99, 11, 10)
 
     def _synthetic_medio_row_from_patrimonial(
         self, pat_row: Dict, doc: Dict
