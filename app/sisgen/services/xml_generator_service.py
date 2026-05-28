@@ -1359,6 +1359,177 @@ class SISGENXmlGenerator:
                 return fd
         return self._format_date(str(doc.get("fechaescritura") or "").strip()) or ""
 
+    def _tiposdeacto_mediospago_flag(self, doc: Dict) -> Optional[str]:
+        """Flag tiposdeacto.mediospago (legado): S exige XML; N no."""
+        cod_ancert = str(doc.get("cod_ancert") or "").strip()
+        codactos = str(doc.get("codactos") or "").strip()
+        candidates: List[str] = []
+        if cod_ancert:
+            candidates.append(cod_ancert)
+        if len(codactos) >= 3:
+            p3 = codactos[:3]
+            candidates.extend([p3, p3.zfill(6)])
+        if len(codactos) >= 6:
+            candidates.append(codactos[:6])
+        seen: Set[str] = set()
+        ordered = []
+        for c in candidates:
+            c = c.strip()
+            if c and c not in seen:
+                seen.add(c)
+                ordered.append(c)
+        if not ordered:
+            return None
+        try:
+            with connection.cursor() as cursor:
+                for vid in ordered:
+                    cursor.execute(
+                        """
+                        SELECT mediospago FROM tiposdeacto
+                        WHERE TRIM(IFNULL(cod_ancert, '')) = TRIM(%s)
+                           OR TRIM(idtipoacto) = TRIM(%s)
+                        LIMIT 1
+                        """,
+                        [vid, vid],
+                    )
+                    row = cursor.fetchone()
+                    if row and row[0] is not None and str(row[0]).strip() != "":
+                        return str(row[0]).strip().upper()
+        except Exception as e:
+            self.logger.warning("tiposdeacto.mediospago no legible: %s", e)
+        return None
+
+    def _acto_requiere_medios_pago_xml(
+        self, doc: Dict, pat_row: Optional[Dict]
+    ) -> bool:
+        """
+        PHP xml_kardex: si tiposdeacto.mediospago = N no arma bloque; si S (o acto con
+        cuantía) sí — SISGEN rechaza CodActoJuridico 0215 sin <MediosPagos>.
+        """
+        flag = self._tiposdeacto_mediospago_flag(doc)
+        if flag == "N":
+            return False
+        if flag in ("S", "1"):
+            return True
+        if pat_row and float(pat_row.get("importetrans") or 0) > 0:
+            return True
+        return bool(str(doc.get("cod_ancert") or "").strip())
+
+    def _lookup_mediospago_sunat_by_codmepag(self, codmepag: int) -> Optional[str]:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT sunat, codmepag FROM mediospago
+                    WHERE codmepag = %s LIMIT 1
+                    """,
+                    [codmepag],
+                )
+                row = cursor.fetchone()
+        except DatabaseError:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT codmepag FROM mediospago WHERE codmepag = %s LIMIT 1",
+                        [codmepag],
+                    )
+                    row = cursor.fetchone()
+                    if row and row[0] is not None:
+                        return str(int(row[0], 10)).zfill(3)
+            except Exception:
+                return None
+            return None
+        except Exception as e:
+            self.logger.warning("mediospago codmepag=%s: %s", codmepag, e)
+            return None
+        if not row:
+            return None
+        sunat, cm = row[0], row[1]
+        if sunat is not None and str(sunat).strip().isdigit():
+            return str(int(str(sunat).strip(), 10)).zfill(3)
+        if cm is not None and str(cm).strip().isdigit():
+            return str(int(str(cm).strip(), 10)).zfill(3)
+        return None
+
+    def _lookup_mediospago_sunat_by_descripcion(self, fragment: str) -> Optional[str]:
+        frag = (fragment or "").strip()
+        if not frag:
+            return None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT sunat, codmepag FROM mediospago
+                    WHERE UPPER(IFNULL(desmpagos, '')) LIKE UPPER(%s)
+                    LIMIT 1
+                    """,
+                    [f"%{frag}%"],
+                )
+                row = cursor.fetchone()
+        except DatabaseError:
+            return None
+        except Exception as e:
+            self.logger.warning("mediospago descripcion %r: %s", frag, e)
+            return None
+        if not row:
+            return None
+        sunat, cm = row[0], row[1]
+        if sunat is not None and str(sunat).strip().isdigit():
+            return str(int(str(sunat).strip(), 10)).zfill(3)
+        if cm is not None and str(cm).strip().isdigit():
+            return str(int(str(cm).strip(), 10)).zfill(3)
+        return None
+
+    def _resolve_medio_pago_sunat_for_patrimonial(
+        self, pat_row: Dict, doc: Dict
+    ) -> Optional[str]:
+        """
+        Sin detallemediopago: código SUNAT desde catálogo mediospago según patrimonial
+        (forma NO APLICA, donación, efectivo sin exhibición, etc.) — no hardcode 001.
+        """
+        fp = str(pat_row.get("fpago") or "").strip()
+        exhib = str(pat_row.get("exhibiomp") or "").strip().upper()
+
+        if fp == "5":
+            for frag in ("NO APLICA", "DONACION", "DONACI"):
+                cod = self._lookup_mediospago_sunat_by_descripcion(frag)
+                if cod:
+                    return cod
+        if fp == "4":
+            cod = self._lookup_mediospago_sunat_by_descripcion("DONACION")
+            if cod:
+                return cod
+
+        if exhib in ("NO", "N", "0"):
+            for cm in (8, 9):
+                cod = self._lookup_mediospago_sunat_by_codmepag(cm)
+                if cod:
+                    return cod
+
+        for cm in (99, 11, 10, 1):
+            cod = self._lookup_mediospago_sunat_by_codmepag(cm)
+            if cod:
+                return cod
+
+        return None
+
+    def _synthetic_medio_row_from_patrimonial(
+        self, pat_row: Dict, doc: Dict
+    ) -> Optional[Dict]:
+        sunat = self._resolve_medio_pago_sunat_for_patrimonial(pat_row, doc)
+        if not sunat:
+            return None
+        fop = pat_row.get("nminuta") or doc.get("fechaescritura")
+        return {
+            "mp_sunat": sunat,
+            "pat_fpago": pat_row.get("fpago"),
+            "pat_idoppago": pat_row.get("idoppago"),
+            "pat_exhibiomp": pat_row.get("exhibiomp"),
+            "dmp_idmon": pat_row.get("idmon"),
+            "importemp": pat_row.get("importetrans"),
+            "foperacion": fop,
+        }
+
     def _medio_pago_xml_block(
         self,
         r: Dict,
@@ -1441,10 +1612,6 @@ class SISGENXmlGenerator:
         tipo_moneda_doc: str,
         total_monto: float,
     ) -> str:
-        del tipo_moneda_doc, total_monto  # solo datos por fila detallemediopago
-        if not mp_rows:
-            return ""
-
         fp_pat = pat_row.get("fpago") if pat_row else None
         idopp_pat = pat_row.get("idoppago") if pat_row else None
         exhib_pat = pat_row.get("exhibiomp") if pat_row else None
@@ -1459,6 +1626,32 @@ class SISGENXmlGenerator:
             )
             if block:
                 blocks.append(block)
+
+        if not blocks and pat_row and self._acto_requiere_medios_pago_xml(doc, pat_row):
+            synthetic = self._synthetic_medio_row_from_patrimonial(pat_row, doc)
+            if synthetic:
+                block = self._medio_pago_xml_block(
+                    synthetic,
+                    fp_pat=fp_pat,
+                    idopp_pat=idopp_pat,
+                    exhib_pat=exhib_pat,
+                )
+                if block:
+                    blocks.append(block)
+                else:
+                    self.logger.warning(
+                        "MediosPago patrimonial incompleto kardex=%s cod_ancert=%s",
+                        doc.get("kardex"),
+                        doc.get("cod_ancert"),
+                    )
+            else:
+                self.logger.warning(
+                    "Sin detallemediopago y sin codigo mediospago en catalogo "
+                    "kardex=%s cod_ancert=%s fpago=%s",
+                    doc.get("kardex"),
+                    doc.get("cod_ancert"),
+                    fp_pat,
+                )
 
         if not blocks:
             return ""
@@ -1495,6 +1688,22 @@ class SISGENXmlGenerator:
                     errs.append(f"participante sin condición (idcontratante={ic})")
                 if p.get("uif") is None or str(p.get("uif")).strip() == "":
                     errs.append(f"participante sin UIF (idcontratante={ic})")
+
+            pat_row = self._resolve_patrimonial_for_doc(doc)
+            mp_rows = self._medios_pago_filas_enriquecidas(doc.get("kardex"))
+            if self._acto_requiere_medios_pago_xml(doc, pat_row):
+                if not mp_rows:
+                    if not pat_row:
+                        errs.append(
+                            "medios de pago: el acto exige MediosPagos pero no hay patrimonial"
+                        )
+                    elif not self._resolve_medio_pago_sunat_for_patrimonial(
+                        pat_row, doc
+                    ):
+                        errs.append(
+                            "medios de pago: sin filas en detallemediopago y sin "
+                            "código en catálogo mediospago (fpago NO APLICA / donación)"
+                        )
 
         num_esc = str(doc.get("numescritura") or "").strip()
         id_tip = doc.get("idtipkar")
