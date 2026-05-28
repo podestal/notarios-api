@@ -1209,6 +1209,7 @@ class SISGENXmlGenerator:
                         dmp.documentos,
                         dmp.itemmp,
                         mp.sunat AS mp_sunat,
+                        mp.cod_sisgen AS mp_cod_sisgen,
                         mp.desmpagos AS mp_des,
                         pat.fpago AS pat_fpago,
                         pat.idoppago AS pat_idoppago,
@@ -1308,15 +1309,91 @@ class SISGENXmlGenerator:
             return str(det).strip()[:15]
         return None
 
-    def _medio_pago_codigo(self, r: Dict) -> Optional[str]:
-        """Código SISGEN desde mediospago.sunat o detallemediopago.codmepag (sin default)."""
-        ms = r.get("mp_sunat")
-        if ms is not None and str(ms).strip().isdigit():
-            return str(int(str(ms).strip(), 10)).zfill(3)
-        cm = r.get("codmepag")
+    MEDIO_PAGO_VACIO_CODMEPAG = 97
+
+    def _idoppago_es_vacio(self, idoppago_raw) -> bool:
+        """Catálogo 10 / patrimonial.idoppago vacío (misma regla que UIF/SISGEN oportunidad)."""
+        if idoppago_raw is None or str(idoppago_raw).strip() == "":
+            return True
+        try:
+            idx = int(str(idoppago_raw).strip(), 10)
+            meta = OPORTUNIDADES_PAGO.get(idx) or {}
+            return not str(meta.get("codoppago") or "").strip()
+        except (ValueError, TypeError):
+            return False
+
+    def _fetch_mediospago_catalog_row(self, codmepag: int) -> Optional[Dict]:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT codmepag, sunat, cod_sisgen, desmpagos
+                    FROM mediospago
+                    WHERE codmepag = %s
+                    LIMIT 1
+                    """,
+                    [codmepag],
+                )
+                cols = [c[0] for c in cursor.description]
+                row = cursor.fetchone()
+        except DatabaseError:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT codmepag, sunat, desmpagos
+                        FROM mediospago
+                        WHERE codmepag = %s
+                        LIMIT 1
+                        """,
+                        [codmepag],
+                    )
+                    cols = [c[0] for c in cursor.description]
+                    row = cursor.fetchone()
+            except Exception as e:
+                self.logger.warning("mediospago codmepag=%s: %s", codmepag, e)
+                return None
+        except Exception as e:
+            self.logger.warning("mediospago codmepag=%s: %s", codmepag, e)
+            return None
+        if not row:
+            return None
+        return dict(zip(cols, row))
+
+    def _codigo_medio_pago_sisgen_xml(self, row: Dict) -> Tuple[Optional[str], bool]:
+        """
+        Código para <MedioPago>: legado usa mediospago.cod_sisgen; si falta, sunat.
+
+        Returns (codigo, es_vacio_explicito). es_vacio → emitir <MedioPago></MedioPago>.
+        """
+        if row.get("medio_vacio"):
+            return "", True
+
+        des = str(row.get("desmpagos") or row.get("mp_des") or "").strip().upper()
+        if des == "VACIO":
+            return "", True
+
+        cm = row.get("codmepag")
+        try:
+            if cm is not None and int(cm) == self.MEDIO_PAGO_VACIO_CODMEPAG:
+                return "", True
+        except (TypeError, ValueError):
+            pass
+
+        for key in ("mp_cod_sisgen", "cod_sisgen", "mp_sunat", "sunat"):
+            val = row.get(key)
+            if val is not None and str(val).strip().isdigit():
+                return str(int(str(val).strip(), 10)).zfill(3), False
+
         if cm is not None and str(cm).strip().isdigit():
-            return str(int(str(cm).strip(), 10)).zfill(3)
-        return None
+            return str(int(str(cm).strip(), 10)).zfill(3), False
+
+        return None, False
+
+    def _medio_pago_codigo(self, r: Dict) -> Optional[str]:
+        """None = no emitir tag; '' = VACIO (tag vacío)."""
+        cod, _vacio = self._codigo_medio_pago_sisgen_xml(r)
+        return cod
 
     def _sisgen_codmon_from_idmon_optional(self, idmon) -> Optional[str]:
         if idmon is None or str(idmon).strip() in ("", "0"):
@@ -1415,124 +1492,21 @@ class SISGENXmlGenerator:
             return True
         return bool(str(doc.get("cod_ancert") or "").strip())
 
-    def _lookup_mediospago_sunat_by_codmepag(self, codmepag: int) -> Optional[str]:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT sunat, codmepag FROM mediospago
-                    WHERE codmepag = %s LIMIT 1
-                    """,
-                    [codmepag],
-                )
-                row = cursor.fetchone()
-        except DatabaseError:
-            try:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        "SELECT codmepag FROM mediospago WHERE codmepag = %s LIMIT 1",
-                        [codmepag],
-                    )
-                    row = cursor.fetchone()
-                    if row and row[0] is not None:
-                        return str(int(row[0], 10)).zfill(3)
-            except Exception:
-                return None
-            return None
-        except Exception as e:
-            self.logger.warning("mediospago codmepag=%s: %s", codmepag, e)
-            return None
-        if not row:
-            return None
-        sunat, cm = row[0], row[1]
-        if sunat is not None and str(sunat).strip().isdigit():
-            return str(int(str(sunat).strip(), 10)).zfill(3)
-        if cm is not None and str(cm).strip().isdigit():
-            return str(int(str(cm).strip(), 10)).zfill(3)
-        return None
-
-    def _lookup_mediospago_sunat_by_descripcion(self, fragment: str) -> Optional[str]:
-        frag = (fragment or "").strip()
-        if not frag:
-            return None
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT sunat, codmepag FROM mediospago
-                    WHERE UPPER(IFNULL(desmpagos, '')) LIKE UPPER(%s)
-                    LIMIT 1
-                    """,
-                    [f"%{frag}%"],
-                )
-                row = cursor.fetchone()
-        except DatabaseError:
-            return None
-        except Exception as e:
-            self.logger.warning("mediospago descripcion %r: %s", frag, e)
-            return None
-        if not row:
-            return None
-        sunat, cm = row[0], row[1]
-        if sunat is not None and str(sunat).strip().isdigit():
-            return str(int(str(sunat).strip(), 10)).zfill(3)
-        if cm is not None and str(cm).strip().isdigit():
-            return str(int(str(cm).strip(), 10)).zfill(3)
-        return None
-
-    def _resolve_medio_pago_sunat_for_patrimonial(
+    def _resolve_medio_pago_patrimonial(
         self, pat_row: Dict, doc: Dict
-    ) -> Optional[str]:
+    ) -> Optional[Dict]:
         """
-        Sin detallemediopago: mediospago.sunat desde catálogo según patrimonial.
+        Fila sintética sin detallemediopago.
 
-        fpago 5 (NO APLICA) + idoppago vacío + exhibiomp No NO debe mapear a efectivo
-        008/009 — eso era un fallthrough incorrecto. Efectivo solo aplica a fpago contado
-        (u otras formas onerosas), no a actos gratuitos / NO APLICA.
+        K2 / 0215: fpago NO APLICA (5) + idoppago VACÍO → mediospago codmepag 97 (VACIO),
+        <MedioPago> vacío (sin sunat/cod_sisgen en catálogo).
         """
         del doc
         fp = str(pat_row.get("fpago") or "").strip()
         exhib = str(pat_row.get("exhibiomp") or "").strip().upper()
+        fop = pat_row.get("nminuta")
 
-        def by_codmepag(*codes: int) -> Optional[str]:
-            for cm in codes:
-                cod = self._lookup_mediospago_sunat_by_codmepag(cm)
-                if cod:
-                    return cod
-            return None
-
-        def by_desc(*fragments: str) -> Optional[str]:
-            for frag in fragments:
-                cod = self._lookup_mediospago_sunat_by_descripcion(frag)
-                if cod:
-                    return cod
-            return None
-
-        # Forma de pago NO APLICA (fpago=5) — típico K2 / 0215 gratuito
-        if fp == "5":
-            return (
-                by_desc("NO APLICA", "NO APLICA.", "N/A")
-                or by_codmepag(99, 1)
-            )
-
-        if fp == "4":
-            return by_desc("DONACION", "DONACI") or by_codmepag(99, 1)
-
-        # Contado u otras formas onerosas sin detalle: efectivo solo si no exhibió medio
-        if exhib in ("NO", "N", "0") and fp in ("1", "2", "3", ""):
-            return by_codmepag(8, 9) or by_codmepag(1, 99)
-
-        return by_codmepag(1, 99, 11, 10)
-
-    def _synthetic_medio_row_from_patrimonial(
-        self, pat_row: Dict, doc: Dict
-    ) -> Optional[Dict]:
-        sunat = self._resolve_medio_pago_sunat_for_patrimonial(pat_row, doc)
-        if not sunat:
-            return None
-        fop = pat_row.get("nminuta") or doc.get("fechaescritura")
-        return {
-            "mp_sunat": sunat,
+        base = {
             "pat_fpago": pat_row.get("fpago"),
             "pat_idoppago": pat_row.get("idoppago"),
             "pat_exhibiomp": pat_row.get("exhibiomp"),
@@ -1540,6 +1514,48 @@ class SISGENXmlGenerator:
             "importemp": pat_row.get("importetrans"),
             "foperacion": fop,
         }
+
+        if fp == "5" and self._idoppago_es_vacio(pat_row.get("idoppago")):
+            cat = self._fetch_mediospago_catalog_row(self.MEDIO_PAGO_VACIO_CODMEPAG)
+            return {
+                **base,
+                **(cat or {}),
+                "codmepag": self.MEDIO_PAGO_VACIO_CODMEPAG,
+                "medio_vacio": True,
+            }
+
+        def merge_cat(codmepag: int) -> Optional[Dict]:
+            cat = self._fetch_mediospago_catalog_row(codmepag)
+            if not cat:
+                return None
+            cod_xml, vacio = self._codigo_medio_pago_sisgen_xml(cat)
+            if cod_xml is None and not vacio:
+                return None
+            out = {**base, **cat, "codmepag": codmepag}
+            if vacio:
+                out["medio_vacio"] = True
+            return out
+
+        if fp == "5":
+            return merge_cat(11) or merge_cat(self.MEDIO_PAGO_VACIO_CODMEPAG)
+
+        if fp == "4":
+            return merge_cat(11)
+
+        if exhib in ("NO", "N", "0") and fp in ("1", "2", "3", ""):
+            return merge_cat(8) or merge_cat(9) or merge_cat(99)
+
+        return merge_cat(1) or merge_cat(11)
+
+    def _synthetic_medio_row_from_patrimonial(
+        self, pat_row: Dict, doc: Dict
+    ) -> Optional[Dict]:
+        row = self._resolve_medio_pago_patrimonial(pat_row, doc)
+        if not row:
+            return None
+        if row.get("foperacion") in (None, ""):
+            row["foperacion"] = pat_row.get("nminuta") or doc.get("fechaescritura")
+        return row
 
     def _medio_pago_xml_block(
         self,
@@ -1554,9 +1570,9 @@ class SISGENXmlGenerator:
         Sin filas en BD o sin código de medio → no se emite nada inventado.
         """
         medio = self._medio_pago_codigo(r)
-        if not medio:
+        if medio is None:
             self.logger.warning(
-                "detallemediopago sin codmepag/mediospago.sunat (detmp=%s)",
+                "detallemediopago sin codmepag/mediospago (detmp=%s)",
                 r.get("detmp"),
             )
             return None
@@ -1590,7 +1606,7 @@ class SISGENXmlGenerator:
         entidad = self._entidad_financiera_codigo(r)
 
         parts = ["\t\t<MediosPago>\n"]
-        parts.append(f"\t\t\t<MedioPago>{medio}</MedioPago>\n")
+        parts.append(f"\t\t\t<MedioPago>{escape(medio)}</MedioPago>\n")
         parts.append(f"\t\t\t<FormaPago>{forma}</FormaPago>\n")
         if momento is not None:
             parts.append(f"\t\t\t<MomentoPago>{momento}</MomentoPago>\n")
@@ -1708,12 +1724,10 @@ class SISGENXmlGenerator:
                         errs.append(
                             "medios de pago: el acto exige MediosPagos pero no hay patrimonial"
                         )
-                    elif not self._resolve_medio_pago_sunat_for_patrimonial(
-                        pat_row, doc
-                    ):
+                    elif not self._resolve_medio_pago_patrimonial(pat_row, doc):
                         errs.append(
                             "medios de pago: sin filas en detallemediopago y sin "
-                            "código en catálogo mediospago (fpago NO APLICA / donación)"
+                            "código en catálogo mediospago"
                         )
 
         num_esc = str(doc.get("numescritura") or "").strip()
