@@ -944,7 +944,8 @@ class DocumentSearchService:
         fecha_formatted = self._format_date_safely(fecha_escritura)
         
         # Get estado display
-        estado_display = self._get_estado_display(doc['estado_sisgen'])
+        estado_code = self._normalize_estado_sisgen_code(doc["estado_sisgen"])
+        estado_display = self._get_estado_display(doc["estado_sisgen"])
         
         # Use provided UIF validation or get empty result
         if uif_validation is None:
@@ -962,6 +963,7 @@ class DocumentSearchService:
             'numescritura': doc['numescritura'],
             'fechaescritura': fecha_formatted,
             'estado_sisgen': estado_display,
+            'estado_sisgen_code': estado_code if estado_code is not None else 0,
             'idtipkar': doc['idtipkar'],
             'fechaingreso': self._format_datetime_safely(doc['fechaingreso']),
             'codactos': doc['codactos'],

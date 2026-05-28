@@ -19,7 +19,13 @@ from .services.sisgen_soap_response import (
 )
 from .utils.exceptions import DocumentSearchException
 from .services.book_search_service import BookSearchService
+from .services.sync_status import (
+    build_sisgen_sync_status,
+    merge_last_submission_for_row,
+    status_ui_from_document_status,
+)
 from .models import SisgenSoapResponse, SisgenValidationCache
+from notaria.models import Kardex
 from rest_framework.decorators import api_view
 import logging
 from datetime import datetime
@@ -29,17 +35,6 @@ logger = logging.getLogger(__name__)
 
 # When True, SendToSISGEN builds XML and returns the SOAP payload only — no HTTP call to SISGEN.
 SISGEN_DRY_RUN = False
-
-
-def _status_ui_from_document_status(status_text: str) -> str:
-    s = (status_text or "").strip().upper()
-    if s == "GUARDADO":
-        return "guardado"
-    if s == "CON OBSERVACIONES":
-        return "observado"
-    if s == "FALLIDO":
-        return "fallido"
-    return "pendiente"
 
 
 def _extract_submission_errors(parsed_payload: dict) -> list:
@@ -71,6 +66,13 @@ def _attach_last_submission_status(rows: list) -> list:
             seen.add(k)
             ordered_unique.append(k)
 
+    estado_by_kardex = {
+        row["kardex"]: row["estado_sisgen"]
+        for row in Kardex.objects.filter(kardex__in=ordered_unique).values(
+            "kardex", "estado_sisgen"
+        )
+    }
+
     latest_by_kardex = {}
     qs = SisgenSoapResponse.objects.filter(kardex__in=ordered_unique).order_by(
         "kardex", "-created_at"
@@ -78,6 +80,7 @@ def _attach_last_submission_status(rows: list) -> list:
     for obj in qs:
         if obj.kardex not in latest_by_kardex:
             errors = _extract_submission_errors(obj.parsed_payload or {})
+            remote_ui = status_ui_from_document_status(obj.document_status)
             latest_by_kardex[obj.kardex] = {
                 "exists": True,
                 "created_at": obj.created_at.isoformat(),
@@ -86,14 +89,24 @@ def _attach_last_submission_status(rows: list) -> list:
                 "soap_return_status": obj.soap_return_status,
                 "soap_return_message": obj.soap_return_message,
                 "document_status": obj.document_status,
-                "status_ui": _status_ui_from_document_status(obj.document_status),
+                "remote_status_ui": remote_ui,
+                "status_ui": remote_ui,
                 "errors": errors,
                 "has_errors": bool(errors),
             }
 
     for row in rows:
         k = str(row.get("kardex") or "").strip()
-        row["sisgen_last_submission"] = latest_by_kardex.get(k, {"exists": False})
+        estado_raw = row.get("estado_sisgen_code")
+        if estado_raw is None and k in estado_by_kardex:
+            estado_raw = estado_by_kardex[k]
+        last = latest_by_kardex.get(k, {"exists": False})
+        sync = build_sisgen_sync_status(estado_raw, last)
+        row["sisgen_status"] = sync
+        row["sisgen_last_submission"] = merge_last_submission_for_row(last, sync)
+        row["estado_sisgen_code"] = sync["estado_sisgen_code"]
+        if sync["needs_resubmit"]:
+            row["estado_sisgen"] = sync["estado_sisgen_label"]
     return rows
 
 
@@ -529,6 +542,34 @@ class SisgenSoapResponseListView(APIView):
         }
         if k_filter:
             payload["kardex"] = k_filter
+            krow = Kardex.objects.filter(kardex=k_filter).values("estado_sisgen").first()
+            estado_code = krow["estado_sisgen"] if krow else 0
+            latest = SisgenSoapResponse.objects.filter(kardex=k_filter).order_by(
+                "-created_at"
+            ).first()
+            if latest:
+                errors = _extract_submission_errors(latest.parsed_payload or {})
+                remote_ui = status_ui_from_document_status(latest.document_status)
+                last_sub = {
+                    "exists": True,
+                    "created_at": latest.created_at.isoformat(),
+                    "batch_index": latest.batch_index,
+                    "http_status": latest.http_status,
+                    "soap_return_status": latest.soap_return_status,
+                    "soap_return_message": latest.soap_return_message,
+                    "document_status": latest.document_status,
+                    "remote_status_ui": remote_ui,
+                    "status_ui": remote_ui,
+                    "errors": errors,
+                    "has_errors": bool(errors),
+                }
+            else:
+                last_sub = {"exists": False}
+            sync = build_sisgen_sync_status(estado_code, last_sub)
+            payload["sisgen_status"] = sync
+            payload["sisgen_last_submission"] = merge_last_submission_for_row(
+                last_sub, sync
+            )
         return Response(payload)
 
 
