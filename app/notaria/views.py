@@ -1122,6 +1122,8 @@ class KardexViewSet(ModelViewSet):
                 )
                 updates_performed["kardex_updates"] += kardex_updated
 
+            _reset_sisgen_for_kardex(kardex)
+
             return Response(
                 {
                     "error": 0,
@@ -1304,6 +1306,8 @@ class KardexViewSet(ModelViewSet):
                     fecha_modificacion=fecha_modificacion
                 )
                 updates_performed["kardex_updates"] += kardex_updated
+
+            _reset_sisgen_for_kardex(kardex)
 
             return Response(
                 {
@@ -2295,7 +2299,9 @@ class PatrimonialViewSet(ModelViewSet):
                     status=400,
                 )
 
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        _reset_sisgen_for_kardex(instance.kardex)
+        return response
 
     # remove patrimonial and also remove medio de pago
     def destroy(self, request, *args, **kwargs):
