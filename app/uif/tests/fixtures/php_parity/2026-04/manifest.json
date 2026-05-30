@@ -1,0 +1,6 @@
+{
+  "initialDate": "01/04/2026",
+  "finalDate": "30/04/2026",
+  "reportPolicy": "all",
+  "description": "Drop plane.php.txt from legacy RoClass generateFileRo for this period"
+}

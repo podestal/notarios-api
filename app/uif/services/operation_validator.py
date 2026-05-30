@@ -95,9 +95,8 @@ class RoOperationValidator:
                 patrimonial, staged, act_description, uif_code, fpago_codigo_map
             )
         )
-        # PHP generateData: medios errors only via ro_validation_by_act (fields 44/53)
-        # and when exhibiomp indicates medios — not an unconditional detallemediopago
-        # row requirement (generateFileRo only omits plane operation lines without rows).
+        # PHP generateData (tipoEnvio == 'I'): if detallemediopago query returns no rows,
+        # always emit codeElement 590 — independent of patrimonial.exhibiomp.
         errors.extend(
             self._validate_medios_pago(
                 patrimonial, staged, act_description, uif_code, detalle_medio_pago_rows
@@ -260,11 +259,12 @@ class RoOperationValidator:
     def _validate_medios_pago(
         self, patrimonial, staged, act_description, uif_code, detalle_rows
     ) -> List[dict]:
-        errors: List[dict] = []
-        exhibiomp = (patrimonial.exhibiomp or "").strip().lower()
-        if exhibiomp not in ("si", "s", "1", "yes"):
-            return errors
+        del patrimonial
+        # Complementary (tipo C) uses a different generateData branch — no 590 there.
+        if str(getattr(staged, "tipo", "I")) != "I":
+            return []
 
+        errors: List[dict] = []
         act_code = str(staged.cod_acto).zfill(3)
         rows = [
             r

@@ -79,8 +79,8 @@ class OperationValidatorTests(SimpleTestCase):
         )
         self.assertFalse(any(e["error_type"] == "invalid_oportunidad_pago" for e in errors))
 
-    def test_gratuito_sin_detalle_medio_no_unconditional_missing_rows(self):
-        """K2-style: act 053, fpago N, idoppago vacío, exhibiomp No — PHP does not block RO."""
+    def test_gratuito_sin_detalle_medio_errors_like_php(self):
+        """RoClass tipo I: no detallemediopago rows → 590 even if exhibiomp=No (K2-style)."""
         rules = RoValidationRulesRepository()
         rules._loaded = True
         rules._rules = {
@@ -104,12 +104,39 @@ class OperationValidatorTests(SimpleTestCase):
             detalle_medio_pago_rows=[],
             fpago_codigo_map={"5": "N"},
         )
-        self.assertFalse(
-            any(e["error_type"] == "missing_medio_pago_rows" for e in errors)
-        )
+        missing = [e for e in errors if e["error_type"] == "missing_medio_pago_rows"]
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(missing[0]["codeElement"], 590)
 
-    def test_exhibiomp_si_sin_detalle_medio_still_errors(self):
-        """When medios are exhibited, missing detallemediopago rows is still an error."""
+    def test_sin_detalle_medio_errors_regardless_of_exhibiomp(self):
+        """PHP does not gate missing medios on patrimonial.exhibiomp."""
+        rules = RoValidationRulesRepository()
+        rules._loaded = True
+        rules._rules = {}
+        validator = RoOperationValidator(rules)
+        for exhibiomp in ("No", "Si", ""):
+            pat = MagicMock(
+                fpago="1",
+                idoppago="1",
+                des_idoppago="",
+                idmon=1,
+                importetrans=Decimal("1000"),
+                exhibiomp=exhibiomp,
+            )
+            errors = validator.validate(
+                staged=_staged(),
+                act_description="COMPRA VENTA",
+                patrimonial=pat,
+                detalle_medio_pago_rows=[],
+                fpago_codigo_map={"1": "C"},
+            )
+            self.assertTrue(
+                any(e["error_type"] == "missing_medio_pago_rows" for e in errors),
+                msg=f"expected error for exhibiomp={exhibiomp!r}",
+            )
+
+    def test_complementary_skips_missing_medio_rows_check(self):
+        """tipo C (información complementaria) — PHP does not emit 590 in that branch."""
         rules = RoValidationRulesRepository()
         rules._loaded = True
         rules._rules = {}
@@ -120,15 +147,15 @@ class OperationValidatorTests(SimpleTestCase):
             des_idoppago="",
             idmon=1,
             importetrans=Decimal("1000"),
-            exhibiomp="Si",
+            exhibiomp="No",
         )
         errors = validator.validate(
-            staged=_staged(),
+            staged=_staged(tipo="C"),
             act_description="COMPRA VENTA",
             patrimonial=pat,
             detalle_medio_pago_rows=[],
             fpago_codigo_map={"1": "C"},
         )
-        self.assertTrue(
+        self.assertFalse(
             any(e["error_type"] == "missing_medio_pago_rows" for e in errors)
         )

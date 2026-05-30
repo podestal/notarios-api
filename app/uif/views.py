@@ -43,18 +43,25 @@ class UifErrorsDashboardView(APIView):
 
 class UifErrorsCorrectView(APIView):
     """
-    Subsanar errores UIF (subset of correct_error_uif.php).
+    Subsanar errores UIF (correct_error_uif.php).
 
-    POST body: { "corrections": [ { kardex, codacto, fieldNumber, ... }, ... ] }
+    POST body:
+      - { "corrections": [ ... ] }  (Django)
+      - { "listError": "[{...}]" }  (legacy PHP dashboard)
     """
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        corrections = request.data.get("corrections")
-        if not isinstance(corrections, list) or not corrections:
+        corrections = UifCorrectionService.parse_corrections_payload(request.data)
+        if not corrections:
             return Response(
-                {"error": "Se requiere un arreglo 'corrections' con al menos un elemento"},
+                {
+                    "error": 1,
+                    "errorDescription": (
+                        "Se requiere 'corrections' o 'listError' con al menos un elemento"
+                    ),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

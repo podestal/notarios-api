@@ -1,0 +1,4 @@
+# Python parity exports (regenerate with manage.py uif_parity_export)
+plane.python.txt
+errors.python.json
+summary.python.json

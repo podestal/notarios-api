@@ -1,10 +1,11 @@
 """
-Subsanación de errores UIF (equivalente a correct_error_uif.php) — Phase 3 subset.
+Subsanación de errores UIF (equivalente a correct_error_uif.php).
 """
 
+import json
 import logging
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from notaria import models
 from uif.services.ro_validation_rules import (
@@ -13,6 +14,16 @@ from uif.services.ro_validation_rules import (
 )
 
 logger = logging.getLogger(__name__)
+
+# correct_error_uif.php categoryCorrect auto-fixes (cliente2).
+CATEGORY_CONSTITUCION_RUC = 1
+CATEGORY_PROFESION = 2
+CATEGORY_CARGO = 3
+TIPDOC_SIN_RUC = 10
+PROFESION_OTROS_ID = 53
+PROFESION_OTROS_LABEL = "OTROS"
+CARGO_OTROS_ID = 36
+CARGO_OTROS_LABEL = "OTROS"
 
 
 class UifCorrectionService:
@@ -33,17 +44,65 @@ class UifCorrectionService:
                 logger.warning("Correction failed: %s", exc, exc_info=True)
                 skipped.append({**item, "reason": str(exc)})
 
+        total_applied = len(applied)
         return {
             "applied": applied,
             "skipped": skipped,
-            "total_applied": len(applied),
+            "total_applied": total_applied,
             "total_skipped": len(skipped),
+            # Legacy correct_error_uif.php response shape
+            "error": 0,
+            "errorDescription": f"Se afectaron {total_applied} registros.",
         }
 
+    @staticmethod
+    def parse_corrections_payload(data: Any) -> Optional[List[Dict[str, Any]]]:
+        """Accept Django `{ corrections: [...] }` or legacy `{ listError: json }`."""
+        if not isinstance(data, dict):
+            return None
+
+        corrections = data.get("corrections")
+        if isinstance(corrections, list) and corrections:
+            return corrections
+
+        list_error = data.get("listError")
+        if isinstance(list_error, str) and list_error.strip():
+            try:
+                list_error = json.loads(list_error)
+            except json.JSONDecodeError:
+                return None
+        if isinstance(list_error, list) and list_error:
+            return list_error
+
+        return None
+
+    @staticmethod
+    def _parse_category(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _id_contratante(item: Dict[str, Any]) -> Optional[str]:
+        raw = item.get("idContractor") or item.get("idContratante") or item.get("idcontratante")
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        return text or None
+
     def _apply_one(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        category = self._parse_category(item.get("categoryCorrect"))
+        if category == CATEGORY_CONSTITUCION_RUC:
+            return self._correct_constitucion_ruc(item)
+        if category == CATEGORY_PROFESION:
+            return self._correct_profesion(item)
+        if category == CATEGORY_CARGO:
+            return self._correct_cargo(item)
+
         field_number = int(item.get("fieldNumber") or 0)
         kardex = item.get("kardex")
-        codacto = item.get("codacto") or item.get("codActo")
+        codacto = item.get("codacto") or item.get("codActo") or item.get("tipoActo")
         correction_type = (item.get("typeOfCorrection") or "").upper()
 
         if not kardex or not codacto:
@@ -59,6 +118,63 @@ class UifCorrectionService:
             **item,
             "applied": False,
             "reason": f"Corrección no implementada para fieldNumber={field_number}",
+        }
+
+    def _correct_constitucion_ruc(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        id_contratante = self._id_contratante(item)
+        if not id_contratante:
+            return {**item, "applied": False, "reason": "idContractor requerido"}
+
+        rows = models.Cliente2.objects.filter(idcontratante=id_contratante).update(
+            idtipdoc=TIPDOC_SIN_RUC,
+            numdoc="",
+        )
+        if not rows:
+            return {**item, "applied": False, "reason": "cliente2 no encontrado"}
+
+        return {
+            **item,
+            "applied": True,
+            "field": "constitucion_ruc",
+            "categoryCorrect": CATEGORY_CONSTITUCION_RUC,
+        }
+
+    def _correct_profesion(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        id_contratante = self._id_contratante(item)
+        if not id_contratante:
+            return {**item, "applied": False, "reason": "idContractor requerido"}
+
+        rows = models.Cliente2.objects.filter(idcontratante=id_contratante).update(
+            idprofesion=PROFESION_OTROS_ID,
+            detaprofesion=PROFESION_OTROS_LABEL,
+        )
+        if not rows:
+            return {**item, "applied": False, "reason": "cliente2 no encontrado"}
+
+        return {
+            **item,
+            "applied": True,
+            "field": "profesion",
+            "categoryCorrect": CATEGORY_PROFESION,
+        }
+
+    def _correct_cargo(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        id_contratante = self._id_contratante(item)
+        if not id_contratante:
+            return {**item, "applied": False, "reason": "idContractor requerido"}
+
+        rows = models.Cliente2.objects.filter(idcontratante=id_contratante).update(
+            idcargoprofe=CARGO_OTROS_ID,
+            profocupa=CARGO_OTROS_LABEL,
+        )
+        if not rows:
+            return {**item, "applied": False, "reason": "cliente2 no encontrado"}
+
+        return {
+            **item,
+            "applied": True,
+            "field": "cargo",
+            "categoryCorrect": CATEGORY_CARGO,
         }
 
     def _correct_participant_amount(
