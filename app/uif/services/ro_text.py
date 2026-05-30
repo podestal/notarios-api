@@ -12,39 +12,46 @@ def remplace_string_ro(value, type_person=1):
         for ch in '"$&@/().,;':
             value_string = value_string.replace(ch, "")
     replacements = [
-        ("Ã¡", "á"),
-        ("Ã©", "é"),
-        ("Ã­", "í"),
-        ("ï¿½", "í"),
-        ("Ã³", "ó"),
-        ("Ãº", "ú"),
-        ("n~", "ñ"),
-        ("ÃƒÂ¡", "á"),
-        ("Ã±", "ñ"),
-        ("Ã'", "Ñ"),
-        ("ÃƒÂ±", "ñ"),
-        ("Ãš", "Ú"),
-        ("Ã?", "Ñ"),
-        ("Ã??", "Ñ"),
-        ("À?", "Ñ"),
-        ("À‘", "Ñ"),
-        ("ã¡", "á"),
-        ("ã©", "é"),
-        ("ã­", "í"),
-        ("ã³", "ó"),
-        ("ãº", "ú"),
-        ("ãƒÂ¡", "á"),
-        ("ã±", "ñ"),
-        ("ãƒÂ±", "ñ"),
+        ("Ã¡", "A"),
+        ("Ã©", "E"),
+        ("Ã­", "I"),
+        ("ï¿½", "I"),
+        ("Ã³", "O"),
+        ("Ãº", "U"),
+        ("n~", "#"),
+        ("ÃƒÂ¡", "A"),
+        ("Ã±", "#"),
+        ("Ã'", "#"),
+        ("ÃƒÂ±", "#"),
+        ("Ãš", "U"),
+        ("Ã?", "#"),
+        ("Ã??", "#"),
+        ("À?", "#"),
+        ("À‘", "#"),
+        ("Ã‘", "#"),
+        ("ã¡", "A"),
+        ("ã©", "E"),
+        ("ã­", "I"),
+        ("ã³", "O"),
+        ("ãº", "U"),
+        ("ãƒÂ¡", "A"),
+        ("ã±", "#"),
+        ("ãƒÂ±", "#"),
         ("ãš", "Ú"),
-        ("ã?", "Ñ"),
-        ("ã??", "Ñ"),
-        ("ã‘", "Ñ"),
-        ("ÃŠ", "U"),
+        ("ã?", "#"),
+        ("ã??", "#"),
+        ("ã‘", "#"),
+    ]
+    for old, new in replacements:
+        value_string = value_string.replace(old, new)
+    value_string = value_string.replace("*", "&")
+    value_string = value_string.replace("ÃŠ", "U")
+    value_string = value_string.replace("*", "")
+    for old, new in (
         ("AÂ", "A"),
         ("ÁÂ", "A"),
         ("IÂ", "I"),
-        ("Ã‘", "Ñ"),
+        ("Ã‘", "#"),
         ("º", ""),
         ("Nº", "Nro"),
         ("|", ""),
@@ -55,14 +62,24 @@ def remplace_string_ro(value, type_person=1):
         ("¿", ""),
         ("?", ""),
         ("-", ""),
-    ]
-    for old, new in replacements:
+    ):
         value_string = value_string.replace(old, new)
-    accent_groups = []
+    for deg in "1234567890":
+        value_string = value_string.replace(f"{deg}°", deg)
+    accent_groups = [
+        ("áàâãªä", "a"),
+        ("ÁÀÂÃÄ", "A"),
+        ("ÍÌÎÏ", "I"),
+        ("íìîï", "i"),
+        ("éèêë", "e"),
+        ("ÉÈÊË", "E"),
+        ("óòôõöº", "o"),
+        ("ÓÒÔÕÖ", "O"),
+        ("úùûü", "u"),
+        ("ÚÙÛÜ", "U"),
+        ("ñÑ", "#"),
+    ]
     for chars, repl in accent_groups:
         for ch in chars:
             value_string = value_string.replace(ch, repl)
-    value_string = value_string.replace("*", "")
-    for deg in "1234567890":
-        value_string = value_string.replace(f"{deg}°", deg)
     return value_string

@@ -27,6 +27,7 @@ from uif.services.ro_validation_rules import (
     FIELD_OPORTUNIDAD_PAGO,
     RoValidationRulesRepository,
     matches_mysql_regexp,
+    medio_pago_uif_validation_value,
     oportunidad_pago_validation_value,
     validation_code,
 )
@@ -290,36 +291,15 @@ class RoOperationValidator:
                 )
             ]
 
-        rule_sum = self.rules.get(uif_code, FIELD_MONTO_TIPO_FONDO)
+        # Field 53 (monto tipo fondo): RoClass computes validationMontoTipoFondo in SQL
+        # but generateFileRo still exports rows — SBS does not hard-stop on it. Skip here.
         rule_codigo = self.rules.get(uif_code, FIELD_MEDIO_PAGO_CODIGO)
-
-        total = Decimal("0")
-        for row in rows:
-            if row.importemp:
-                total += Decimal(str(row.importemp))
-
-        sum_str = _format_decimal(total)
-        if rule_sum and validation_code(sum_str, rule_sum.data_value):
-            errors.append(
-                build_ro_error(
-                    id_kardex=staged.id_kardex,
-                    kardex=staged.kardex,
-                    act=act_description,
-                    codacto=staged.cod_acto,
-                    uif_code=uif_code,
-                    error_type="invalid_monto_tipo_fondo",
-                    error_description=(
-                        "Monto total de tipo(s) de fondo inválido o no coincide con detalle de pago"
-                    ),
-                    field_number=FIELD_MONTO_TIPO_FONDO,
-                    row_type=ROW_TYPE_OPERATION,
-                    detail_value=rule_sum.detail_value or "",
-                )
-            )
 
         if rule_codigo:
             for row in rows:
-                codigo_fondo = self._resolve_medio_pago_uif(row)
+                codigo_fondo = medio_pago_uif_validation_value(
+                    self._resolve_medio_pago_uif(row)
+                )
                 if validation_code(codigo_fondo, rule_codigo.data_value):
                     errors.append(
                         build_ro_error(
@@ -330,11 +310,13 @@ class RoOperationValidator:
                             uif_code=uif_code,
                             error_type="invalid_medio_pago_codigo",
                             error_description=(
-                                f"Código de medio de pago inválido ({codigo_fondo or 'vacío'})"
+                                self.rules.field_label(FIELD_MEDIO_PAGO_CODIGO)
+                                + f" inválido ({codigo_fondo or 'vacío'})"
                             ),
                             field_number=FIELD_MEDIO_PAGO_CODIGO,
                             row_type=ROW_TYPE_OPERATION,
                             detail_value=rule_codigo.detail_value or "",
+                            details_error=rule_codigo.detail_value or "",
                         )
                     )
 

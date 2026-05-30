@@ -3,7 +3,8 @@ Load and apply rules from `ro_validation_by_act` (MySQL REGEXP parity).
 """
 
 import re
-from typing import Dict, Optional, Tuple
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Dict, List, Optional, Tuple
 
 from notaria.constants import OPORTUNIDADES_PAGO
 from uif.models import RoDataField, RoValidationByAct
@@ -115,4 +116,45 @@ def oportunidad_pago_validation_value(idoppago) -> str:
         return "V"
     cod = str(meta.get("codoppago") or "").strip()
     return cod if cod else raw
+
+
+def medio_pago_uif_validation_value(uif_code) -> str:
+    """
+    Value checked against ro_validation_by_act field 44 (PHP generateData SQL).
+
+    RoClass uses: IF(mediospago.uif = '', 'V', mediospago.uif).
+    """
+    text = "" if uif_code is None else str(uif_code).strip()
+    return "V" if text == "" else text
+
+
+def group_detalle_medio_importe_sums(rows) -> Dict[Tuple, dict]:
+    """
+    PHP medio de pago query: GROUP BY detallemediopago.codmepag, tipacto.
+    """
+    groups: Dict[Tuple, dict] = {}
+    for row in rows:
+        key = (row.codmepag, row.tipacto)
+        if key not in groups:
+            groups[key] = {"has_importemp": False, "total": None}
+        imp = row.importemp
+        if imp is None or str(imp).strip() == "":
+            continue
+        groups[key]["has_importemp"] = True
+        current = groups[key]["total"]
+        amount = Decimal(str(imp))
+        groups[key]["total"] = amount if current is None else current + amount
+    return groups
+
+
+def monto_tipo_fondo_validation_value(total, *, has_importemp: bool) -> str:
+    """
+    Value checked against ro_validation_by_act field 53 (PHP generateData SQL).
+
+    RoClass uses: IF(SUM(detallemediopago.importemp) IS NULL, 'V', SUM(...)).
+    """
+    if not has_importemp or total is None:
+        return "V"
+    d = Decimal(str(total)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return format(d, "f")
 

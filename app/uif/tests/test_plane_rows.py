@@ -5,6 +5,7 @@ from django.test import SimpleTestCase
 from uif.services.keys import normalize_act_code, resolve_instrumento_letter
 from uif.services.plane_rows import (
     PLANE_BODY_LINE_LENGTH,
+    PHP_PLANE_FIELD_WIDTHS,
     PlaneRowBuilder,
     format_plane_body_line,
 )
@@ -58,6 +59,21 @@ class PlaneRowBuilderTests(SimpleTestCase):
 
     def test_reemplace_string_ro_accents(self):
         self.assertEqual(remplace_string_ro("José"), "Jose")
+
+    def test_format_plane_body_line_sanitizes_juridical_razon_social(self):
+        row = {f"item_{i}": "" for i in range(1, 58)}
+        row["item_23"] = "S & V TRANSPORTES Y SERVICIOS TURISTICOS E.I.R.L."
+        line = format_plane_body_line(row)
+        self.assertEqual(len(line), 858)
+        pos = sum(
+            PHP_PLANE_FIELD_WIDTHS[i]
+            for i in range(1, 23)
+        )
+        field_23 = line[pos : pos + PHP_PLANE_FIELD_WIDTHS[23]]
+        self.assertEqual(
+            field_23,
+            "S  V TRANSPORTES Y SERVICIOS TURISTICOS EIRL".ljust(120),
+        )
 
     @patch.object(PlaneRowBuilder, "_bien_registral", return_value=("N", "", ""))
     @patch.object(PlaneRowBuilder, "_load_contratantes")

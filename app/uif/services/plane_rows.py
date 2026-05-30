@@ -165,6 +165,9 @@ PHP_PLANE_FIELD_WIDTHS = {
 PLANE_BODY_LINE_LENGTH = sum(PHP_PLANE_FIELD_WIDTHS.values())
 PLANE_HEADER_LINE_LENGTH = 57
 
+# RoClass::generateFileRo re-applies remplace_string_ro(..., 1) before str_pad.
+PLANE_FILE_REMPLACE_ITEMS = frozenset({23, 24, 25, 30, 35})
+
 
 def _format_amount(value, decimals: int = 2) -> str:
     try:
@@ -226,6 +229,8 @@ def format_plane_body_line(row_values: Dict[str, str]) -> str:
     for num in range(1, 58):
         width = PHP_PLANE_FIELD_WIDTHS[num]
         raw = str(row_values.get(f"item_{num}", row_values.get(f"field_{num}", "")))
+        if num in PLANE_FILE_REMPLACE_ITEMS:
+            raw = remplace_string_ro(raw, 1)
         pad = PLANE_FIELD_PAD.get(num, "L")
         if pad == "L":
             parts.append(raw[:width].rjust(width))
