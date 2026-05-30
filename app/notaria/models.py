@@ -257,7 +257,7 @@ class Contratantes(models.Model):
     idcontratanterp = models.CharField(max_length=3000, blank=True, null=True)
     idsedereg = models.CharField(max_length=3, blank=True, null=True)
     numpartida = models.CharField(max_length=50, blank=True, null=True)
-    facultades = models.CharField(max_length=500)
+    facultades = models.CharField(max_length=500, blank=True, null=True)
     indice = models.CharField(max_length=3)
     visita = models.CharField(max_length=3)
     inscrito = models.CharField(max_length=1, blank=True, null=True)

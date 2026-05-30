@@ -258,6 +258,9 @@ class CreateContratantesSerializer(serializers.ModelSerializer):
             "visita",
             "inscrito",
             "idcontratanterp",
+            "idsedereg",
+            "numpartida",
+            "facultades",
         ]
 
 
@@ -282,9 +285,17 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
             "condicion_str",
             "firma",
             "fechafirma",
+            "resfirma",
+            "tiporepresentacion",
+            "indice",
+            "inscrito",
+            "visita",
             "cliente",
             "cliente_id",
             "idcontratanterp",
+            "idsedereg",
+            "numpartida",
+            "facultades",
         ]
 
     def get_cliente(self, obj):
