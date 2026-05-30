@@ -1663,7 +1663,9 @@ class ContratantesViewSet(ModelViewSet):
                     "cumpclie": cliente1.cumpclie or ".",
                     "razonsocial": cliente1.razonsocial or "",
                     "fechaing": "",  # This will be set later
-                    "residente": cliente1.residente or "0",
+                    "residente": utils.normalize_residente_for_tipper(
+                        cliente1.tipper, cliente1.residente
+                    ),
                     "tipocli": "0",
                     "profesion_plantilla": cliente1.detaprofesion or "",
                     "ubigeo_plantilla": cliente1.idubigeo or "",
@@ -2041,18 +2043,21 @@ class Cliente2ViewSet(ModelViewSet):
     def perform_update(self, serializer):
         updated_cliente2 = serializer.save()
         detaprofesion_in = serializer.validated_data.get("detaprofesion", None)
+        overrides = {}
         if detaprofesion_in is not None:
             # Force requested detail in cliente2 as well.
             models.Cliente2.objects.filter(pk=updated_cliente2.pk).update(
                 detaprofesion=detaprofesion_in
             )
+            overrides["detaprofesion"] = detaprofesion_in
+        tipper = (getattr(updated_cliente2, "tipper", None) or "").strip().upper()
+        if tipper == "J":
+            models.Cliente2.objects.filter(pk=updated_cliente2.pk).update(residente="")
+            overrides["residente"] = ""
         # DB triggers/procedures can mutate cliente2 fields after UPDATE.
         # Reload to sync cliente with the true persisted state.
         updated_cliente2.refresh_from_db()
-        overrides = {}
-        if detaprofesion_in is not None:
-            overrides["detaprofesion"] = detaprofesion_in
-        _sync_cliente_from_cliente2(updated_cliente2, force_overrides=overrides)
+        _sync_cliente_from_cliente2(updated_cliente2, force_overrides=overrides or None)
 
     @action(detail=False, methods=["get"])
     def by_dni(self, request):

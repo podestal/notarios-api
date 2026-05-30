@@ -1,3 +1,13 @@
+def normalize_residente_for_tipper(tipper, residente=None):
+    """Persona jurídica must use empty residente; natural persons use 1/0."""
+    if (tipper or "").strip().upper() == "J":
+        return ""
+    value = str(residente or "").strip()
+    if not value or value.upper() == "NULL":
+        return "0"
+    return value
+
+
 def generate_new_id(model, id_field='id', fill=10):
     """
     Generate a new 10-digit ID for the given model based on the given field.

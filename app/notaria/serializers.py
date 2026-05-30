@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from . import models
+from . import models, utils
 from django.db import IntegrityError
 from django.db.models import IntegerField, Max
 from django.db.models.functions import Cast
@@ -490,6 +490,19 @@ class Cliente2Serializer(serializers.ModelSerializer):
         model = models.Cliente2
         fields = "__all__"
 
+    def validate(self, attrs):
+        tipper = attrs.get("tipper") or (
+            getattr(self.instance, "tipper", None) if self.instance else None
+        )
+        tipper_norm = (tipper or "").strip().upper()
+        if tipper_norm == "J":
+            attrs["residente"] = ""
+        elif "residente" in attrs and tipper_norm:
+            attrs["residente"] = utils.normalize_residente_for_tipper(
+                tipper, attrs.get("residente")
+            )
+        return attrs
+
 
 class CreateCliente2Serializer(serializers.ModelSerializer):
     """
@@ -546,6 +559,12 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
             "contacempresa",
             "fechaconstitu",
         ]
+
+    def validate(self, attrs):
+        attrs["residente"] = utils.normalize_residente_for_tipper(
+            attrs.get("tipper"), attrs.get("residente")
+        )
+        return attrs
 
     # def create(self, validated_data):
     #     attempts = 0
