@@ -407,7 +407,7 @@ class Cliente2(models.Model):
     impentidad = models.CharField(max_length=3000, blank=True, null=True)
     impremite = models.CharField(max_length=3000, blank=True, null=True)
     impmotivo = models.CharField(max_length=3000, blank=True, null=True)
-    residente = models.CharField(max_length=2)
+    residente = models.CharField(max_length=2, blank=True, null=True)
     docpaisemi = models.CharField(max_length=100, blank=True, null=True)
     partidaconyuge = models.CharField(max_length=15, blank=True, null=True)
     separaciondebienes = models.CharField(max_length=1, blank=True, null=True)
