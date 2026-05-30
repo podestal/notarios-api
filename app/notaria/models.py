@@ -388,7 +388,7 @@ class Cliente2(models.Model):
     profocupa = models.CharField(max_length=1000, blank=True, null=True)
     dirfer = models.CharField(max_length=300, blank=True, null=True)
     idubigeo = models.CharField(max_length=6)
-    cumpclie = models.CharField(max_length=15)
+    cumpclie = models.CharField(max_length=15, blank=True, null=True)
     fechaing = models.CharField(max_length=10, blank=True, null=True)
     razonsocial = models.CharField(max_length=3000, blank=True, null=True)
     domfiscal = models.CharField(max_length=3000, blank=True, null=True)

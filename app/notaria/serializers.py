@@ -573,6 +573,7 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
             "actmunicipal",
             "contacempresa",
             "fechaconstitu",
+            "numregistro",
         ]
 
     def validate(self, attrs):
@@ -657,6 +658,7 @@ class CreateClienteSerializer(serializers.ModelSerializer):
             "actmunicipal",
             "contacempresa",
             "fechaconstitu",
+            "numregistro",
             "numdoc_plantilla",
             "residente",
         ]

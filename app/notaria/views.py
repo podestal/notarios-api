@@ -1669,8 +1669,8 @@ class ContratantesViewSet(ModelViewSet):
                     "tipocli": "0",
                     "profesion_plantilla": cliente1.detaprofesion or "",
                     "ubigeo_plantilla": cliente1.idubigeo or "",
-                    "fechaconstitu": "",  # This will be set later
-                    "idsedereg": 1,  # Assuming this is a constant value
+                    "fechaconstitu": cliente1.fechaconstitu or "",
+                    "idsedereg": cliente1.idsedereg or 0,
                     "domfiscal": cliente1.domfiscal or "",
                     "telempresa": cliente1.telofi or "",
                     "mailempresa": cliente1.email or "",
