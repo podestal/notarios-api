@@ -8,6 +8,24 @@ def normalize_residente_for_tipper(tipper, residente=None):
     return value
 
 
+def merge_legacy_resedente_into_attrs(attrs, initial_data):
+    """Accept legacy frontend key `resedente` as alias for `residente`."""
+    if initial_data is None:
+        return attrs
+    if "residente" not in attrs and initial_data.get("resedente") is not None:
+        attrs["residente"] = initial_data.get("resedente")
+    return attrs
+
+
+def apply_juridica_residente_blank(instance):
+    """Force empty residente on persisted cliente/cliente2 jurídica rows."""
+    tipper = (getattr(instance, "tipper", None) or "").strip().upper()
+    if tipper != "J":
+        return
+    instance.__class__.objects.filter(pk=instance.pk).update(residente="")
+    instance.residente = ""
+
+
 def generate_new_id(model, id_field='id', fill=10):
     """
     Generate a new 10-digit ID for the given model based on the given field.

@@ -1961,6 +1961,14 @@ class ClienteViewSet(ModelViewSet):
 
         return super().create(request, *args, **kwargs)
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        utils.apply_juridica_residente_blank(instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        utils.apply_juridica_residente_blank(instance)
+
     def update(self, request, *args, **kwargs):
         # working on this
         """
@@ -2050,9 +2058,8 @@ class Cliente2ViewSet(ModelViewSet):
                 detaprofesion=detaprofesion_in
             )
             overrides["detaprofesion"] = detaprofesion_in
-        tipper = (getattr(updated_cliente2, "tipper", None) or "").strip().upper()
-        if tipper == "J":
-            models.Cliente2.objects.filter(pk=updated_cliente2.pk).update(residente="")
+        utils.apply_juridica_residente_blank(updated_cliente2)
+        if (getattr(updated_cliente2, "tipper", None) or "").strip().upper() == "J":
             overrides["residente"] = ""
         # DB triggers/procedures can mutate cliente2 fields after UPDATE.
         # Reload to sync cliente with the true persisted state.

@@ -480,6 +480,20 @@ class ClienteSerializer(serializers.ModelSerializer):
             return conyuge.nombre
         return ""
 
+    def validate(self, attrs):
+        attrs = utils.merge_legacy_resedente_into_attrs(attrs, self.initial_data)
+        tipper = attrs.get("tipper") or (
+            getattr(self.instance, "tipper", None) if self.instance else None
+        )
+        tipper_norm = (tipper or "").strip().upper()
+        if tipper_norm == "J":
+            attrs["residente"] = ""
+        elif "residente" in attrs and tipper_norm:
+            attrs["residente"] = utils.normalize_residente_for_tipper(
+                tipper, attrs.get("residente")
+            )
+        return attrs
+
 
 class Cliente2Serializer(serializers.ModelSerializer):
     """
@@ -491,6 +505,7 @@ class Cliente2Serializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def validate(self, attrs):
+        attrs = utils.merge_legacy_resedente_into_attrs(attrs, self.initial_data)
         tipper = attrs.get("tipper") or (
             getattr(self.instance, "tipper", None) if self.instance else None
         )
@@ -561,6 +576,7 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        attrs = utils.merge_legacy_resedente_into_attrs(attrs, self.initial_data)
         attrs["residente"] = utils.normalize_residente_for_tipper(
             attrs.get("tipper"), attrs.get("residente")
         )
@@ -642,7 +658,15 @@ class CreateClienteSerializer(serializers.ModelSerializer):
             "contacempresa",
             "fechaconstitu",
             "numdoc_plantilla",
+            "residente",
         ]
+
+    def validate(self, attrs):
+        attrs = utils.merge_legacy_resedente_into_attrs(attrs, self.initial_data)
+        attrs["residente"] = utils.normalize_residente_for_tipper(
+            attrs.get("tipper"), attrs.get("residente")
+        )
+        return attrs
 
     def create(self, validated_data):
         # Generate new idcliente
