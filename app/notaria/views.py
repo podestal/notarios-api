@@ -2281,6 +2281,29 @@ class RepresentantesViewSet(ModelViewSet):
     pagination_class = pagination.KardexPagination
     permission_classes = [IsAuthenticated]
 
+    @action(detail=False, methods=["get"])
+    def by_contratante(self, request):
+        """
+        Get the representantes row for a contratante (persona jurídica represented).
+        """
+        idcontratante = request.query_params.get("idcontratante")
+        if not idcontratante:
+            return Response(
+                {"error": "idcontratante parameter is required."}, status=400
+            )
+
+        qs = models.Representantes.objects.filter(idcontratante=idcontratante)
+        kardex = request.query_params.get("kardex")
+        if kardex:
+            qs = qs.filter(kardex=kardex)
+
+        representante = qs.order_by("-id").first()
+        if not representante:
+            return Response({}, status=200)
+
+        serializer = serializers.RepresentantesSerializer(representante)
+        return Response(serializer.data)
+
 
 class PatrimonialViewSet(ModelViewSet):
     """
