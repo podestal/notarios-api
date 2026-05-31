@@ -6,7 +6,11 @@ import logging
 from typing import Any, Dict, Optional
 
 from sisgen.services.document_search_service import DocumentSearchService
-from sisgen.services.search_response import count_sisgen_errors
+from sisgen.services.search_response import (
+    count_sisgen_errors,
+    count_sisgen_observaciones,
+    count_sisgen_personas,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,8 @@ def collect_kardex_sisgen_errors(kardex: str) -> Optional[Dict[str, Any]]:
         "kardex": doc.get("kardex", kardex),
         "idkardex": str(doc.get("idkardex", "")),
         "sisgen_error_count": count_sisgen_errors(row),
+        "sisgen_observaciones_count": count_sisgen_observaciones(row),
+        "sisgen_personas_count": count_sisgen_personas(row),
         "errores": row["errores"],
         "observaciones": row["observaciones"],
         "personas": row["personas"],

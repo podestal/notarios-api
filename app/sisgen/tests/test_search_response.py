@@ -2,6 +2,8 @@ from django.test import SimpleTestCase
 
 from sisgen.services.search_response import (
     count_sisgen_errors,
+    count_sisgen_observaciones,
+    count_sisgen_personas,
     slim_search_document_row,
     slim_search_pagination,
     slim_sisgen_last_submission,
@@ -64,11 +66,15 @@ class SearchResponseSlimTests(SimpleTestCase):
                 "estado_sisgen",
                 "idtipkar",
                 "sisgen_error_count",
+                "sisgen_observaciones_count",
+                "sisgen_personas_count",
                 "sisgen_status",
                 "sisgen_last_submission",
             },
         )
-        self.assertEqual(slim["sisgen_error_count"], 2)
+        self.assertEqual(slim["sisgen_error_count"], 1)
+        self.assertEqual(slim["sisgen_observaciones_count"], 1)
+        self.assertEqual(slim["sisgen_personas_count"], 1)
         self.assertNotIn("errores", slim)
         self.assertNotIn("uif_validation", slim)
         self.assertEqual(slim["sisgen_last_submission"], {"exists": False})
@@ -87,15 +93,12 @@ class SearchResponseSlimTests(SimpleTestCase):
             {"exists": True, "status_ui": "fallido", "errors": ["SOAP error"]},
         )
 
-    def test_sisgen_error_count_excludes_uif_pdt_and_observaciones(self):
+    def test_sisgen_counts_are_per_bucket(self):
         row = {
             "errores": ["sisgen doc error"],
             "observaciones": ["warning only"],
             "personas": ["person error"],
-            "uif_validation": {
-                "has_errors": True,
-                "errors": [{"error_description": "uif"}],
-            },
-            "pdt_validation": {"has_errors": True, "errors": ["pdt"]},
         }
-        self.assertEqual(count_sisgen_errors(row), 2)
+        self.assertEqual(count_sisgen_errors(row), 1)
+        self.assertEqual(count_sisgen_observaciones(row), 1)
+        self.assertEqual(count_sisgen_personas(row), 1)

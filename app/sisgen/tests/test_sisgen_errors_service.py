@@ -28,7 +28,9 @@ class SisgenErrorsServiceTests(SimpleTestCase):
         self.assertEqual(result["error"], 0)
         self.assertEqual(result["kardex"], "K2-2026")
         self.assertEqual(result["idkardex"], "99")
-        self.assertEqual(result["sisgen_error_count"], 2)
+        self.assertEqual(result["sisgen_error_count"], 1)
+        self.assertEqual(result["sisgen_observaciones_count"], 1)
+        self.assertEqual(result["sisgen_personas_count"], 1)
         self.assertNotIn("uif_validation", result)
         self.assertNotIn("pdt_validation", result)
 
