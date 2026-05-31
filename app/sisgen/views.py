@@ -19,6 +19,10 @@ from .services.sisgen_soap_response import (
 )
 from .utils.exceptions import DocumentSearchException
 from .services.book_search_service import BookSearchService
+from .services.search_response import (
+    slim_search_document_row,
+    slim_search_pagination,
+)
 from .services.sync_status import (
     build_sisgen_sync_status,
     merge_last_submission_for_row,
@@ -110,6 +114,23 @@ def _attach_last_submission_status(rows: list) -> list:
     return rows
 
 
+def _build_document_search_response(rows: list, page_status: dict) -> dict:
+    enriched = _attach_last_submission_status(rows)
+    return {
+        "error": 0,
+        "data": [slim_search_document_row(row) for row in enriched],
+        "pagination": slim_search_pagination(page_status),
+    }
+
+
+def _build_book_search_response(rows: list, page_status: dict) -> dict:
+    return {
+        "error": 0,
+        "data": _attach_last_submission_status(rows),
+        "pagination": slim_search_pagination(page_status),
+    }
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class DocumentSearchView(APIView):
     # permission_classes = [IsAuthenticated, IsSuperuser]
@@ -168,13 +189,7 @@ class DocumentSearchView(APIView):
                 # Update session expiry
                 request.session.set_expiry(86400)  # 24 hours
                 
-                return Response({
-                    'error': 0,
-                    'data': _attach_last_submission_status(data),
-                    'pagination': page_status,
-                    'errores': error_details.get('book_errors', []),
-                    'observaciones': error_details.get('observations', [])
-                })
+                return Response(_build_book_search_response(data, page_status))
 
             print('DEBUG: filters:', filters)
             
@@ -219,14 +234,7 @@ class DocumentSearchView(APIView):
             # Update session expiry
             request.session.set_expiry(86400)  # 24 hours
             
-            return Response({
-                'error': 0,
-                'data': _attach_last_submission_status(data),
-                'pagination': page_status,
-                'errores': error_details.get('kardex_errors', []),
-                'observaciones': error_details.get('observations', []),
-                'personas': error_details.get('person_errors', [])
-            })
+            return Response(_build_document_search_response(data, page_status))
             
         except DocumentSearchException as e:
             # Handle specific exceptions gracefully
