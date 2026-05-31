@@ -10,6 +10,7 @@ from .permissions import IsSuperuser
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .services.document_search_service import DocumentSearchService
+from .services.sisgen_errors_service import collect_kardex_sisgen_errors
 from .services.xml_generator_service import SISGENXmlGenerator
 from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
@@ -579,6 +580,33 @@ class SisgenSoapResponseListView(APIView):
                 last_sub, sync
             )
         return Response(payload)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SisgenErrorsByKardexView(APIView):
+    """
+    Pre-send SISGEN validation messages for one kardex.
+
+    GET /sisgen/errors/kardex/<kardex>/
+    """
+
+    # permission_classes = [IsAuthenticated]
+
+    def get(self, request, kardex: str):
+        kardex_code = (kardex or "").strip()
+        if not kardex_code:
+            return Response(
+                {"error": 1, "message": "kardex is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = collect_kardex_sisgen_errors(kardex_code)
+        if result is None:
+            return Response(
+                {"error": 1, "message": f"Kardex not found: {kardex_code}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(result)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
