@@ -58,6 +58,15 @@ def slim_sisgen_last_submission(last: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def count_sisgen_errors(row: Dict[str, Any]) -> int:
+    """
+    Pre-send SISGEN validation only: ``errores`` + ``personas`` on the document row.
+
+    Excludes observaciones (warnings), UIF, PDT, and post-submit SOAP errors.
+    """
+    return len(row.get("errores") or []) + len(row.get("personas") or [])
+
+
 def slim_search_document_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "kardex": row.get("kardex"),
@@ -65,6 +74,7 @@ def slim_search_document_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "contrato": row.get("contrato"),
         "estado_sisgen": row.get("estado_sisgen"),
         "idtipkar": row.get("idtipkar"),
+        "sisgen_error_count": count_sisgen_errors(row),
         "errores": list(row.get("errores") or []),
         "observaciones": list(row.get("observaciones") or []),
         "personas": list(row.get("personas") or []),

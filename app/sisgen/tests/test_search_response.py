@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from sisgen.services.search_response import (
+    count_sisgen_errors,
     slim_search_document_row,
     slim_search_pagination,
     slim_sisgen_last_submission,
@@ -69,6 +70,7 @@ class SearchResponseSlimTests(SimpleTestCase):
             "contrato",
             "estado_sisgen",
             "idtipkar",
+            "sisgen_error_count",
             "errores",
             "observaciones",
             "personas",
@@ -77,6 +79,7 @@ class SearchResponseSlimTests(SimpleTestCase):
             "uif_validation",
             "pdt_validation",
         })
+        self.assertEqual(slim["sisgen_error_count"], 2)
         self.assertNotIn("numescritura", slim)
         self.assertEqual(
             slim["uif_validation"]["errors"],
@@ -111,3 +114,16 @@ class SearchResponseSlimTests(SimpleTestCase):
             slim["errors"],
             [{"error_description": "plain"}],
         )
+
+    def test_sisgen_error_count_excludes_uif_pdt_and_observaciones(self):
+        row = {
+            "errores": ["sisgen doc error"],
+            "observaciones": ["warning only"],
+            "personas": ["person error"],
+            "uif_validation": {
+                "has_errors": True,
+                "errors": [{"error_description": "uif"}],
+            },
+            "pdt_validation": {"has_errors": True, "errors": ["pdt"]},
+        }
+        self.assertEqual(count_sisgen_errors(row), 2)
