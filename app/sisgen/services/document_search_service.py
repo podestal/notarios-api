@@ -601,16 +601,34 @@ class DocumentSearchService:
                 # Validate juridical person data
                 elif participant.get('tipper') == 'J':
                     razon_social = participant.get('razonsocial', '').strip()
-                    person_id = f"{razon_social} (RUC: {participant.get('numdoc', '')})" if participant.get('numdoc') else razon_social
-                    
-                    if not participant.get('numdoc'):
-                        self._add_person_error(kardex, f"{person_id}: Falta RUC")
+                    tipodoc = (
+                        participant.get("tipodoc")
+                        or participant.get("codtipdoc")
+                        or participant.get("idtipdoc")
+                        or ""
+                    )
+                    numdoc = (participant.get("numdoc") or "").strip()
+                    tipo_inst = str(doc.get("idtipkar") or "")
+                    doc_err, doc_msg, tipo_res = self._validar_documento_juridica_participante(
+                        tipodoc, numdoc, tipo_inst
+                    )
+                    doc_tag = "RUC" if self._juridica_usa_etiqueta_ruc(tipo_res) else "Doc"
+                    person_id = (
+                        f"{razon_social} ({doc_tag}: {numdoc})"
+                        if numdoc
+                        else razon_social
+                    )
+                    if doc_err:
+                        self._add_person_error(kardex, f"{person_id}: {doc_msg}")
                     if not participant.get('razonsocial'):
                         self._add_person_error(kardex, f"{person_id}: Falta razón social")
                     
-                    # Additional validations for juridical persons
                     self._validate_juridical_person(
-                        kardex, participant, skip_uif_strict=skip_uif_strict
+                        kardex,
+                        participant,
+                        skip_uif_strict=skip_uif_strict,
+                        tipo_doc_resuelto=tipo_res,
+                        person_id=person_id,
                     )
             
             self.logger.debug(f"After person validation for kardex {kardex}:")
@@ -648,17 +666,44 @@ class DocumentSearchService:
         if not person.get('direccion') or not person.get('idubigeo'):
             self._add_person_error(kardex, f"{person_id}: Información de dirección incompleta")
 
+    @staticmethod
+    def _validar_documento_juridica_participante(
+        tipodoc: str, numdoc: str, tipo_instrumento: str
+    ) -> Tuple[int, str, str]:
+        from sisgen.sisgen_document_rules import validar_documento_juridica
+
+        return validar_documento_juridica(tipodoc, numdoc, tipo_instrumento)
+
+    @staticmethod
+    def _juridica_usa_etiqueta_ruc(tipo_doc_resuelto: str) -> bool:
+        from sisgen.sisgen_document_rules import juridica_requiere_formato_ruc
+
+        return juridica_requiere_formato_ruc(tipo_doc_resuelto)
+
     def _validate_juridical_person(
-        self, kardex: str, person: Dict, skip_uif_strict: bool = False
+        self,
+        kardex: str,
+        person: Dict,
+        skip_uif_strict: bool = False,
+        tipo_doc_resuelto: str = "",
+        person_id: str = "",
     ):
-        """Additional validations for juridical persons"""
-        # Format company name
-        razon_social = person.get('razonsocial', '').strip()
-        person_id = f"{razon_social} (RUC: {person.get('numdoc', '')})" if person.get('numdoc') else razon_social
-        
-        # Validate RUC format
-        ruc = person.get('numdoc')
-        if ruc and (len(ruc) != 11 or not ruc.isdigit() or not ruc.startswith('20')):
+        """Additional validations for juridical persons (post ValidarDocumentoJuridica PHP)."""
+        if not person_id:
+            razon_social = person.get('razonsocial', '').strip()
+            numdoc = (person.get('numdoc') or '').strip()
+            doc_tag = "RUC" if self._juridica_usa_etiqueta_ruc(tipo_doc_resuelto) else "Doc"
+            person_id = (
+                f"{razon_social} ({doc_tag}: {numdoc})" if numdoc else razon_social
+            )
+
+        # Formato RUC solo cuando el tipo resuelto es 08 (PHP asigna 08 si hay 11 dígitos)
+        ruc = (person.get('numdoc') or '').strip()
+        if (
+            ruc
+            and self._juridica_usa_etiqueta_ruc(tipo_doc_resuelto)
+            and (len(ruc) != 11 or not ruc.isdigit() or not ruc.startswith('20'))
+        ):
             self._add_person_error(kardex, f"{person_id}: Formato de RUC inválido")
         
         # Validate required registration data
@@ -686,7 +731,8 @@ class DocumentSearchService:
                     SELECT 
                         cl.idcontratante, cl.idcliente AS id, cl.tipper,
                         cl.apepat, cl.apemat, cl.prinom, cl.segnom,
-                        cl.nombre, cl.direccion, cl.idtipdoc, cl.numdoc,
+                        cl.nombre, cl.direccion, cl.idtipdoc,
+                        td.codtipdoc AS tipodoc, cl.numdoc,
                         cl.email, cl.telfijo, cl.telcel, cl.telofi,
                         cl.sexo AS gen, cl.idestcivil AS estc,
                         cl.natper, cl.conyuge, cl.nacionalidad,
@@ -698,6 +744,7 @@ class DocumentSearchService:
                         cl.telempresa, cl.mailempresa
                     FROM contratantesxacto cx
                     LEFT JOIN cliente2 cl ON cx.idcontratante = cl.idcontratante
+                    LEFT JOIN tipodocumento td ON cl.idtipdoc = td.idtipdoc
                     WHERE cx.kardex = %s
                 """
                 cursor.execute(query, [kardex])
