@@ -2,6 +2,7 @@
 from django.urls import path
 from .views import (
     DocumentSearchView,
+    SendToSISGENPreviewView,
     SendToSISGENView,
     SisgenErrorsByKardexView,
     SisgenSoapResponseListView,
@@ -16,6 +17,11 @@ urlpatterns = [
         'errors/kardex/<str:kardex>/',
         SisgenErrorsByKardexView.as_view(),
         name='sisgen_errors_by_kardex',
+    ),
+    path(
+        'send-sisgen/preview/',
+        SendToSISGENPreviewView.as_view(),
+        name='send_sisgen_preview',
     ),
     path('send-sisgen/', SendToSISGENView.as_view(), name='send_sisgen'),
     path(

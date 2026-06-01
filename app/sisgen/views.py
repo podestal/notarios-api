@@ -11,6 +11,12 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .services.document_search_service import DocumentSearchService
 from .services.sisgen_errors_service import collect_kardex_sisgen_errors
+from .services.send_preview_service import (
+    build_send_preview,
+    extract_search_filters,
+    verify_documents_against_filters,
+)
+from .utils.exceptions import ValidationException
 from .services.xml_generator_service import SISGENXmlGenerator
 from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
@@ -39,7 +45,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # When True, SendToSISGEN builds XML and returns the SOAP payload only — no HTTP call to SISGEN.
-SISGEN_DRY_RUN = False
+SISGEN_DRY_RUN = True
 
 
 def _extract_submission_errors(parsed_payload: dict) -> list:
@@ -256,16 +262,48 @@ class DocumentSearchView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @method_decorator(csrf_exempt, name='dispatch')
+class SendToSISGENPreviewView(APIView):
+    """
+    List all kardexes that match search filters (not paginated) before batch send.
+
+    POST body: same filters as /sisgen/search/ (fechaDesde, fechaHasta, tipoInstrumento, estado, codigoActo).
+    """
+
+    permission_classes = [IsAuthenticated, IsSuperuser]
+
+    def post(self, request):
+        filters = extract_search_filters(request.data)
+        if not filters.get("fechaDesde") or not filters.get("fechaHasta"):
+            return Response(
+                {
+                    "error": 1,
+                    "message": "fechaDesde and fechaHasta are required",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            return Response(build_send_preview(filters))
+        except ValidationException as exc:
+            return Response(
+                {"error": 1, "message": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except DocumentSearchException as exc:
+            return Response(
+                {"error": 1, "message": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class SendToSISGENView(APIView):
     """
-    Send documents to SISGEN service.
+    Send documents to SISGEN (SOAP), up to 10 kardexes per request batch.
 
-    POST Parameters:
-    - documents: List of documents to process, each containing:
-        {'kardex': str, 'idkardex': str}
-        For single document, send array with one item
-        For batch processing, send array with multiple items (processed in batches of 10)
-    - all: 0 for documents array, 1 for all documents in temp tables
+    POST body:
+    - documents: [{ kardex, idkardex }, ...] (from preview or manual selection)
+    - Optional: fechaDesde, fechaHasta, tipoInstrumento, estado, codigoActo — if sent,
+      each document must still match those filters.
     """
 
     permission_classes = [IsAuthenticated, IsSuperuser]
@@ -307,23 +345,58 @@ class SendToSISGENView(APIView):
 
     def post(self, request):
         try:
-            # Get parameters
-            documents = request.data.get('documents', [])
-            all_docs = request.data.get('all', 0)
-            
-            print('DEBUG: SendToSISGEN request data:', request.data)
-            
-            # Initialize services
+            raw_documents = request.data.get("documents", [])
+            filter_payload = extract_search_filters(request.data)
+
+            print("DEBUG: SendToSISGEN request data:", request.data)
+
             data_processor = DataProcessorService()
             xml_generator = SISGENXmlGenerator()
             soap_client = SoapClientService()
 
-            # Validate parameters
-            if not all_docs and not documents:
-                return Response({
-                    'error': 1,
-                    'message': 'documents array is required when all=0'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            if not raw_documents:
+                return Response(
+                    {
+                        "error": 1,
+                        "message": "documents array is required",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            documents = raw_documents
+            if filter_payload:
+                try:
+                    documents, invalid = verify_documents_against_filters(
+                        filter_payload, raw_documents
+                    )
+                except ValidationException as exc:
+                    return Response(
+                        {"error": 1, "message": str(exc)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                except DocumentSearchException as exc:
+                    return Response(
+                        {"error": 1, "message": str(exc)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if invalid:
+                    return Response(
+                        {
+                            "error": 1,
+                            "message": "Some kardexes do not match the provided filters",
+                            "invalid_kardex": invalid,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            if not documents:
+                return Response(
+                    {
+                        "error": 1,
+                        "message": "No valid documents to send",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Process documents
             batch_size = 10
