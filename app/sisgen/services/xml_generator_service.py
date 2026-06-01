@@ -14,6 +14,11 @@ from django.db import connection
 from django.db.utils import DatabaseError
 
 from notaria.constants import FORMAS_PAGO, MONEDAS, OPORTUNIDADES_PAGO
+from sisgen.sisgen_acto_xml_rules import (
+    doc_requires_cuantia_operacion_xml,
+    doc_requires_medios_pago_xml,
+    doc_requires_uif_sunat_xml,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -958,17 +963,8 @@ class SISGENXmlGenerator:
         return cuantia
 
     def _doc_requires_renta_impuesto_xml(self, doc: Dict) -> bool:
-        """
-        PHP: preguntas renta (pregu*) en XML cuando aplica UIF/SUNAT al acto.
-        Alineado con la lógica relajada de validación _sisgen_skip_uif_money_checks.
-        """
-        au = (doc.get("actouif") or "").strip().upper()
-        if au in ("N", "NO", "0", "NINGUNO", "-"):
-            return False
-        if au:
-            return True
-        asn = (doc.get("actosunat") or "").strip().upper()
-        return bool(asn and asn not in ("N", "NO", "0", "-"))
+        """PHP: Renta3Cat / CasaEnajenante / ImpuestoCero solo si validarUIFSUNAT == 1."""
+        return doc_requires_uif_sunat_xml(doc)
 
     def _normalize_pregunta_renta_xml(self, raw) -> str:
         """Normaliza pregu1..3 de tabla renta a 0/1 para elementos SISGEN."""
@@ -1466,26 +1462,13 @@ class SISGENXmlGenerator:
     def _acto_requiere_medios_pago_xml(
         self, doc: Dict, pat_row: Optional[Dict]
     ) -> bool:
-        """
-        DB-driven rule:
-        - If tiposdeacto marks UIF/SUNAT applicability, MediosPagos is required.
-        - Fallback to tiposdeacto.mediospago flag when present.
-        """
+        """``tiposdeacto`` en doc; consulta SQL solo si falta mediospago."""
         del pat_row
-        au = (doc.get("actouif") or "").strip().upper()
-        if au not in ("", "N", "NO", "0", "NINGUNO", "-"):
-            return True
-
-        asn = (doc.get("actosunat") or "").strip().upper()
-        if asn not in ("", "N", "NO", "0", "NINGUNO", "-"):
-            return True
-
+        if doc.get("mediospago") is not None and str(doc.get("mediospago")).strip() != "":
+            return doc_requires_medios_pago_xml(doc)
         flag = self._tiposdeacto_mediospago_flag(doc)
-        if flag in ("S", "1", "SI", "Y", "YES", "TRUE", "T"):
-            return True
-        if flag in ("N", "NO", "0", "FALSE", "F"):
-            return False
-        return False
+        enriched = {**doc, "mediospago": flag if flag is not None else doc.get("mediospago")}
+        return doc_requires_medios_pago_xml(enriched)
 
     def _resolve_medio_pago_patrimonial(
         self, pat_row: Dict, doc: Dict
@@ -2126,7 +2109,8 @@ class SISGENXmlGenerator:
                     if p.get("idcontratante") is not None and str(p.get("idcontratante")).strip()
                 ]
                 renta_map = self._renta_map_for_kardex(doc.get("kardex"), idc_for_renta)
-                requires_renta_impuesto = self._doc_requires_renta_impuesto_xml(doc)
+                requires_uif_sunat = doc_requires_uif_sunat_xml(doc)
+                requires_renta_impuesto = requires_uif_sunat
 
                 # Add Operaciones section
                 xml += '\t<Operaciones>\n'
@@ -2194,8 +2178,12 @@ class SISGENXmlGenerator:
                         if _mid_s:
                             emitidos_sujeto_id_maestro.add(_mid_s)
                         
-                        # Add OrigenFondos
-                        if participant.get("ofondo"):
+                        # PHP: OrigenFondos solo si validarUIFSUNAT == 1 y fondos + monto
+                        if (
+                            requires_uif_sunat
+                            and participant.get("ofondo")
+                            and self._safe_float(participant.get("monto", "0")) > 0
+                        ):
                             cuantia_o = self._cuantia_origen_participant(
                                 participant, doc, pat_row
                             )
@@ -2218,19 +2206,12 @@ class SISGENXmlGenerator:
                             xml += f'\t\t\t\t\t\t\t\t<PorcentajeDerecho>{self._safe_float(participant.get("porcentaje", "100")):.2f}</PorcentajeDerecho>\n'
                         xml += '\t\t\t\t\t\t\t</Derecho>\n'
                         
-                        # Renta / impuestos (tabla renta.pregu1..3; PHP por kardex+idcontratante)
-                        if role == 'O':
+                        # Renta / impuestos: PHP solo si validarUIFSUNAT == 1
+                        if role in ("O", "B") and requires_renta_impuesto:
                             r3, ce, iz = self._renta_impuesto_triplet_xml(
                                 participant,
                                 renta_map,
-                                use_db=requires_renta_impuesto,
-                            )
-                            xml += f'\t\t\t\t\t\t\t<Renta3Cat>{r3}</Renta3Cat>\n'
-                            xml += f'\t\t\t\t\t\t\t<CasaEnajenante>{ce}</CasaEnajenante>\n'
-                            xml += f'\t\t\t\t\t\t\t<ImpuestoCero>{iz}</ImpuestoCero>\n'
-                        elif role == 'B' and requires_renta_impuesto:
-                            r3, ce, iz = self._renta_impuesto_triplet_xml(
-                                participant, renta_map, use_db=True
+                                use_db=True,
                             )
                             xml += f'\t\t\t\t\t\t\t<Renta3Cat>{r3}</Renta3Cat>\n'
                             xml += f'\t\t\t\t\t\t\t<CasaEnajenante>{ce}</CasaEnajenante>\n'
@@ -2262,18 +2243,25 @@ class SISGENXmlGenerator:
                     xml += '\t\t\t\t</NoInterviniente>\n'
                 xml += '\t\t\t</NoIntervinientes>\n'
                 xml += '\t\t</Operantes>\n'
-                
-                # Add CuantiaOperacion section
-                xml += '\t\t<CuantiaOperacion>\n'
-                participants_list = doc.get('participants', [])
-                total_monto = self._cuantia_operacion_total(doc, participants_list)
-                xml += f'\t\t\t<Cuantia>{total_monto:.2f}</Cuantia>\n'
-                xml += f'\t\t\t<TipoMoneda>{tipo_moneda_doc}</TipoMoneda>\n'
-                xml += '\t\t</CuantiaOperacion>\n'
-                
-                xml += self._medios_pagos_xml_for_doc(
-                    doc, pat_row, mp_rows, tipo_moneda_doc, total_monto
-                )
+
+                total_monto = 0.0
+                if doc_requires_cuantia_operacion_xml(doc):
+                    participants_list = doc.get("participants", [])
+                    total_monto = self._cuantia_operacion_total(
+                        doc, participants_list
+                    )
+                    xml += '\t\t<CuantiaOperacion>\n'
+                    xml += f'\t\t\t<Cuantia>{total_monto:.2f}</Cuantia>\n'
+                    xml += f'\t\t\t<TipoMoneda>{tipo_moneda_doc}</TipoMoneda>\n'
+                    xml += '\t\t</CuantiaOperacion>\n'
+                if self._acto_requiere_medios_pago_xml(doc, pat_row):
+                    if total_monto <= 0:
+                        total_monto = self._cuantia_operacion_total(
+                            doc, doc.get("participants") or []
+                        )
+                    xml += self._medios_pagos_xml_for_doc(
+                        doc, pat_row, mp_rows, tipo_moneda_doc, total_monto
+                    )
 
                 nombre_contrato_xml = self._nombre_contrato_sisgen(doc)
                 fecha_minuta_xml = self._fecha_minuta_sisgen(doc, pat_row, mp_rows)

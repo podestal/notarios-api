@@ -115,6 +115,7 @@ class DataProcessorService:
             SELECT k.*, 
                    IF(ta.cod_ancert IS NULL,'',ta.cod_ancert) AS cod_ancert,
                    ta.actouif, ta.actosunat,
+                   ta.mediospago, ta.cuantia, ta.origenfondo, ta.impuestorenta,
                    IFNULL(ta.desacto, '') AS desacto
             FROM kardex k
             LEFT JOIN tiposdeacto ta ON SUBSTRING(k.codactos,1,3) = ta.idtipoacto

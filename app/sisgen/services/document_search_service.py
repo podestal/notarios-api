@@ -250,6 +250,7 @@ class DocumentSearchService:
                    k.estado_sisgen, k.idtipkar, k.fechaingreso, k.codactos,
                    k.contrato, k.folioini, k.foliofin, k.fechaconclusion,
                    ta.actouif, ta.actosunat,
+                   ta.mediospago, ta.cuantia, ta.origenfondo, ta.impuestorenta,
                    IFNULL(ta.desacto, '') AS desacto,
                    cn.codnotario, cn.codoficial, cn.coduif,
                    CONCAT(cn.nombre, ' ', cn.apellido) as nombre_notario,
@@ -466,11 +467,12 @@ class DocumentSearchService:
 
     def _sisgen_skip_uif_money_checks(self, doc: Dict) -> bool:
         """
-        PHP validarUIFSUNAT: si el tipo de acto no aplica UIF (actouif explícito),
-        no se exigen montos ni origen de fondos en contratantesxacto.
+        PHP validarUIFSUNAT: actos en actosNOUIFSUNAT (p. ej. 0604) no exigen
+        montos ni origen de fondos en contratantesxacto.
         """
-        au = (doc.get("actouif") or "").strip().upper()
-        return au in ("N", "NO", "0", "NINGUNO", "-")
+        from sisgen.sisgen_acto_xml_rules import doc_requires_uif_sunat_xml
+
+        return not doc_requires_uif_sunat_xml(doc)
 
     def _validate_detalle_mediopago_moneda(self, kardex: str):
         """ValidarMoneda-style: moneda en detallemediopago requiere importemp > 0."""
@@ -727,6 +729,7 @@ class DocumentSearchService:
                    k.estado_sisgen, k.idtipkar, k.fechaingreso, k.codactos,
                    k.contrato, k.folioini, k.foliofin, k.fechaconclusion,
                    ta.actouif, ta.actosunat,
+                   ta.mediospago, ta.cuantia, ta.origenfondo, ta.impuestorenta,
                    IFNULL(ta.desacto, '') AS desacto,
                    -- Add notary data
                    cn.codnotario, cn.codoficial, cn.coduif,
