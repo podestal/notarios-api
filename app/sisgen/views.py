@@ -45,7 +45,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # When True, SendToSISGEN builds XML and returns the SOAP payload only — no HTTP call to SISGEN.
-SISGEN_DRY_RUN = True
+SISGEN_DRY_RUN = False
 
 
 def _extract_submission_errors(parsed_payload: dict) -> list:
