@@ -25,3 +25,4 @@ request_batch_*.xml
 response_batch_*.xml
 app/sisgen/sisgen_xml_debug/
 *.pyc
+*.Backup
