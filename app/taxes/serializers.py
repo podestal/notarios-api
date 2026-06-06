@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Catalogos, CodigosUnitarios, Monedas, TiposIgv
+from .models import Catalogos, CodigosUnitarios, Monedas, TiposIgv, Usuarios
 
 
 class CodigosUnitariosSerializer(serializers.ModelSerializer):
@@ -72,3 +72,18 @@ class TiposIgvSerializer(serializers.ModelSerializer):
             "actualizado",
         ]
         read_only_fields = ["id_tipo_igv", "creado", "actualizado"]
+
+
+class UsuariosSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Usuarios
+        fields = [
+            "id_usuario",
+            "usuario",
+            "email",
+            "telefono",
+            "estado",
+            "negocio_id",
+            "rol_id",
+            "persona_id",
+        ]

@@ -11,5 +11,6 @@ router.register(
     views.CodigosUnitariosViewSet,
     basename="codigos-unitarios",
 )
+router.register("usuarios", views.UsuariosViewSet, basename="taxes-usuarios")
 
 urlpatterns = router.urls
