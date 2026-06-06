@@ -27,13 +27,21 @@ def build_databases() -> dict:
     }
 
     if os.environ.get("POSTGRES_HOST", "").strip():
+        pg_name = (
+            os.environ.get("POSTGRES_NAME", "").strip()
+            or os.environ.get("POSTGRES_DB", "").strip()
+            or "notarios_pg"
+        )
         databases["postgres"] = {
             "ENGINE": "django.db.backends.postgresql",
             "HOST": os.environ.get("POSTGRES_HOST", "postgres"),
-            "NAME": os.environ.get("POSTGRES_NAME", "notarios"),
+            "NAME": pg_name,
             "USER": os.environ.get("POSTGRES_USER", "postgres"),
             "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+            "OPTIONS": {
+                "options": "-c search_path=almacen,public",
+            },
         }
 
     return databases
