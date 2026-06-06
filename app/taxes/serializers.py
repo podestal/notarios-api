@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from .legacy_db import next_serial_id
 from .models import Catalogos, CodigosUnitarios, Monedas, TiposIgv, Usuarios
 
 
@@ -36,7 +37,17 @@ class CatalogosSerializer(serializers.ModelSerializer):
             "codigo_unitario",
             "tipo_igv_id",
         ]
-        read_only_fields = ["id_catalogo", "creado", "actualizado"]
+        read_only_fields = [
+            "id_catalogo",
+            "creado",
+            "actualizado",
+            "negocio_id",
+            "usuario_id",
+        ]
+
+    def create(self, validated_data):
+        validated_data["id_catalogo"] = next_serial_id("catalogos", "id_catalogo")
+        return super().create(validated_data)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
@@ -31,6 +32,10 @@ class CatalogosViewSet(ModelViewSet):
     def get_queryset(self):
         qs = Catalogos.objects.select_related("codigo_unitario").all()
 
+        user = self.request.user
+        if user.negocio_id is not None:
+            qs = qs.filter(negocio_id=user.negocio_id)
+
         codigo = self.request.query_params.get("codigo", "").strip()
         if codigo:
             qs = qs.filter(codigo__icontains=codigo)
@@ -40,6 +45,17 @@ class CatalogosViewSet(ModelViewSet):
             qs = qs.filter(descripcion__icontains=descripcion)
 
         return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.taxes_usuario_id is None or user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (taxes_usuario_id / negocio_id)."
+            )
+        serializer.save(
+            usuario_id=user.taxes_usuario_id,
+            negocio_id=user.negocio_id,
+        )
 
 
 class MonedasViewSet(ModelViewSet):
