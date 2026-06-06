@@ -53,8 +53,10 @@ def postgres_enabled() -> bool:
 
 def postgres_app_labels() -> frozenset:
     raw = os.environ.get("POSTGRES_APPS", "")
-    return frozenset(
+    labels = {
         label.strip()
         for label in raw.split(",")
         if label.strip()
-    )
+    }
+    labels.add("taxes")
+    return frozenset(labels)

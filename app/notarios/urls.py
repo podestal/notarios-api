@@ -35,6 +35,7 @@ urlpatterns += [
     path('uif/', include('uif.urls')),
     path('compliance/', include('compliance.urls')),
     path('viajes/', include('viajes.urls')),
+    path('taxes/', include('taxes.urls')),
     path('auth/', include('djoser.urls')),
     path('auth/', include('djoser.urls.jwt')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
