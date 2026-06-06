@@ -1,5 +1,5 @@
 from rest_framework_nested import routers
-from core.views import UserSummaryViewSet
+from core.views import UserAdminViewSet, UserSummaryViewSet
 from . import views
 
 """
@@ -12,6 +12,7 @@ router = routers.DefaultRouter()
 
 router.register('usuarios', views.UsuariosViewSet, basename='usuarios')
 router.register('users', UserSummaryViewSet, basename='users')
+router.register('admin/users', UserAdminViewSet, basename='admin-users')
 router.register('permisos', views.PermisosUsuariosViewSet, basename='permisos')
 router.register('kardex', views.KardexViewSet, basename='kardex')
 router.register('tipokar', views.TipoKarViewSet, basename='tipokar')

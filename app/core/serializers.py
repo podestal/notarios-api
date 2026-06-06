@@ -26,10 +26,40 @@ class UserSerializer(BasedUserSerializer):
             'username',
             'email',
             'notary',
+            'taxes_usuario_id',
+            'negocio_id',
             'first_name',
             'last_name',
             'is_staff',
             'is_superuser',
+        ]
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Superuser-only user management for taxes linking and admin UI."""
+
+    class Meta:
+        model = user
+        fields = [
+            'idusuario',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'notary',
+            'taxes_usuario_id',
+            'negocio_id',
+            'is_active',
+            'is_staff',
+            'is_superuser',
+            'date_joined',
+            'last_login',
+        ]
+        read_only_fields = [
+            'idusuario',
+            'username',
+            'date_joined',
+            'last_login',
         ]
 
 
