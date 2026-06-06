@@ -3,8 +3,13 @@ from rest_framework.viewsets import ModelViewSet
 
 from notaria.pagination import KardexPagination
 
-from .models import Catalogos, CodigosUnitarios
-from .serializers import CatalogosSerializer, CodigosUnitariosSerializer
+from .models import Catalogos, CodigosUnitarios, Monedas, TiposIgv
+from .serializers import (
+    CatalogosSerializer,
+    CodigosUnitariosSerializer,
+    MonedasSerializer,
+    TiposIgvSerializer,
+)
 
 
 class CodigosUnitariosViewSet(ModelViewSet):
@@ -30,3 +35,15 @@ class CatalogosViewSet(ModelViewSet):
             qs = qs.filter(descripcion__icontains=descripcion)
 
         return qs
+
+
+class MonedasViewSet(ModelViewSet):
+    queryset = Monedas.objects.all()
+    serializer_class = MonedasSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class TiposIgvViewSet(ModelViewSet):
+    queryset = TiposIgv.objects.all()
+    serializer_class = TiposIgvSerializer
+    permission_classes = [IsAuthenticated]

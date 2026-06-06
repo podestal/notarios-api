@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Catalogos, CodigosUnitarios
+from .models import Catalogos, CodigosUnitarios, Monedas, TiposIgv
 
 
 class CodigosUnitariosSerializer(serializers.ModelSerializer):
@@ -43,3 +43,32 @@ class CatalogosSerializer(serializers.ModelSerializer):
         related = instance.codigo_unitario
         data["codigo_unitario"] = related.descripcion if related else None
         return data
+
+
+class MonedasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Monedas
+        fields = [
+            "id_moneda",
+            "codigo",
+            "descripcion",
+            "abreviatura",
+            "simbolo",
+            "creado",
+            "actualizado",
+        ]
+        read_only_fields = ["id_moneda", "creado", "actualizado"]
+
+
+class TiposIgvSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TiposIgv
+        fields = [
+            "id_tipo_igv",
+            "codigo",
+            "descripcion",
+            "onerosa",
+            "creado",
+            "actualizado",
+        ]
+        read_only_fields = ["id_tipo_igv", "creado", "actualizado"]
