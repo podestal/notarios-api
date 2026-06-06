@@ -14,6 +14,12 @@ class CodigosUnitariosSerializer(serializers.ModelSerializer):
 
 
 class CatalogosSerializer(serializers.ModelSerializer):
+    codigo_unitario = serializers.PrimaryKeyRelatedField(
+        queryset=CodigosUnitarios.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+
     class Meta:
         model = Catalogos
         fields = [
@@ -31,3 +37,9 @@ class CatalogosSerializer(serializers.ModelSerializer):
             "tipo_igv_id",
         ]
         read_only_fields = ["id_catalogo", "creado", "actualizado"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        related = instance.codigo_unitario
+        data["codigo_unitario"] = related.descripcion if related else None
+        return data

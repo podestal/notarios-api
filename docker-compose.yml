@@ -42,6 +42,7 @@ services:
 
   db:
     image: mariadb:10.5
+    # command: --innodb-force-recovery=1
     environment:
       MARIADB_ROOT_PASSWORD: ${DATABASE_PASSWORD}
       MARIADB_DATABASE: ${DATABASE_NAME}
