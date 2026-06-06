@@ -63,3 +63,4 @@ urllib3==2.5.0
 whitenoise==6.8.2
 zope.interface==7.2
 mysqlclient==2.2.7
+psycopg[binary]==3.2.9

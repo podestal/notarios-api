@@ -6,16 +6,12 @@ MIDDLEWARE = ['sisgen.middleware.SessionCookieMiddleware'] + MIDDLEWARE
 DEBUG = True
 ALLOWED_HOSTS.extend(filter(None, os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")))
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "HOST": os.environ.get("DATABASE_HOST"),
-        "NAME": os.environ.get("DATABASE_NAME"),
-        "USER": os.environ.get("DATABASE_USER"),
-        "PASSWORD": os.environ.get("DATABASE_PASSWORD"),
-        "PORT": '3306',
-    }
-}
+from .databases import build_databases, postgres_enabled
+
+DATABASES = build_databases()
+
+if postgres_enabled():
+    DATABASE_ROUTERS = ["notarios.db_router.PostgresRouter"]
 
 MIDDLEWARE += ["whitenoise.middleware.WhiteNoiseMiddleware"]
 
