@@ -14,6 +14,33 @@ class CodigosUnitarios(models.Model):
         return f"{self.codigo} — {self.descripcion}"
 
 
+class Monedas(models.Model):
+    id_moneda = models.AutoField(primary_key=True)
+    codigo = models.CharField(max_length=10)
+    descripcion = models.CharField(max_length=100)
+    abreviatura = models.CharField(max_length=10)
+    simbolo = models.CharField(max_length=10)
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'monedas'
+
+
+class TiposIgv(models.Model):
+    id_tipo_igv = models.AutoField(primary_key=True)
+    codigo = models.CharField(max_length=4)
+    descripcion = models.CharField(max_length=100)
+    onerosa = models.BooleanField()
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tipos_igv'
+
+
 class Catalogos(models.Model):
     id_catalogo = models.AutoField(primary_key=True)
     codigo = models.CharField(max_length=8)

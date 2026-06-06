@@ -8,11 +8,15 @@
 from django.db import models
 
 
-class CodigosUnitarios(models.Model):
-    id_codigo_unitario = models.AutoField(primary_key=True)
+class Monedas(models.Model):
+    id_moneda = models.AutoField(primary_key=True)
     codigo = models.CharField(max_length=10)
-    descripcion = models.CharField(max_length=30)
+    descripcion = models.CharField(max_length=100)
+    abreviatura = models.CharField(max_length=10)
+    simbolo = models.CharField(max_length=10)
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'codigos_unitarios'
+        db_table = 'monedas'

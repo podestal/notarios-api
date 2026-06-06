@@ -10,6 +10,9 @@ Route apps with POSTGRES_APPS=signatum,compliance (see db_router.py).
 
 import os
 
+# Postgres schemas in this project (public last so it does not shadow app schemas).
+DEFAULT_POSTGRES_SEARCH_PATH = "administracion,almacen,ubigeo,ventas,public"
+
 
 def build_databases() -> dict:
     databases = {
@@ -32,6 +35,10 @@ def build_databases() -> dict:
             or os.environ.get("POSTGRES_DB", "").strip()
             or "notarios_pg"
         )
+        search_path = (
+            os.environ.get("POSTGRES_SEARCH_PATH", "").strip()
+            or DEFAULT_POSTGRES_SEARCH_PATH
+        )
         databases["postgres"] = {
             "ENGINE": "django.db.backends.postgresql",
             "HOST": os.environ.get("POSTGRES_HOST", "postgres"),
@@ -40,7 +47,7 @@ def build_databases() -> dict:
             "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
             "OPTIONS": {
-                "options": "-c search_path=almacen,public",
+                "options": f"-c search_path={search_path}",
             },
         }
 
