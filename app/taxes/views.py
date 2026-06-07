@@ -6,11 +6,13 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from core.permissions import IsSuperuser
 from notaria.pagination import KardexPagination
 
-from .models import Catalogos, CodigosUnitarios, Monedas, TiposIgv, Usuarios
+from .models import Catalogos, CodigosUnitarios, Documentos, Monedas, Personas, TiposIgv, Usuarios
 from .serializers import (
     CatalogosSerializer,
     CodigosUnitariosSerializer,
+    DocumentosSerializer,
     MonedasSerializer,
+    PersonasSerializer,
     TiposIgvSerializer,
     UsuariosSerializer,
 )
@@ -70,9 +72,22 @@ class TiposIgvViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
+class DocumentosViewSet(ModelViewSet):
+    queryset = Documentos.objects.all()
+    serializer_class = DocumentosSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class PersonasViewSet(ModelViewSet):
+    queryset = Personas.objects.all()
+    serializer_class = PersonasSerializer
+    pagination_class = KardexPagination
+    permission_classes = [IsAuthenticated]
+
+
 class UsuariosViewSet(ReadOnlyModelViewSet):
     serializer_class = UsuariosSerializer
-    # permission_classes = [IsAuthenticated, IsSuperuser]
+    permission_classes = [IsAuthenticated, IsSuperuser]
     # pagination_class = KardexPagination
     lookup_field = "id_usuario"
 

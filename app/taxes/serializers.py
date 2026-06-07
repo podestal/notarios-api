@@ -1,7 +1,15 @@
 from rest_framework import serializers
 
 from .legacy_db import next_serial_id
-from .models import Catalogos, CodigosUnitarios, Monedas, TiposIgv, Usuarios
+from .models import (
+    Catalogos,
+    CodigosUnitarios,
+    Documentos,
+    Monedas,
+    Personas,
+    TiposIgv,
+    Usuarios,
+)
 
 
 class CodigosUnitariosSerializer(serializers.ModelSerializer):
@@ -83,6 +91,42 @@ class TiposIgvSerializer(serializers.ModelSerializer):
             "actualizado",
         ]
         read_only_fields = ["id_tipo_igv", "creado", "actualizado"]
+
+
+class DocumentosSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Documentos
+        fields = [
+            "id_documento",
+            "codigo",
+            "descripcion",
+            "abreviatura",
+            "creado",
+            "actualizado",
+        ]
+        read_only_fields = ["id_documento", "creado", "actualizado"]
+
+
+class PersonasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Personas
+        fields = [
+            "id_persona",
+            "nombres",
+            "apellido_paterno",
+            "apellido_materno",
+            "razon_social",
+            "nombre_comercial",
+            "documento",
+            "numero_documento",
+            "direccion",
+            "fecha_nacimiento",
+            "nombre_completo",
+            "email",
+            "creado",
+            "actualizado",
+        ]
+        read_only_fields = ["id_persona", "creado", "actualizado"]
 
 
 class UsuariosSerializer(serializers.ModelSerializer):
