@@ -237,6 +237,64 @@ class IngresosDetallesSerializer(serializers.ModelSerializer):
         read_only_fields = ["id_ingreso_detalle", "creado", "actualizado"]
 
 
+class ControlInternoLineaSerializer(serializers.Serializer):
+    catalogo_id = serializers.IntegerField()
+    cantidad = serializers.IntegerField()
+    descripcion = serializers.CharField(max_length=200)
+    detalles = serializers.CharField(max_length=200, required=False, allow_blank=True, default="-")
+    precio_unitario = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class CreateControlInternoSerializer(serializers.Serializer):
+    serie = serializers.CharField(max_length=10)
+    moneda_id = serializers.IntegerField()
+    persona_id = serializers.IntegerField()
+    direccion = serializers.CharField(max_length=200)
+    observaciones = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    total = serializers.DecimalField(max_digits=10, decimal_places=2)
+    lineas = ControlInternoLineaSerializer(many=True)
+
+    def validate_lineas(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one line is required.")
+        return value
+
+
+class ControlInternoResponseSerializer(serializers.ModelSerializer):
+    comprobante = serializers.IntegerField(source="comprobante_id", read_only=True)
+    lineas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ingresos
+        fields = [
+            "id_ingreso",
+            "fecha_emision",
+            "numero",
+            "serie",
+            "comprobante",
+            "moneda_id",
+            "persona_id",
+            "direccion",
+            "observaciones",
+            "total",
+            "usuario_id",
+            "negocio_id",
+            "canjeada",
+            "anulada",
+            "lineas",
+        ]
+
+    def get_lineas(self, obj):
+        detalles = self.context.get("detalles", [])
+        return IngresosDetallesSerializer(detalles, many=True).data
+
+
 class UsuariosSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuarios

@@ -1,6 +1,9 @@
 from django.contrib.auth import get_user_model
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from core.permissions import IsSuperuser
@@ -23,6 +26,8 @@ from .serializers import (
     CatalogosSerializer,
     CodigosUnitariosSerializer,
     ComprobantesSerializer,
+    ControlInternoResponseSerializer,
+    CreateControlInternoSerializer,
     DocumentosSerializer,
     IngresosDetallesSerializer,
     IngresosSerializer,
@@ -32,6 +37,7 @@ from .serializers import (
     TiposIgvSerializer,
     UsuariosSerializer,
 )
+from .services.control_interno import create_control_interno
 
 User = get_user_model()
 
@@ -132,28 +138,51 @@ class PersonasViewSet(ModelViewSet):
 class ComprobantesViewSet(ModelViewSet):
     queryset = Comprobantes.objects.all()
     serializer_class = ComprobantesSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 class RecibosViewSet(ModelViewSet):
     queryset = Recibos.objects.all()
     serializer_class = RecibosSerializer
     pagination_class = KardexPagination
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 class IngresosViewSet(ModelViewSet):
     queryset = Ingresos.objects.all()
     serializer_class = IngresosSerializer
     pagination_class = KardexPagination
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=["post"], url_path="control-interno")
+    def control_interno(self, request):
+        user = request.user
+        if user.taxes_usuario_id is None or user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (taxes_usuario_id / negocio_id)."
+            )
+
+        serializer = CreateControlInternoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        ingreso, detalles = create_control_interno(
+            serializer.validated_data,
+            usuario_id=user.taxes_usuario_id,
+            negocio_id=user.negocio_id,
+        )
+
+        response = ControlInternoResponseSerializer(
+            ingreso,
+            context={"detalles": detalles},
+        )
+        return Response(response.data, status=status.HTTP_201_CREATED)
 
 
 class IngresosDetallesViewSet(ModelViewSet):
     queryset = IngresosDetalles.objects.all()
     serializer_class = IngresosDetallesSerializer
     pagination_class = KardexPagination
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 class UsuariosViewSet(ReadOnlyModelViewSet):
