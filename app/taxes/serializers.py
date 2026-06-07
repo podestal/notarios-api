@@ -4,9 +4,13 @@ from .legacy_db import next_serial_id
 from .models import (
     Catalogos,
     CodigosUnitarios,
+    Comprobantes,
     Documentos,
+    Ingresos,
+    IngresosDetalles,
     Monedas,
     Personas,
+    Recibos,
     TiposIgv,
     Usuarios,
 )
@@ -123,7 +127,114 @@ class PersonasSerializer(serializers.ModelSerializer):
             "creado",
             "actualizado",
         ]
-        read_only_fields = ["id_persona", "creado", "actualizado"]
+        read_only_fields = ["id_persona", "creado", "actualizado"        ]
+
+
+class ComprobantesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comprobantes
+        fields = [
+            "id_comprobante",
+            "codigo",
+            "descripcion",
+            "creado",
+            "actualizado",
+        ]
+        read_only_fields = ["id_comprobante", "creado", "actualizado"]
+
+
+class RecibosSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Recibos
+        fields = [
+            "id_recibo",
+            "fecha_emision",
+            "fecha_vencimiento",
+            "comprobante",
+            "serie",
+            "numero",
+            "exportacion",
+            "moneda_id",
+            "gravada",
+            "inafecta",
+            "exonerada",
+            "igv",
+            "descuento",
+            "total",
+            "igv_porcentaje",
+            "detraccion",
+            "observaciones",
+            "digest_value",
+            "signature_value",
+            "enviada_sunat",
+            "nombre_comprobante",
+            "aceptada_sunat",
+            "usuario_id",
+            "negocio_id",
+            "persona_id",
+            "direccion",
+            "consulta_ticket",
+            "motivo_baja",
+            "fecha_baja",
+            "fecha_resumen",
+            "anulada",
+            "resumen_id",
+            "tipo_recibo_modificado_id",
+            "tipo_nota_credito_id",
+            "tipo_nota_debito_id",
+            "motivo_modificacion",
+            "serie_documento_modificado",
+            "numero_documento_modificado",
+            "baja_id",
+            "observaciones_sunat",
+            "codigo_error",
+            "error_sunat",
+            "gratuita",
+        ]
+        read_only_fields = ["id_recibo"]
+
+
+class IngresosSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ingresos
+        fields = [
+            "id_ingreso",
+            "fecha_emision",
+            "numero",
+            "moneda_id",
+            "total",
+            "anulada",
+            "usuario_id",
+            "negocio_id",
+            "persona_id",
+            "direccion",
+            "motivo_baja",
+            "fecha_baja",
+            "recibo",
+            "serie",
+            "comprobante",
+            "canjeada",
+            "observaciones",
+        ]
+        read_only_fields = ["id_ingreso"]
+
+
+class IngresosDetallesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IngresosDetalles
+        fields = [
+            "id_ingreso_detalle",
+            "cantidad",
+            "descripcion",
+            "total",
+            "detalles",
+            "ingreso",
+            "catalogo_id",
+            "creado",
+            "actualizado",
+            "precio_unitario",
+        ]
+        read_only_fields = ["id_ingreso_detalle", "creado", "actualizado"]
 
 
 class UsuariosSerializer(serializers.ModelSerializer):

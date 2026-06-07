@@ -6,13 +6,29 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from core.permissions import IsSuperuser
 from notaria.pagination import KardexPagination
 
-from .models import Catalogos, CodigosUnitarios, Documentos, Monedas, Personas, TiposIgv, Usuarios
+from .models import (
+    Catalogos,
+    CodigosUnitarios,
+    Comprobantes,
+    Documentos,
+    Ingresos,
+    IngresosDetalles,
+    Monedas,
+    Personas,
+    Recibos,
+    TiposIgv,
+    Usuarios,
+)
 from .serializers import (
     CatalogosSerializer,
     CodigosUnitariosSerializer,
+    ComprobantesSerializer,
     DocumentosSerializer,
+    IngresosDetallesSerializer,
+    IngresosSerializer,
     MonedasSerializer,
     PersonasSerializer,
+    RecibosSerializer,
     TiposIgvSerializer,
     UsuariosSerializer,
 )
@@ -111,6 +127,33 @@ class PersonasViewSet(ModelViewSet):
             qs = qs.filter(documento_id=documento)
 
         return qs
+
+
+class ComprobantesViewSet(ModelViewSet):
+    queryset = Comprobantes.objects.all()
+    serializer_class = ComprobantesSerializer
+    # permission_classes = [IsAuthenticated]
+
+
+class RecibosViewSet(ModelViewSet):
+    queryset = Recibos.objects.all()
+    serializer_class = RecibosSerializer
+    pagination_class = KardexPagination
+    # permission_classes = [IsAuthenticated]
+
+
+class IngresosViewSet(ModelViewSet):
+    queryset = Ingresos.objects.all()
+    serializer_class = IngresosSerializer
+    pagination_class = KardexPagination
+    # permission_classes = [IsAuthenticated]
+
+
+class IngresosDetallesViewSet(ModelViewSet):
+    queryset = IngresosDetalles.objects.all()
+    serializer_class = IngresosDetallesSerializer
+    pagination_class = KardexPagination
+    # permission_classes = [IsAuthenticated]
 
 
 class UsuariosViewSet(ReadOnlyModelViewSet):

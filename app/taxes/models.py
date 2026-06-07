@@ -124,3 +124,108 @@ class Personas(models.Model):
     class Meta:
         managed = False
         db_table = "personas"
+
+
+class Comprobantes(models.Model):
+    id_comprobante = models.AutoField(primary_key=True)
+    codigo = models.CharField(max_length=10)
+    descripcion = models.CharField(max_length=100)
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "comprobantes"
+
+
+class Recibos(models.Model):
+    id_recibo = models.AutoField(primary_key=True)
+    fecha_emision = models.DateTimeField()
+    fecha_vencimiento = models.DateField()
+    comprobante = models.ForeignKey('Comprobantes', models.DO_NOTHING)
+    serie = models.CharField(max_length=10)
+    numero = models.IntegerField()
+    exportacion = models.BooleanField(blank=True, null=True)
+    moneda_id = models.IntegerField()
+    gravada = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    inafecta = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    exonerada = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    igv = models.DecimalField(max_digits=10, decimal_places=2)
+    descuento = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    igv_porcentaje = models.DecimalField(max_digits=10, decimal_places=2)
+    detraccion = models.BooleanField(blank=True, null=True)
+    observaciones = models.CharField(max_length=255, blank=True, null=True)
+    digest_value = models.TextField(blank=True, null=True)
+    signature_value = models.TextField(blank=True, null=True)
+    enviada_sunat = models.BooleanField()
+    nombre_comprobante = models.CharField(max_length=255, blank=True, null=True)
+    aceptada_sunat = models.BooleanField(blank=True, null=True)
+    usuario_id = models.IntegerField()
+    negocio_id = models.IntegerField(blank=True, null=True)
+    persona_id = models.IntegerField()
+    direccion = models.CharField(max_length=200, blank=True, null=True)
+    consulta_ticket = models.CharField(max_length=100, blank=True, null=True)
+    motivo_baja = models.CharField(max_length=2000, blank=True, null=True)
+    fecha_baja = models.DateField(blank=True, null=True)
+    fecha_resumen = models.DateField(blank=True, null=True)
+    anulada = models.BooleanField(blank=True, null=True)
+    resumen_id = models.IntegerField(blank=True, null=True)
+    tipo_recibo_modificado_id = models.IntegerField(blank=True, null=True)
+    tipo_nota_credito_id = models.IntegerField(blank=True, null=True)
+    tipo_nota_debito_id = models.IntegerField(blank=True, null=True)
+    motivo_modificacion = models.CharField(max_length=100, blank=True, null=True)
+    serie_documento_modificado = models.CharField(max_length=60, blank=True, null=True)
+    numero_documento_modificado = models.CharField(max_length=60, blank=True, null=True)
+    baja_id = models.IntegerField(blank=True, null=True)
+    observaciones_sunat = models.CharField(max_length=2000, blank=True, null=True)
+    codigo_error = models.CharField(max_length=60, blank=True, null=True)
+    error_sunat = models.CharField(max_length=2000, blank=True, null=True)
+    gratuita = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "recibos"
+        unique_together = (('negocio_id', 'comprobante', 'serie', 'numero'),)
+
+    
+class Ingresos(models.Model):
+    id_ingreso = models.AutoField(primary_key=True)
+    fecha_emision = models.DateTimeField(blank=True, null=True)
+    numero = models.IntegerField(blank=True, null=True)
+    moneda_id = models.IntegerField(blank=True, null=True)
+    total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    anulada = models.BooleanField()
+    usuario_id = models.IntegerField(blank=True, null=True)
+    negocio_id = models.IntegerField(blank=True, null=True)
+    persona_id = models.IntegerField(blank=True, null=True)
+    direccion = models.CharField(max_length=200, blank=True, null=True)
+    motivo_baja = models.CharField(max_length=200, blank=True, null=True)
+    fecha_baja = models.DateField(blank=True, null=True)
+    recibo = models.ForeignKey('Recibos', models.DO_NOTHING, blank=True, null=True)
+    serie = models.CharField(max_length=10)
+    comprobante = models.ForeignKey('Comprobantes', models.DO_NOTHING, blank=True, null=True)
+    canjeada = models.BooleanField()
+    observaciones = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "ingresos"
+        unique_together = (('negocio_id', 'comprobante', 'serie', 'numero'),)
+
+
+class IngresosDetalles(models.Model):
+    id_ingreso_detalle = models.AutoField(primary_key=True)
+    cantidad = models.IntegerField(blank=True, null=True)
+    descripcion = models.CharField(max_length=200, blank=True, null=True)
+    total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    detalles = models.CharField(max_length=200, blank=True, null=True)
+    ingreso = models.ForeignKey('Ingresos', models.DO_NOTHING, blank=True, null=True)
+    catalogo_id = models.IntegerField(blank=True, null=True)
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
+    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        managed = False
+        db_table = "ingresos_detalles"

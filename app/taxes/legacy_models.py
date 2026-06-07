@@ -8,14 +8,13 @@
 from django.db import models
 
 
-class Documentos(models.Model):
-    id_documento = models.AutoField(primary_key=True)
-    codigo = models.CharField(max_length=2)
+class Comprobantes(models.Model):
+    id_comprobante = models.AutoField(primary_key=True)
+    codigo = models.CharField(max_length=10)
     descripcion = models.CharField(max_length=100)
-    abreviatura = models.CharField(max_length=10, blank=True, null=True)
     creado = models.DateTimeField(blank=True, null=True)
     actualizado = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'documentos'
+        db_table = 'comprobantes'
