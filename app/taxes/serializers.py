@@ -98,13 +98,13 @@ class DocumentosSerializer(serializers.ModelSerializer):
         model = Documentos
         fields = [
             "id_documento",
-            "codigo",
+            # "codigo",
             "descripcion",
             "abreviatura",
-            "creado",
-            "actualizado",
+            # "creado",
+            # "actualizado",
         ]
-        read_only_fields = ["id_documento", "creado", "actualizado"]
+        read_only_fields = ["id_documento",]
 
 
 class PersonasSerializer(serializers.ModelSerializer):
