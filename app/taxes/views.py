@@ -79,10 +79,38 @@ class DocumentosViewSet(ModelViewSet):
 
 
 class PersonasViewSet(ModelViewSet):
-    queryset = Personas.objects.all()
     serializer_class = PersonasSerializer
     pagination_class = KardexPagination
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Personas.objects.all()
+
+        nombres = self.request.query_params.get("nombres", "").strip()
+        if nombres:
+            qs = qs.filter(nombres__icontains=nombres)
+
+        apellido_paterno = self.request.query_params.get("apellido_paterno", "").strip()
+        if apellido_paterno:
+            qs = qs.filter(apellido_paterno__icontains=apellido_paterno)
+
+        apellido_materno = self.request.query_params.get("apellido_materno", "").strip()
+        if apellido_materno:
+            qs = qs.filter(apellido_materno__icontains=apellido_materno)
+
+        razon_social = self.request.query_params.get("razon_social", "").strip()
+        if razon_social:
+            qs = qs.filter(razon_social__icontains=razon_social)
+
+        numero_documento = self.request.query_params.get("numero_documento", "").strip()
+        if numero_documento:
+            qs = qs.filter(numero_documento__icontains=numero_documento)
+
+        documento = self.request.query_params.get("documento", "").strip()
+        if documento:
+            qs = qs.filter(documento_id=documento)
+
+        return qs
 
 
 class UsuariosViewSet(ReadOnlyModelViewSet):

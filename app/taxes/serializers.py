@@ -98,11 +98,8 @@ class DocumentosSerializer(serializers.ModelSerializer):
         model = Documentos
         fields = [
             "id_documento",
-            # "codigo",
             "descripcion",
             "abreviatura",
-            # "creado",
-            # "actualizado",
         ]
         read_only_fields = ["id_documento",]
 
