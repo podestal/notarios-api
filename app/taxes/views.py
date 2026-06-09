@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.decorators import action
@@ -49,6 +50,7 @@ from .services.control_interno import (
     CONTROL_INTERNO_COMPROBANTE_ID,
     create_control_interno,
 )
+from .services.pdf import generate_ingreso_pdf
 from .ingresos_context import ingresos_lookup_context
 
 User = get_user_model()
@@ -344,6 +346,17 @@ class IngresosViewSet(ModelViewSet):
 
         response = self._read_serializer(ingreso, many=False)
         return Response(response.data)
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        self.get_object()
+        pdf_bytes = generate_ingreso_pdf(
+            id_ingreso=int(pk),
+            negocio_id=request.user.negocio_id,
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="ingreso-{pk}.pdf"'
+        return response
 
 
 class IngresosDetallesViewSet(ModelViewSet):
