@@ -8,13 +8,12 @@
 from django.db import models
 
 
-class Comprobantes(models.Model):
-    id_comprobante = models.AutoField(primary_key=True)
-    codigo = models.CharField(max_length=10)
-    descripcion = models.CharField(max_length=100)
-    creado = models.DateTimeField(blank=True, null=True)
-    actualizado = models.DateTimeField(blank=True, null=True)
+class Series(models.Model):
+    id_serie = models.AutoField(primary_key=True)
+    serie = models.CharField(max_length=10)
+    sede_id = models.IntegerField()
+    comprobante = models.ForeignKey('Comprobantes', models.DO_NOTHING)
 
     class Meta:
         managed = False
-        db_table = 'comprobantes'
+        db_table = 'series'

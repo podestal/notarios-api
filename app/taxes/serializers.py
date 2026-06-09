@@ -17,6 +17,7 @@ from .models import (
     Monedas,
     Personas,
     Recibos,
+    Series,
     TiposIgv,
     Usuarios,
 )
@@ -147,6 +148,18 @@ class ComprobantesSerializer(serializers.ModelSerializer):
             "actualizado",
         ]
         read_only_fields = ["id_comprobante", "creado", "actualizado"]
+
+
+class SeriesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Series
+        fields = [
+            "id_serie",
+            "serie",
+            "sede_id",
+            "comprobante",
+        ]
+        read_only_fields = ["id_serie"]
 
 
 class RecibosSerializer(serializers.ModelSerializer):

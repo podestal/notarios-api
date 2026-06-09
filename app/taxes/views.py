@@ -21,6 +21,7 @@ from .models import (
     Monedas,
     Personas,
     Recibos,
+    Series,
     TiposIgv,
     Usuarios,
 )
@@ -37,10 +38,14 @@ from .serializers import (
     MonedasSerializer,
     PersonasSerializer,
     RecibosSerializer,
+    SeriesSerializer,
     TiposIgvSerializer,
     UsuariosSerializer,
 )
-from .services.control_interno import create_control_interno
+from .services.control_interno import (
+    CONTROL_INTERNO_COMPROBANTE_ID,
+    create_control_interno,
+)
 from .ingresos_context import ingresos_lookup_context
 
 User = get_user_model()
@@ -143,6 +148,19 @@ class ComprobantesViewSet(ModelViewSet):
     queryset = Comprobantes.objects.all()
     serializer_class = ComprobantesSerializer
     permission_classes = [IsAuthenticated]
+
+
+class SeriesViewSet(ModelViewSet):
+    queryset = Series.objects.all().order_by("serie")
+    serializer_class = SeriesSerializer
+    # permission_classes = [IsAuthenticated]
+    lookup_field = "id_serie"
+
+    @action(detail=False, methods=["get"], url_path="control_interno")
+    def control_interno(self, request):
+        queryset = self.queryset.filter(comprobante_id=CONTROL_INTERNO_COMPROBANTE_ID)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class RecibosViewSet(ModelViewSet):

@@ -138,6 +138,17 @@ class Comprobantes(models.Model):
         db_table = "comprobantes"
 
 
+class Series(models.Model):
+    id_serie = models.AutoField(primary_key=True)
+    serie = models.CharField(max_length=10)
+    sede_id = models.IntegerField()
+    comprobante = models.ForeignKey(Comprobantes, models.DO_NOTHING)
+
+    class Meta:
+        managed = False
+        db_table = "series"
+
+
 class Recibos(models.Model):
     id_recibo = models.AutoField(primary_key=True)
     fecha_emision = models.DateTimeField()
