@@ -235,7 +235,14 @@ class IngresosSerializer(serializers.ModelSerializer):
             "canjeada",
             "observaciones",
         ]
-        read_only_fields = ["id_ingreso"]
+        read_only_fields = [
+            "id_ingreso",
+            "fecha_emision",
+            "numero",
+            "usuario_id",
+            "negocio_id",
+            "comprobante",
+        ]
 
 
 class IngresosReadSerializer(serializers.ModelSerializer):

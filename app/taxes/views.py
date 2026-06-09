@@ -263,6 +263,11 @@ class IngresosViewSet(ModelViewSet):
         serializer = self._read_serializer(instance, many=False)
         return Response(serializer.data)
 
+    def create(self, request, *args, **kwargs):
+        raise ValidationError(
+            "Use POST /taxes/ingresos/control-interno/ to create ingresos."
+        )
+
     @action(detail=False, methods=["post"], url_path="control-interno")
     def control_interno(self, request):
         user = request.user
