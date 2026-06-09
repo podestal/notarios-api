@@ -36,6 +36,7 @@ from .serializers import (
     IngresosReadSerializer,
     IngresosSerializer,
     MonedasSerializer,
+    PersonaLookupSerializer,
     PersonasSerializer,
     RecibosSerializer,
     SeriesSerializer,
@@ -49,6 +50,9 @@ from .services.control_interno import (
 from .ingresos_context import ingresos_lookup_context
 
 User = get_user_model()
+
+PERSONA_LOOKUP_MAX_RESULTS = 50
+PERSONA_LOOKUP_MIN_LENGTH = 2
 
 
 class CodigosUnitariosViewSet(ModelViewSet):
@@ -142,6 +146,34 @@ class PersonasViewSet(ModelViewSet):
             qs = qs.filter(documento_id=documento)
 
         return qs
+
+    @action(detail=False, methods=["get"], url_path="lookup")
+    def lookup(self, request):
+        q = request.query_params.get("q", "").strip()
+        if not q:
+            raise ValidationError("Query param 'q' is required.")
+        if len(q) < PERSONA_LOOKUP_MIN_LENGTH:
+            raise ValidationError(
+                f"q must be at least {PERSONA_LOOKUP_MIN_LENGTH} characters."
+            )
+
+        qs = (
+            Personas.objects.filter(
+                Q(numero_documento__icontains=q)
+                | Q(nombres__icontains=q)
+                | Q(apellido_paterno__icontains=q)
+                | Q(apellido_materno__icontains=q)
+                | Q(nombre_completo__icontains=q)
+            )
+            .order_by("nombre_completo", "id_persona")
+        )
+        rows = list(qs[: PERSONA_LOOKUP_MAX_RESULTS + 1])
+        truncated = len(rows) > PERSONA_LOOKUP_MAX_RESULTS
+        if truncated:
+            rows = rows[: PERSONA_LOOKUP_MAX_RESULTS]
+
+        serializer = PersonaLookupSerializer(rows, many=True)
+        return Response({"results": serializer.data, "truncated": truncated})
 
 
 class ComprobantesViewSet(ModelViewSet):

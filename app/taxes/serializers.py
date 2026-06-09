@@ -134,7 +134,24 @@ class PersonasSerializer(serializers.ModelSerializer):
             "creado",
             "actualizado",
         ]
-        read_only_fields = ["id_persona", "creado", "actualizado"        ]
+        read_only_fields = ["id_persona", "creado", "actualizado"]
+
+
+class PersonaLookupSerializer(serializers.ModelSerializer):
+    documento = serializers.IntegerField(source="documento_id", read_only=True)
+
+    class Meta:
+        model = Personas
+        fields = [
+            "id_persona",
+            "numero_documento",
+            "nombres",
+            "apellido_paterno",
+            "apellido_materno",
+            "nombre_completo",
+            "direccion",
+            "documento",
+        ]
 
 
 class ComprobantesSerializer(serializers.ModelSerializer):

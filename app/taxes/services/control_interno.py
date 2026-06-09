@@ -2,7 +2,7 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from taxes.legacy_db import next_serial_id
+from taxes.legacy_db import next_serial_id, next_serial_ids
 from taxes.models import Ingresos, IngresosDetalles
 
 CONTROL_INTERNO_COMPROBANTE_ID = 7
@@ -49,9 +49,15 @@ def create_control_interno(data, usuario_id: int, negocio_id: int):
         anulada=False,
     )
 
+    now = timezone.now()
+    detalle_ids = next_serial_ids(
+        "ingresos_detalles",
+        "id_ingreso_detalle",
+        len(data["lineas"]),
+    )
     detalles = [
         IngresosDetalles(
-            id_ingreso_detalle=next_serial_id("ingresos_detalles", "id_ingreso_detalle"),
+            id_ingreso_detalle=detalle_ids[index],
             ingreso_id=ingreso.id_ingreso,
             catalogo_id=line["catalogo_id"],
             cantidad=line["cantidad"],
@@ -59,8 +65,10 @@ def create_control_interno(data, usuario_id: int, negocio_id: int):
             detalles=line.get("detalles") or "-",
             precio_unitario=line["precio_unitario"],
             total=line["total"],
+            creado=now,
+            actualizado=now,
         )
-        for line in data["lineas"]
+        for index, line in enumerate(data["lineas"])
     ]
     IngresosDetalles.objects.using(POSTGRES_DB).bulk_create(detalles)
 
