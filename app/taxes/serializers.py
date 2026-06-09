@@ -1,3 +1,6 @@
+from datetime import date, datetime, time
+
+from django.utils import timezone as django_tz
 from rest_framework import serializers
 
 from .ingresos_context import (
@@ -328,6 +331,48 @@ class IngresosDetallesSerializer(serializers.ModelSerializer):
         read_only_fields = ["id_ingreso_detalle", "creado", "actualizado"]
 
 
+class FechaEmisionInputField(serializers.Field):
+    """
+    Accept YYYY-MM-DD or ISO datetime.
+
+    Stored as legacy local Peru wall time with microsecond precision.
+    Date-only values use the selected calendar date with the current local time.
+    """
+
+    default_error_messages = {
+        "invalid": "fecha_emision must be YYYY-MM-DD or an ISO datetime string.",
+    }
+    _datetime_field = serializers.DateTimeField()
+
+    def to_internal_value(self, data):
+        now_local = django_tz.localtime()
+
+        if isinstance(data, datetime):
+            parsed = data
+        elif isinstance(data, date):
+            parsed = datetime.combine(data, now_local.time())
+        elif isinstance(data, str):
+            value = data.strip()
+            if len(value) == 10 and value[4] == "-" and value[7] == "-":
+                try:
+                    picked_date = date.fromisoformat(value)
+                except ValueError:
+                    self.fail("invalid")
+                parsed = datetime.combine(picked_date, now_local.time())
+            else:
+                parsed = self._datetime_field.to_internal_value(value)
+        else:
+            self.fail("invalid")
+
+        if django_tz.is_aware(parsed):
+            parsed = django_tz.localtime(parsed).replace(tzinfo=None)
+
+        if parsed.microsecond == 0:
+            parsed = parsed.replace(microsecond=now_local.microsecond)
+
+        return parsed
+
+
 class ControlInternoLineaSerializer(serializers.Serializer):
     catalogo_id = serializers.IntegerField()
     cantidad = serializers.IntegerField()
@@ -338,6 +383,7 @@ class ControlInternoLineaSerializer(serializers.Serializer):
 
 
 class CreateControlInternoSerializer(serializers.Serializer):
+    fecha_emision = FechaEmisionInputField()
     serie = serializers.CharField(max_length=10)
     moneda_id = serializers.IntegerField()
     persona_id = serializers.IntegerField()

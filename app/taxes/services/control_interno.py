@@ -1,4 +1,6 @@
-from django.db import transaction
+from datetime import datetime
+
+from django.db import connections, transaction
 from django.db.models import Max
 from django.utils import timezone
 
@@ -30,12 +32,13 @@ def create_control_interno(data, usuario_id: int, negocio_id: int):
         comprobante_id=CONTROL_INTERNO_COMPROBANTE_ID,
     )
 
+    fecha_emision: datetime = data["fecha_emision"]
+
     ingreso = Ingresos.objects.using(POSTGRES_DB).create(
         id_ingreso=next_serial_id("ingresos", "id_ingreso"),
         comprobante_id=CONTROL_INTERNO_COMPROBANTE_ID,
         serie=data["serie"],
         numero=numero,
-        fecha_emision=timezone.now(),
         moneda_id=data["moneda_id"],
         persona_id=data["persona_id"],
         direccion=data["direccion"],
@@ -48,6 +51,14 @@ def create_control_interno(data, usuario_id: int, negocio_id: int):
         canjeada=False,
         anulada=False,
     )
+
+    # Legacy column is timestamp without time zone (local Peru wall time).
+    with connections[POSTGRES_DB].cursor() as cursor:
+        cursor.execute(
+            "UPDATE ingresos SET fecha_emision = %s WHERE id_ingreso = %s",
+            [fecha_emision, ingreso.id_ingreso],
+        )
+    ingreso.fecha_emision = fecha_emision
 
     now = timezone.now()
     detalle_ids = next_serial_ids(
