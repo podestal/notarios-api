@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -26,6 +27,7 @@ from .models import (
     Usuarios,
 )
 from .serializers import (
+    AnularIngresoSerializer,
     CatalogosSerializer,
     CodigosUnitariosSerializer,
     ComprobantesSerializer,
@@ -322,6 +324,26 @@ class IngresosViewSet(ModelViewSet):
             context={"detalles": detalles},
         )
         return Response(response.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="anular")
+    def anular(self, request, pk=None):
+        ingreso = self.get_object()
+
+        if ingreso.anulada:
+            raise ValidationError("El ingreso ya está anulado.")
+
+        serializer = AnularIngresoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        ingreso.anulada = True
+        ingreso.motivo_baja = serializer.validated_data.get("motivo_baja") or "-"
+        ingreso.fecha_baja = timezone.localdate()
+        ingreso.save(
+            update_fields=["anulada", "motivo_baja", "fecha_baja"],
+        )
+
+        response = self._read_serializer(ingreso, many=False)
+        return Response(response.data)
 
 
 class IngresosDetallesViewSet(ModelViewSet):

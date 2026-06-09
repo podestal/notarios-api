@@ -403,6 +403,15 @@ class CreateControlInternoSerializer(serializers.Serializer):
         return value
 
 
+class AnularIngresoSerializer(serializers.Serializer):
+    motivo_baja = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default="-",
+    )
+
+
 class ControlInternoResponseSerializer(serializers.ModelSerializer):
     comprobante = serializers.IntegerField(source="comprobante_id", read_only=True)
     lineas = serializers.SerializerMethodField()
