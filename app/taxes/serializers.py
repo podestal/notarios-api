@@ -1,5 +1,11 @@
 from rest_framework import serializers
 
+from .ingresos_context import (
+    moneda_display,
+    persona_documento_display,
+    persona_nombres_display,
+    usuario_display,
+)
 from .legacy_db import next_serial_id
 from .models import (
     Catalogos,
@@ -217,6 +223,54 @@ class IngresosSerializer(serializers.ModelSerializer):
             "observaciones",
         ]
         read_only_fields = ["id_ingreso"]
+
+
+class IngresosReadSerializer(serializers.ModelSerializer):
+    comprobante = serializers.IntegerField(source="comprobante_id", read_only=True)
+    persona_documento = serializers.SerializerMethodField()
+    persona_nombres = serializers.SerializerMethodField()
+    usuario = serializers.SerializerMethodField()
+    moneda = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ingresos
+        fields = [
+            "id_ingreso",
+            "fecha_emision",
+            "numero",
+            "moneda",
+            "total",
+            "anulada",
+            "usuario",
+            "negocio_id",
+            "persona_documento",
+            "persona_nombres",
+            "direccion",
+            "motivo_baja",
+            "fecha_baja",
+            "recibo",
+            "serie",
+            "comprobante",
+            "canjeada",
+            "observaciones",
+        ]
+
+    def get_persona_documento(self, obj):
+        persona = self.context.get("personas_by_id", {}).get(obj.persona_id)
+        return persona_documento_display(persona)
+
+    def get_persona_nombres(self, obj):
+        persona = self.context.get("personas_by_id", {}).get(obj.persona_id)
+        return persona_nombres_display(persona)
+
+    def get_usuario(self, obj):
+        usuario = self.context.get("usuarios_by_id", {}).get(obj.usuario_id)
+        personas_by_id = self.context.get("personas_by_id", {})
+        return usuario_display(usuario, personas_by_id)
+
+    def get_moneda(self, obj):
+        moneda = self.context.get("monedas_by_id", {}).get(obj.moneda_id)
+        return moneda_display(moneda)
 
 
 class IngresosDetallesSerializer(serializers.ModelSerializer):

@@ -1,4 +1,6 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Q
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -30,6 +32,7 @@ from .serializers import (
     CreateControlInternoSerializer,
     DocumentosSerializer,
     IngresosDetallesSerializer,
+    IngresosReadSerializer,
     IngresosSerializer,
     MonedasSerializer,
     PersonasSerializer,
@@ -38,6 +41,7 @@ from .serializers import (
     UsuariosSerializer,
 )
 from .services.control_interno import create_control_interno
+from .ingresos_context import ingresos_lookup_context
 
 User = get_user_model()
 
@@ -149,10 +153,97 @@ class RecibosViewSet(ModelViewSet):
 
 
 class IngresosViewSet(ModelViewSet):
-    queryset = Ingresos.objects.all()
     serializer_class = IngresosSerializer
     pagination_class = KardexPagination
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Ingresos.objects.all().order_by("-fecha_emision", "-id_ingreso")
+
+        user = self.request.user
+        if user.negocio_id is not None:
+            qs = qs.filter(negocio_id=user.negocio_id)
+
+        params = self.request.query_params
+
+        fecha_desde = params.get("fecha_emision_desde", "").strip()
+        if fecha_desde:
+            date_value = parse_date(fecha_desde)
+            if date_value:
+                qs = qs.filter(fecha_emision__date__gte=date_value)
+            else:
+                parsed = parse_datetime(fecha_desde)
+                if parsed:
+                    qs = qs.filter(fecha_emision__gte=parsed)
+
+        fecha_hasta = params.get("fecha_emision_hasta", "").strip()
+        if fecha_hasta:
+            date_value = parse_date(fecha_hasta)
+            if date_value:
+                qs = qs.filter(fecha_emision__date__lte=date_value)
+            else:
+                parsed = parse_datetime(fecha_hasta)
+                if parsed:
+                    qs = qs.filter(fecha_emision__lte=parsed)
+
+        persona_documento = params.get("persona_documento", "").strip()
+        if persona_documento:
+            persona_ids = Personas.objects.filter(
+                numero_documento__icontains=persona_documento,
+            ).values_list("id_persona", flat=True)
+            qs = qs.filter(persona_id__in=persona_ids)
+
+        persona_nombres = params.get("persona_nombres", "").strip()
+        if persona_nombres:
+            persona_ids = Personas.objects.filter(
+                Q(nombre_completo__icontains=persona_nombres)
+                | Q(nombres__icontains=persona_nombres)
+                | Q(apellido_paterno__icontains=persona_nombres)
+                | Q(apellido_materno__icontains=persona_nombres)
+            ).values_list("id_persona", flat=True)
+            qs = qs.filter(persona_id__in=persona_ids)
+
+        usuario = params.get("usuario", "").strip()
+        if usuario:
+            persona_ids = Personas.objects.filter(
+                Q(nombre_completo__icontains=usuario)
+                | Q(nombres__icontains=usuario)
+                | Q(apellido_paterno__icontains=usuario)
+                | Q(apellido_materno__icontains=usuario)
+            ).values_list("id_persona", flat=True)
+            usuario_ids = Usuarios.objects.filter(
+                Q(usuario__icontains=usuario) | Q(persona_id__in=persona_ids)
+            ).values_list("id_usuario", flat=True)
+            qs = qs.filter(usuario_id__in=usuario_ids)
+
+        return qs
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return IngresosReadSerializer
+        return IngresosSerializer
+
+    def _read_serializer(self, ingresos, *, many: bool):
+        items = ingresos if many else [ingresos]
+        context = {
+            **self.get_serializer_context(),
+            **ingresos_lookup_context(items),
+        }
+        return IngresosReadSerializer(ingresos, many=many, context=context)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self._read_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self._read_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self._read_serializer(instance, many=False)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["post"], url_path="control-interno")
     def control_interno(self, request):
