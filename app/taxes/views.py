@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -20,6 +19,7 @@ from .models import (
     Documentos,
     Ingresos,
     IngresosDetalles,
+    ItemsRecibos,
     Monedas,
     Personas,
     Recibos,
@@ -40,9 +40,11 @@ from .serializers import (
     IngresosDetallesSerializer,
     IngresosReadSerializer,
     IngresosSerializer,
+    ItemsRecibosSerializer,
     MonedasSerializer,
     PersonaLookupSerializer,
     PersonasSerializer,
+    RecibosReadSerializer,
     RecibosSerializer,
     SeriesSerializer,
     TiposIgvSerializer,
@@ -53,8 +55,10 @@ from .services.control_interno import (
     CONTROL_INTERNO_COMPROBANTE_ID,
     create_control_interno,
 )
+from .services.document_lookup import document_lookup_context
+from .services.document_queryset import apply_document_list_filters
+from .services.document_views import DocumentReadViewSetMixin
 from .services.pdf import generate_ingreso_pdf
-from .ingresos_context import ingresos_lookup_context
 
 User = get_user_model()
 
@@ -202,15 +206,76 @@ class SeriesViewSet(ModelViewSet):
         return Response(serializer.data)
 
 
-class RecibosViewSet(ModelViewSet):
-    queryset = Recibos.objects.all()
+class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
     serializer_class = RecibosSerializer
+    read_serializer_class = RecibosReadSerializer
     pagination_class = KardexPagination
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        qs = Recibos.objects.all().order_by("-fecha_emision", "-id_recibo")
 
-class IngresosViewSet(ModelViewSet):
+        user = self.request.user
+        if user.negocio_id is not None:
+            qs = qs.filter(negocio_id=user.negocio_id)
+
+        params = self.request.query_params
+        qs = apply_document_list_filters(qs, params)
+
+        comprobante_id = (
+            params.get("comprobante_id", "") or params.get("comprobante", "")
+        ).strip()
+        if comprobante_id:
+            qs = qs.filter(comprobante_id=comprobante_id)
+
+        serie = params.get("serie", "").strip()
+        if serie:
+            qs = qs.filter(serie__icontains=serie)
+
+        numero = params.get("numero", "").strip()
+        if numero:
+            qs = qs.filter(numero=numero)
+
+        anulada = params.get("anulada", "").strip().lower()
+        if anulada in ("true", "false"):
+            qs = qs.filter(anulada=(anulada == "true"))
+
+        return qs
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return RecibosReadSerializer
+        return RecibosSerializer
+
+    def create(self, request, *args, **kwargs):
+        raise ValidationError(
+            "Use POST /taxes/ingresos/{id}/canjear/ to create recibos from control interno."
+        )
+
+    @action(detail=True, methods=["post"], url_path="anular")
+    def anular(self, request, pk=None):
+        recibo = self.get_object()
+
+        if recibo.anulada:
+            raise ValidationError("El recibo ya está anulado.")
+
+        serializer = AnularIngresoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        recibo.anulada = True
+        recibo.motivo_baja = serializer.validated_data.get("motivo_baja") or "-"
+        recibo.fecha_baja = timezone.localdate()
+        recibo.save(
+            update_fields=["anulada", "motivo_baja", "fecha_baja"],
+        )
+
+        response = self._read_serializer(recibo, many=False)
+        return Response(response.data)
+
+
+class IngresosViewSet(DocumentReadViewSetMixin, ModelViewSet):
     serializer_class = IngresosSerializer
+    read_serializer_class = IngresosReadSerializer
     pagination_class = KardexPagination
     permission_classes = [IsAuthenticated]
 
@@ -221,86 +286,12 @@ class IngresosViewSet(ModelViewSet):
         if user.negocio_id is not None:
             qs = qs.filter(negocio_id=user.negocio_id)
 
-        params = self.request.query_params
-
-        fecha_desde = params.get("fecha_emision_desde", "").strip()
-        if fecha_desde:
-            date_value = parse_date(fecha_desde)
-            if date_value:
-                qs = qs.filter(fecha_emision__date__gte=date_value)
-            else:
-                parsed = parse_datetime(fecha_desde)
-                if parsed:
-                    qs = qs.filter(fecha_emision__gte=parsed)
-
-        fecha_hasta = params.get("fecha_emision_hasta", "").strip()
-        if fecha_hasta:
-            date_value = parse_date(fecha_hasta)
-            if date_value:
-                qs = qs.filter(fecha_emision__date__lte=date_value)
-            else:
-                parsed = parse_datetime(fecha_hasta)
-                if parsed:
-                    qs = qs.filter(fecha_emision__lte=parsed)
-
-        persona_documento = params.get("persona_documento", "").strip()
-        if persona_documento:
-            persona_ids = Personas.objects.filter(
-                numero_documento__icontains=persona_documento,
-            ).values_list("id_persona", flat=True)
-            qs = qs.filter(persona_id__in=persona_ids)
-
-        persona_nombres = params.get("persona_nombres", "").strip()
-        if persona_nombres:
-            persona_ids = Personas.objects.filter(
-                Q(nombre_completo__icontains=persona_nombres)
-                | Q(nombres__icontains=persona_nombres)
-                | Q(apellido_paterno__icontains=persona_nombres)
-                | Q(apellido_materno__icontains=persona_nombres)
-            ).values_list("id_persona", flat=True)
-            qs = qs.filter(persona_id__in=persona_ids)
-
-        usuario = params.get("usuario", "").strip()
-        if usuario:
-            persona_ids = Personas.objects.filter(
-                Q(nombre_completo__icontains=usuario)
-                | Q(nombres__icontains=usuario)
-                | Q(apellido_paterno__icontains=usuario)
-                | Q(apellido_materno__icontains=usuario)
-            ).values_list("id_persona", flat=True)
-            usuario_ids = Usuarios.objects.filter(
-                Q(usuario__icontains=usuario) | Q(persona_id__in=persona_ids)
-            ).values_list("id_usuario", flat=True)
-            qs = qs.filter(usuario_id__in=usuario_ids)
-
-        return qs
+        return apply_document_list_filters(qs, self.request.query_params)
 
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):
             return IngresosReadSerializer
         return IngresosSerializer
-
-    def _read_serializer(self, ingresos, *, many: bool):
-        items = ingresos if many else [ingresos]
-        context = {
-            **self.get_serializer_context(),
-            **ingresos_lookup_context(items),
-        }
-        return IngresosReadSerializer(ingresos, many=many, context=context)
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self._read_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        serializer = self._read_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self._read_serializer(instance, many=False)
-        return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
         raise ValidationError(
@@ -381,7 +372,7 @@ class IngresosViewSet(ModelViewSet):
             },
             context={
                 **self.get_serializer_context(),
-                **ingresos_lookup_context([ingreso]),
+                **document_lookup_context([ingreso, recibo]),
             },
         )
         return Response(response.data, status=status.HTTP_201_CREATED)
@@ -399,10 +390,29 @@ class IngresosViewSet(ModelViewSet):
 
 
 class IngresosDetallesViewSet(ModelViewSet):
-    queryset = IngresosDetalles.objects.all()
     serializer_class = IngresosDetallesSerializer
     pagination_class = KardexPagination
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = IngresosDetalles.objects.all().order_by("-id_ingreso_detalle")
+        ingreso_id = self.request.query_params.get("ingreso_id", "").strip()
+        if ingreso_id:
+            qs = qs.filter(ingreso_id=ingreso_id)
+        return qs
+
+
+class ItemsRecibosViewSet(ModelViewSet):
+    serializer_class = ItemsRecibosSerializer
+    pagination_class = KardexPagination
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ItemsRecibos.objects.all().order_by("-id_item")
+        recibo_id = self.request.query_params.get("recibo_id", "").strip()
+        if recibo_id:
+            qs = qs.filter(recibo_id=recibo_id)
+        return qs
 
 
 class UsuariosViewSet(ReadOnlyModelViewSet):

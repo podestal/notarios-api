@@ -3,7 +3,7 @@ from datetime import date, datetime, time
 from django.utils import timezone as django_tz
 from rest_framework import serializers
 
-from .ingresos_context import (
+from .services.document_lookup import (
     moneda_display,
     persona_documento_display,
     persona_nombres_display,
@@ -234,6 +234,62 @@ class RecibosSerializer(serializers.ModelSerializer):
         read_only_fields = ["id_recibo"]
 
 
+class RecibosReadSerializer(serializers.ModelSerializer):
+    comprobante = serializers.IntegerField(source="comprobante_id", read_only=True)
+    persona_documento = serializers.SerializerMethodField()
+    persona_nombres = serializers.SerializerMethodField()
+    usuario = serializers.SerializerMethodField()
+    moneda = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Recibos
+        fields = [
+            "id_recibo",
+            "fecha_emision",
+            "fecha_vencimiento",
+            "comprobante",
+            "serie",
+            "numero",
+            "moneda",
+            "gravada",
+            "inafecta",
+            "exonerada",
+            "igv",
+            "descuento",
+            "total",
+            "igv_porcentaje",
+            "anulada",
+            "usuario",
+            "negocio_id",
+            "persona_documento",
+            "persona_nombres",
+            "direccion",
+            "observaciones",
+            "motivo_baja",
+            "fecha_baja",
+            "enviada_sunat",
+            "aceptada_sunat",
+            "nombre_comprobante",
+        ]
+
+    def get_persona_documento(self, obj):
+        persona = self.context.get("personas_by_id", {}).get(obj.persona_id)
+        return persona_documento_display(persona)
+
+    def get_persona_nombres(self, obj):
+        persona = self.context.get("personas_by_id", {}).get(obj.persona_id)
+        return persona_nombres_display(persona)
+
+    def get_usuario(self, obj):
+        usuario = self.context.get("usuarios_by_id", {}).get(obj.usuario_id)
+        personas_by_id = self.context.get("personas_by_id", {})
+        return usuario_display(usuario, personas_by_id)
+
+    def get_moneda(self, obj):
+        moneda = self.context.get("monedas_by_id", {}).get(obj.moneda_id)
+        return moneda_display(moneda)
+
+
 class IngresosSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ingresos
@@ -426,6 +482,7 @@ class ItemsRecibosSerializer(serializers.ModelSerializer):
             "creado",
             "actualizado",
         ]
+        read_only_fields = ["id_item", "creado", "actualizado"]
 
 
 class CanjeIngresoSerializer(serializers.Serializer):
@@ -442,7 +499,7 @@ class CanjeIngresoSerializer(serializers.Serializer):
 
 class CanjeResponseSerializer(serializers.Serializer):
     ingreso = IngresosReadSerializer()
-    recibo = RecibosSerializer()
+    recibo = RecibosReadSerializer()
     items = ItemsRecibosSerializer(many=True)
 
 
