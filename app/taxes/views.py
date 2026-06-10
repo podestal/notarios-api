@@ -29,6 +29,8 @@ from .models import (
 )
 from .serializers import (
     AnularIngresoSerializer,
+    CanjeIngresoSerializer,
+    CanjeResponseSerializer,
     CatalogosSerializer,
     CodigosUnitariosSerializer,
     ComprobantesSerializer,
@@ -46,6 +48,7 @@ from .serializers import (
     TiposIgvSerializer,
     UsuariosSerializer,
 )
+from .services.canje import canjear_ingreso
 from .services.control_interno import (
     CONTROL_INTERNO_COMPROBANTE_ID,
     create_control_interno,
@@ -346,6 +349,42 @@ class IngresosViewSet(ModelViewSet):
 
         response = self._read_serializer(ingreso, many=False)
         return Response(response.data)
+
+    @action(detail=True, methods=["post"], url_path="canjear")
+    def canjear(self, request, pk=None):
+        ingreso = self.get_object()
+        user = request.user
+        if user.taxes_usuario_id is None or user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (taxes_usuario_id / negocio_id)."
+            )
+
+        serializer = CanjeIngresoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        ingreso, recibo, items = canjear_ingreso(
+            ingreso_id=ingreso.id_ingreso,
+            usuario_id=user.taxes_usuario_id,
+            negocio_id=user.negocio_id,
+            comprobante_id=data["comprobante_id"],
+            serie=data["serie"],
+            observaciones=data.get("observaciones") or "",
+            fecha_emision=data.get("fecha_emision"),
+        )
+
+        response = CanjeResponseSerializer(
+            {
+                "ingreso": ingreso,
+                "recibo": recibo,
+                "items": items,
+            },
+            context={
+                **self.get_serializer_context(),
+                **ingresos_lookup_context([ingreso]),
+            },
+        )
+        return Response(response.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):

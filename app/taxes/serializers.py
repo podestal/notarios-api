@@ -17,6 +17,7 @@ from .models import (
     Documentos,
     Ingresos,
     IngresosDetalles,
+    ItemsRecibos,
     Monedas,
     Personas,
     Recibos,
@@ -401,6 +402,48 @@ class CreateControlInternoSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("At least one line is required.")
         return value
+
+
+class ItemsRecibosSerializer(serializers.ModelSerializer):
+    recibo = serializers.IntegerField(source="recibo_id", read_only=True)
+    tipo_igv = serializers.IntegerField(source="tipo_igv_id", read_only=True)
+
+    class Meta:
+        model = ItemsRecibos
+        fields = [
+            "id_item",
+            "cantidad",
+            "descripcion",
+            "valor_unitario",
+            "precio_unitario",
+            "subtotal",
+            "igv",
+            "total",
+            "recibo",
+            "catalogo_id",
+            "tipo_igv",
+            "detalles",
+            "creado",
+            "actualizado",
+        ]
+
+
+class CanjeIngresoSerializer(serializers.Serializer):
+    serie = serializers.CharField(max_length=10)
+    comprobante_id = serializers.IntegerField(default=2)
+    observaciones = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    fecha_emision = FechaEmisionInputField(required=False, allow_null=True)
+
+
+class CanjeResponseSerializer(serializers.Serializer):
+    ingreso = IngresosReadSerializer()
+    recibo = RecibosSerializer()
+    items = ItemsRecibosSerializer(many=True)
 
 
 class AnularIngresoSerializer(serializers.Serializer):
