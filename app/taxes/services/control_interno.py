@@ -8,6 +8,7 @@ from taxes.legacy_db import next_serial_id, next_serial_ids
 from taxes.models import Ingresos, IngresosDetalles
 
 CONTROL_INTERNO_COMPROBANTE_ID = 7
+BOLETA_COMPROBANTE_ID = 2
 POSTGRES_DB = "postgres"
 
 

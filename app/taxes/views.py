@@ -52,6 +52,7 @@ from .serializers import (
 )
 from .services.canje import canjear_ingreso
 from .services.control_interno import (
+    BOLETA_COMPROBANTE_ID,
     CONTROL_INTERNO_COMPROBANTE_ID,
     create_control_interno,
 )
@@ -202,6 +203,12 @@ class SeriesViewSet(ModelViewSet):
     @action(detail=False, methods=["get"], url_path="control_interno")
     def control_interno(self, request):
         queryset = self.queryset.filter(comprobante_id=CONTROL_INTERNO_COMPROBANTE_ID)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="boleta")
+    def boleta(self, request):
+        queryset = self.queryset.filter(comprobante_id=BOLETA_COMPROBANTE_ID)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
