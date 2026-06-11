@@ -58,7 +58,7 @@ from .services.control_interno import (
 from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
 from .services.document_views import DocumentReadViewSetMixin
-from .services.pdf import generate_ingreso_pdf
+from .services.pdf import generate_ingreso_pdf, generate_recibo_pdf
 
 User = get_user_model()
 
@@ -272,6 +272,17 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         response = self._read_serializer(recibo, many=False)
         return Response(response.data)
 
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        self.get_object()
+        pdf_bytes = generate_recibo_pdf(
+            id_recibo=int(pk),
+            negocio_id=request.user.negocio_id,
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="recibo-{pk}.pdf"'
+        return response
+
 
 class IngresosViewSet(DocumentReadViewSetMixin, ModelViewSet):
     serializer_class = IngresosSerializer
@@ -285,6 +296,9 @@ class IngresosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         user = self.request.user
         if user.negocio_id is not None:
             qs = qs.filter(negocio_id=user.negocio_id)
+
+        if self.action == "list":
+            qs = qs.filter(canjeada=False)
 
         return apply_document_list_filters(qs, self.request.query_params)
 

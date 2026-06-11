@@ -67,7 +67,7 @@ def _styles():
     }
 
 
-def render_ingreso_pdf(context: dict) -> bytes:
+def render_document_pdf(context: dict) -> bytes:
     styles = _styles()
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -166,6 +166,22 @@ def render_ingreso_pdf(context: dict) -> bytes:
     )
     add(table)
 
+    for label, amount in context.get("extra_totales", []):
+        extra_table = Table(
+            [
+                [
+                    Paragraph(label, styles["center_bold"]),
+                    Paragraph("S/", styles["center_bold"]),
+                    Paragraph(str(amount), styles["center_bold"]),
+                ]
+            ],
+            colWidths=[PAGE_WIDTH * 0.6, PAGE_WIDTH * 0.12, PAGE_WIDTH * 0.22],
+        )
+        extra_table.setStyle(
+            TableStyle([("ALIGN", (2, 0), (2, 0), "RIGHT")])
+        )
+        add(extra_table)
+
     total_table = Table(
         [
             [
@@ -192,14 +208,7 @@ def render_ingreso_pdf(context: dict) -> bytes:
         add(p(f"OBS.: {context['observaciones']}"))
 
     add(p(f"Atendido por: {context['usuario']}", "small"))
-    add(
-        p(
-            "Representación impresa de la <br/>"
-            f"{context['comprobante']} , <br/>"
-            "<font size='6'>Sólo para control interno, sirvase canjear por su comprobante de pago "
-            "boleta de venta o factura el día de realizado el servicio.</font>",
-        )
-    )
+    add(p(context.get("leyenda_html") or ""))
 
     qr_image = Image(
         io.BytesIO(context["qr_image_bytes"]),

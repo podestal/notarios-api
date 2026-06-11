@@ -324,6 +324,7 @@ class IngresosSerializer(serializers.ModelSerializer):
 
 class IngresosReadSerializer(serializers.ModelSerializer):
     comprobante = serializers.IntegerField(source="comprobante_id", read_only=True)
+    recibo_id = serializers.IntegerField(read_only=True, allow_null=True)
     persona_documento = serializers.SerializerMethodField()
     persona_nombres = serializers.SerializerMethodField()
     usuario = serializers.SerializerMethodField()
@@ -346,6 +347,7 @@ class IngresosReadSerializer(serializers.ModelSerializer):
             "motivo_baja",
             "fecha_baja",
             "recibo",
+            "recibo_id",
             "serie",
             "comprobante",
             "canjeada",

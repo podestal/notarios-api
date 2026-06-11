@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db import connections, transaction
+from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -17,7 +17,9 @@ from taxes.models import (
 from taxes.services.control_interno import CONTROL_INTERNO_COMPROBANTE_ID
 
 POSTGRES_DB = "postgres"
+FACTURA_COMPROBANTE_ID = 1
 BOLETA_COMPROBANTE_ID = 2
+ELECTRONIC_COMPROBANTE_IDS = frozenset({FACTURA_COMPROBANTE_ID, BOLETA_COMPROBANTE_ID})
 IGV_PORCENTAJE = Decimal("18.00")
 IGV_RATE = Decimal("0.18")
 TWOPLACES = Decimal("0.01")
@@ -90,6 +92,11 @@ def canjear_ingreso(
 
     if ingreso.anulada:
         raise ValidationError("No se puede canjear un ingreso anulado.")
+
+    if comprobante_id not in ELECTRONIC_COMPROBANTE_IDS:
+        raise ValidationError(
+            "Solo se puede canjear por boleta (2) o factura (1) electrónica."
+        )
 
     detalles = list(
         IngresosDetalles.objects.using(POSTGRES_DB).filter(ingreso_id=ingreso_id)
@@ -183,24 +190,21 @@ def canjear_ingreso(
     ItemsRecibos.objects.using(POSTGRES_DB).bulk_create(items)
 
     fecha_baja = timezone.localdate()
-    with connections[POSTGRES_DB].cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE ingresos
-            SET motivo_baja = %s,
-                fecha_baja = %s,
-                canjeada = TRUE,
-                anulada = TRUE,
-                recibo_id = %s
-            WHERE id_ingreso = %s
-            """,
-            ["CANJEADA", fecha_baja, recibo.id_recibo, ingreso_id],
-        )
-
     ingreso.motivo_baja = "CANJEADA"
     ingreso.fecha_baja = fecha_baja
     ingreso.canjeada = True
     ingreso.anulada = True
     ingreso.recibo_id = recibo.id_recibo
+    ingreso.save(
+        using=POSTGRES_DB,
+        update_fields=[
+            "motivo_baja",
+            "fecha_baja",
+            "canjeada",
+            "anulada",
+            "recibo_id",
+        ],
+    )
+    ingreso.refresh_from_db(using=POSTGRES_DB)
 
     return ingreso, recibo, items

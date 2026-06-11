@@ -1,15 +1,13 @@
-import io
-from datetime import date, datetime
 from decimal import Decimal
 
-import qrcode
 from django.db import connections
 from rest_framework.exceptions import NotFound
 
 from taxes.models import Ingresos
 
+from .common import format_date, format_time, qr_image_bytes
 from .numtoletras import numtoletras
-from .render import render_ingreso_pdf
+from .render import render_document_pdf
 
 POSTGRES_DB = "postgres"
 
@@ -31,29 +29,6 @@ def _as_list(value) -> list:
 
 def _clean_braces(value) -> str:
     return str(value).replace("{", "").replace("}", "").strip()
-
-
-def _format_date(value) -> str:
-    if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d")
-    if isinstance(value, date):
-        return value.isoformat()
-    return str(value)
-
-
-def _format_time(value) -> str:
-    if isinstance(value, datetime):
-        return value.strftime("%H:%M:%S")
-    if hasattr(value, "strftime"):
-        return value.strftime("%H:%M:%S")
-    return str(value)
-
-
-def _qr_image_bytes(payload: str) -> bytes:
-    image = qrcode.make(payload)
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    return buffer.getvalue()
 
 
 def fetch_ingreso_pdf_row(*, id_ingreso: int, negocio_id: int | None) -> dict:
@@ -102,8 +77,8 @@ def build_ingreso_pdf_context(row: dict) -> dict:
 
     numero = str(row.get("numero") or "").zfill(8)
     total = row.get("total") or Decimal("0")
-    fecha_emision = _format_date(row.get("fecha_emision"))
-    hora_emision = _format_time(row.get("hora_emision"))
+    fecha_emision = format_date(row.get("fecha_emision"))
+    hora_emision = format_time(row.get("hora_emision"))
 
     qr_payload = "|".join(
         [
@@ -143,12 +118,18 @@ def build_ingreso_pdf_context(row: dict) -> dict:
         "total_letras": numtoletras(total),
         "observaciones": row.get("observaciones") or "",
         "usuario": row.get("usuario") or "",
-        "qr_image_bytes": _qr_image_bytes(qr_payload),
+        "qr_image_bytes": qr_image_bytes(qr_payload),
         "comprobante_anulado": bool(row.get("comprobante_anulado")),
+        "leyenda_html": (
+            "Representación impresa de la <br/>"
+            f"{comprobante} , <br/>"
+            "<font size='6'>Sólo para control interno, sirvase canjear por su comprobante de pago "
+            "boleta de venta o factura el día de realizado el servicio.</font>"
+        ),
     }
 
 
 def generate_ingreso_pdf(*, id_ingreso: int, negocio_id: int | None) -> bytes:
     row = fetch_ingreso_pdf_row(id_ingreso=id_ingreso, negocio_id=negocio_id)
     context = build_ingreso_pdf_context(row)
-    return render_ingreso_pdf(context)
+    return render_document_pdf(context)
