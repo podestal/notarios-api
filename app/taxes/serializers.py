@@ -487,9 +487,99 @@ class ItemsRecibosSerializer(serializers.ModelSerializer):
         read_only_fields = ["id_item", "creado", "actualizado"]
 
 
+class ReciboLineaSerializer(serializers.Serializer):
+    catalogo_id = serializers.IntegerField()
+    cantidad = serializers.IntegerField()
+    descripcion = serializers.CharField(max_length=200)
+    detalles = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default="-",
+    )
+    total = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class CreateReciboSerializer(serializers.Serializer):
+    fecha_emision = FechaEmisionInputField(required=False, allow_null=True)
+    serie = serializers.CharField(max_length=10)
+    moneda_id = serializers.IntegerField()
+    persona_id = serializers.IntegerField()
+    direccion = serializers.CharField(max_length=200)
+    observaciones = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    lineas = ReciboLineaSerializer(many=True)
+    tipo_nota_credito_id = serializers.IntegerField(required=False, allow_null=True)
+    tipo_nota_debito_id = serializers.IntegerField(required=False, allow_null=True)
+    tipo_recibo_modificado_id = serializers.IntegerField(required=False, allow_null=True)
+    serie_documento_modificado_id = serializers.IntegerField(required=False, allow_null=True)
+    numero_documento_modificado = serializers.CharField(
+        max_length=60,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    motivo_modificacion = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
+    def validate_lineas(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one line is required.")
+        return value
+
+    def validate(self, attrs):
+        from taxes.services.control_interno import (
+            NOTA_CREDITO_COMPROBANTE_ID,
+            NOTA_DEBITO_COMPROBANTE_ID,
+        )
+        from taxes.services.recibo import resolve_comprobante_from_serie
+
+        comprobante_id = resolve_comprobante_from_serie(attrs["serie"])
+        nota_fields = (
+            "tipo_recibo_modificado_id",
+            "serie_documento_modificado_id",
+            "numero_documento_modificado",
+        )
+
+        if comprobante_id == NOTA_CREDITO_COMPROBANTE_ID:
+            if attrs.get("tipo_nota_credito_id") is None:
+                raise serializers.ValidationError(
+                    {"tipo_nota_credito_id": "Requerido para nota de crédito."}
+                )
+            for field in nota_fields:
+                if not attrs.get(field):
+                    raise serializers.ValidationError(
+                        {field: "Requerido para nota de crédito."}
+                    )
+        elif comprobante_id == NOTA_DEBITO_COMPROBANTE_ID:
+            if attrs.get("tipo_nota_debito_id") is None:
+                raise serializers.ValidationError(
+                    {"tipo_nota_debito_id": "Requerido para nota de débito."}
+                )
+            for field in nota_fields:
+                if not attrs.get(field):
+                    raise serializers.ValidationError(
+                        {field: "Requerido para nota de débito."}
+                    )
+
+        return attrs
+
+
+class CreateReciboResponseSerializer(serializers.Serializer):
+    recibo = RecibosReadSerializer()
+    items = ItemsRecibosSerializer(many=True)
+
+
 class CanjeIngresoSerializer(serializers.Serializer):
     serie = serializers.CharField(max_length=10)
-    comprobante_id = serializers.IntegerField(default=2)
     observaciones = serializers.CharField(
         max_length=255,
         required=False,

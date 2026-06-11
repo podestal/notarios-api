@@ -7,8 +7,11 @@ from django.utils import timezone
 from taxes.legacy_db import next_serial_id, next_serial_ids
 from taxes.models import Ingresos, IngresosDetalles
 
-CONTROL_INTERNO_COMPROBANTE_ID = 7
+FACTURA_COMPROBANTE_ID = 1
 BOLETA_COMPROBANTE_ID = 2
+NOTA_CREDITO_COMPROBANTE_ID = 3
+NOTA_DEBITO_COMPROBANTE_ID = 4
+CONTROL_INTERNO_COMPROBANTE_ID = 7
 POSTGRES_DB = "postgres"
 
 

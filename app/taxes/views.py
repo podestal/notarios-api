@@ -36,6 +36,8 @@ from .serializers import (
     ComprobantesSerializer,
     ControlInternoResponseSerializer,
     CreateControlInternoSerializer,
+    CreateReciboResponseSerializer,
+    CreateReciboSerializer,
     DocumentosSerializer,
     IngresosDetallesSerializer,
     IngresosReadSerializer,
@@ -54,8 +56,12 @@ from .services.canje import canjear_ingreso
 from .services.control_interno import (
     BOLETA_COMPROBANTE_ID,
     CONTROL_INTERNO_COMPROBANTE_ID,
+    FACTURA_COMPROBANTE_ID,
+    NOTA_CREDITO_COMPROBANTE_ID,
+    NOTA_DEBITO_COMPROBANTE_ID,
     create_control_interno,
 )
+from .services.recibo import create_recibo
 from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
 from .services.document_views import DocumentReadViewSetMixin
@@ -212,6 +218,24 @@ class SeriesViewSet(ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="factura")
+    def factura(self, request):
+        queryset = self.queryset.filter(comprobante_id=FACTURA_COMPROBANTE_ID)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="nota-credito")
+    def nota_credito(self, request):
+        queryset = self.queryset.filter(comprobante_id=NOTA_CREDITO_COMPROBANTE_ID)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="nota-debito")
+    def nota_debito(self, request):
+        queryset = self.queryset.filter(comprobante_id=NOTA_DEBITO_COMPROBANTE_ID)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
     serializer_class = RecibosSerializer
@@ -255,9 +279,47 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         return RecibosSerializer
 
     def create(self, request, *args, **kwargs):
-        raise ValidationError(
-            "Use POST /taxes/ingresos/{id}/canjear/ to create recibos from control interno."
+        user = self._linked_user_or_raise(request)
+        serializer = CreateReciboSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lineas, fecha_emision, recibo_data = self._build_create_recibo_kwargs(
+            serializer.validated_data
         )
+
+        recibo, items = create_recibo(
+            usuario_id=user.taxes_usuario_id,
+            negocio_id=user.negocio_id,
+            lineas=lineas,
+            fecha_emision=fecha_emision,
+            **recibo_data,
+        )
+
+        response = CreateReciboResponseSerializer(
+            {"recibo": recibo, "items": items},
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context([recibo]),
+            },
+        )
+        return Response(response.data, status=status.HTTP_201_CREATED)
+
+    def _linked_user_or_raise(self, request):
+        user = request.user
+        if user.taxes_usuario_id is None or user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (taxes_usuario_id / negocio_id)."
+            )
+        return user
+
+    def _build_create_recibo_kwargs(self, validated_data):
+        data = dict(validated_data)
+        if "serie_documento_modificado_id" in data:
+            data["serie_documento_modificado"] = data.pop(
+                "serie_documento_modificado_id"
+            )
+        lineas = data.pop("lineas")
+        fecha_emision = data.pop("fecha_emision", None)
+        return lineas, fecha_emision, data
 
     @action(detail=True, methods=["post"], url_path="anular")
     def anular(self, request, pk=None):
@@ -379,7 +441,6 @@ class IngresosViewSet(DocumentReadViewSetMixin, ModelViewSet):
             ingreso_id=ingreso.id_ingreso,
             usuario_id=user.taxes_usuario_id,
             negocio_id=user.negocio_id,
-            comprobante_id=data["comprobante_id"],
             serie=data["serie"],
             observaciones=data.get("observaciones") or "",
             fecha_emision=data.get("fecha_emision"),
