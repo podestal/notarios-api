@@ -11,6 +11,7 @@ from taxes.models import (
     Recibos,
     Usuarios,
 )
+from taxes.services.control_interno import FACTURA_COMPROBANTE_ID
 
 from .common import format_date, format_time, qr_image_bytes
 from .numtoletras import numtoletras
@@ -48,6 +49,16 @@ def _fetch_negocio_emisor(negocio_id: int) -> dict:
             return {}
         columns = [col[0] for col in cursor.description]
         return dict(zip(columns, row))
+
+
+def _persona_denominacion(persona: Personas | None, *, comprobante_id: int) -> str:
+    if not persona:
+        return ""
+    if comprobante_id == FACTURA_COMPROBANTE_ID:
+        razon_social = (persona.razon_social or "").strip()
+        if razon_social and razon_social != "-":
+            return razon_social
+    return persona.nombre_completo or ""
 
 
 def build_recibo_pdf_context(*, recibo: Recibos, negocio_id: int) -> dict:
@@ -118,7 +129,9 @@ def build_recibo_pdf_context(*, recibo: Recibos, negocio_id: int) -> dict:
         "numero": numero,
         "abr_tipo_documento": (documento.abreviatura if documento else "") or "",
         "ruc_cliente": persona.numero_documento if persona else "",
-        "denominacion_cliente": persona.nombre_completo if persona else "",
+        "denominacion_cliente": _persona_denominacion(
+            persona, comprobante_id=recibo.comprobante_id
+        ),
         "direccion_cliente": recibo.direccion or "",
         "fecha_emision": fecha_emision,
         "hora_emision": hora_emision,

@@ -18,10 +18,19 @@ def persona_documento_display(persona):
     return persona.numero_documento
 
 
-def persona_nombres_display(persona):
+def persona_nombres_display(persona, *, comprobante_id=None):
     if not persona:
         return None
-    return _full_name(persona.nombres, persona.apellido_paterno, persona.apellido_materno)
+    from taxes.services.control_interno import FACTURA_COMPROBANTE_ID
+
+    if comprobante_id == FACTURA_COMPROBANTE_ID:
+        razon_social = (persona.razon_social or "").strip()
+        if razon_social and razon_social != "-":
+            return razon_social
+        return persona.nombre_completo or None
+    return _full_name(
+        persona.nombres, persona.apellido_paterno, persona.apellido_materno
+    )
 
 
 def usuario_display(usuario, personas_by_id):

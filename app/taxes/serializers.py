@@ -278,7 +278,7 @@ class RecibosReadSerializer(serializers.ModelSerializer):
 
     def get_persona_nombres(self, obj):
         persona = self.context.get("personas_by_id", {}).get(obj.persona_id)
-        return persona_nombres_display(persona)
+        return persona_nombres_display(persona, comprobante_id=obj.comprobante_id)
 
     def get_usuario(self, obj):
         usuario = self.context.get("usuarios_by_id", {}).get(obj.usuario_id)
