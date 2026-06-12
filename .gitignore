@@ -26,3 +26,5 @@ response_batch_*.xml
 app/sisgen/sisgen_xml_debug/
 *.pyc
 *.Backup
+xml_notaria
+keys
