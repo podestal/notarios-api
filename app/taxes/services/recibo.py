@@ -8,7 +8,7 @@ from rest_framework.exceptions import ValidationError
 
 from taxes.legacy_db import next_serial_id, next_serial_ids
 from taxes.models import Catalogos, ItemsRecibos, Recibos, Series
-from taxes.services.control_interno import CONTROL_INTERNO_COMPROBANTE_ID
+from taxes.services.control_interno import BOLETA_COMPROBANTE_ID, CONTROL_INTERNO_COMPROBANTE_ID
 
 POSTGRES_DB = "postgres"
 IGV_PORCENTAJE = Decimal("18.00")
@@ -215,3 +215,17 @@ def create_recibo(
     ItemsRecibos.objects.using(POSTGRES_DB).bulk_create(items)
 
     return recibo, items
+
+
+def boletas_pendientes_sunat_queryset(*, negocio_id: int, fecha_emision):
+    return (
+        Recibos.objects.using(POSTGRES_DB)
+        .filter(
+            negocio_id=negocio_id,
+            comprobante_id=BOLETA_COMPROBANTE_ID,
+            enviada_sunat=False,
+            fecha_emision__date=fecha_emision,
+        )
+        .exclude(anulada=True)
+        .order_by("serie", "numero", "id_recibo")
+    )

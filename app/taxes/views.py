@@ -67,7 +67,7 @@ from .services.control_interno import (
     NOTA_DEBITO_COMPROBANTE_ID,
     create_control_interno,
 )
-from .services.recibo import create_recibo
+from .services.recibo import boletas_pendientes_sunat_queryset, create_recibo
 from .services.resumen import create_resumen, recibos_pendientes_queryset
 from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
@@ -327,6 +327,29 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         lineas = data.pop("lineas")
         fecha_emision = data.pop("fecha_emision", None)
         return lineas, fecha_emision, data
+
+    @action(detail=False, methods=["get"], url_path="pendientes-sunat")
+    def pendientes_sunat(self, request):
+        user = request.user
+        if user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (negocio_id)."
+            )
+
+        raw_fecha = request.query_params.get("fecha_emision", "").strip()
+        if not raw_fecha:
+            raise ValidationError("Query param 'fecha_emision' is required (YYYY-MM-DD).")
+
+        fecha_emision = parse_date(raw_fecha)
+        if not fecha_emision:
+            raise ValidationError("fecha_emision must be YYYY-MM-DD.")
+
+        qs = boletas_pendientes_sunat_queryset(
+            negocio_id=user.negocio_id,
+            fecha_emision=fecha_emision,
+        )
+        serializer = self._read_serializer(qs, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=["post"], url_path="anular")
     def anular(self, request, pk=None):
