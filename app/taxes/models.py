@@ -262,3 +262,22 @@ class IngresosDetalles(models.Model):
     class Meta:
         managed = False
         db_table = "ingresos_detalles"
+
+
+class Resumenes(models.Model):
+    id_resumen = models.AutoField(primary_key=True)
+    fecha_resumen = models.DateField()
+    fecha_emision = models.DateField()
+    lote = models.IntegerField()
+    cantidad = models.IntegerField()
+    usuario_id = models.IntegerField()
+    ticket_sunat = models.CharField(max_length=100, blank=True, null=True)
+    denominacion = models.CharField(max_length=100, blank=True, null=True)
+    digest_value = models.TextField(blank=True, null=True)
+    signature_value = models.TextField(blank=True, null=True)
+    enviada_sunat = models.BooleanField()
+    aceptada_sunat = models.BooleanField()
+
+    class Meta:
+        managed = False
+        db_table = "resumenes"

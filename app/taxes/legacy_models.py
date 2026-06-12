@@ -8,23 +8,20 @@
 from django.db import models
 
 
-class ItemsRecibos(models.Model):
-    id_item = models.AutoField(primary_key=True)
+class Resumenes(models.Model):
+    id_resumen = models.AutoField(primary_key=True)
+    fecha_resumen = models.DateField()
+    fecha_emision = models.DateField()
+    lote = models.IntegerField()
     cantidad = models.IntegerField()
-    descripcion = models.CharField(max_length=200, blank=True, null=True)
-    valor_unitario = models.DecimalField(max_digits=20, decimal_places=10, blank=True, null=True)
-    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
-    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
-    descuento = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    igv = models.DecimalField(max_digits=10, decimal_places=2)
-    total = models.DecimalField(max_digits=10, decimal_places=2)
-    recibo = models.ForeignKey('Recibos', models.DO_NOTHING)
-    catalogo_id = models.IntegerField()
-    tipo_igv = models.ForeignKey('TiposIgv', models.DO_NOTHING, blank=True, null=True)
-    creado = models.DateTimeField(blank=True, null=True)
-    actualizado = models.DateTimeField(blank=True, null=True)
-    detalles = models.CharField(max_length=2000, blank=True, null=True)
+    usuario_id = models.IntegerField()
+    ticket_sunat = models.CharField(max_length=100, blank=True, null=True)
+    denominacion = models.CharField(max_length=100, blank=True, null=True)
+    digest_value = models.TextField(blank=True, null=True)
+    signature_value = models.TextField(blank=True, null=True)
+    enviada_sunat = models.BooleanField()
+    aceptada_sunat = models.BooleanField()
 
     class Meta:
         managed = False
-        db_table = 'items_recibos'
+        db_table = 'resumenes'

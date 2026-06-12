@@ -21,6 +21,7 @@ from .models import (
     Monedas,
     Personas,
     Recibos,
+    Resumenes,
     Series,
     TiposIgv,
     Usuarios,
@@ -593,6 +594,65 @@ class CanjeResponseSerializer(serializers.Serializer):
     ingreso = IngresosReadSerializer()
     recibo = RecibosReadSerializer()
     items = ItemsRecibosSerializer(many=True)
+
+
+class ResumenesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Resumenes
+        fields = [
+            "id_resumen",
+            "fecha_resumen",
+            "fecha_emision",
+            "lote",
+            "cantidad",
+            "usuario_id",
+            "ticket_sunat",
+            "denominacion",
+            "digest_value",
+            "signature_value",
+            "enviada_sunat",
+            "aceptada_sunat",
+        ]
+        read_only_fields = ["id_resumen"]
+
+
+class ResumenesReadSerializer(serializers.ModelSerializer):
+    usuario = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Resumenes
+        fields = [
+            "id_resumen",
+            "fecha_resumen",
+            "fecha_emision",
+            "lote",
+            "cantidad",
+            "usuario",
+            "ticket_sunat",
+            "denominacion",
+            "enviada_sunat",
+            "aceptada_sunat",
+        ]
+
+    def get_usuario(self, obj):
+        usuario = self.context.get("usuarios_by_id", {}).get(obj.usuario_id)
+        personas_by_id = self.context.get("personas_by_id", {})
+        return usuario_display(usuario, personas_by_id)
+
+
+class CreateResumenSerializer(serializers.Serializer):
+    fecha_comunicacion = serializers.DateField()
+    fecha_emision = serializers.DateField()
+    comprobante_id = serializers.IntegerField(default=2)
+    recibo_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+
+
+class CreateResumenResponseSerializer(serializers.Serializer):
+    resumen = ResumenesReadSerializer()
+    recibos = RecibosReadSerializer(many=True)
 
 
 class AnularIngresoSerializer(serializers.Serializer):

@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -23,6 +24,7 @@ from .models import (
     Monedas,
     Personas,
     Recibos,
+    Resumenes,
     Series,
     TiposIgv,
     Usuarios,
@@ -38,6 +40,8 @@ from .serializers import (
     CreateControlInternoSerializer,
     CreateReciboResponseSerializer,
     CreateReciboSerializer,
+    CreateResumenResponseSerializer,
+    CreateResumenSerializer,
     DocumentosSerializer,
     IngresosDetallesSerializer,
     IngresosReadSerializer,
@@ -48,6 +52,8 @@ from .serializers import (
     PersonasSerializer,
     RecibosReadSerializer,
     RecibosSerializer,
+    ResumenesReadSerializer,
+    ResumenesSerializer,
     SeriesSerializer,
     TiposIgvSerializer,
     UsuariosSerializer,
@@ -62,6 +68,7 @@ from .services.control_interno import (
     create_control_interno,
 )
 from .services.recibo import create_recibo
+from .services.resumen import create_resumen, recibos_pendientes_queryset
 from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
 from .services.document_views import DocumentReadViewSetMixin
@@ -469,6 +476,155 @@ class IngresosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="ingreso-{pk}.pdf"'
         return response
+
+
+class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
+    serializer_class = ResumenesSerializer
+    read_serializer_class = ResumenesReadSerializer
+    pagination_class = KardexPagination
+    permission_classes = [IsAuthenticated]
+    lookup_field = "id_resumen"
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        qs = Resumenes.objects.all().order_by("-fecha_resumen", "-id_resumen")
+        params = self.request.query_params
+        user = self.request.user
+
+        comprobante_id = (
+            params.get("comprobante_id", "") or params.get("comprobante", "")
+        ).strip()
+        if comprobante_id and user.negocio_id is not None:
+            resumen_ids = (
+                Recibos.objects.filter(
+                    negocio_id=user.negocio_id,
+                    comprobante_id=comprobante_id,
+                    resumen_id__isnull=False,
+                )
+                .values_list("resumen_id", flat=True)
+                .distinct()
+            )
+            qs = qs.filter(id_resumen__in=resumen_ids)
+
+        fecha_resumen = params.get("fecha_resumen", "").strip()
+        if fecha_resumen:
+            parsed = parse_date(fecha_resumen)
+            if parsed:
+                qs = qs.filter(fecha_resumen=parsed)
+
+        fecha_desde = params.get("fecha_resumen_desde", "").strip()
+        if fecha_desde:
+            parsed = parse_date(fecha_desde)
+            if parsed:
+                qs = qs.filter(fecha_resumen__gte=parsed)
+
+        fecha_hasta = params.get("fecha_resumen_hasta", "").strip()
+        if fecha_hasta:
+            parsed = parse_date(fecha_hasta)
+            if parsed:
+                qs = qs.filter(fecha_resumen__lte=parsed)
+
+        usuario_id = params.get("usuario_id", "").strip()
+        if usuario_id:
+            qs = qs.filter(usuario_id=usuario_id)
+
+        q = params.get("q", "").strip()
+        if q:
+            qs = qs.filter(
+                Q(ticket_sunat__icontains=q) | Q(denominacion__icontains=q)
+            )
+
+        enviada_sunat = params.get("enviada_sunat", "").strip().lower()
+        if enviada_sunat in ("true", "false"):
+            qs = qs.filter(enviada_sunat=(enviada_sunat == "true"))
+
+        aceptada_sunat = params.get("aceptada_sunat", "").strip().lower()
+        if aceptada_sunat in ("true", "false"):
+            qs = qs.filter(aceptada_sunat=(aceptada_sunat == "true"))
+
+        return qs
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return ResumenesReadSerializer
+        return ResumenesSerializer
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if user.taxes_usuario_id is None or user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (taxes_usuario_id / negocio_id)."
+            )
+
+        serializer = CreateResumenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        resumen, recibos = create_resumen(
+            fecha_resumen=data["fecha_comunicacion"],
+            fecha_emision=data["fecha_emision"],
+            comprobante_id=data["comprobante_id"],
+            recibo_ids=data["recibo_ids"],
+            usuario_id=user.taxes_usuario_id,
+            negocio_id=user.negocio_id,
+        )
+
+        response = CreateResumenResponseSerializer(
+            {"resumen": resumen, "recibos": recibos},
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context([resumen, *recibos]),
+            },
+        )
+        return Response(response.data, status=status.HTTP_201_CREATED)
+
+    def retrieve(self, request, *args, **kwargs):
+        resumen = self.get_object()
+        recibos = list(
+            Recibos.objects.filter(resumen_id=resumen.id_resumen).order_by("id_recibo")
+        )
+        response = CreateResumenResponseSerializer(
+            {"resumen": resumen, "recibos": recibos},
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context([resumen, *recibos]),
+            },
+        )
+        return Response(response.data)
+
+    @action(detail=False, methods=["get"], url_path="recibos-pendientes")
+    def recibos_pendientes(self, request):
+        user = request.user
+        if user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (negocio_id)."
+            )
+
+        params = request.query_params
+        comprobante_id = int(
+            (params.get("comprobante_id") or params.get("comprobante") or "2").strip()
+        )
+        fecha_emision = None
+        raw_fecha = params.get("fecha_emision", "").strip()
+        if raw_fecha:
+            fecha_emision = parse_date(raw_fecha)
+            if not fecha_emision:
+                raise ValidationError("fecha_emision must be YYYY-MM-DD.")
+
+        qs = recibos_pendientes_queryset(
+            negocio_id=user.negocio_id,
+            comprobante_id=comprobante_id,
+            fecha_emision=fecha_emision,
+        )
+        serializer = RecibosReadSerializer(
+            qs,
+            many=True,
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context(list(qs)),
+            },
+        )
+        return Response(serializer.data)
 
 
 class IngresosDetallesViewSet(ModelViewSet):
