@@ -29,10 +29,10 @@ class SunatXMLSigner(XMLSigner):
         return
 
 
-from taxes.models import Recibos, Resumenes
+from taxes.models import Recibos, Resumenes, Bajas
 
 from .context import ReciboXmlContext, fetch_recibo_xml_context
-from .paths import POSTGRES_DB, ensure_output_dirs, firmar_path, generar_path, resumen_generar_path
+from .paths import POSTGRES_DB, ensure_output_dirs, firmar_path, generar_path, resumen_generar_path, baja_generar_path, baja_firmar_path
 
 UBL_EXTENSION_NS = (
     "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
@@ -259,6 +259,40 @@ def firmar_resumen_xml(
         output_path=output_path,
     )
     Resumenes.objects.using(POSTGRES_DB).filter(id_resumen=resumen_id).update(
+        digest_value=digest_value,
+        signature_value=signature_value,
+        denominacion=context.archivo,
+    )
+    return signed_path
+
+
+def firmar_baja_xml(
+    *,
+    baja_id: int,
+    unsigned_path: Path | None = None,
+    ctx: "BajaXmlContext | None" = None,
+) -> Path:
+    from .generar_baja import fetch_baja_xml_context
+
+    context = ctx or fetch_baja_xml_context(baja_id)
+    ensure_output_dirs()
+
+    source_path = unsigned_path or baja_generar_path(
+        ruc=context.ruc_emisor,
+        fecha_comunicacion=context.fecha_comunicacion,
+        lote=context.lote,
+    )
+    output_path = baja_firmar_path(
+        ruc=context.ruc_emisor,
+        fecha_comunicacion=context.fecha_comunicacion,
+        lote=context.lote,
+    )
+
+    signed_path, digest_value, signature_value = firmar_xml_document(
+        unsigned_path=source_path,
+        output_path=output_path,
+    )
+    Bajas.objects.using(POSTGRES_DB).filter(id_baja=baja_id).update(
         digest_value=digest_value,
         signature_value=signature_value,
         denominacion=context.archivo,

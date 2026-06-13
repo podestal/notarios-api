@@ -11,6 +11,7 @@ from .services.document_lookup import (
 )
 from .legacy_db import next_serial_id
 from .models import (
+    Bajas,
     Catalogos,
     CodigosUnitarios,
     Comprobantes,
@@ -660,6 +661,74 @@ class ConsultarTicketResumenSerializer(serializers.Serializer):
 
 class CreateResumenResponseSerializer(serializers.Serializer):
     resumen = ResumenesReadSerializer()
+    recibos = RecibosReadSerializer(many=True)
+    sunat = serializers.DictField(required=False)
+
+
+class BajasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Bajas
+        fields = [
+            "id_baja",
+            "fecha_baja",
+            "fecha_emision",
+            "lote",
+            "cantidad",
+            "usuario_id",
+            "ticket_sunat",
+            "denominacion",
+            "digest_value",
+            "signature_value",
+            "enviada_sunat",
+            "aceptada_sunat",
+        ]
+        read_only_fields = ["id_baja"]
+
+
+class BajasReadSerializer(serializers.ModelSerializer):
+    usuario = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Bajas
+        fields = [
+            "id_baja",
+            "fecha_baja",
+            "fecha_emision",
+            "lote",
+            "cantidad",
+            "usuario",
+            "ticket_sunat",
+            "denominacion",
+            "enviada_sunat",
+            "aceptada_sunat",
+        ]
+
+    def get_usuario(self, obj):
+        usuario = self.context.get("usuarios_by_id", {}).get(obj.usuario_id)
+        personas_by_id = self.context.get("personas_by_id", {})
+        return usuario_display(usuario, personas_by_id)
+
+
+class CreateBajaSerializer(serializers.Serializer):
+    fecha_emision = serializers.DateField()
+    comprobante_id = serializers.IntegerField(default=1)
+    recibo_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    motivo = serializers.CharField(max_length=2000)
+    max_polls = serializers.IntegerField(default=10, min_value=1, max_value=30)
+    poll_interval_seconds = serializers.FloatField(default=3.0, min_value=1.0, max_value=30.0)
+
+
+class ConsultarTicketBajaSerializer(serializers.Serializer):
+    ticket = serializers.CharField(required=False, allow_blank=True)
+    max_polls = serializers.IntegerField(default=10, min_value=1, max_value=30)
+    poll_interval_seconds = serializers.FloatField(default=3.0, min_value=1.0, max_value=30.0)
+
+
+class CreateBajaResponseSerializer(serializers.Serializer):
+    baja = BajasReadSerializer()
     recibos = RecibosReadSerializer(many=True)
     sunat = serializers.DictField(required=False)
 

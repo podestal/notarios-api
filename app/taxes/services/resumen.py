@@ -47,11 +47,12 @@ def create_resumen(
             f"Los recibos ya están en un resumen: {', '.join(map(str, already_linked))}."
         )
 
-    anulados = [r.id_recibo for r in recibos if r.anulada]
-    if anulados:
-        raise ValidationError(
-            f"No se pueden incluir recibos anulados: {', '.join(map(str, anulados))}."
-        )
+    if comprobante_id != BOLETA_COMPROBANTE_ID:
+        anulados = [r.id_recibo for r in recibos if r.anulada]
+        if anulados:
+            raise ValidationError(
+                f"No se pueden incluir recibos anulados: {', '.join(map(str, anulados))}."
+            )
 
     resumen = Resumenes.objects.using(POSTGRES_DB).create(
         id_resumen=next_serial_id("resumenes", "id_resumen"),
@@ -89,7 +90,6 @@ def recibos_pendientes_queryset(
             comprobante_id=comprobante_id,
             resumen_id__isnull=True,
         )
-        .exclude(anulada=True)
         .order_by("-fecha_emision", "-id_recibo")
     )
     if fecha_emision is not None:

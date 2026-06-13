@@ -15,6 +15,7 @@ from core.permissions import IsSuperuser
 from notaria.pagination import KardexPagination
 
 from .models import (
+    Bajas,
     Catalogos,
     CodigosUnitarios,
     Comprobantes,
@@ -32,6 +33,8 @@ from .models import (
 )
 from .serializers import (
     AnularIngresoSerializer,
+    BajasReadSerializer,
+    BajasSerializer,
     CanjeIngresoSerializer,
     CanjeResponseSerializer,
     CatalogosSerializer,
@@ -41,7 +44,10 @@ from .serializers import (
     CreateControlInternoSerializer,
     CreateReciboResponseSerializer,
     CreateReciboSerializer,
+    ConsultarTicketBajaSerializer,
     ConsultarTicketResumenSerializer,
+    CreateBajaResponseSerializer,
+    CreateBajaSerializer,
     CreateResumenResponseSerializer,
     CreateResumenSerializer,
     DocumentosSerializer,
@@ -70,6 +76,12 @@ from .services.control_interno import (
     create_control_interno,
 )
 from .services.recibo import boletas_pendientes_sunat_queryset, create_recibo
+from .services.baja import (
+    anular_boleta_recibo,
+    create_baja,
+    recibos_anulados_queryset,
+    recibos_pendientes_baja_queryset,
+)
 from .services.resumen import create_resumen, recibos_pendientes_queryset
 from .legacy_db import POSTGRES_DB
 from .services.document_lookup import document_lookup_context
@@ -77,8 +89,10 @@ from .services.document_queryset import apply_document_list_filters
 from .services.document_views import DocumentReadViewSetMixin
 from .services.pdf import generate_ingreso_pdf, generate_recibo_pdf
 from .services.xml import (
+    consultar_ticket_baja,
     consultar_ticket_resumen,
     enviar_recibo_sunat,
+    procesar_baja_sunat,
     procesar_resumen_sunat,
 )
 
@@ -368,14 +382,34 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
 
         serializer = AnularIngresoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        motivo = serializer.validated_data.get("motivo_baja") or "-"
 
-        recibo.anulada = True
-        recibo.motivo_baja = serializer.validated_data.get("motivo_baja") or "-"
-        recibo.fecha_baja = timezone.localdate()
-        recibo.save(
-            update_fields=["anulada", "motivo_baja", "fecha_baja"],
-        )
+        if recibo.comprobante_id == BOLETA_COMPROBANTE_ID:
+            anular_boleta_recibo(recibo=recibo, motivo=motivo)
+        elif recibo.comprobante_id in (NOTA_CREDITO_COMPROBANTE_ID, NOTA_DEBITO_COMPROBANTE_ID):
+            comprobante_mod = (
+                Comprobantes.objects.filter(
+                    id_comprobante=recibo.tipo_recibo_modificado_id
+                ).first()
+                if recibo.tipo_recibo_modificado_id
+                else None
+            )
+            if comprobante_mod and comprobante_mod.id_comprobante == BOLETA_COMPROBANTE_ID:
+                anular_boleta_recibo(recibo=recibo, motivo=motivo)
+            else:
+                raise ValidationError(
+                    "Las notas que modifican facturas se anulan mediante "
+                    "POST /taxes/bajas/ (comunicación de baja SUNAT)."
+                )
+        elif recibo.comprobante_id == FACTURA_COMPROBANTE_ID:
+            raise ValidationError(
+                "Las facturas se anulan mediante POST /taxes/bajas/ "
+                "(comunicación de baja SUNAT)."
+            )
+        else:
+            raise ValidationError("Este comprobante no puede anularse por este endpoint.")
 
+        recibo.refresh_from_db()
         response = self._read_serializer(recibo, many=False)
         return Response(response.data)
 
@@ -705,6 +739,204 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
             negocio_id=user.negocio_id,
             comprobante_id=comprobante_id,
             fecha_emision=fecha_emision,
+        )
+        serializer = RecibosReadSerializer(
+            qs,
+            many=True,
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context(list(qs)),
+            },
+        )
+        return Response(serializer.data)
+
+
+class BajasViewSet(DocumentReadViewSetMixin, ModelViewSet):
+    serializer_class = BajasSerializer
+    read_serializer_class = BajasReadSerializer
+    pagination_class = KardexPagination
+    permission_classes = [IsAuthenticated]
+    lookup_field = "id_baja"
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        qs = Bajas.objects.all().order_by("-fecha_baja", "-id_baja")
+        params = self.request.query_params
+        user = self.request.user
+
+        comprobante_id = (
+            params.get("comprobante_id", "") or params.get("comprobante", "")
+        ).strip()
+        if comprobante_id and user.negocio_id is not None:
+            baja_ids = (
+                Recibos.objects.filter(
+                    negocio_id=user.negocio_id,
+                    comprobante_id=comprobante_id,
+                    baja_id__isnull=False,
+                )
+                .values_list("baja_id", flat=True)
+                .distinct()
+            )
+            qs = qs.filter(id_baja__in=baja_ids)
+
+        fecha_baja = params.get("fecha_baja", "").strip()
+        if fecha_baja:
+            parsed = parse_date(fecha_baja)
+            if parsed:
+                qs = qs.filter(fecha_baja=parsed)
+
+        enviada_sunat = params.get("enviada_sunat", "").strip().lower()
+        if enviada_sunat in ("true", "false"):
+            qs = qs.filter(enviada_sunat=(enviada_sunat == "true"))
+
+        aceptada_sunat = params.get("aceptada_sunat", "").strip().lower()
+        if aceptada_sunat in ("true", "false"):
+            qs = qs.filter(aceptada_sunat=(aceptada_sunat == "true"))
+
+        return qs
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return BajasReadSerializer
+        return BajasSerializer
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if user.taxes_usuario_id is None or user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (taxes_usuario_id / negocio_id)."
+            )
+
+        serializer = CreateBajaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic(using=POSTGRES_DB):
+            baja, recibos = create_baja(
+                fecha_emision=data["fecha_emision"],
+                comprobante_id=data["comprobante_id"],
+                recibo_ids=data["recibo_ids"],
+                motivo=data["motivo"],
+                usuario_id=user.taxes_usuario_id,
+                negocio_id=user.negocio_id,
+            )
+
+            sunat_result = procesar_baja_sunat(
+                baja_id=baja.id_baja,
+                max_polls=data.get("max_polls", 10),
+                poll_interval_seconds=data.get("poll_interval_seconds", 3.0),
+                raise_on_failure=True,
+            )
+            baja = Bajas.objects.using(POSTGRES_DB).get(pk=baja.id_baja)
+            recibos = list(
+                Recibos.objects.using(POSTGRES_DB)
+                .filter(baja_id=baja.id_baja)
+                .order_by("id_recibo")
+            )
+
+        response = CreateBajaResponseSerializer(
+            {"baja": baja, "recibos": recibos, "sunat": sunat_result},
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context([baja, *recibos]),
+            },
+        )
+        return Response(response.data, status=status.HTTP_201_CREATED)
+
+    def retrieve(self, request, *args, **kwargs):
+        baja = self.get_object()
+        recibos = list(
+            Recibos.objects.filter(baja_id=baja.id_baja).order_by("id_recibo")
+        )
+        response = CreateBajaResponseSerializer(
+            {"baja": baja, "recibos": recibos},
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context([baja, *recibos]),
+            },
+        )
+        return Response(response.data)
+
+    @action(detail=True, methods=["post"], url_path="consultar-ticket")
+    def consultar_ticket(self, request, id_baja=None):
+        baja = self.get_object()
+        serializer = ConsultarTicketBajaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        ticket = (data.get("ticket") or "").strip() or None
+        sunat_result = consultar_ticket_baja(
+            baja_id=baja.id_baja,
+            ticket=ticket,
+            max_polls=data.get("max_polls", 10),
+            poll_interval_seconds=data.get("poll_interval_seconds", 3.0),
+            raise_on_failure=False,
+        )
+
+        baja = Bajas.objects.using(POSTGRES_DB).get(pk=baja.id_baja)
+        recibos = list(
+            Recibos.objects.using(POSTGRES_DB)
+            .filter(baja_id=baja.id_baja)
+            .order_by("id_recibo")
+        )
+        response = CreateBajaResponseSerializer(
+            {"baja": baja, "recibos": recibos, "sunat": sunat_result},
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context([baja, *recibos]),
+            },
+        )
+        return Response(response.data)
+
+    @action(detail=False, methods=["get"], url_path="recibos-pendientes")
+    def recibos_pendientes(self, request):
+        user = request.user
+        if user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (negocio_id)."
+            )
+
+        params = request.query_params
+        comprobante_id = int(
+            (params.get("comprobante_id") or params.get("comprobante") or "1").strip()
+        )
+        fecha_emision = None
+        raw_fecha = params.get("fecha_emision", "").strip()
+        if raw_fecha:
+            fecha_emision = parse_date(raw_fecha)
+            if not fecha_emision:
+                raise ValidationError("fecha_emision must be YYYY-MM-DD.")
+
+        qs = recibos_pendientes_baja_queryset(
+            negocio_id=user.negocio_id,
+            comprobante_id=comprobante_id,
+            fecha_emision=fecha_emision,
+        )
+        serializer = RecibosReadSerializer(
+            qs,
+            many=True,
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context(list(qs)),
+            },
+        )
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="recibos-anulados")
+    def recibos_anulados(self, request):
+        user = request.user
+        if user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (negocio_id)."
+            )
+
+        params = request.query_params
+        comprobante_id = int(
+            (params.get("comprobante_id") or params.get("comprobante") or "2").strip()
+        )
+        qs = recibos_anulados_queryset(
+            negocio_id=user.negocio_id,
+            comprobante_id=comprobante_id,
         )
         serializer = RecibosReadSerializer(
             qs,

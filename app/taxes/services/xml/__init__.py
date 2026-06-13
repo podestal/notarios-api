@@ -1,6 +1,11 @@
 from .firmar import firmar_recibo_xml
 from .generar import generar_recibo_xml
 from .enviar import can_enviar_recibo_sunat, enviar_recibo_sunat, should_auto_enviar_sunat
+from .enviar_baja import (
+    consultar_ticket_baja,
+    enviar_baja_sunat,
+    procesar_baja_sunat,
+)
 from .enviar_resumen import (
     consultar_ticket_resumen,
     enviar_resumen_sunat,
@@ -31,13 +36,16 @@ def procesar_recibo_xml(recibo_id: int) -> dict:
 
 __all__ = [
     "can_enviar_recibo_sunat",
+    "consultar_ticket_baja",
     "consultar_ticket_resumen",
+    "enviar_baja_sunat",
     "enviar_recibo_sunat",
     "enviar_resumen_sunat",
     "firmar_dir",
     "firmar_recibo_xml",
     "generar_dir",
     "generar_recibo_xml",
+    "procesar_baja_sunat",
     "procesar_recibo_xml",
     "procesar_resumen_sunat",
     "should_auto_enviar_sunat",

@@ -17,6 +17,7 @@ router.register("comprobantes", views.ComprobantesViewSet, basename="comprobante
 router.register("series", views.SeriesViewSet, basename="series")
 router.register("recibos", views.RecibosViewSet, basename="recibos")
 router.register("resumenes", views.ResumenesViewSet, basename="resumenes")
+router.register("bajas", views.BajasViewSet, basename="bajas")
 router.register("items-recibos", views.ItemsRecibosViewSet, basename="items-recibos")
 router.register("ingresos", views.IngresosViewSet, basename="ingresos")
 router.register(

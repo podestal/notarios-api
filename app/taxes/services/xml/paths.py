@@ -93,10 +93,35 @@ def resumen_firmar_path(*, ruc: str, fecha_comunicacion, lote: int) -> Path:
 
 
 def resumen_ticket_path(*, archivo: str) -> Path:
-    return emitir_dir() / f"T-{archivo}.XML"
+    return summary_ticket_path(archivo=archivo)
 
 
 def resumen_cdr_path(*, archivo: str) -> Path:
+    return summary_cdr_path(archivo=archivo)
+
+
+def baja_serie_numero(*, fecha_comunicacion, lote: int) -> str:
+    fecha = fecha_comunicacion.strftime("%Y%m%d")
+    return f"RA-{fecha}-{str(lote).zfill(5)}"
+
+
+def baja_archivo_name(*, ruc: str, fecha_comunicacion, lote: int) -> str:
+    return f"{ruc}-{baja_serie_numero(fecha_comunicacion=fecha_comunicacion, lote=lote)}"
+
+
+def baja_generar_path(*, ruc: str, fecha_comunicacion, lote: int) -> Path:
+    return generar_dir() / f"{baja_archivo_name(ruc=ruc, fecha_comunicacion=fecha_comunicacion, lote=lote)}.XML"
+
+
+def baja_firmar_path(*, ruc: str, fecha_comunicacion, lote: int) -> Path:
+    return firmar_dir() / f"{baja_archivo_name(ruc=ruc, fecha_comunicacion=fecha_comunicacion, lote=lote)}.XML"
+
+
+def summary_ticket_path(*, archivo: str) -> Path:
+    return emitir_dir() / f"T-{archivo}.XML"
+
+
+def summary_cdr_path(*, archivo: str) -> Path:
     return emitir_dir() / f"R-{archivo}.XML"
 
 

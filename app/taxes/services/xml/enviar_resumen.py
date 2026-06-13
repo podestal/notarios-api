@@ -151,6 +151,14 @@ def _mark_resumen_enviada(resumen_id: int, *, archivo: str, ticket: str) -> None
         ticket_sunat=ticket,
         denominacion=archivo,
     )
+    Recibos.objects.using(POSTGRES_DB).filter(
+        resumen_id=resumen_id,
+        anulada=False,
+    ).update(enviada_sunat=True)
+    Recibos.objects.using(POSTGRES_DB).filter(
+        resumen_id=resumen_id,
+        anulada=True,
+    ).update(enviada_sunat=False, aceptada_sunat=False)
 
 
 def _mark_resumen_aceptada(resumen_id: int, *, fields: dict) -> None:
@@ -168,9 +176,20 @@ def _mark_resumen_rechazada(resumen_id: int, *, fields: dict) -> None:
 
 
 def _mark_recibos_aceptados(resumen_id: int) -> None:
-    Recibos.objects.using(POSTGRES_DB).filter(resumen_id=resumen_id).update(
+    Recibos.objects.using(POSTGRES_DB).filter(
+        resumen_id=resumen_id,
+        anulada=False,
+    ).update(
         enviada_sunat=True,
         aceptada_sunat=True,
+        error_sunat=None,
+    )
+    Recibos.objects.using(POSTGRES_DB).filter(
+        resumen_id=resumen_id,
+        anulada=True,
+    ).update(
+        enviada_sunat=False,
+        aceptada_sunat=False,
         error_sunat=None,
     )
 
