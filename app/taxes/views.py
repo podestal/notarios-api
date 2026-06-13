@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -40,6 +41,7 @@ from .serializers import (
     CreateControlInternoSerializer,
     CreateReciboResponseSerializer,
     CreateReciboSerializer,
+    ConsultarTicketResumenSerializer,
     CreateResumenResponseSerializer,
     CreateResumenSerializer,
     DocumentosSerializer,
@@ -69,11 +71,16 @@ from .services.control_interno import (
 )
 from .services.recibo import boletas_pendientes_sunat_queryset, create_recibo
 from .services.resumen import create_resumen, recibos_pendientes_queryset
+from .legacy_db import POSTGRES_DB
 from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
 from .services.document_views import DocumentReadViewSetMixin
 from .services.pdf import generate_ingreso_pdf, generate_recibo_pdf
-from .services.xml import enviar_recibo_sunat
+from .services.xml import (
+    consultar_ticket_resumen,
+    enviar_recibo_sunat,
+    procesar_resumen_sunat,
+)
 
 User = get_user_model()
 
@@ -593,17 +600,36 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        resumen, recibos = create_resumen(
-            fecha_resumen=data["fecha_comunicacion"],
-            fecha_emision=data["fecha_emision"],
-            comprobante_id=data["comprobante_id"],
-            recibo_ids=data["recibo_ids"],
-            usuario_id=user.taxes_usuario_id,
-            negocio_id=user.negocio_id,
-        )
+        with transaction.atomic(using=POSTGRES_DB):
+            resumen, recibos = create_resumen(
+                fecha_resumen=data["fecha_comunicacion"],
+                fecha_emision=data["fecha_emision"],
+                comprobante_id=data["comprobante_id"],
+                recibo_ids=data["recibo_ids"],
+                usuario_id=user.taxes_usuario_id,
+                negocio_id=user.negocio_id,
+            )
+
+            sunat_result = procesar_resumen_sunat(
+                resumen_id=resumen.id_resumen,
+                consultar_ticket=True,
+                max_polls=data.get("max_polls", 10),
+                poll_interval_seconds=data.get("poll_interval_seconds", 3.0),
+                raise_on_failure=True,
+            )
+            resumen = Resumenes.objects.using(POSTGRES_DB).get(
+                pk=resumen.id_resumen
+            )
+            recibos = list(
+                Recibos.objects.using(POSTGRES_DB)
+                .filter(resumen_id=resumen.id_resumen)
+                .order_by("id_recibo")
+            )
+
+        payload = {"resumen": resumen, "recibos": recibos, "sunat": sunat_result}
 
         response = CreateResumenResponseSerializer(
-            {"resumen": resumen, "recibos": recibos},
+            payload,
             context={
                 **self.get_serializer_context(),
                 **document_lookup_context([resumen, *recibos]),
@@ -618,6 +644,37 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
         )
         response = CreateResumenResponseSerializer(
             {"resumen": resumen, "recibos": recibos},
+            context={
+                **self.get_serializer_context(),
+                **document_lookup_context([resumen, *recibos]),
+            },
+        )
+        return Response(response.data)
+
+    @action(detail=True, methods=["post"], url_path="consultar-ticket")
+    def consultar_ticket(self, request, id_resumen=None):
+        resumen = self.get_object()
+        serializer = ConsultarTicketResumenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        ticket = (data.get("ticket") or "").strip() or None
+        sunat_result = consultar_ticket_resumen(
+            resumen_id=resumen.id_resumen,
+            ticket=ticket,
+            max_polls=data.get("max_polls", 10),
+            poll_interval_seconds=data.get("poll_interval_seconds", 3.0),
+            raise_on_failure=False,
+        )
+
+        resumen = Resumenes.objects.using(POSTGRES_DB).get(pk=resumen.id_resumen)
+        recibos = list(
+            Recibos.objects.using(POSTGRES_DB)
+            .filter(resumen_id=resumen.id_resumen)
+            .order_by("id_recibo")
+        )
+        response = CreateResumenResponseSerializer(
+            {"resumen": resumen, "recibos": recibos, "sunat": sunat_result},
             context={
                 **self.get_serializer_context(),
                 **document_lookup_context([resumen, *recibos]),

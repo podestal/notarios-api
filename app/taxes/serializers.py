@@ -648,11 +648,20 @@ class CreateResumenSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
     )
+    max_polls = serializers.IntegerField(default=10, min_value=1, max_value=30)
+    poll_interval_seconds = serializers.FloatField(default=3.0, min_value=1.0, max_value=30.0)
+
+
+class ConsultarTicketResumenSerializer(serializers.Serializer):
+    ticket = serializers.CharField(required=False, allow_blank=True)
+    max_polls = serializers.IntegerField(default=10, min_value=1, max_value=30)
+    poll_interval_seconds = serializers.FloatField(default=3.0, min_value=1.0, max_value=30.0)
 
 
 class CreateResumenResponseSerializer(serializers.Serializer):
     resumen = ResumenesReadSerializer()
     recibos = RecibosReadSerializer(many=True)
+    sunat = serializers.DictField(required=False)
 
 
 class AnularIngresoSerializer(serializers.Serializer):

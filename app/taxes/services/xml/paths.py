@@ -75,6 +75,31 @@ def exception_path(*, archivo: str) -> Path:
     return exception_dir() / f"E-{archivo}.XML"
 
 
+def resumen_serie_numero(*, fecha_comunicacion, lote: int) -> str:
+    fecha = fecha_comunicacion.strftime("%Y%m%d")
+    return f"RC-{fecha}-{str(lote).zfill(5)}"
+
+
+def resumen_archivo_name(*, ruc: str, fecha_comunicacion, lote: int) -> str:
+    return f"{ruc}-{resumen_serie_numero(fecha_comunicacion=fecha_comunicacion, lote=lote)}"
+
+
+def resumen_generar_path(*, ruc: str, fecha_comunicacion, lote: int) -> Path:
+    return generar_dir() / f"{resumen_archivo_name(ruc=ruc, fecha_comunicacion=fecha_comunicacion, lote=lote)}.XML"
+
+
+def resumen_firmar_path(*, ruc: str, fecha_comunicacion, lote: int) -> Path:
+    return firmar_dir() / f"{resumen_archivo_name(ruc=ruc, fecha_comunicacion=fecha_comunicacion, lote=lote)}.XML"
+
+
+def resumen_ticket_path(*, archivo: str) -> Path:
+    return emitir_dir() / f"T-{archivo}.XML"
+
+
+def resumen_cdr_path(*, archivo: str) -> Path:
+    return emitir_dir() / f"R-{archivo}.XML"
+
+
 def ensure_output_dirs() -> None:
     generar_dir().mkdir(parents=True, exist_ok=True)
     firmar_dir().mkdir(parents=True, exist_ok=True)

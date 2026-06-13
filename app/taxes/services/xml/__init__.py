@@ -1,6 +1,11 @@
 from .firmar import firmar_recibo_xml
 from .generar import generar_recibo_xml
 from .enviar import can_enviar_recibo_sunat, enviar_recibo_sunat, should_auto_enviar_sunat
+from .enviar_resumen import (
+    consultar_ticket_resumen,
+    enviar_resumen_sunat,
+    procesar_resumen_sunat,
+)
 from .context import fetch_recibo_xml_context
 from .paths import firmar_dir, generar_dir, xml_notaria_root
 
@@ -26,12 +31,15 @@ def procesar_recibo_xml(recibo_id: int) -> dict:
 
 __all__ = [
     "can_enviar_recibo_sunat",
+    "consultar_ticket_resumen",
     "enviar_recibo_sunat",
+    "enviar_resumen_sunat",
     "firmar_dir",
     "firmar_recibo_xml",
     "generar_dir",
     "generar_recibo_xml",
     "procesar_recibo_xml",
+    "procesar_resumen_sunat",
     "should_auto_enviar_sunat",
     "xml_notaria_root",
 ]

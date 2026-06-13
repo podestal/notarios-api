@@ -29,10 +29,10 @@ class SunatXMLSigner(XMLSigner):
         return
 
 
-from taxes.models import Recibos
+from taxes.models import Recibos, Resumenes
 
 from .context import ReciboXmlContext, fetch_recibo_xml_context
-from .paths import POSTGRES_DB, ensure_output_dirs, firmar_path, generar_path
+from .paths import POSTGRES_DB, ensure_output_dirs, firmar_path, generar_path, resumen_generar_path
 
 UBL_EXTENSION_NS = (
     "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
@@ -177,25 +177,23 @@ def _extract_digest_value(signed_xml: bytes) -> str:
     return digest_nodes[0].text or ""
 
 
-def firmar_recibo_xml(
+def _extract_signature_value(signed_xml: bytes) -> str:
+    root = etree.fromstring(signed_xml)
+    signature_nodes = root.xpath("//*[local-name()='SignatureValue']")
+    if not signature_nodes:
+        raise ValidationError("No se encontró SignatureValue en el XML firmado.")
+    return signature_nodes[0].text or ""
+
+
+def firmar_xml_document(
     *,
-    recibo_id: int,
-    ctx: ReciboXmlContext | None = None,
-    unsigned_path: Path | None = None,
-) -> Path:
-    context = ctx or fetch_recibo_xml_context(recibo_id)
-    ensure_output_dirs()
+    unsigned_path: Path,
+    output_path: Path,
+) -> tuple[Path, str, str]:
+    if not unsigned_path.is_file():
+        raise ValidationError(f"XML sin firmar no encontrado: {unsigned_path}")
 
-    source_path = unsigned_path or generar_path(
-        ruc=context.ruc_emisor,
-        codigo_comprobante=context.codigo_comprobante,
-        serie=context.serie,
-        numero=context.numero,
-    )
-    if not source_path.is_file():
-        raise ValidationError(f"XML sin firmar no encontrado: {source_path}")
-
-    unsigned_xml = source_path.read_bytes()
+    unsigned_xml = unsigned_path.read_bytes()
     key_pem, cert_pem = _load_signing_material()
 
     signer = SunatXMLSigner(
@@ -225,6 +223,66 @@ def firmar_recibo_xml(
     )
 
     _validate_signed_xml(signed_xml)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(signed_xml)
+
+    digest_value = _extract_digest_value(signed_xml)
+    signature_value = _extract_signature_value(signed_xml)
+    return output_path, digest_value, signature_value
+
+
+def firmar_resumen_xml(
+    *,
+    resumen_id: int,
+    unsigned_path: Path | None = None,
+    ctx: "ResumenXmlContext | None" = None,
+) -> Path:
+    from .generar_resumen import fetch_resumen_xml_context
+    from .paths import resumen_firmar_path
+
+    context = ctx or fetch_resumen_xml_context(resumen_id)
+    ensure_output_dirs()
+
+    source_path = unsigned_path or resumen_generar_path(
+        ruc=context.ruc_emisor,
+        fecha_comunicacion=context.fecha_comunicacion,
+        lote=context.lote,
+    )
+    output_path = resumen_firmar_path(
+        ruc=context.ruc_emisor,
+        fecha_comunicacion=context.fecha_comunicacion,
+        lote=context.lote,
+    )
+
+    signed_path, digest_value, signature_value = firmar_xml_document(
+        unsigned_path=source_path,
+        output_path=output_path,
+    )
+    Resumenes.objects.using(POSTGRES_DB).filter(id_resumen=resumen_id).update(
+        digest_value=digest_value,
+        signature_value=signature_value,
+        denominacion=context.archivo,
+    )
+    return signed_path
+
+
+def firmar_recibo_xml(
+    *,
+    recibo_id: int,
+    ctx: ReciboXmlContext | None = None,
+    unsigned_path: Path | None = None,
+) -> Path:
+    context = ctx or fetch_recibo_xml_context(recibo_id)
+    ensure_output_dirs()
+
+    source_path = unsigned_path or generar_path(
+        ruc=context.ruc_emisor,
+        codigo_comprobante=context.codigo_comprobante,
+        serie=context.serie,
+        numero=context.numero,
+    )
+    if not source_path.is_file():
+        raise ValidationError(f"XML sin firmar no encontrado: {source_path}")
 
     output_path = firmar_path(
         ruc=context.ruc_emisor,
@@ -232,11 +290,12 @@ def firmar_recibo_xml(
         serie=context.serie,
         numero=context.numero,
     )
-    output_path.write_bytes(signed_xml)
-
-    digest_value = _extract_digest_value(signed_xml)
+    signed_path, digest_value, _signature_value = firmar_xml_document(
+        unsigned_path=source_path,
+        output_path=output_path,
+    )
     Recibos.objects.using(POSTGRES_DB).filter(id_recibo=recibo_id).update(
         digest_value=digest_value,
         nombre_comprobante=context.nombre_comprobante,
     )
-    return output_path
+    return signed_path
