@@ -11,7 +11,12 @@ from lxml import etree
 from rest_framework.exceptions import ValidationError
 
 from taxes.models import Recibos
-from taxes.services.control_interno import BOLETA_COMPROBANTE_ID
+from taxes.services.control_interno import (
+    BOLETA_COMPROBANTE_ID,
+    FACTURA_COMPROBANTE_ID,
+    NOTA_CREDITO_COMPROBANTE_ID,
+    NOTA_DEBITO_COMPROBANTE_ID,
+)
 
 from .context import ReciboXmlContext, fetch_recibo_xml_context
 from .paths import (
@@ -33,10 +38,9 @@ WSSE_NS = (
 
 
 def should_auto_enviar_sunat(ctx: ReciboXmlContext) -> bool:
-    codigo = ctx.codigo_comprobante
-    if codigo == "01":
+    if ctx.id_comprobante == FACTURA_COMPROBANTE_ID:
         return True
-    if codigo in ("07", "08"):
+    if ctx.id_comprobante in (NOTA_CREDITO_COMPROBANTE_ID, NOTA_DEBITO_COMPROBANTE_ID):
         return ctx.codigo_recibo_modificado == "01"
     return False
 
@@ -144,16 +148,18 @@ def _build_send_bill_envelope(
 
 
 def _post_send_bill(soap_xml: bytes) -> bytes:
-    response = requests.post(
-        _sunat_ws_url(),
-        data=soap_xml,
-        headers={
-            "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": "urn:sendBill",
-        },
-        timeout=120,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.post(
+            _sunat_ws_url(),
+            data=soap_xml,
+            headers={
+                "Content-Type": "text/xml; charset=utf-8",
+                "SOAPAction": "urn:sendBill",
+            },
+            timeout=120,
+        )
+    except requests.RequestException:
+        raise
     return response.content
 
 
@@ -228,6 +234,7 @@ def enviar_recibo_sunat(
     recibo_id: int,
     ctx: ReciboXmlContext | None = None,
     signed_path: Path | None = None,
+    raise_on_failure: bool = False,
 ) -> dict:
     context = ctx or fetch_recibo_xml_context(recibo_id)
     if not can_enviar_recibo_sunat(context):
@@ -268,6 +275,8 @@ def enviar_recibo_sunat(
         soap_response = _post_send_bill(soap_xml)
     except requests.RequestException as exc:
         error_message = f"Error de conexión con SUNAT: {exc}"
+        if raise_on_failure:
+            raise ValidationError(error_message) from exc
         _mark_error_sunat(recibo_id, error_message=error_message)
         return {
             "cod_sunat": "",
@@ -283,6 +292,8 @@ def enviar_recibo_sunat(
     if application_response is None or not application_response.text:
         exception_file = _save_exception(soap_response=soap_response, archivo=archivo)
         fault_message = _fault_message(soap_response)
+        if raise_on_failure:
+            raise ValidationError(fault_message)
         _mark_error_sunat(recibo_id, error_message=fault_message)
         return {
             "cod_sunat": "",
@@ -305,10 +316,28 @@ def enviar_recibo_sunat(
     if cdr_fields["digest_value"]:
         update_fields["digest_value"] = cdr_fields["digest_value"]
 
+    anulada = bool(recibo.anulada)
+    if cdr_fields["cod_sunat"] != "0":
+        rejection_message = (
+            f"SUNAT rechazó el comprobante ({cdr_fields['cod_sunat']}): "
+            f"{cdr_fields['msj_sunat']}"
+        )
+        if raise_on_failure:
+            raise ValidationError(rejection_message)
+        _mark_rechazada(recibo_id, fields=update_fields)
+        return {
+            "cod_sunat": cdr_fields["cod_sunat"],
+            "msj_sunat": cdr_fields["msj_sunat"],
+            "digest_value": cdr_fields["digest_value"],
+            "enviada_sunat": True,
+            "aceptada_sunat": False,
+            "zip_path": str(zip_path),
+            "cdr_path": str(cdr_path(archivo=archivo)),
+        }
+
     _mark_enviada(recibo_id)
 
-    anulada = bool(recibo.anulada)
-    if cdr_fields["cod_sunat"] == "0" and not anulada:
+    if not anulada:
         _mark_aceptada(recibo_id, fields=update_fields)
         aceptada = True
     else:

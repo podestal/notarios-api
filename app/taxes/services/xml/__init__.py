@@ -19,6 +19,7 @@ def procesar_recibo_xml(recibo_id: int) -> dict:
             recibo_id=recibo_id,
             ctx=ctx,
             signed_path=signed_path,
+            raise_on_failure=True,
         )
     return result
 

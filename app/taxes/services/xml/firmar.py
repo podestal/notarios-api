@@ -16,11 +16,10 @@ from lxml import etree
 from rest_framework.exceptions import ValidationError
 from signxml import XMLSigner, methods
 
-try:
-    from signxml import DigestAlgorithm, SignatureMethod
-except ImportError:
-    DigestAlgorithm = None  # type: ignore[misc, assignment]
-    SignatureMethod = None  # type: ignore[misc, assignment]
+RSA_SHA1 = "http://www.w3.org/2000/09/xmldsig#rsa-sha1"
+SHA1 = "http://www.w3.org/2000/09/xmldsig#sha1"
+C14N = "http://www.w3.org/2001/10/xml-exc-c14n#"
+XML_DECLARATION = b'<?xml version="1.0" encoding="UTF-8"?>'
 
 
 class SunatXMLSigner(XMLSigner):
@@ -28,6 +27,7 @@ class SunatXMLSigner(XMLSigner):
 
     def check_deprecated_methods(self) -> None:
         return
+
 
 from taxes.models import Recibos
 
@@ -103,10 +103,20 @@ def _certificate_subject_name(cert_pem: bytes) -> str:
     return ",".join(parts)
 
 
-def _ensure_signature_placeholder(root: etree._Element) -> None:
+def _prepare_extension_content_for_signing(root: etree._Element) -> etree._Element:
     extension_content = root.find(f".//{{{UBL_EXTENSION_NS}}}ExtensionContent")
     if extension_content is None:
         raise ValidationError("No se encontró ext:ExtensionContent en el XML.")
+
+    extension_content.text = None
+    extension_content.tail = None
+    for child in list(extension_content):
+        extension_content.remove(child)
+    return extension_content
+
+
+def _ensure_signature_placeholder(root: etree._Element) -> None:
+    extension_content = _prepare_extension_content_for_signing(root)
 
     for child in extension_content:
         if child.tag == f"{{{DS_NS}}}Signature":
@@ -138,6 +148,27 @@ def _apply_legacy_signature_format(root: etree._Element, *, cert_pem: bytes) -> 
     x509_data.insert(0, subject_node)
 
 
+def _normalize_signed_xml_bytes(signed_xml: bytes) -> bytes:
+    if signed_xml.startswith(b"<?xml"):
+        _, _, body = signed_xml.partition(b"?>")
+        signed_xml = body.lstrip(b"\n\r")
+    return XML_DECLARATION + b"\n" + signed_xml
+
+
+def _validate_signed_xml(signed_xml: bytes) -> None:
+    root = etree.fromstring(signed_xml)
+    signature_method = root.find(f".//{{{DS_NS}}}SignatureMethod")
+    algorithm = (
+        (signature_method.get("Algorithm") or "").strip()
+        if signature_method is not None
+        else ""
+    )
+    if not algorithm:
+        raise ValidationError(
+            "El XML firmado no contiene SignatureMethod; la firma SUNAT no se generó correctamente."
+        )
+
+
 def _extract_digest_value(signed_xml: bytes) -> str:
     root = etree.fromstring(signed_xml)
     digest_nodes = root.xpath("//*[local-name()='DigestValue']")
@@ -167,33 +198,33 @@ def firmar_recibo_xml(
     unsigned_xml = source_path.read_bytes()
     key_pem, cert_pem = _load_signing_material()
 
-    signature_algorithm = (
-        SignatureMethod.RSA_SHA1 if SignatureMethod else "rsa-sha1"
-    )
-    digest_algorithm = DigestAlgorithm.SHA1 if DigestAlgorithm else "sha1"
     signer = SunatXMLSigner(
         method=methods.enveloped,
-        signature_algorithm=signature_algorithm,
-        digest_algorithm=digest_algorithm,
-        c14n_algorithm="http://www.w3.org/2001/10/xml-exc-c14n#",
+        signature_algorithm=RSA_SHA1,
+        digest_algorithm=SHA1,
+        c14n_algorithm=C14N,
     )
-    root = etree.fromstring(unsigned_xml)
+    parser = etree.XMLParser(remove_blank_text=False, strip_cdata=False)
+    root = etree.fromstring(unsigned_xml, parser=parser)
     _ensure_signature_placeholder(root)
 
     signed_root = signer.sign(
         root,
         key=key_pem,
         cert=cert_pem,
-        exclude_c14n_transform_element=True,
     )
     _apply_legacy_signature_format(signed_root, cert_pem=cert_pem)
 
-    signed_xml = etree.tostring(
-        signed_root,
-        encoding="UTF-8",
-        xml_declaration=True,
-        pretty_print=False,
+    signed_xml = _normalize_signed_xml_bytes(
+        etree.tostring(
+            signed_root,
+            encoding="UTF-8",
+            xml_declaration=False,
+            pretty_print=False,
+        )
     )
+
+    _validate_signed_xml(signed_xml)
 
     output_path = firmar_path(
         ruc=context.ruc_emisor,

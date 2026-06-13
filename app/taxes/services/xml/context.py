@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -149,7 +150,20 @@ def _fetch_emisor(negocio_id: int) -> dict:
         if not row:
             return {}
         columns = [col[0] for col in cursor.description]
-        return dict(zip(columns, row))
+        return _apply_sunat_test_overrides(dict(zip(columns, row)))
+
+
+def _apply_sunat_test_overrides(emisor: dict) -> dict:
+    """Override emisor RUC for SUNAT beta when cert/SOL use the demo RUC."""
+    test_ruc = os.environ.get("SUNAT_TEST_RUC_EMISOR", "").strip()
+    if not test_ruc:
+        return emisor
+    emisor = dict(emisor)
+    emisor["ruc"] = test_ruc
+    test_name = os.environ.get("SUNAT_TEST_DENOMINACION_EMISOR", "").strip()
+    if test_name:
+        emisor["denominacion"] = test_name
+    return emisor
 
 
 def _fetch_nota_credito(tipo_nota_credito_id: int | None) -> tuple[str | None, str | None]:

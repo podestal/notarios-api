@@ -60,6 +60,8 @@ services:
       - SUNAT_SOL_USERNAME=${SUNAT_SOL_USERNAME:-}
       - SUNAT_SOL_USER=${SUNAT_SOL_USER:-}
       - SUNAT_SOL_PASSWORD=${SUNAT_SOL_PASSWORD:-}
+      - SUNAT_TEST_RUC_EMISOR=${SUNAT_TEST_RUC_EMISOR:-}
+      - SUNAT_TEST_DENOMINACION_EMISOR=${SUNAT_TEST_DENOMINACION_EMISOR:-}
     depends_on:
       db:
         condition: service_started
