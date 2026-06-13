@@ -73,6 +73,7 @@ from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
 from .services.document_views import DocumentReadViewSetMixin
 from .services.pdf import generate_ingreso_pdf, generate_recibo_pdf
+from .services.xml import enviar_recibo_sunat
 
 User = get_user_model()
 
@@ -370,6 +371,15 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
 
         response = self._read_serializer(recibo, many=False)
         return Response(response.data)
+
+    @action(detail=True, methods=["post"], url_path="enviar-sunat")
+    def enviar_sunat(self, request, pk=None):
+        recibo = self.get_object()
+
+        sunat_result = enviar_recibo_sunat(recibo_id=recibo.id_recibo)
+        recibo = Recibos.objects.using("postgres").get(pk=recibo.id_recibo)
+        response = self._read_serializer(recibo, many=False)
+        return Response({**sunat_result, "recibo": response.data})
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):
