@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from taxes.legacy_db import next_serial_id, POSTGRES_DB
+from taxes.services.document_queryset import filter_recibos_by_fecha_emision_date
 from taxes.models import Bajas, Recibos
 from taxes.services.control_interno import (
     FACTURA_COMPROBANTE_ID,
@@ -135,7 +136,7 @@ def recibos_pendientes_baja_queryset(
         .order_by("-fecha_emision", "-id_recibo")
     )
     if fecha_emision is not None:
-        qs = qs.filter(fecha_emision__date=fecha_emision)
+        qs = filter_recibos_by_fecha_emision_date(qs, fecha_emision)
     return qs
 
 

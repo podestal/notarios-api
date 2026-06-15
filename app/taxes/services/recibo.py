@@ -9,6 +9,7 @@ from rest_framework.exceptions import ValidationError
 from taxes.legacy_db import next_serial_id, next_serial_ids
 from taxes.models import Catalogos, ItemsRecibos, Recibos, Series
 from taxes.services.control_interno import BOLETA_COMPROBANTE_ID, CONTROL_INTERNO_COMPROBANTE_ID
+from taxes.services.document_queryset import filter_recibos_by_fecha_emision_date
 from taxes.services.xml import procesar_recibo_xml
 
 POSTGRES_DB = "postgres"
@@ -220,14 +221,14 @@ def create_recibo(
 
 
 def boletas_pendientes_sunat_queryset(*, negocio_id: int, fecha_emision):
-    return (
+    qs = (
         Recibos.objects.using(POSTGRES_DB)
         .filter(
             negocio_id=negocio_id,
             comprobante_id=BOLETA_COMPROBANTE_ID,
             enviada_sunat=False,
-            fecha_emision__date=fecha_emision,
         )
         .exclude(anulada=True)
         .order_by("serie", "numero", "id_recibo")
     )
+    return filter_recibos_by_fecha_emision_date(qs, fecha_emision)

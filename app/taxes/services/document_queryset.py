@@ -1,6 +1,27 @@
+from datetime import date
+from typing import Optional
+
+from django.db.models import DateField, QuerySet
+from django.db.models.functions import Cast
 from django.utils.dateparse import parse_date, parse_datetime
 
 from taxes.services.document_lookup import filter_documents_by_persona_usuario
+
+
+def filter_recibos_by_fecha_emision_date(
+    qs: QuerySet, fecha_emision: Optional[date]
+) -> QuerySet:
+    """
+    Match PostgreSQL ``fecha_emision::date`` on naive local timestamps.
+
+    ``fecha_emision__date`` with USE_TZ=True can shift the calendar day vs psql
+    ``::date``; taxes recibos store naive America/Lima wall times.
+    """
+    if fecha_emision is None:
+        return qs
+    return qs.annotate(
+        _fecha_emision_d=Cast("fecha_emision", output_field=DateField()),
+    ).filter(_fecha_emision_d=fecha_emision)
 
 
 def filter_by_fecha_emision(qs, params):
