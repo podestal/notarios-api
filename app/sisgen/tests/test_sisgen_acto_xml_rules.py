@@ -1,6 +1,8 @@
 from django.test import SimpleTestCase
 
 from sisgen.sisgen_acto_xml_rules import (
+    ACTOS_NO_UIF_SUNAT,
+    cod_ancert_requires_uif_sunat_xml,
     codigo_uif_o_sunat_presente,
     doc_requires_cuantia_operacion_xml,
     doc_requires_medios_pago_xml,
@@ -10,23 +12,25 @@ from sisgen.sisgen_acto_xml_rules import (
 
 
 class SisgenActoXmlRulesTest(SimpleTestCase):
-    def test_poder_sin_codigo_uif(self):
+    def test_poder_excluido_validar_uif_sunat(self):
         doc = {
             "cod_ancert": "0604",
             "actouif": "",
             "actosunat": "",
-            "mediospago": "0",
-            "cuantia": "0",
+            "mediospago": "S",
+            "cuantia": "S",
         }
+        self.assertIn("0604", ACTOS_NO_UIF_SUNAT)
+        self.assertFalse(cod_ancert_requires_uif_sunat_xml("0604"))
         self.assertFalse(doc_requires_uif_sunat_xml(doc))
         self.assertFalse(doc_requires_medios_pago_xml(doc))
         self.assertFalse(doc_requires_cuantia_operacion_xml(doc))
 
-    def test_transferencia_con_codigo_uif(self):
+    def test_transferencia_0215_siempre_uif(self):
         doc = {
             "cod_ancert": "0215",
             "actouif": "053",
-            "mediospago": "S",
+            "mediospago": "N",
             "cuantia": "S",
         }
         self.assertTrue(codigo_uif_o_sunat_presente("053"))
@@ -34,10 +38,10 @@ class SisgenActoXmlRulesTest(SimpleTestCase):
         self.assertTrue(doc_requires_medios_pago_xml(doc))
         self.assertTrue(doc_requires_cuantia_operacion_xml(doc))
 
-    def test_flags_s_sin_codigo(self):
+    def test_sin_cod_ancert_no_uif(self):
         doc = {"actouif": "", "mediospago": "S", "cuantia": "N"}
-        self.assertTrue(doc_requires_uif_sunat_xml(doc))
-        self.assertTrue(doc_requires_medios_pago_xml(doc))
+        self.assertFalse(doc_requires_uif_sunat_xml(doc))
+        self.assertFalse(doc_requires_medios_pago_xml(doc))
         self.assertFalse(doc_requires_cuantia_operacion_xml(doc))
 
     def test_tiposdeacto_flag_on(self):

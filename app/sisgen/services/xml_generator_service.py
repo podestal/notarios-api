@@ -498,12 +498,29 @@ class SISGENXmlGenerator:
             self.logger.error(f"Error getting notary codes: {str(e)}")
             return "00000000", "00000000000"
 
+    INTERVENCION_ROLES = ("O", "B", "G")
+
+    def _participant_rol_representante(self, participant: Dict) -> str:
+        """Rol SUNAT: vista PHP ``repre``; en BD suele venir como ``uif``."""
+        return str(participant.get("repre") or participant.get("uif") or "O").strip().upper()
+
+    def _codconsisgen_from_participant(self, participant: Optional[Dict]) -> Optional[str]:
+        """``condicionnsisgen`` de la vista PHP o ``actocondicion.codconsisgen``."""
+        if not participant:
+            return None
+        for key in ("condicionnsisgen", "condicionn"):
+            raw = participant.get(key)
+            if raw is not None and str(raw).strip():
+                cod = str(raw).strip()
+                return cod.zfill(3) if cod.isdigit() else cod
+        return self._codconsisgen_from_actocondicion(participant)
+
     def _get_tipo_intervencion_desc(self, role: str, acto_juridico: str = None, participant_data: Dict = None) -> Tuple[str, str]:
         """TipoIntervencion por rol; DescripcionIntervencion desde actocondicion / vista PHP."""
         try:
-            tipo_int = '1' if role == 'O' else '2' if role == 'B' else '3'
+            tipo_int = "1" if role == "O" else "2" if role == "B" else "3"
 
-            cod_cond = self._codconsisgen_from_actocondicion(participant_data or {})
+            cod_cond = self._codconsisgen_from_participant(participant_data or {})
             if cod_cond:
                 return tipo_int, cod_cond
 
@@ -891,41 +908,68 @@ class SISGENXmlGenerator:
         xml_parts.append(f"{base_wrap}</Representantes>\n")
         return "".join(xml_parts)
 
-    def _participante_marcador_no_interviniente(self, p: Dict) -> bool:
-        """
-        Flags opcionales de BD/vistas PHP (repre, firma, visita == 'N') fuera de uif='N'
-        para evitar confundir con rol SUNAT en garantías.
-        """
-        if str(p.get("repre") or "").strip().upper() == "N":
-            return True
+    def _participante_marcador_no_interviniente_simple(self, p: Dict) -> bool:
+        """Marcadores firma/visita 'N' (rol repre='N' va en bloque NoInterviniente completo)."""
+        if self._participant_rol_representante(p) == "N":
+            return False
         if str(p.get("firma") or "").strip().upper() == "N":
             return True
         if str(p.get("visita") or "").strip().upper() == "N":
             return True
         return False
 
-    def _coleccion_no_interviniente_ids(
+    def _no_interviniente_rol_n_xml(
+        self,
+        participant: Dict,
+        todos_participantes: List[Dict],
+    ) -> str:
+        """PHP: repre=='N' → NoInterviniente con TipoComparecencia 2 y ClaseIntervencion 3."""
+        t = "\t\t\t\t"
+        parts = [
+            f"{t}<NoInterviniente>\n",
+            f"{t}\t<TipoComparecencia>2</TipoComparecencia>\n",
+            f"{t}\t<ClaseIntervencion>3</ClaseIntervencion>\n",
+            f'{t}\t<IdMaestro>{participant.get("idcliente", "")}</IdMaestro>\n',
+        ]
+        for rep in self._representantes_filas_directas(
+            todos_participantes, participant.get("idcontratante")
+        ):
+            parts.append(
+                self._representante_recursive_xml(
+                    rep, todos_participantes, indent_representante=5, depth=0
+                )
+            )
+        parts.append(f"{t}</NoInterviniente>\n")
+        return "".join(parts)
+
+    def _no_intervinientes_xml(
         self,
         participants: List[Dict],
         sujeto_id_maestro_emisor_ids: Set[str],
-    ) -> List[str]:
-        """Ids Maestro declarados como no intervinientes (marcadores + cónyuges casados)."""
-        collected: List[str] = []
+    ) -> str:
+        """Bloque NoIntervinientes alineado con PHP (rol N, cónyuge, marcadores)."""
+        parts = ["\t\t\t<NoIntervinientes>\n"]
         seen: Set[str] = set()
 
-        def push(cid: str) -> None:
+        def push_simple(cid: str) -> None:
             cid = cid.strip()
             if not cid or cid == "0" or cid in seen:
                 return
             if cid in sujeto_id_maestro_emisor_ids:
                 return
             seen.add(cid)
-            collected.append(cid)
+            parts.append("\t\t\t\t<NoInterviniente>\n")
+            parts.append(f"\t\t\t\t\t<IdMaestro>{cid}</IdMaestro>\n")
+            parts.append("\t\t\t\t</NoInterviniente>\n")
 
         for p in participants:
-            ic = str(p.get("idcliente") or "").strip()
-            if self._participante_marcador_no_interviniente(p) and ic:
-                push(ic)
+            if self._participant_rol_representante(p) != "N":
+                continue
+            mid = str(p.get("idcliente") or "").strip()
+            if not mid or mid in seen:
+                continue
+            seen.add(mid)
+            parts.append(self._no_interviniente_rol_n_xml(p, participants))
 
         for p in participants:
             if str(p.get("tipper") or "").strip().upper() != "N":
@@ -935,12 +979,24 @@ class SISGENXmlGenerator:
             cy = str(p.get("conyuge") or "").strip()
             if not cy or cy in ("0", "0000000000"):
                 continue
-            uif_role = (p.get("uif") or "").strip().upper()
-            if uif_role == "R":
+            if self._participant_rol_representante(p) == "R":
                 continue
-            push(cy)
+            if cy in seen:
+                continue
+            seen.add(cy)
+            parts.append("\t\t\t\t<NoInterviniente>\n")
+            parts.append("\t\t\t\t\t<TipoComparecencia>3</TipoComparecencia>\n")
+            parts.append("\t\t\t\t\t<TipoAfectacion>1</TipoAfectacion>\n")
+            parts.append(f"\t\t\t\t\t<IdMaestro>{escape(cy)}</IdMaestro>\n")
+            parts.append("\t\t\t\t</NoInterviniente>\n")
 
-        return sorted(collected)
+        for p in participants:
+            ic = str(p.get("idcliente") or "").strip()
+            if ic and self._participante_marcador_no_interviniente_simple(p):
+                push_simple(ic)
+
+        parts.append("\t\t\t</NoIntervinientes>\n")
+        return "".join(parts)
 
     def _cuantia_origen_participant(
         self, participant: Dict, doc: Dict, pat_row: Optional[Dict]
@@ -1462,13 +1518,9 @@ class SISGENXmlGenerator:
     def _acto_requiere_medios_pago_xml(
         self, doc: Dict, pat_row: Optional[Dict]
     ) -> bool:
-        """``tiposdeacto`` en doc; consulta SQL solo si falta mediospago."""
+        """PHP: ``validarUIFSUNAT`` → siempre ``<MediosPagos>`` (vacío o con hijos)."""
         del pat_row
-        if doc.get("mediospago") is not None and str(doc.get("mediospago")).strip() != "":
-            return doc_requires_medios_pago_xml(doc)
-        flag = self._tiposdeacto_mediospago_flag(doc)
-        enriched = {**doc, "mediospago": flag if flag is not None else doc.get("mediospago")}
-        return doc_requires_medios_pago_xml(enriched)
+        return doc_requires_medios_pago_xml(doc)
 
     def _resolve_medio_pago_patrimonial(
         self, pat_row: Dict, doc: Dict
@@ -1627,11 +1679,10 @@ class SISGENXmlGenerator:
             if block:
                 blocks.append(block)
 
-        if not self._acto_requiere_medios_pago_xml(doc, pat_row):
+        if not doc_requires_medios_pago_xml(doc):
             return ""
 
-        # Legacy behavior: when the act requires medios but there are no detail rows,
-        # emit an empty container only (no MediosPago children).
+        # PHP: wrapper siempre que validarUIFSUNAT; hijos solo si hay detallemediopago.
         if not blocks:
             return "\t\t<MediosPagos>\n\t\t</MediosPagos>\n"
 
@@ -1670,17 +1721,10 @@ class SISGENXmlGenerator:
 
             pat_row = self._resolve_patrimonial_for_doc(doc)
             mp_rows = self._medios_pago_filas_enriquecidas(doc.get("kardex"))
-            if self._acto_requiere_medios_pago_xml(doc, pat_row):
-                if not mp_rows:
-                    if not pat_row:
-                        errs.append(
-                            "medios de pago: el acto exige MediosPagos pero no hay patrimonial"
-                        )
-                    elif not self._resolve_medio_pago_patrimonial(pat_row, doc):
-                        errs.append(
-                            "medios de pago: sin filas en detallemediopago y sin "
-                            "código en catálogo mediospago"
-                        )
+            if doc_requires_uif_sunat_xml(doc) and not mp_rows and pat_row:
+                synthetic = self._synthetic_medio_row_from_patrimonial(pat_row, doc)
+                if synthetic:
+                    mp_rows = [synthetic]
 
         num_esc = str(doc.get("numescritura") or "").strip()
         id_tip = doc.get("idtipkar")
@@ -2103,6 +2147,10 @@ class SISGENXmlGenerator:
                     pat_row.get("idmon") if pat_row else None
                 )
                 mp_rows = self._medios_pago_filas_enriquecidas(doc.get("kardex"))
+                if not mp_rows and doc_requires_uif_sunat_xml(doc) and pat_row:
+                    synthetic = self._synthetic_medio_row_from_patrimonial(pat_row, doc)
+                    if synthetic:
+                        mp_rows = [synthetic]
                 idc_for_renta = [
                     str(p.get("idcontratante")).strip()
                     for p in (doc.get("participants") or [])
@@ -2142,37 +2190,34 @@ class SISGENXmlGenerator:
                 xml += '\t\t\t<Intervenciones>\n'
 
                 emitidos_sujeto_id_maestro: Set[str] = set()
-                
-                # Group participants by role and condition
-                participants_by_role = {}
-                for participant in doc.get('participants', []):
-                    role = participant.get('uif', 'O')
-                    condition = participant.get('idcondicion', '')
-                    key = f"{role}_{condition}"
-                    if key not in participants_by_role:
-                        participants_by_role[key] = []
-                    participants_by_role[key].append(participant)
-                
-                # Process each role group
-                for key, participants in participants_by_role.items():
+                participants_all = doc.get("participants") or []
+                participants_by_role: Dict[str, List[Dict]] = {}
+
+                for participant in participants_all:
+                    role = self._participant_rol_representante(participant)
+                    if role not in self.INTERVENCION_ROLES:
+                        continue
+                    participants_by_role.setdefault(role, []).append(participant)
+
+                for role in self.INTERVENCION_ROLES:
+                    participants = participants_by_role.get(role, [])
                     if not participants:
                         continue
-                    
-                    role = key.split('_')[0]
+
                     tipo_int, desc_int = self._get_tipo_intervencion_desc(
                         role=role,
-                        acto_juridico=doc.get('cod_ancert'),
-                        participant_data=participants[0]  # Pass the first participant as data
+                        acto_juridico=doc.get("cod_ancert"),
+                        participant_data=participants[0],
                     )
-                    
-                    xml += '\t\t\t\t<Intervencion>\n'
-                    xml += f'\t\t\t\t\t<TipoIntervencion>{tipo_int}</TipoIntervencion>\n'
-                    xml += f'\t\t\t\t\t<DescripcionIntervencion>{desc_int}</DescripcionIntervencion>\n'
-                    xml += f'\t\t\t\t\t<RolRepresentante>{role}</RolRepresentante>\n'
-                    xml += '\t\t\t\t\t<Sujetos>\n'
-                    
+
+                    xml += "\t\t\t\t<Intervencion>\n"
+                    xml += f"\t\t\t\t\t<TipoIntervencion>{tipo_int}</TipoIntervencion>\n"
+                    xml += f"\t\t\t\t\t<DescripcionIntervencion>{desc_int}</DescripcionIntervencion>\n"
+                    xml += f"\t\t\t\t\t<RolRepresentante>{role}</RolRepresentante>\n"
+                    xml += "\t\t\t\t\t<Sujetos>\n"
+
                     for participant in participants:
-                        xml += '\t\t\t\t\t\t<Sujeto>\n'
+                        xml += "\t\t\t\t\t\t<Sujeto>\n"
                         xml += f'\t\t\t\t\t\t\t<IdMaestro>{participant.get("idcliente", "")}</IdMaestro>\n'
                         _mid_s = str(participant.get("idcliente") or "").strip()
                         if _mid_s:
@@ -2229,23 +2274,16 @@ class SISGENXmlGenerator:
                     xml += '\t\t\t\t\t</Sujetos>\n'
                     xml += '\t\t\t\t</Intervencion>\n'
 
-                xml += '\t\t\t</Intervenciones>\n'
-                
-                # NoIntervinientes: marcadores PHP (repre/firma/visita 'N') + cónyuge casado
-                ni_ids = self._coleccion_no_interviniente_ids(
-                    doc.get("participants") or [],
+                xml += "\t\t\t</Intervenciones>\n"
+
+                xml += self._no_intervinientes_xml(
+                    participants_all,
                     emitidos_sujeto_id_maestro,
                 )
-                xml += '\t\t\t<NoIntervinientes>\n'
-                for nid in ni_ids:
-                    xml += '\t\t\t\t<NoInterviniente>\n'
-                    xml += f'\t\t\t\t\t<IdMaestro>{nid}</IdMaestro>\n'
-                    xml += '\t\t\t\t</NoInterviniente>\n'
-                xml += '\t\t\t</NoIntervinientes>\n'
-                xml += '\t\t</Operantes>\n'
+                xml += "\t\t</Operantes>\n"
 
                 total_monto = 0.0
-                if doc_requires_cuantia_operacion_xml(doc):
+                if doc_requires_uif_sunat_xml(doc):
                     participants_list = doc.get("participants", [])
                     total_monto = self._cuantia_operacion_total(
                         doc, participants_list
