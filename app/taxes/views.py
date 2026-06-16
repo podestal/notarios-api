@@ -87,6 +87,11 @@ from .legacy_db import POSTGRES_DB
 from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
 from .services.document_views import DocumentReadViewSetMixin
+from .services.kardex_billing import (
+    lock_kardex_for_billing,
+    mark_kardex_as_billed,
+    normalize_kardex,
+)
 from .services.pdf import generate_ingreso_pdf, generate_recibo_pdf
 from .services.xml import (
     consultar_ticket_baja,
@@ -315,13 +320,27 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
             serializer.validated_data
         )
 
-        recibo, items = create_recibo(
-            usuario_id=user.taxes_usuario_id,
-            negocio_id=user.negocio_id,
-            lineas=lineas,
-            fecha_emision=fecha_emision,
-            **recibo_data,
-        )
+        kardex_code = normalize_kardex(recibo_data.get("kardex"))
+        if kardex_code is not None:
+            recibo_data["kardex"] = kardex_code
+            with transaction.atomic(using="default"):
+                kardex = lock_kardex_for_billing(kardex_code)
+                recibo, items = create_recibo(
+                    usuario_id=user.taxes_usuario_id,
+                    negocio_id=user.negocio_id,
+                    lineas=lineas,
+                    fecha_emision=fecha_emision,
+                    **recibo_data,
+                )
+                mark_kardex_as_billed(kardex)
+        else:
+            recibo, items = create_recibo(
+                usuario_id=user.taxes_usuario_id,
+                negocio_id=user.negocio_id,
+                lineas=lineas,
+                fecha_emision=fecha_emision,
+                **recibo_data,
+            )
 
         response = CreateReciboResponseSerializer(
             {"recibo": recibo, "items": items},
@@ -473,11 +492,24 @@ class IngresosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         serializer = CreateControlInternoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        ingreso, detalles = create_control_interno(
-            serializer.validated_data,
-            usuario_id=user.taxes_usuario_id,
-            negocio_id=user.negocio_id,
-        )
+        data = dict(serializer.validated_data)
+        kardex_code = normalize_kardex(data.get("kardex"))
+        if kardex_code is not None:
+            data["kardex"] = kardex_code
+            with transaction.atomic(using="default"):
+                kardex = lock_kardex_for_billing(kardex_code)
+                ingreso, detalles = create_control_interno(
+                    data,
+                    usuario_id=user.taxes_usuario_id,
+                    negocio_id=user.negocio_id,
+                )
+                mark_kardex_as_billed(kardex)
+        else:
+            ingreso, detalles = create_control_interno(
+                data,
+                usuario_id=user.taxes_usuario_id,
+                negocio_id=user.negocio_id,
+            )
 
         response = ControlInternoResponseSerializer(
             ingreso,

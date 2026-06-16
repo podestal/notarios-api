@@ -10,6 +10,7 @@ from taxes.legacy_db import next_serial_id, next_serial_ids
 from taxes.models import Catalogos, ItemsRecibos, Recibos, Series
 from taxes.services.control_interno import BOLETA_COMPROBANTE_ID, CONTROL_INTERNO_COMPROBANTE_ID
 from taxes.services.document_queryset import filter_recibos_by_fecha_emision_date
+from taxes.services.kardex_billing import normalize_kardex
 from taxes.services.xml import procesar_recibo_xml
 
 POSTGRES_DB = "postgres"
@@ -107,6 +108,7 @@ def create_recibo(
     serie_documento_modificado=None,
     numero_documento_modificado: str | None = None,
     motivo_modificacion: str | None = None,
+    kardex: str | None = None,
 ):
     if not lineas:
         raise ValidationError("At least one line is required.")
@@ -187,6 +189,7 @@ def create_recibo(
         ),
         numero_documento_modificado=numero_documento_modificado,
         motivo_modificacion=motivo_modificacion or None,
+        kardex=normalize_kardex(kardex),
     )
 
     now = timezone.localtime().replace(tzinfo=None)

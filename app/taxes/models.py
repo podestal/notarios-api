@@ -195,6 +195,7 @@ class Recibos(models.Model):
     codigo_error = models.CharField(max_length=60, blank=True, null=True)
     error_sunat = models.CharField(max_length=2000, blank=True, null=True)
     gratuita = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
 
     class Meta:
         managed = False
@@ -242,6 +243,7 @@ class Ingresos(models.Model):
     comprobante = models.ForeignKey('Comprobantes', models.DO_NOTHING, blank=True, null=True)
     canjeada = models.BooleanField()
     observaciones = models.CharField(max_length=255, blank=True, null=True)
+    kardex = models.CharField(max_length=30, blank=True, null=True)
 
     class Meta:
         managed = False

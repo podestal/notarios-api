@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from taxes.legacy_db import next_serial_id, next_serial_ids
 from taxes.models import Ingresos, IngresosDetalles
+from taxes.services.kardex_billing import normalize_kardex
 
 FACTURA_COMPROBANTE_ID = 1
 BOLETA_COMPROBANTE_ID = 2
@@ -54,6 +55,7 @@ def create_control_interno(data, usuario_id: int, negocio_id: int):
         recibo_id=None,
         canjeada=False,
         anulada=False,
+        kardex=normalize_kardex(data.get("kardex")),
     )
 
     # Legacy column is timestamp without time zone (local Peru wall time).

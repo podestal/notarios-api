@@ -74,6 +74,7 @@ def canjear_ingreso(
         observaciones=observaciones or ingreso.observaciones or "",
         fecha_emision=fecha_emision,
         lineas=lineas,
+        kardex=ingreso.kardex,
     )
 
     fecha_baja = timezone.localdate()

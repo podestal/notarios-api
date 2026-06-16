@@ -236,6 +236,7 @@ class RecibosSerializer(serializers.ModelSerializer):
             "codigo_error",
             "error_sunat",
             "gratuita",
+            "kardex",
         ]
         read_only_fields = ["id_recibo"]
 
@@ -277,6 +278,7 @@ class RecibosReadSerializer(serializers.ModelSerializer):
             "enviada_sunat",
             "aceptada_sunat",
             "nombre_comprobante",
+            "kardex",
         ]
 
     def get_persona_documento(self, obj):
@@ -320,6 +322,7 @@ class IngresosSerializer(serializers.ModelSerializer):
             "comprobante",
             "canjeada",
             "observaciones",
+            "kardex",
         ]
         read_only_fields = [
             "id_ingreso",
@@ -362,6 +365,7 @@ class IngresosReadSerializer(serializers.ModelSerializer):
             "comprobante",
             "canjeada",
             "observaciones",
+            "kardex",
         ]
 
     def get_persona_documento(self, obj):
@@ -457,6 +461,13 @@ class CreateControlInternoSerializer(serializers.Serializer):
     moneda_id = serializers.IntegerField()
     persona_id = serializers.IntegerField()
     direccion = serializers.CharField(max_length=200)
+    kardex = serializers.CharField(
+        max_length=30,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default=None,
+    )
     observaciones = serializers.CharField(
         max_length=255,
         required=False,
@@ -518,6 +529,13 @@ class CreateReciboSerializer(serializers.Serializer):
     moneda_id = serializers.IntegerField()
     persona_id = serializers.IntegerField()
     direccion = serializers.CharField(max_length=200)
+    kardex = serializers.CharField(
+        max_length=30,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default=None,
+    )
     observaciones = serializers.CharField(
         max_length=255,
         required=False,
