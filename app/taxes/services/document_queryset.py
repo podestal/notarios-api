@@ -1,11 +1,15 @@
 from datetime import date
 from typing import Optional
 
-from django.db.models import DateField, QuerySet
+from django.db.models import DateField, Q, QuerySet
 from django.db.models.functions import Cast
 from django.utils.dateparse import parse_date, parse_datetime
 
 from taxes.services.document_lookup import filter_documents_by_persona_usuario
+
+
+TRUE_VALUES = frozenset({"1", "true", "t", "yes", "y"})
+FALSE_VALUES = frozenset({"0", "false", "f", "no", "n"})
 
 
 def filter_recibos_by_fecha_emision_date(
@@ -22,6 +26,20 @@ def filter_recibos_by_fecha_emision_date(
     return qs.annotate(
         _fecha_emision_d=Cast("fecha_emision", output_field=DateField()),
     ).filter(_fecha_emision_d=fecha_emision)
+
+
+def filter_by_kardex(qs, params):
+    kardex = params.get("kardex", "").strip()
+    if kardex:
+        qs = qs.filter(kardex=kardex)
+
+    has_kardex = params.get("has_kardex", "").strip().lower()
+    if has_kardex in TRUE_VALUES:
+        qs = qs.exclude(kardex__isnull=True).exclude(kardex="")
+    elif has_kardex in FALSE_VALUES:
+        qs = qs.filter(Q(kardex__isnull=True) | Q(kardex=""))
+
+    return qs
 
 
 def filter_by_fecha_emision(qs, params):
@@ -50,4 +68,5 @@ def filter_by_fecha_emision(qs, params):
 
 def apply_document_list_filters(qs, params):
     qs = filter_by_fecha_emision(qs, params)
+    qs = filter_by_kardex(qs, params)
     return filter_documents_by_persona_usuario(qs, params)
