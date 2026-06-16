@@ -1,7 +1,9 @@
-from datetime import date, datetime, time
+from datetime import date, datetime
 
 from django.utils import timezone as django_tz
 from rest_framework import serializers
+
+from .fields import LocalWallDateTimeSerializerField
 
 from .services.document_lookup import (
     moneda_display,
@@ -186,6 +188,8 @@ class SeriesSerializer(serializers.ModelSerializer):
 
 
 class RecibosSerializer(serializers.ModelSerializer):
+    fecha_emision = LocalWallDateTimeSerializerField()
+
     class Meta:
         model = Recibos
         fields = [
@@ -238,6 +242,7 @@ class RecibosSerializer(serializers.ModelSerializer):
 
 class RecibosReadSerializer(serializers.ModelSerializer):
     comprobante = serializers.IntegerField(source="comprobante_id", read_only=True)
+    fecha_emision = LocalWallDateTimeSerializerField()
     persona_documento = serializers.SerializerMethodField()
     persona_nombres = serializers.SerializerMethodField()
     usuario = serializers.SerializerMethodField()
@@ -293,6 +298,8 @@ class RecibosReadSerializer(serializers.ModelSerializer):
 
 
 class IngresosSerializer(serializers.ModelSerializer):
+    fecha_emision = LocalWallDateTimeSerializerField(read_only=True)
+
     class Meta:
         model = Ingresos
         fields = [
@@ -326,6 +333,7 @@ class IngresosSerializer(serializers.ModelSerializer):
 
 class IngresosReadSerializer(serializers.ModelSerializer):
     comprobante = serializers.IntegerField(source="comprobante_id", read_only=True)
+    fecha_emision = LocalWallDateTimeSerializerField()
     recibo_id = serializers.IntegerField(read_only=True, allow_null=True)
     persona_documento = serializers.SerializerMethodField()
     persona_nombres = serializers.SerializerMethodField()
@@ -467,6 +475,8 @@ class CreateControlInternoSerializer(serializers.Serializer):
 class ItemsRecibosSerializer(serializers.ModelSerializer):
     recibo = serializers.IntegerField(source="recibo_id", read_only=True)
     tipo_igv = serializers.IntegerField(source="tipo_igv_id", read_only=True)
+    creado = LocalWallDateTimeSerializerField(read_only=True)
+    actualizado = LocalWallDateTimeSerializerField(read_only=True)
 
     class Meta:
         model = ItemsRecibos

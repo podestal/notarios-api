@@ -1,5 +1,7 @@
 from django.db import models
 
+from taxes.fields import LocalWallDateTimeField
+
 """
 Models for the taxes app.
 This app is used to manage the taxes of the system.
@@ -151,7 +153,7 @@ class Series(models.Model):
 
 class Recibos(models.Model):
     id_recibo = models.AutoField(primary_key=True)
-    fecha_emision = models.DateTimeField()
+    fecha_emision = LocalWallDateTimeField()
     fecha_vencimiento = models.DateField()
     comprobante = models.ForeignKey('Comprobantes', models.DO_NOTHING)
     serie = models.CharField(max_length=10)
@@ -213,8 +215,8 @@ class ItemsRecibos(models.Model):
     recibo = models.ForeignKey(Recibos, models.DO_NOTHING)
     catalogo_id = models.IntegerField()
     tipo_igv = models.ForeignKey(TiposIgv, models.DO_NOTHING, blank=True, null=True)
-    creado = models.DateTimeField(blank=True, null=True)
-    actualizado = models.DateTimeField(blank=True, null=True)
+    creado = LocalWallDateTimeField(blank=True, null=True)
+    actualizado = LocalWallDateTimeField(blank=True, null=True)
     detalles = models.CharField(max_length=2000, blank=True, null=True)
 
     class Meta:
@@ -224,7 +226,7 @@ class ItemsRecibos(models.Model):
     
 class Ingresos(models.Model):
     id_ingreso = models.AutoField(primary_key=True)
-    fecha_emision = models.DateTimeField(blank=True, null=True)
+    fecha_emision = LocalWallDateTimeField(blank=True, null=True)
     numero = models.IntegerField(blank=True, null=True)
     moneda_id = models.IntegerField(blank=True, null=True)
     total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
