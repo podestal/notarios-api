@@ -21,9 +21,6 @@ def lock_kardex_for_billing(kardex_value: str | None) -> Kardex | None:
     if kardex is None:
         raise ValidationError({"kardex": "Kardex no encontrado."})
 
-    if int(kardex.pagado or 0) == 1:
-        raise ValidationError({"kardex": "El kardex ya tiene facturacion."})
-
     return kardex
 
 
