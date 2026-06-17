@@ -14,9 +14,21 @@ user = get_user_model()
 
 
 class CreateUserSerializer(UserCreateSerializer):
+    taxes_usuario_id = serializers.IntegerField(required=False, allow_null=True)
+    negocio_id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta(UserCreateSerializer.Meta):
-        fields = ['idusuario', 'username', 'email', 'password', 'notary', 'first_name', 'last_name']
+        fields = [
+            'idusuario',
+            'username',
+            'email',
+            'password',
+            'notary',
+            'taxes_usuario_id',
+            'negocio_id',
+            'first_name',
+            'last_name',
+        ]
 
 
 class UserSerializer(BasedUserSerializer):
@@ -37,6 +49,9 @@ class UserSerializer(BasedUserSerializer):
 
 class AdminUserSerializer(serializers.ModelSerializer):
     """Superuser-only user management for taxes linking and admin UI."""
+
+    taxes_usuario_id = serializers.IntegerField(required=False, allow_null=True)
+    negocio_id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = user
