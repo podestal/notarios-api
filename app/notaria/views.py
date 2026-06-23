@@ -51,6 +51,11 @@ from .services.pdt_file_service import PdtFileService
 from .services.pdt_escrituras_service import PdtEscriturasService
 from .services.pdt_vehiculares_service import PdtVehicularesService
 from .services.pdt_garantias_service import PdtGarantiasService
+from .services.participation_split import (
+    divide_evenly,
+    format_monto,
+    format_porcentaje,
+)
 from .constants import get_kardex_abbreviation_map
 from ducumentation.storage import (
     build_object_key,
@@ -115,6 +120,56 @@ def _contratantesxacto_formulario_from_acto(condicion):
         return ""
     s = str(v).strip()
     return s[:2] if len(s) > 2 else s
+
+
+def _mutable_request_data(data):
+    try:
+        return data.copy()
+    except AttributeError:
+        return dict(data)
+
+
+def _norm_cxa_field(value) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _sanitize_contratantesxacto_patch(data, instance):
+    """
+    UI PATCHes often include the full row. Strip cross-field noise:
+
+    - Editing origen de fondos must not overwrite monto/porcentaje (client formula).
+    - Editing monto/porcentaje must not overwrite ofondo/opago (stale form state).
+    """
+    if not isinstance(data, dict):
+        return data
+
+    monto_changed = "monto" in data and _norm_cxa_field(data.get("monto")) != _norm_cxa_field(
+        instance.monto
+    )
+    pct_changed = (
+        "porcentaje" in data
+        and _norm_cxa_field(data.get("porcentaje")) != _norm_cxa_field(instance.porcentaje)
+    )
+    ofondo_changed = "ofondo" in data and _norm_cxa_field(data.get("ofondo")) != _norm_cxa_field(
+        instance.ofondo
+    )
+    opago_changed = "opago" in data and _norm_cxa_field(data.get("opago")) != _norm_cxa_field(
+        instance.opago
+    )
+
+    if ofondo_changed or opago_changed:
+        data.pop("monto", None)
+        data.pop("porcentaje", None)
+
+    if monto_changed or pct_changed:
+        if not ofondo_changed:
+            data.pop("ofondo", None)
+        if not opago_changed:
+            data.pop("opago", None)
+
+    return data
 
 
 def _reset_sisgen_for_kardex(kardex_code):
@@ -911,19 +966,19 @@ class KardexViewSet(ModelViewSet):
                     # 3. Calculate and update percentages and amounts
                     # Get participants by parte (1 = vendedor/otorgante, 2 = comprador/beneficiario)
                     vendedores = models.Contratantesxacto.objects.filter(
-                        kardex=kardex_val, parte="1"
-                    )
+                        kardex=kardex_val, idtipoacto=idtipoacto, parte="1"
+                    ).order_by("id")
                     numero_vendedores = vendedores.count()
 
                     compradores = models.Contratantesxacto.objects.filter(
-                        kardex=kardex_val, parte="2"
-                    )
+                        kardex=kardex_val, idtipoacto=idtipoacto, parte="2"
+                    ).order_by("id")
                     numero_compradores = compradores.count()
 
-                    # Get transaction amount
+                    # Get transaction amount for this kardex + acto
                     try:
                         patrimonial = models.Patrimonial.objects.get(
-                            idtipoacto=idtipoacto, item=item_val
+                            kardex=kardex_val, idtipoacto=idtipoacto, item=item_val
                         )
                         importe_trans = (
                             float(patrimonial.importetrans) if patrimonial.importetrans else 0
@@ -931,40 +986,34 @@ class KardexViewSet(ModelViewSet):
                     except models.Patrimonial.DoesNotExist:
                         importe_trans = 0
 
-                    # Calculate percentage and amount distributions
-                    vendedor_percentages = self._divide_evenly(numero_vendedores, 100)
-                    comprador_percentages = self._divide_evenly(numero_compradores, 100)
-                    vendedor_amounts = self._divide_evenly(numero_vendedores, importe_trans)
-                    comprador_amounts = self._divide_evenly(numero_compradores, importe_trans)
+                    # Split % and monto independently in cents (monto is NOT pct/100*importe)
+                    vendedor_percentages = divide_evenly(numero_vendedores, 100)
+                    comprador_percentages = divide_evenly(numero_compradores, 100)
+                    vendedor_amounts = divide_evenly(numero_vendedores, importe_trans)
+                    comprador_amounts = divide_evenly(numero_compradores, importe_trans)
 
-                    # Update vendedores percentages and amounts
                     for i, vendedor in enumerate(vendedores):
                         percentage = vendedor_percentages[i] if i < len(vendedor_percentages) else 0
                         amount = vendedor_amounts[i] if i < len(vendedor_amounts) else 0
-
-                        # Match PHP logic: WHERE item='$itemdiv' and parte = '1' and idcontratante=... and idtipoacto=...
                         updated_count = models.Contratantesxacto.objects.filter(
-                            item=item_val,
-                            parte="1",
-                            idcontratante=vendedor.idcontratante,
-                            idtipoacto=vendedor.idtipoacto,
-                        ).update(porcentaje=str(percentage), monto=str(amount))
+                            pk=vendedor.id
+                        ).update(
+                            porcentaje=format_porcentaje(percentage),
+                            monto=format_monto(amount),
+                        )
                         updates_performed["contratantesxacto_percentage_updates"] += updated_count
 
-                    # Update compradores percentages and amounts
                     for i, comprador in enumerate(compradores):
                         percentage = (
                             comprador_percentages[i] if i < len(comprador_percentages) else 0
                         )
                         amount = comprador_amounts[i] if i < len(comprador_amounts) else 0
-
-                        # Match PHP logic: WHERE item='$itemdiv' and parte = '2' and idcontratante=... and idtipoacto=...
                         updated_count = models.Contratantesxacto.objects.filter(
-                            item=item_val,
-                            parte="2",
-                            idcontratante=comprador.idcontratante,
-                            idtipoacto=comprador.idtipoacto,
-                        ).update(porcentaje=str(percentage), monto=str(amount))
+                            pk=comprador.id
+                        ).update(
+                            porcentaje=format_porcentaje(percentage),
+                            monto=format_monto(amount),
+                        )
                         updates_performed["contratantesxacto_percentage_updates"] += updated_count
 
                     # Get participant names for display
@@ -1158,31 +1207,6 @@ class KardexViewSet(ModelViewSet):
                 {"error": 1, "errorDescription": f"Error en cálculo: {str(e)}"}, status=500
             )
 
-    def _divide_evenly(self, count: int, total_amount: float) -> List[float]:
-        """
-        Divide amount evenly among participants, handling rounding issues.
-        Based on the PHP divide() function.
-        """
-        if count >= 2:
-            # Calculate base division
-            base_amount = round(total_amount / count, 2)
-
-            # Check if there's a remainder due to rounding
-            total_distributed = base_amount * count
-            remainder = round(total_amount - total_distributed, 2)
-
-            # Create array with base amounts
-            amounts = [base_amount] * count
-
-            # Add remainder to the last participant if needed
-            if remainder != 0:
-                amounts[-1] += remainder
-
-            return amounts
-        else:
-            # If only one participant, give them everything
-            return [total_amount] if count == 1 else []
-
     @action(detail=False, methods=["post"])
     def execute_calculation(self, request):
         """
@@ -1245,21 +1269,19 @@ class KardexViewSet(ModelViewSet):
                         ] += contratantes_updated
 
                     # 3. Calculate and update percentages and amounts
-                    # Get participants by parte
                     vendedores = models.Contratantesxacto.objects.filter(
-                        kardex=kardex_val, parte="1"
-                    )
+                        kardex=kardex_val, idtipoacto=idtipoacto, parte="1"
+                    ).order_by("id")
                     numero_vendedores = vendedores.count()
 
                     compradores = models.Contratantesxacto.objects.filter(
-                        kardex=kardex_val, parte="2"
-                    )
+                        kardex=kardex_val, idtipoacto=idtipoacto, parte="2"
+                    ).order_by("id")
                     numero_compradores = compradores.count()
 
-                    # Get transaction amount
                     try:
                         patrimonial = models.Patrimonial.objects.get(
-                            idtipoacto=idtipoacto, item=item
+                            kardex=kardex_val, idtipoacto=idtipoacto, item=item
                         )
                         importe_trans = (
                             float(patrimonial.importetrans) if patrimonial.importetrans else 0
@@ -1267,38 +1289,29 @@ class KardexViewSet(ModelViewSet):
                     except models.Patrimonial.DoesNotExist:
                         importe_trans = 0
 
-                    # Calculate distributions
-                    vendedor_percentages = self._divide_evenly(numero_vendedores, 100)
-                    comprador_percentages = self._divide_evenly(numero_compradores, 100)
-                    vendedor_amounts = self._divide_evenly(numero_vendedores, importe_trans)
-                    comprador_amounts = self._divide_evenly(numero_compradores, importe_trans)
+                    vendedor_percentages = divide_evenly(numero_vendedores, 100)
+                    comprador_percentages = divide_evenly(numero_compradores, 100)
+                    vendedor_amounts = divide_evenly(numero_vendedores, importe_trans)
+                    comprador_amounts = divide_evenly(numero_compradores, importe_trans)
 
-                    # Update vendedores percentages and amounts
                     for i, vendedor in enumerate(vendedores):
                         percentage = vendedor_percentages[i] if i < len(vendedor_percentages) else 0
                         amount = vendedor_amounts[i] if i < len(vendedor_amounts) else 0
-
-                        models.Contratantesxacto.objects.filter(
-                            item=item,
-                            parte="1",
-                            idcontratante=vendedor.idcontratante,
-                            idtipoacto=idtipoacto,
-                        ).update(porcentaje=str(percentage), monto=str(amount))
+                        models.Contratantesxacto.objects.filter(pk=vendedor.id).update(
+                            porcentaje=format_porcentaje(percentage),
+                            monto=format_monto(amount),
+                        )
                         updates_performed["contratantesxacto_percentage_updates"] += 1
 
-                    # Update compradores percentages and amounts
                     for i, comprador in enumerate(compradores):
                         percentage = (
                             comprador_percentages[i] if i < len(comprador_percentages) else 0
                         )
                         amount = comprador_amounts[i] if i < len(comprador_amounts) else 0
-
-                        models.Contratantesxacto.objects.filter(
-                            item=item,
-                            parte="2",
-                            idcontratante=comprador.idcontratante,
-                            idtipoacto=idtipoacto,
-                        ).update(porcentaje=str(percentage), monto=str(amount))
+                        models.Contratantesxacto.objects.filter(pk=comprador.id).update(
+                            porcentaje=format_porcentaje(percentage),
+                            monto=format_monto(amount),
+                        )
                         updates_performed["contratantesxacto_percentage_updates"] += 1
 
                 # 4. Update kardex modification date
@@ -1763,10 +1776,14 @@ class ContratantesxactoViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
+        partial = kwargs.pop("partial", False)
         instance = self.get_object()
-        _reset_sisgen_for_kardex(instance.kardex)
-        return response
+        data = _sanitize_contratantesxacto_patch(_mutable_request_data(request.data), instance)
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        _reset_sisgen_for_kardex(serializer.instance.kardex)
+        return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
