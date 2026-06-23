@@ -2,8 +2,11 @@ from django.test import SimpleTestCase
 
 from sisgen.sisgen_acto_xml_rules import (
     ACTOS_NO_UIF_SUNAT,
+    ACTOS_SIN_OBJETOS_XML,
     cod_ancert_requires_uif_sunat_xml,
+    cod_ancert_permite_objetos_xml,
     codigo_uif_o_sunat_presente,
+    doc_permite_objetos_xml,
     doc_requires_cuantia_operacion_xml,
     doc_requires_medios_pago_xml,
     doc_requires_uif_sunat_xml,
@@ -21,7 +24,10 @@ class SisgenActoXmlRulesTest(SimpleTestCase):
             "cuantia": "S",
         }
         self.assertIn("0604", ACTOS_NO_UIF_SUNAT)
+        self.assertIn("0604", ACTOS_SIN_OBJETOS_XML)
         self.assertFalse(cod_ancert_requires_uif_sunat_xml("0604"))
+        self.assertFalse(cod_ancert_permite_objetos_xml("0604"))
+        self.assertFalse(doc_permite_objetos_xml(doc))
         self.assertFalse(doc_requires_uif_sunat_xml(doc))
         self.assertFalse(doc_requires_medios_pago_xml(doc))
         self.assertFalse(doc_requires_cuantia_operacion_xml(doc))

@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from sisgen.services.xml_generator_service import SISGENXmlGenerator
+from sisgen.sisgen_acto_xml_rules import doc_permite_objetos_xml
 
 
 class SisgenXmlGeneratorLegacyTest(SimpleTestCase):
@@ -30,6 +31,23 @@ class SisgenXmlGeneratorLegacyTest(SimpleTestCase):
             total_monto=0.0,
         )
         self.assertEqual(xml, "")
+
+    def test_poder_sin_bienes_cuando_acto_0604(self):
+        """EC05: 0604 no carga bienes aunque el kardex tenga detallevehicular."""
+        doc = {"cod_ancert": "0604", "codactos": "067", "kardex": "K17-2026"}
+        self.assertFalse(doc_permite_objetos_xml(doc))
+        bienes = (
+            self.generator._load_bienes_for_doc(doc)
+            if doc_permite_objetos_xml(doc)
+            else {
+                "predios": [],
+                "vehiculos_bienes": [],
+                "vehiculos_detalle": [],
+                "otros": [],
+            }
+        )
+        self.assertEqual(bienes["vehiculos_detalle"], [])
+        self.assertEqual(bienes["vehiculos_bienes"], [])
 
     def test_rol_n_va_a_no_intervinientes_no_intervenciones(self):
         participants = [

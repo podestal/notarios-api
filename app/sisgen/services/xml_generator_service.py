@@ -15,6 +15,7 @@ from django.db.utils import DatabaseError
 
 from notaria.constants import FORMAS_PAGO, MONEDAS, OPORTUNIDADES_PAGO
 from sisgen.sisgen_acto_xml_rules import (
+    doc_permite_objetos_xml,
     doc_requires_cuantia_operacion_xml,
     doc_requires_medios_pago_xml,
     doc_requires_uif_sunat_xml,
@@ -1872,7 +1873,16 @@ class SISGENXmlGenerator:
                     docs_emitted += 1
                     continue
 
-                bienes = self._load_bienes_for_doc(doc)
+                bienes = (
+                    self._load_bienes_for_doc(doc)
+                    if doc_permite_objetos_xml(doc)
+                    else {
+                        "predios": [],
+                        "vehiculos_bienes": [],
+                        "vehiculos_detalle": [],
+                        "otros": [],
+                    }
+                )
                 
                 xml += '\t<DocumentoNotarial>\n'
                 xml += self._xml_seccion_documento(doc)

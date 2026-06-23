@@ -42,6 +42,20 @@ ACTOS_NO_UIF_SUNAT = frozenset(
     }
 )
 
+# SISGEN EC05: actos de poder (060x) no admiten Predios/Vehículos/OtrosObjetos ni <Objetos>.
+ACTOS_SIN_OBJETOS_XML = frozenset(
+    {
+        "0601",
+        "0602",
+        "0603",
+        "0604",
+        "0605",
+        "0606",
+        "0607",
+        "0608",
+    }
+)
+
 _NEGATIVOS = frozenset({"N", "NO", "0", "-", "NINGUNO", "NONE"})
 
 
@@ -92,3 +106,16 @@ def doc_requires_medios_pago_xml(doc: Dict) -> bool:
 def doc_requires_cuantia_operacion_xml(doc: Dict) -> bool:
     """PHP: ``CuantiaOperacion`` bajo el mismo gate ``validarUIFSUNAT``."""
     return doc_requires_uif_sunat_xml(doc)
+
+
+def cod_ancert_permite_objetos_xml(cod_ancert: Optional[str]) -> bool:
+    """False para poderes 060x (SISGEN EC05: el acto jurídico no permite objetos)."""
+    cod = _strip(cod_ancert)
+    if not cod:
+        return True
+    return cod not in ACTOS_SIN_OBJETOS_XML
+
+
+def doc_permite_objetos_xml(doc: Dict) -> bool:
+    """¿Incluir bienes en Maestros y referencias en Operantes/Objetos?"""
+    return cod_ancert_permite_objetos_xml(doc.get("cod_ancert"))
