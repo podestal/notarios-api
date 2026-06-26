@@ -52,6 +52,22 @@ class ParticipantFieldsValidatorTests(SimpleTestCase):
             setattr(c, k, v)
         return c
 
+    def _cliente_juridica(self, **kwargs):
+        c = MagicMock()
+        c.tipper = "J"
+        c.idtipdoc = 8
+        c.numdoc = ""
+        c.razonsocial = "EMPRESA SAC"
+        c.contacempresa = "OBJETO"
+        c.actmunicipal = "1234"
+        c.domfiscal = "LIMA"
+        c.idubigeo = "150101"
+        c.residente = ""
+        c.conyuge = ""
+        for k, v in kwargs.items():
+            setattr(c, k, v)
+        return c
+
     def test_missing_participants_structural(self):
         staged = self._staged()
         errors = self.validator.validate(
@@ -104,6 +120,88 @@ class ParticipantFieldsValidatorTests(SimpleTestCase):
             contratantesxacto_map={},
         )
         self.assertEqual(errors, [])
+
+    def test_constitucion_empresa_sin_ruc_correctable(self):
+        """RoClass: constitution + J idtipdoc 8 without numdoc → correctable (category 1)."""
+        staged = self._staged(uif="037")
+        staged.cod_acto = "040"
+        self.validator._ciiu_keys = {"1234"}
+        contratante = MagicMock(
+            idcontratante="99",
+            idcontratanterp="",
+            inscrito=None,
+            firma="1",
+            fechafirma="15/04/2026",
+            idsedereg="",
+            numpartida="",
+        )
+        cliente = self._cliente_juridica(idtipdoc=8, numdoc="")
+        cxa = MagicMock(uif="O", monto="100")
+        errors = self.validator.validate(
+            staged=staged,
+            act_description="CONSTITUCION DE S.A.C.",
+            contratantes_map={"K1": [contratante]},
+            clientes_map={"99": cliente},
+            contratantesxacto_map={"K1_040_99": cxa},
+        )
+        invalid_ruc = [e for e in errors if e["error_type"] == "invalid_ruc"]
+        missing_ruc = [e for e in errors if e["error_type"] == "missing_numero_ruc"]
+        self.assertEqual(len(invalid_ruc), 1)
+        self.assertEqual(invalid_ruc[0]["isCorrectable"], 1)
+        self.assertEqual(invalid_ruc[0]["categoryCorrect"], "1")
+        self.assertEqual(len(missing_ruc), 1)
+        self.assertEqual(missing_ruc[0]["isCorrectable"], 1)
+
+    def test_constitucion_invalid_ruc_still_errors(self):
+        staged = self._staged(uif="037")
+        staged.cod_acto = "040"
+        self.validator._ciiu_keys = {"1234"}
+        contratante = MagicMock(
+            idcontratante="99",
+            idcontratanterp="",
+            inscrito=None,
+            firma="1",
+            fechafirma="15/04/2026",
+            idsedereg="",
+            numpartida="",
+        )
+        cliente = self._cliente_juridica(idtipdoc=8, numdoc="123")
+        cxa = MagicMock(uif="O", monto="100")
+        errors = self.validator.validate(
+            staged=staged,
+            act_description="CONSTITUCION",
+            contratantes_map={"K1": [contratante]},
+            clientes_map={"99": cliente},
+            contratantesxacto_map={"K1_040_99": cxa},
+        )
+        invalid = [e for e in errors if e["error_type"] == "invalid_ruc"]
+        self.assertEqual(len(invalid), 1)
+        self.assertEqual(invalid[0]["isCorrectable"], 1)
+
+    def test_empresa_en_constitucion_idtipdoc_10_sin_error_ruc(self):
+        staged = self._staged(uif="037")
+        self.validator._ciiu_keys = {"1234"}
+        contratante = MagicMock(
+            idcontratante="99",
+            idcontratanterp="",
+            inscrito=None,
+            firma="1",
+            fechafirma="15/04/2026",
+            idsedereg="",
+            numpartida="",
+        )
+        cliente = self._cliente_juridica(idtipdoc=10, numdoc="")
+        cxa = MagicMock(uif="O", monto="100")
+        errors = self.validator.validate(
+            staged=staged,
+            act_description="CONSTITUCION",
+            contratantes_map={"K1": [contratante]},
+            clientes_map={"99": cliente},
+            contratantesxacto_map={"K1_094_99": cxa},
+        )
+        self.assertFalse(
+            any(e["error_type"] in ("invalid_ruc", "missing_numero_ruc") for e in errors)
+        )
 
     def test_natural_person_without_firma_does_not_raise_missing_fecha_firma(self):
         """PHP parity: missing firma/fechafirma only affects plane conclusion N, not RO errors."""

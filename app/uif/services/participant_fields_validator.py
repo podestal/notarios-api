@@ -547,11 +547,21 @@ class ParticipantFieldsValidator:
                     f"{nombre}: dirección requerida",
                 )
         elif tipper == "J":
-            if cliente.idtipdoc == 8 and not (cliente.numdoc or "").strip():
+            numdoc = (cliente.numdoc or "").strip()
+            uif_norm = (uif_code or "").strip()
+            if uif_norm.isdigit():
+                uif_norm = uif_norm.zfill(3)
+            is_constitucion = uif_norm in ACTS_CONSTITUCION_RUC_CORRECTABLE
+            is_sin_documento = int(cliente.idtipdoc or 0) == 10
+
+            if cliente.idtipdoc == 8 and not numdoc:
                 add(
                     FIELD_NUMERO_RUC,
                     "missing_numero_ruc",
                     f"{nombre}: RUC requerido",
+                    is_correctable=is_constitucion,
+                    type_of_correction="MANUAL" if is_constitucion else "",
+                    category_correct="1" if is_constitucion else "RO",
                 )
             if not (cliente.razonsocial or "").strip():
                 add(
@@ -578,21 +588,22 @@ class ParticipantFieldsValidator:
                     "missing_ciiu",
                     f"{nombre}: código CIIU requerido",
                 )
-            numdoc = (cliente.numdoc or "").strip()
-            if tipper == "J" and cliente.idtipdoc != 10 and numdoc:
-                if len(numdoc) != 11 or not numdoc.isdigit():
-                    err = build_ro_error(
-                        **base,
-                        error_type="invalid_ruc",
-                        error_description=f"{nombre}, su RUC es incorrecto",
-                        field_number=FIELD_NUMERO_DOCUMENTO,
-                    )
-                    if uif_code in ACTS_CONSTITUCION_RUC_CORRECTABLE:
-                        err["isCorrectable"] = 1
-                        err["typeOfCorrection"] = "MANUAL"
-                        err["categoryCorrect"] = "1"
-                        err["idContratante"] = contratante.idcontratante
-                    errors.append(err)
+            # RoClass: J with idtipdoc != 10 and empty/invalid numdoc → item 21.
+            if not is_sin_documento and (
+                not numdoc or len(numdoc) != 11 or not numdoc.isdigit()
+            ):
+                err = build_ro_error(
+                    **base,
+                    error_type="invalid_ruc",
+                    error_description=f"{nombre}, su RUC es incorrecto",
+                    field_number=FIELD_NUMERO_DOCUMENTO,
+                )
+                if is_constitucion:
+                    err["isCorrectable"] = 1
+                    err["typeOfCorrection"] = "MANUAL"
+                    err["categoryCorrect"] = "1"
+                    err["idContratante"] = contratante.idcontratante
+                errors.append(err)
             if not (cliente.domfiscal or "").strip():
                 add(
                     FIELD_DIRECCION,
