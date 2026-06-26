@@ -12,6 +12,101 @@ import defusedxml.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
+SISGEN_IT_CONTACT_NOTE = (
+    "Si el problema persiste, contacte al área de sistemas (IT) e indique el kardex, "
+    "la fecha/hora del envío y el mensaje de error mostrado."
+)
+
+
+def soap_response_is_ok(parsed: Dict[str, Any]) -> bool:
+    """True when SISGEN SOAP <return><status> is OK."""
+    if not parsed:
+        return False
+    summary = parsed.get("summary") or {}
+    if summary.get("soap_level_ok") is True:
+        return True
+    rs = (parsed.get("return_status") or "").strip().upper()
+    return rs == "OK"
+
+
+def format_soap_return_message(raw: str, *, max_len: int = 600) -> str:
+    """First line of SISGEN return message (drops duplicated SAX stack lines)."""
+    text = (raw or "").strip()
+    if not text:
+        return "SISGEN no devolvió detalle del error."
+    line = text.splitlines()[0].strip()
+    if len(line) > max_len:
+        return line[: max_len - 3] + "..."
+    return line
+
+
+def build_soap_failure_entries(
+    *,
+    parsed: Dict[str, Any],
+    batch_documents: List[Dict[str, Any]],
+    batch_index: int,
+    http_status: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    User-facing rows when SOAP-level send fails (INTERNAL_SERVER_ERROR, parse errors, etc.).
+    One entry per kardex in the batch.
+    """
+    return_status = (parsed.get("return_status") or "").strip()
+    status_label = return_status or "ERROR_SOAP"
+    if parsed.get("parse_error") and not return_status:
+        status_label = "ERROR_RESPUESTA"
+    short_msg = format_soap_return_message(parsed.get("return_message") or "")
+    if parsed.get("parse_error") == "empty_response":
+        short_msg = "SISGEN devolvió una respuesta vacía."
+    elif parsed.get("parse_error") == "missing_return_element":
+        short_msg = "La respuesta de SISGEN no tiene el formato esperado."
+
+    entries: List[Dict[str, Any]] = []
+    for bd in batch_documents:
+        kardex = str(bd.get("kardex") or "").strip()
+        if not kardex:
+            continue
+        user_line = (
+            f"{kardex}: SISGEN rechazó el envío ({status_label}). {short_msg}"
+        )
+        entries.append(
+            {
+                "kardex": kardex,
+                "idkardex": str(bd.get("idkardex") or ""),
+                "batch": batch_index,
+                "estado": status_label,
+                "http_status": http_status,
+                "soap_return_status": return_status,
+                "mensaje_tecnico": (parsed.get("return_message") or short_msg).strip(),
+                "mensaje_usuario": user_line,
+                "nota_contacto_it": SISGEN_IT_CONTACT_NOTE,
+                "parse_error": parsed.get("parse_error"),
+            }
+        )
+    return entries
+
+
+def user_facing_payload_for_saved_row(
+    parsed: Dict[str, Any],
+    *,
+    kardex: str,
+    batch_index: int,
+    http_status: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Extra JSON stored in SisgenSoapResponse.parsed_payload on SOAP failures."""
+    entries = build_soap_failure_entries(
+        parsed=parsed,
+        batch_documents=[{"kardex": kardex}],
+        batch_index=batch_index,
+        http_status=http_status,
+    )
+    row = entries[0] if entries else {}
+    return {
+        "soap_failure": not soap_response_is_ok(parsed),
+        "user_facing": row,
+        "nota_contacto_it": SISGEN_IT_CONTACT_NOTE,
+    }
+
 
 def _local(tag: str) -> str:
     if tag.startswith("{") and "}" in tag:
@@ -216,12 +311,12 @@ def save_response_logs_for_batch(
     raw_xml: str,
     parsed: Dict[str, Any],
     user=None,
-) -> int:
+) -> List[int]:
     """
     Crea una fila SisgenSoapResponse por documento devuelto en el SOAP, o por cada
-    kardex del batch si SISGEN no devolvió DocumentoNotarial (solo ACK).
+    kardex del batch si SISGEN no devolvió DocumentoNotarial (solo ACK o error SOAP).
 
-    Returns número de filas creadas.
+    Returns IDs of rows created.
     """
     # Import local to evitar circular apps.loading
     from ..models import SisgenSoapResponse
@@ -243,7 +338,8 @@ def save_response_logs_for_batch(
     }
 
     docs = parsed.get("documents") or []
-    created = 0
+    created_ids: List[int] = []
+    soap_failed = not soap_response_is_ok(parsed)
 
     if docs:
         for d in docs:
@@ -255,16 +351,25 @@ def save_response_logs_for_batch(
             }
             if raw_meta:
                 pl["raw_storage"] = raw_meta
+            if soap_failed:
+                pl.update(
+                    user_facing_payload_for_saved_row(
+                        parsed,
+                        kardex=nk,
+                        batch_index=batch_index,
+                        http_status=http_status,
+                    )
+                )
 
-            SisgenSoapResponse.objects.create(
+            obj = SisgenSoapResponse.objects.create(
                 kardex=nk[:32],
                 idkardex=(kmap.get(nk, "") or "")[:32],
                 document_status=(d.get("doc_status") or "")[:64],
                 parsed_payload=pl,
                 **common,
             )
-            created += 1
-        return created
+            created_ids.append(obj.id)
+        return created_ids
 
     rs = (parsed.get("return_status") or "").strip().upper()
     synth = "OK_ACK" if rs == "OK" else (rs[:64] if rs else "SIN_ECHO")
@@ -280,13 +385,22 @@ def save_response_logs_for_batch(
         }
         if raw_meta:
             pl_ack["raw_storage"] = raw_meta
+        if soap_failed:
+            pl_ack.update(
+                user_facing_payload_for_saved_row(
+                    parsed,
+                    kardex=k,
+                    batch_index=batch_index,
+                    http_status=http_status,
+                )
+            )
 
-        SisgenSoapResponse.objects.create(
+        obj = SisgenSoapResponse.objects.create(
             kardex=k[:32],
             idkardex=str(bd.get("idkardex") or "")[:32],
             document_status=synth,
             parsed_payload=pl_ack,
             **common,
         )
-        created += 1
-    return created
+        created_ids.append(obj.id)
+    return created_ids

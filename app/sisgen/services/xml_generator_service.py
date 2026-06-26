@@ -242,6 +242,34 @@ class SISGENXmlGenerator:
             self.logger.warning("cargo natural: %s", e)
         return None
 
+    def _natural_person_profesion_cargo_xml(self, person: Dict) -> str:
+        """
+        Profesion / Cargo block for PersonaNatural.
+
+        SISGEN XSD: after <OtraProfesion> only OtroCargo|Correo|Telefono|Direccion are
+        allowed — <Cargo> must not appear (even when codcargoprofe is 999).
+        """
+        xml = ""
+        prof_cod = self._profesion_cod_natural(person)
+        if prof_cod:
+            xml += f"\t\t\t\t<Profesion>{prof_cod}</Profesion>\n"
+        if prof_cod == "999":
+            det_prof = self._legacy_text_short(person.get("detaprofesion"), 50)
+            if det_prof:
+                xml += f"\t\t\t\t<OtraProfesion>{self._xml_pcdata(det_prof)}</OtraProfesion>\n"
+            else:
+                xml += "\t\t\t\t<OtraProfesion>OTROS</OtraProfesion>\n"
+        cargo_cod = self._cargo_cod_natural(person)
+        if cargo_cod and prof_cod != "999":
+            xml += f"\t\t\t\t<Cargo>{escape(cargo_cod)}</Cargo>\n"
+        if cargo_cod == "999":
+            det_cargo = self._legacy_text_short(person.get("profocupa"), 50)
+            if det_cargo:
+                xml += f"\t\t\t\t<OtroCargo>{self._xml_pcdata(det_cargo)}</OtroCargo>\n"
+            else:
+                xml += "\t\t\t\t<OtroCargo>OTROS</OtroCargo>\n"
+        return xml
+
     def _persona_juridica_otra_actividad_text(self, person: Dict) -> str:
         """
         Objeto social va en <OtraActividad> (no existe <ObjetoSocial> en el XSD).
@@ -1940,24 +1968,7 @@ class SISGENXmlGenerator:
                             xml += f'\t\t\t\t<PaisNacionalidad>{escape(nac_cod)}</PaisNacionalidad>\n'
                         if person.get("cumpclie"):
                             xml += f'\t\t\t\t<FechaNacimiento>{self._format_date(person.get("cumpclie", ""))}</FechaNacimiento>\n'
-                        prof_cod = self._profesion_cod_natural(person)
-                        if prof_cod:
-                            xml += f'\t\t\t\t<Profesion>{prof_cod}</Profesion>\n'
-                        if prof_cod == "999":
-                            det_prof = self._legacy_text_short(person.get("detaprofesion"), 50)
-                            if det_prof:
-                                xml += f'\t\t\t\t<OtraProfesion>{self._xml_pcdata(det_prof)}</OtraProfesion>\n'
-                            else:
-                                xml += '\t\t\t\t<OtraProfesion>OTROS</OtraProfesion>\n'
-                        cargo_cod = self._cargo_cod_natural(person)
-                        if cargo_cod:
-                            xml += f'\t\t\t\t<Cargo>{escape(cargo_cod)}</Cargo>\n'
-                        if cargo_cod == "999":
-                            det_cargo = self._legacy_text_short(person.get("profocupa"), 50)
-                            if det_cargo:
-                                xml += f'\t\t\t\t<OtroCargo>{self._xml_pcdata(det_cargo)}</OtroCargo>\n'
-                            else:
-                                xml += '\t\t\t\t<OtroCargo>OTROS</OtroCargo>\n'
+                        xml += self._natural_person_profesion_cargo_xml(person)
                         email_nat = (person.get("email") or "").strip()
                         if email_nat and self._email_ok(email_nat):
                             xml += f'\t\t\t\t<Correo>{escape(email_nat)}</Correo>\n'

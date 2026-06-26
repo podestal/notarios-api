@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import SimpleTestCase
 
 from sisgen.services.xml_generator_service import SISGENXmlGenerator
@@ -75,3 +77,28 @@ class SisgenXmlGeneratorLegacyTest(SimpleTestCase):
             self.generator._participant_rol_representante({"repre": "B", "uif": "O"}),
             "B",
         )
+
+    @patch.object(SISGENXmlGenerator, "_cargo_cod_natural", return_value="999")
+    @patch.object(SISGENXmlGenerator, "_profesion_cod_natural", return_value="999")
+    def test_otra_profesion_omits_cargo_when_cargo_is_999(self, *_mocks):
+        """SISGEN XSD: no <Cargo> after <OtraProfesion> (A41-2026 / WILMER case)."""
+        person = {
+            "detaprofesion": "OTROS DETALLAR",
+            "profocupa": "OPERADOR DE MAQUINARIA PESADA",
+        }
+        xml = self.generator._natural_person_profesion_cargo_xml(person)
+        self.assertIn("<OtraProfesion>OTROS DETALLAR</OtraProfesion>", xml)
+        self.assertIn(
+            "<OtroCargo>OPERADOR DE MAQUINARIA PESADA</OtroCargo>", xml
+        )
+        self.assertNotIn("<Cargo>", xml)
+
+    @patch.object(SISGENXmlGenerator, "_cargo_cod_natural", return_value="999")
+    @patch.object(SISGENXmlGenerator, "_profesion_cod_natural", return_value="036")
+    def test_catalog_profesion_keeps_cargo_999_pair(self, *_mocks):
+        person = {"profocupa": "COMERCIANTE"}
+        xml = self.generator._natural_person_profesion_cargo_xml(person)
+        self.assertIn("<Profesion>036</Profesion>", xml)
+        self.assertNotIn("<OtraProfesion>", xml)
+        self.assertIn("<Cargo>999</Cargo>", xml)
+        self.assertIn("<OtroCargo>COMERCIANTE</OtroCargo>", xml)

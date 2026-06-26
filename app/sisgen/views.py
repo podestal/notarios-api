@@ -21,8 +21,12 @@ from .services.xml_generator_service import SISGENXmlGenerator
 from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
 from .services.sisgen_soap_response import (
+    SISGEN_IT_CONTACT_NOTE,
+    build_soap_failure_entries,
+    format_soap_return_message,
     parse_set_documentos_response,
     save_response_logs_for_batch,
+    soap_response_is_ok,
 )
 from .utils.exceptions import DocumentSearchException
 from .services.book_search_service import BookSearchService
@@ -406,6 +410,7 @@ class SendToSISGENView(APIView):
                 'data': [],
                 'errores': [],
                 'errores_sisgen_usuario': [],
+                'soap_errors': [],
                 'observaciones': [],
                 'personas': [],
                 'guardados': 0,
@@ -414,6 +419,8 @@ class SendToSISGENView(APIView):
                 'processed_kardex': [],
                 'dry_run': SISGEN_DRY_RUN,
                 'sisgen_requests': [],
+                'submission_response_ids': [],
+                'nota_contacto_it': SISGEN_IT_CONTACT_NOTE,
             }
 
             # Process in batches (even for single document)
@@ -470,9 +477,27 @@ class SendToSISGENView(APIView):
 
                     self._write_debug_xml(response.text, f"response_batch_{batch_num}_{ts}.xml")
 
+                    parsed_soap = parse_set_documentos_response(response.text or "")
+                    if response.status_code >= 400 and soap_response_is_ok(parsed_soap):
+                        parsed_soap = {
+                            **parsed_soap,
+                            "return_status": f"HTTP_{response.status_code}",
+                            "return_message": (
+                                parsed_soap.get("return_message")
+                                or getattr(response, "reason", None)
+                                or f"HTTP {response.status_code}"
+                            ),
+                            "parse_error": parsed_soap.get("parse_error") or "http_error",
+                            "summary": {
+                                **(parsed_soap.get("summary") or {}),
+                                "return_status": f"HTTP_{response.status_code}",
+                                "soap_level_ok": False,
+                            },
+                        }
+
+                    saved_ids: list = []
                     try:
-                        parsed_soap = parse_set_documentos_response(response.text or "")
-                        save_response_logs_for_batch(
+                        saved_ids = save_response_logs_for_batch(
                             batch_documents=batch,
                             batch_index=batch_num,
                             http_status=response.status_code,
@@ -480,6 +505,7 @@ class SendToSISGENView(APIView):
                             parsed=parsed_soap,
                             user=request.user,
                         )
+                        combined_result['submission_response_ids'].extend(saved_ids)
                     except Exception as exc:
                         logger.exception(
                             "Persistencia SisgenSoapResponse fallida batch=%s: %s",
@@ -487,7 +513,53 @@ class SendToSISGENView(APIView):
                             exc,
                         )
 
-                    data_processor.update_document_statuses(response.text)
+                    combined_result['processed_kardex'].extend(
+                        [doc['kardex'] for doc in batch]
+                    )
+                    combined_result['errores'].extend(result.get('errores', []))
+                    combined_result['observaciones'].extend(result.get('observaciones', []))
+                    combined_result['personas'].extend(result.get('personas', []))
+
+                    if not soap_response_is_ok(parsed_soap):
+                        soap_failures = build_soap_failure_entries(
+                            parsed=parsed_soap,
+                            batch_documents=batch,
+                            batch_index=batch_num,
+                            http_status=response.status_code,
+                        )
+                        combined_result['error'] = 1
+                        combined_result['soap_errors'].extend(soap_failures)
+                        combined_result['errores_sisgen_usuario'].extend(soap_failures)
+                        short = format_soap_return_message(
+                            parsed_soap.get("return_message") or ""
+                        )
+                        combined_result['messageDescription'] = (
+                            f"SISGEN rechazó el envío (lote {batch_num}): {short} "
+                            f"{SISGEN_IT_CONTACT_NOTE}"
+                        )
+                        continue
+
+                    try:
+                        data_processor.update_document_statuses(response.text)
+                    except Exception as exc:
+                        logger.exception(
+                            "Error actualizando estados SISGEN batch=%s: %s",
+                            batch_num,
+                            exc,
+                        )
+                        batch_failures = build_soap_failure_entries(
+                            parsed={
+                                "return_status": "ERROR_PROCESAMIENTO",
+                                "return_message": str(exc),
+                            },
+                            batch_documents=batch,
+                            batch_index=batch_num,
+                            http_status=response.status_code,
+                        )
+                        combined_result['error'] = 1
+                        combined_result['soap_errors'].extend(batch_failures)
+                        combined_result['errores_sisgen_usuario'].extend(batch_failures)
+                        continue
 
                     batch_status = data_processor.get_final_status()
 
@@ -495,24 +567,39 @@ class SendToSISGENView(APIView):
                     combined_result['guardados'] += batch_status.get('guardados', 0)
                     combined_result['fallidos'] += batch_status.get('fallidos', 0)
                     combined_result['observados'] += batch_status.get('observados', 0)
-                    combined_result['processed_kardex'].extend([doc['kardex'] for doc in batch])
 
-                    combined_result['errores'].extend(result.get('errores', []))
                     combined_result['errores_sisgen_usuario'].extend(
                         self._build_user_friendly_errors(batch_status.get('data', []))
                     )
-                    combined_result['observaciones'].extend(result.get('observaciones', []))
-                    combined_result['personas'].extend(result.get('personas', []))
                     
                 except Exception as e:
                     print(f'DEBUG: Error processing batch {batch_num}:', str(e))
-                    # Continue with next batch instead of failing completely
+                    batch_failures = build_soap_failure_entries(
+                        parsed={
+                            "return_status": "ERROR_ENVIO",
+                            "return_message": str(e),
+                        },
+                        batch_documents=batch,
+                        batch_index=batch_num,
+                    )
+                    combined_result['error'] = 1
+                    combined_result['soap_errors'].extend(batch_failures)
+                    combined_result['errores_sisgen_usuario'].extend(batch_failures)
+                    if not combined_result['messageDescription']:
+                        combined_result['messageDescription'] = (
+                            f"Error al enviar lote {batch_num}: {e}. {SISGEN_IT_CONTACT_NOTE}"
+                        )
                     continue
 
             # For single document, include specific kardex info in response
             if len(documents) == 1:
                 combined_result['kardex'] = documents[0]['kardex']
                 combined_result['idKardex'] = documents[0]['idkardex']
+
+            if combined_result['error'] and not combined_result['messageDescription']:
+                combined_result['messageDescription'] = (
+                    f"El envío a SISGEN falló. {SISGEN_IT_CONTACT_NOTE}"
+                )
 
             return Response(combined_result)
             
@@ -527,6 +614,8 @@ class SendToSISGENView(APIView):
 def _serialize_sisgen_soap_response(
     obj: SisgenSoapResponse, *, include_raw: bool
 ) -> dict:
+    payload = obj.parsed_payload or {}
+    user_facing = payload.get("user_facing") or {}
     row = {
         "id": obj.id,
         "created_at": obj.created_at.isoformat(),
@@ -537,7 +626,13 @@ def _serialize_sisgen_soap_response(
         "soap_return_status": obj.soap_return_status,
         "soap_return_message": obj.soap_return_message,
         "document_status": obj.document_status,
-        "parsed_payload": obj.parsed_payload or {},
+        "parsed_payload": payload,
+        "soap_failure": payload.get("soap_failure", False),
+        "mensaje_usuario": user_facing.get("mensaje_usuario"),
+        "mensaje_tecnico": user_facing.get("mensaje_tecnico") or obj.soap_return_message,
+        "nota_contacto_it": payload.get("nota_contacto_it")
+        or user_facing.get("nota_contacto_it")
+        or SISGEN_IT_CONTACT_NOTE,
     }
     if include_raw:
         row["raw_response_xml"] = obj.raw_response_xml or ""
