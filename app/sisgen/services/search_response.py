@@ -26,11 +26,14 @@ def slim_sisgen_last_submission(last: Dict[str, Any]) -> Dict[str, Any]:
     last = last or {}
     if not last.get("exists"):
         return {"exists": False}
-    return {
+    out = {
         "exists": True,
         "status_ui": last.get("status_ui"),
         "errors": list(last.get("errors") or []),
     }
+    if last.get("nota_contacto_it"):
+        out["nota_contacto_it"] = last["nota_contacto_it"]
+    return out
 
 
 def count_sisgen_errors(row: Dict[str, Any]) -> int:

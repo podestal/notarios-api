@@ -23,6 +23,7 @@ from .services.data_processor_service import DataProcessorService
 from .services.sisgen_soap_response import (
     SISGEN_IT_CONTACT_NOTE,
     build_soap_failure_entries,
+    extract_submission_errors,
     format_soap_return_message,
     parse_set_documentos_response,
     save_response_logs_for_batch,
@@ -45,6 +46,7 @@ from rest_framework.decorators import api_view
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -52,21 +54,39 @@ logger = logging.getLogger(__name__)
 SISGEN_DRY_RUN = False
 
 
-def _extract_submission_errors(parsed_payload: dict) -> list:
-    if not isinstance(parsed_payload, dict):
-        return []
-    doc = parsed_payload.get("document") or {}
-    errs = doc.get("errors")
-    if isinstance(errs, list) and errs:
-        return errs
-    summary = parsed_payload.get("summary") or {}
-    docs = summary.get("documents") or []
-    merged = []
-    for d in docs:
-        for e in (d.get("errors") or []):
-            if e not in merged:
-                merged.append(e)
-    return merged
+def _last_submission_from_soap_obj(obj: SisgenSoapResponse) -> Dict[str, Any]:
+    """Shape consumed by search UI as ``sisgen_last_submission``."""
+    payload = obj.parsed_payload or {}
+    errors = extract_submission_errors(
+        payload,
+        soap_return_message=obj.soap_return_message or "",
+        document_status=obj.document_status or "",
+        soap_return_status=obj.soap_return_status or "",
+    )
+    remote_ui = status_ui_from_document_status(obj.document_status or "")
+    if errors and remote_ui == "pendiente":
+        remote_ui = "fallido"
+    last = {
+        "exists": True,
+        "created_at": obj.created_at.isoformat(),
+        "batch_index": obj.batch_index,
+        "http_status": obj.http_status,
+        "soap_return_status": obj.soap_return_status,
+        "soap_return_message": obj.soap_return_message,
+        "document_status": obj.document_status,
+        "remote_status_ui": remote_ui,
+        "status_ui": remote_ui,
+        "errors": errors,
+        "has_errors": bool(errors),
+    }
+    note = payload.get("nota_contacto_it") or (payload.get("user_facing") or {}).get(
+        "nota_contacto_it"
+    )
+    if note:
+        last["nota_contacto_it"] = note
+    elif errors:
+        last["nota_contacto_it"] = SISGEN_IT_CONTACT_NOTE
+    return last
 
 
 def _attach_last_submission_status(rows: list) -> list:
@@ -94,21 +114,7 @@ def _attach_last_submission_status(rows: list) -> list:
     )
     for obj in qs:
         if obj.kardex not in latest_by_kardex:
-            errors = _extract_submission_errors(obj.parsed_payload or {})
-            remote_ui = status_ui_from_document_status(obj.document_status)
-            latest_by_kardex[obj.kardex] = {
-                "exists": True,
-                "created_at": obj.created_at.isoformat(),
-                "batch_index": obj.batch_index,
-                "http_status": obj.http_status,
-                "soap_return_status": obj.soap_return_status,
-                "soap_return_message": obj.soap_return_message,
-                "document_status": obj.document_status,
-                "remote_status_ui": remote_ui,
-                "status_ui": remote_ui,
-                "errors": errors,
-                "has_errors": bool(errors),
-            }
+            latest_by_kardex[obj.kardex] = _last_submission_from_soap_obj(obj)
 
     for row in rows:
         k = str(row.get("kardex") or "").strip()
@@ -601,6 +607,23 @@ class SendToSISGENView(APIView):
                     f"El envío a SISGEN falló. {SISGEN_IT_CONTACT_NOTE}"
                 )
 
+            if combined_result.get("processed_kardex"):
+                submission_rows = [
+                    {"kardex": k} for k in combined_result["processed_kardex"]
+                ]
+                enriched = _attach_last_submission_status(submission_rows)
+                by_kardex = {
+                    row["kardex"]: row.get("sisgen_last_submission") or {"exists": False}
+                    for row in enriched
+                    if row.get("kardex")
+                }
+                combined_result["sisgen_last_submission_by_kardex"] = by_kardex
+                if len(documents) == 1:
+                    k0 = documents[0]["kardex"]
+                    combined_result["sisgen_last_submission"] = by_kardex.get(
+                        k0, {"exists": False}
+                    )
+
             return Response(combined_result)
             
         except Exception as e:
@@ -725,21 +748,7 @@ class SisgenSoapResponseListView(APIView):
                 "-created_at"
             ).first()
             if latest:
-                errors = _extract_submission_errors(latest.parsed_payload or {})
-                remote_ui = status_ui_from_document_status(latest.document_status)
-                last_sub = {
-                    "exists": True,
-                    "created_at": latest.created_at.isoformat(),
-                    "batch_index": latest.batch_index,
-                    "http_status": latest.http_status,
-                    "soap_return_status": latest.soap_return_status,
-                    "soap_return_message": latest.soap_return_message,
-                    "document_status": latest.document_status,
-                    "remote_status_ui": remote_ui,
-                    "status_ui": remote_ui,
-                    "errors": errors,
-                    "has_errors": bool(errors),
-                }
+                last_sub = _last_submission_from_soap_obj(latest)
             else:
                 last_sub = {"exists": False}
             sync = build_sisgen_sync_status(estado_code, last_sub)

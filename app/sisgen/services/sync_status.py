@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any, Dict, Optional
 
 from sisgen.utils.constants import ESTADO_SISGEN_MAPPING
+from sisgen.services.sisgen_soap_response import SOAP_FAILURE_STATUSES
 
 
 def normalize_estado_sisgen_code(estado: Any) -> Optional[int]:
@@ -54,6 +55,8 @@ def status_ui_from_document_status(status_text: str) -> str:
     if s == "CON OBSERVACIONES":
         return "observado"
     if s == "FALLIDO":
+        return "fallido"
+    if s in SOAP_FAILURE_STATUSES or s.startswith("HTTP_"):
         return "fallido"
     return "pendiente"
 

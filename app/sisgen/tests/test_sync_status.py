@@ -1,6 +1,9 @@
 from django.test import SimpleTestCase
 
-from sisgen.services.sync_status import build_sisgen_sync_status
+from sisgen.services.sync_status import (
+    build_sisgen_sync_status,
+    status_ui_from_document_status,
+)
 
 
 class SisgenSyncStatusTests(SimpleTestCase):
@@ -27,3 +30,9 @@ class SisgenSyncStatusTests(SimpleTestCase):
         sync = build_sisgen_sync_status(1, last)
         self.assertFalse(sync["needs_resubmit"])
         self.assertEqual(sync["status_ui"], "guardado")
+
+    def test_internal_server_error_maps_to_fallido(self):
+        self.assertEqual(
+            status_ui_from_document_status("INTERNAL_SERVER_ERROR"),
+            "fallido",
+        )

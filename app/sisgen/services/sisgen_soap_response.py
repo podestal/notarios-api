@@ -40,6 +40,93 @@ def format_soap_return_message(raw: str, *, max_len: int = 600) -> str:
     return line
 
 
+SOAP_FAILURE_STATUSES = frozenset(
+    {
+        "INTERNAL_SERVER_ERROR",
+        "ERROR_SOAP",
+        "ERROR_RESPUESTA",
+        "ERROR_ENVIO",
+        "ERROR_PROCESAMIENTO",
+        "SIN_ECHO",
+    }
+)
+
+
+def is_soap_level_submission_failure(
+    *,
+    document_status: str = "",
+    soap_return_status: str = "",
+    parsed_payload: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """True when the last send failed before/at SOAP (no DocumentoNotarial GUARDADO)."""
+    if isinstance(parsed_payload, dict) and parsed_payload.get("soap_failure"):
+        return True
+    ds = (document_status or "").strip().upper()
+    if ds in SOAP_FAILURE_STATUSES or ds.startswith("HTTP_"):
+        return True
+    rs = (soap_return_status or "").strip().upper()
+    if rs in SOAP_FAILURE_STATUSES or rs.startswith("HTTP_"):
+        return True
+    return False
+
+
+def extract_submission_errors(
+    parsed_payload: Optional[Dict[str, Any]],
+    *,
+    soap_return_message: str = "",
+    document_status: str = "",
+    soap_return_status: str = "",
+) -> List[str]:
+    """
+    Errors for ``sisgen_last_submission.errors`` — document-level SISGEN echo or SOAP reject.
+    """
+    payload = parsed_payload if isinstance(parsed_payload, dict) else {}
+    merged: List[str] = []
+    seen: set[str] = set()
+
+    def add(msg: Any) -> None:
+        text = str(msg or "").strip()
+        if not text or text in seen:
+            return
+        seen.add(text)
+        merged.append(text)
+
+    doc = payload.get("document") or {}
+    for err in doc.get("errors") or []:
+        add(err)
+
+    summary = payload.get("summary") or {}
+    for doc_row in summary.get("documents") or []:
+        for err in doc_row.get("errors") or []:
+            add(err)
+
+    if merged:
+        return merged
+
+    user_facing = payload.get("user_facing") or {}
+    add(user_facing.get("mensaje_usuario"))
+    add(user_facing.get("mensaje_tecnico"))
+
+    if is_soap_level_submission_failure(
+        document_status=document_status,
+        soap_return_status=soap_return_status,
+        parsed_payload=payload,
+    ):
+        add(format_soap_return_message(soap_return_message))
+
+    note = payload.get("nota_contacto_it") or user_facing.get("nota_contacto_it")
+    if note and merged:
+        add(note)
+    elif note and is_soap_level_submission_failure(
+        document_status=document_status,
+        soap_return_status=soap_return_status,
+        parsed_payload=payload,
+    ):
+        add(note)
+
+    return merged
+
+
 def build_soap_failure_entries(
     *,
     parsed: Dict[str, Any],
