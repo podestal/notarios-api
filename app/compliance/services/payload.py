@@ -3,7 +3,10 @@ Canonical JSON shape for KardexComplianceCache.payload (version 1).
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from notaria import models
 
 PAYLOAD_VERSION = 1
 SOURCE_UIF = "uif"
@@ -118,6 +121,67 @@ def counts_from_payload(payload: Dict[str, Any]) -> Dict[str, int]:
         "sisgen_observation_count": sisgen_obs,
         "total_error_count": uif_count + sisgen_count,
         "has_errors": (uif_count + sisgen_count) > 0,
+    }
+
+
+def serialize_kardex_errors_detail(
+    *,
+    kardex_row: "models.Kardex",
+    payload: Dict[str, Any],
+    source: str,
+    validated_at: Optional[str] = None,
+    source_filter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """API shape for per-kardex error detail (live or cache)."""
+    sources = payload.get("sources") or {}
+    sisgen = sources.get(SOURCE_SISGEN) or {}
+    uif = sources.get(SOURCE_UIF) or {}
+    pdt = sources.get(SOURCE_PDT) or empty_pdt_block()
+
+    sisgen_errores = list(sisgen.get("errores") or [])
+    uif_count = int(uif.get("error_count") or len(uif.get("errors") or []))
+    sisgen_count = len(sisgen_errores)
+    pdt_count = int(pdt.get("error_count") or len(pdt.get("errors") or []))
+    total = sisgen_count + uif_count + pdt_count
+
+    errors_block = {
+        SOURCE_SISGEN: {
+            "errores": sisgen_errores,
+            "personas": list(sisgen.get("personas") or []),
+            "observaciones": list(sisgen.get("observaciones") or []),
+        },
+        SOURCE_UIF: {
+            "errors": list(uif.get("errors") or []),
+            "observations": list(uif.get("observations") or []),
+        },
+        SOURCE_PDT: pdt,
+    }
+
+    if source_filter and source_filter in SUPPORTED_SOURCES:
+        errors_block = {
+            source_filter: errors_block[source_filter],
+            SOURCE_PDT: errors_block[SOURCE_PDT],
+        }
+
+    return {
+        "kardex": kardex_row.kardex,
+        "idkardex": str(kardex_row.idkardex or ""),
+        "idtipkar": kardex_row.idtipkar,
+        "numescritura": kardex_row.numescritura,
+        "fechaingreso": kardex_row.fechaingreso,
+        "fechaescritura": kardex_row.fechaescritura,
+        "validated_at": validated_at or payload.get("validated_at"),
+        "source": source,
+        "has_errors": total > 0,
+        "counts": {
+            "sisgen": sisgen_count,
+            "uif": uif_count,
+            "pdt": pdt_count,
+            "total": total,
+        },
+        "errors": errors_block,
+        "kardex_meta": payload.get("kardex_meta") or {},
+        "summary": payload.get("summary") or {},
     }
 
 

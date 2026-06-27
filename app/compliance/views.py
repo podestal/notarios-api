@@ -18,6 +18,11 @@ from compliance.services.dashboard_service import (
 )
 from compliance.services.payload import SUPPORTED_SOURCES, serialize_cache_row
 from compliance.services.refresh_service import ComplianceRefreshService
+from compliance.services.kardex_detail_service import (
+    ComplianceCacheNotFoundError,
+    KardexComplianceDetailService,
+    KardexNotFoundError,
+)
 from compliance.services.user_monthly_service import ComplianceUserMonthlyService
 
 logger = logging.getLogger(__name__)
@@ -40,29 +45,193 @@ class ComplianceUsersMonthlyView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        year_raw = request.query_params.get("year")
-        month_raw = request.query_params.get("month")
+        params, err = _parse_users_month_params(request)
+        if err is not None:
+            return err
+
+        service = ComplianceUserMonthlyService()
+        try:
+            report = service.build_report(
+                year=params["year"],
+                month=params["month"],
+                use_cache=params["use_cache"],
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(report, status=status.HTTP_200_OK)
+
+
+def _parse_users_month_params(request):
+    year_raw = request.query_params.get("year")
+    month_raw = request.query_params.get("month")
+    use_cache = request.query_params.get("cache", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    errors_only = request.query_params.get("errorsOnly", "true").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    try:
+        year = int(year_raw) if year_raw not in (None, "") else None
+        month = int(month_raw) if month_raw not in (None, "") else None
+    except ValueError:
+        return None, Response(
+            {"error": "year and month must be integers"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return {
+        "year": year,
+        "month": month,
+        "use_cache": use_cache,
+        "errors_only": errors_only,
+    }, None
+
+
+class ComplianceUsersKardexView(APIView):
+    """
+    Kardex with error counts grouped by preparer (counts only, no error payloads).
+
+    GET /compliance/users/kardex/
+      - year, month (optional; default current month)
+      - cache=true (optional)
+      - errorsOnly=true (default) | false
+      - idusuario (optional; filter one user)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        params, err = _parse_users_month_params(request)
+        if err is not None:
+            return err
+
+        idusuario_raw = request.query_params.get("idusuario")
+        idusuario = None
+        if idusuario_raw not in (None, ""):
+            try:
+                idusuario = int(idusuario_raw)
+            except ValueError:
+                return Response(
+                    {"error": "idusuario must be an integer"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        service = ComplianceUserMonthlyService()
+        try:
+            report = service.build_user_kardex_report(
+                year=params["year"],
+                month=params["month"],
+                use_cache=params["use_cache"],
+                idusuario=idusuario,
+                errors_only=params["errors_only"],
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(report, status=status.HTTP_200_OK)
+
+
+class ComplianceUserKardexView(APIView):
+    """
+    Kardex with error counts for one preparer.
+
+    GET /compliance/users/<idusuario>/kardex/
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, idusuario: int):
+        params, err = _parse_users_month_params(request)
+        if err is not None:
+            return err
+
+        service = ComplianceUserMonthlyService()
+        try:
+            report = service.build_user_kardex_report(
+                year=params["year"],
+                month=params["month"],
+                use_cache=params["use_cache"],
+                idusuario=idusuario,
+                errors_only=params["errors_only"],
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not report["users"]:
+            return Response(
+                {
+                    **report,
+                    "user": None,
+                    "kardex": [],
+                    "kardex_count": 0,
+                    "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        user_block = report["users"][0]
+        return Response(
+            {
+                **report,
+                "user": {
+                    "idusuario": user_block["idusuario"],
+                    "name": user_block["name"],
+                    "username": user_block["username"],
+                },
+                "kardex_count": user_block["kardex_count"],
+                "counts": user_block["counts"],
+                "kardex": user_block["kardex"],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ComplianceKardexErrorsView(APIView):
+    """
+    Full error detail for one kardex (SISGEN + UIF + PDT placeholder).
+
+    GET /compliance/kardex/<kardex>/errors/
+      - cache=true (optional) — read KardexComplianceCache instead of live validation
+      - source=uif|sisgen (optional) — filter one source
+
+  Live by default: fixes in the DB show on the next request without refresh.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, kardex: str):
         use_cache = request.query_params.get("cache", "").strip().lower() in (
             "1",
             "true",
             "yes",
         )
-        try:
-            year = int(year_raw) if year_raw not in (None, "") else None
-            month = int(month_raw) if month_raw not in (None, "") else None
-        except ValueError:
+        source = (request.query_params.get("source") or "").strip().lower() or None
+        if source and source not in SUPPORTED_SOURCES:
             return Response(
-                {"error": "year and month must be integers"},
+                {
+                    "error": "Invalid source. Use: uif, sisgen",
+                    "supported_sources": sorted(SUPPORTED_SOURCES),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        service = ComplianceUserMonthlyService()
+        service = KardexComplianceDetailService()
         try:
-            report = service.build_report(year=year, month=month, use_cache=use_cache)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            detail = service.build_detail(
+                kardex,
+                use_cache=use_cache,
+                source_filter=source,
+            )
+        except KardexNotFoundError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except ComplianceCacheNotFoundError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(report, status=status.HTTP_200_OK)
+        return Response(detail, status=status.HTTP_200_OK)
 
 
 class ComplianceDashboardView(APIView):
@@ -260,21 +429,13 @@ class ComplianceRefreshView(APIView):
 
 
 class ComplianceDetailView(APIView):
-    """GET single kardex cache by kardex number."""
+    """
+    GET single kardex compliance detail.
+
+    Same as ``/compliance/kardex/<kardex>/errors/`` (live validation by default).
+    """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request, kardex: str):
-        from compliance.models import KardexComplianceCache
-
-        source = (request.query_params.get("source") or "").strip().lower() or None
-        row = KardexComplianceCache.objects.filter(kardex=kardex).first()
-        if not row:
-            return Response(
-                {"error": "No compliance cache for this kardex. POST /compliance/refresh/ first."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        return Response(
-            serialize_cache_row(row, include_payload=True, source_filter=source),
-            status=status.HTTP_200_OK,
-        )
+        return ComplianceKardexErrorsView().get(request, kardex=kardex)

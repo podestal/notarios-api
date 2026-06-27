@@ -1,0 +1,82 @@
+from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
+
+from compliance.services.kardex_detail_service import KardexComplianceDetailService
+from compliance.services.payload import (
+    build_payload,
+    build_sisgen_block,
+    build_uif_block,
+    serialize_kardex_errors_detail,
+)
+
+
+class SerializeKardexErrorsDetailTests(SimpleTestCase):
+    def test_counts_sisgen_errores_only_in_total(self):
+        kardex_row = MagicMock(
+            kardex="K1",
+            idkardex="1",
+            idtipkar=1,
+            numescritura="10",
+            fechaingreso="2026-06-01",
+            fechaescritura="2026-06-05",
+        )
+        payload = build_payload(
+            kardex="K1",
+            idkardex="1",
+            idtipkar=1,
+            kardex_meta={},
+            uif_block=build_uif_block(
+                {
+                    "has_uif_errors": True,
+                    "uif_errors": [{"error_type": "x", "error_description": "bad"}],
+                    "uif_observations": [],
+                }
+            ),
+            sisgen_block=build_sisgen_block(
+                errores=["Falta fecha"],
+                observaciones=["Falta ANCERT"],
+                personas=["Juan: sin DNI"],
+            ),
+        )
+        detail = serialize_kardex_errors_detail(
+            kardex_row=kardex_row,
+            payload=payload,
+            source="live_validation",
+        )
+        self.assertEqual(detail["counts"]["sisgen"], 1)
+        self.assertEqual(detail["counts"]["uif"], 1)
+        self.assertEqual(detail["counts"]["total"], 2)
+        self.assertEqual(len(detail["errors"]["sisgen"]["personas"]), 1)
+        self.assertEqual(len(detail["errors"]["sisgen"]["observaciones"]), 1)
+
+
+class KardexComplianceDetailServiceTests(SimpleTestCase):
+    @patch("compliance.services.kardex_detail_service.collect_sisgen_issues")
+    @patch("compliance.services.kardex_detail_service.collect_uif_issues")
+    @patch("compliance.services.kardex_detail_service.models.Kardex")
+    def test_live_detail(self, mock_kardex_model, mock_uif, mock_sisgen):
+        kardex = MagicMock(
+            kardex="K1-2026",
+            idkardex=1,
+            idtipkar=1,
+            numescritura="10",
+            codactos="094",
+            contrato="TEST",
+            fechaescritura="2026-06-01",
+            fechaconclusion="",
+            fechaingreso="2026-06-01",
+        )
+        mock_kardex_model.objects.filter.return_value.first.return_value = kardex
+        mock_uif.return_value = build_uif_block(
+            {"has_uif_errors": False, "uif_errors": [], "uif_observations": []}
+        )
+        mock_sisgen.return_value = build_sisgen_block(
+            errores=["err"], observaciones=[], personas=[]
+        )
+
+        detail = KardexComplianceDetailService().build_detail("K1-2026")
+        self.assertEqual(detail["source"], "live_validation")
+        self.assertEqual(detail["errors"]["sisgen"]["errores"], ["err"])
+        mock_uif.assert_called_once_with("K1-2026")
+        mock_sisgen.assert_called_once_with("K1-2026")

@@ -85,3 +85,49 @@ class ComplianceUserMonthlyServiceTests(SimpleTestCase):
         self.assertEqual(report["source"]["source"], "kardex_compliance_cache")
         self.assertEqual(report["source"]["cached"], 1)
         self.assertEqual(report["source"]["missing"], 2)
+
+
+class ComplianceUserKardexReportTests(SimpleTestCase):
+    @patch("compliance.services.user_monthly_service._load_month_kardex_and_counts")
+    def test_build_user_kardex_report_errors_only(self, mock_load):
+        mock_load.return_value = {
+            "year": 2026,
+            "month": 6,
+            "period": {"start": "2026-06-01", "end": "2026-06-30", "date_field": "fechaingreso"},
+            "source_meta": {"source": "live_validation"},
+            "users_by_id": {3: MagicMock(first_name="Ana", last_name="L", username="ana")},
+            "kardex_rows": [
+                {
+                    "kardex": "K1",
+                    "idkardex": "1",
+                    "idusuario": 3,
+                    "numescritura": "10",
+                    "fechaingreso": "2026-06-05",
+                    "fechaescritura": "2026-06-10",
+                    "idtipkar": 1,
+                },
+                {
+                    "kardex": "K2",
+                    "idkardex": "2",
+                    "idusuario": 3,
+                    "numescritura": "11",
+                    "fechaingreso": "2026-06-06",
+                    "fechaescritura": "2026-06-11",
+                    "idtipkar": 1,
+                },
+            ],
+            "counts_by_kardex": {
+                "K1": {"sisgen": 2, "uif": 1},
+                "K2": {"sisgen": 0, "uif": 0},
+            },
+        }
+
+        report = ComplianceUserMonthlyService().build_user_kardex_report(
+            year=2026, month=6, errors_only=True
+        )
+
+        self.assertEqual(len(report["users"]), 1)
+        self.assertEqual(report["users"][0]["kardex_count"], 1)
+        self.assertEqual(report["users"][0]["kardex"][0]["kardex"], "K1")
+        self.assertEqual(report["users"][0]["kardex"][0]["counts"]["total"], 3)
+        self.assertEqual(report["summary"]["total_kardex"], 1)
