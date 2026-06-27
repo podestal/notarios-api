@@ -53,6 +53,7 @@ def slim_search_document_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "kardex": row.get("kardex"),
         "idkardex": row.get("idkardex"),
+        "numero_instrumento": row.get("numescritura"),
         "contrato": row.get("contrato"),
         "estado_sisgen": row.get("estado_sisgen"),
         "idtipkar": row.get("idtipkar"),

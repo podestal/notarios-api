@@ -62,6 +62,7 @@ class SearchResponseSlimTests(SimpleTestCase):
             {
                 "kardex",
                 "idkardex",
+                "numero_instrumento",
                 "contrato",
                 "estado_sisgen",
                 "idtipkar",
@@ -72,6 +73,7 @@ class SearchResponseSlimTests(SimpleTestCase):
                 "sisgen_last_submission",
             },
         )
+        self.assertEqual(slim["numero_instrumento"], "1234")
         self.assertEqual(slim["sisgen_error_count"], 1)
         self.assertEqual(slim["sisgen_observaciones_count"], 1)
         self.assertEqual(slim["sisgen_personas_count"], 1)
