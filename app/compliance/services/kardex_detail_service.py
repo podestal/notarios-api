@@ -10,12 +10,41 @@ from notaria import models
 from compliance.models import KardexComplianceCache
 from compliance.services.kardex_meta import kardex_meta_from_model
 from compliance.services.payload import (
+    SOURCE_PDT,
+    SOURCE_SISGEN,
+    SOURCE_UIF,
     build_payload,
+    empty_pdt_block,
     filter_payload_sources,
     serialize_kardex_errors_detail,
 )
 from compliance.services.sisgen_collector import collect_sisgen_issues
+from compliance.services.sisgen_sent_filter import is_kardex_sent_to_sisgen, sisgen_sent_meta
 from compliance.services.uif_collector import collect_uif_issues
+
+
+def _build_sisgen_sent_detail(kardex_row: models.Kardex) -> Dict[str, Any]:
+    meta = sisgen_sent_meta(kardex_row)
+    return {
+        "kardex": kardex_row.kardex,
+        "idkardex": str(kardex_row.idkardex or ""),
+        "idtipkar": kardex_row.idtipkar,
+        "numescritura": kardex_row.numescritura,
+        "fechaingreso": kardex_row.fechaingreso,
+        "fechaescritura": kardex_row.fechaescritura,
+        "validated_at": None,
+        "source": "sisgen_sent",
+        "has_errors": False,
+        "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
+        "errors": {
+            SOURCE_SISGEN: {"errores": [], "personas": [], "observaciones": []},
+            SOURCE_UIF: {"errors": [], "observations": []},
+            SOURCE_PDT: empty_pdt_block(),
+        },
+        "kardex_meta": kardex_meta_from_model(kardex_row),
+        "summary": {"has_errors": False, "total_errors": 0},
+        **meta,
+    }
 
 
 class KardexNotFoundError(LookupError):
@@ -41,6 +70,9 @@ class KardexComplianceDetailService:
         kardex_row = models.Kardex.objects.filter(kardex=key).first()
         if not kardex_row:
             raise KardexNotFoundError(f"Kardex not found: {key}")
+
+        if is_kardex_sent_to_sisgen(kardex_row.estado_sisgen):
+            return _build_sisgen_sent_detail(kardex_row)
 
         if use_cache:
             cache_row = KardexComplianceCache.objects.filter(kardex=key).first()

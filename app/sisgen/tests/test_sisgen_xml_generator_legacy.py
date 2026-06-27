@@ -102,3 +102,33 @@ class SisgenXmlGeneratorLegacyTest(SimpleTestCase):
         self.assertNotIn("<OtraProfesion>", xml)
         self.assertIn("<Cargo>999</Cargo>", xml)
         self.assertIn("<OtroCargo>COMERCIANTE</OtroCargo>", xml)
+
+    def test_descripcion_momento_pago_solo_otro_codigo_99(self):
+        """Legacy: catálogo 03 no lleva DescripcionMomentoPago (solo MomentoPago)."""
+        desc = self.generator._descripcion_momento_pago(3)
+        self.assertEqual(desc, "")
+
+    def test_descripcion_momento_pago_otro_trunca_40(self):
+        desc = self.generator._descripcion_momento_pago(
+            8,
+            "A LA FIRMA DEL INSTRUMENTO PUBLICO NOTARIAL PROTOCOLAR EXTRA",
+        )
+        self.assertLessEqual(len(desc), 40)
+        self.assertTrue(desc)
+
+    def test_medio_pago_xml_sin_descripcion_para_catalogo_03(self):
+        row = {
+            "codmepag": 1,
+            "mp_cod_sisgen": "01",
+            "dmp_fpago": "1",
+            "dmp_idmon": 1,
+            "importemp": "1000",
+            "pat_idoppago": 3,
+            "pat_exhibiomp": "1",
+            "foperacion": "2026-01-15",
+        }
+        xml = self.generator._medio_pago_xml_block(
+            row, fp_pat="1", idopp_pat=3, des_idopp_pat=None, exhib_pat="1"
+        )
+        self.assertIn("<MomentoPago>3</MomentoPago>", xml)
+        self.assertNotIn("<DescripcionMomentoPago>", xml)

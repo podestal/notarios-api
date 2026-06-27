@@ -80,3 +80,25 @@ class KardexComplianceDetailServiceTests(SimpleTestCase):
         self.assertEqual(detail["errors"]["sisgen"]["errores"], ["err"])
         mock_uif.assert_called_once_with("K1-2026")
         mock_sisgen.assert_called_once_with("K1-2026")
+
+    @patch("compliance.services.kardex_detail_service.models.Kardex")
+    def test_sent_to_sisgen_skips_validation(self, mock_kardex_model):
+        kardex = MagicMock(
+            kardex="K1-2026",
+            idkardex=1,
+            idtipkar=1,
+            numescritura="10",
+            codactos="094",
+            contrato="TEST",
+            fechaescritura="2026-06-01",
+            fechaconclusion="",
+            fechaingreso="2026-06-01",
+            estado_sisgen=1,
+        )
+        mock_kardex_model.objects.filter.return_value.first.return_value = kardex
+
+        detail = KardexComplianceDetailService().build_detail("K1-2026")
+        self.assertEqual(detail["source"], "sisgen_sent")
+        self.assertTrue(detail["sisgen_sent"])
+        self.assertFalse(detail["has_errors"])
+        self.assertEqual(detail["counts"]["total"], 0)

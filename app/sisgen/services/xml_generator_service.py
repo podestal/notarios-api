@@ -29,6 +29,8 @@ class SISGENXmlGenerator:
     JUR_OTRA_ACTIVIDAD_MAX = 50
     # XSD Origen (OrigenFondosType) maxLength 40
     ORIGEN_FONDOS_MAX = 40
+    # XSD DescripcionMomentoPago maxLength 40 (legacy: solo código 99 / OTRO)
+    DESCRIPCION_MOMENTO_PAGO_MAX = 40
     JUR_TELEFONO_MAX = 20
     JUR_PARTIDA_MAX = 12
     JUR_RESTO_DIRECCION_MAX = 255
@@ -672,7 +674,7 @@ class SISGENXmlGenerator:
                     cursor.execute(
                         """
                         SELECT importetrans, idmon, itemmp, fpago,
-                               nminuta, idoppago, exhibiomp
+                               nminuta, idoppago, exhibiomp, des_idoppago
                         FROM patrimonial
                         WHERE kardex = %s AND TRIM(idtipoacto) = TRIM(%s)
                         LIMIT 1
@@ -689,11 +691,12 @@ class SISGENXmlGenerator:
                             "nminuta": row[4],
                             "idoppago": row[5],
                             "exhibiomp": row[6],
+                            "des_idoppago": row[7],
                         }
                 cursor.execute(
                     """
                     SELECT importetrans, idmon, itemmp, fpago,
-                           nminuta, idoppago, exhibiomp
+                           nminuta, idoppago, exhibiomp, des_idoppago
                     FROM patrimonial
                     WHERE kardex = %s
                     ORDER BY itemmp
@@ -716,6 +719,7 @@ class SISGENXmlGenerator:
                         "nminuta": row[4],
                         "idoppago": row[5],
                         "exhibiomp": row[6],
+                        "des_idoppago": row[7],
                     }
         except Exception as e:
             self.logger.error("Error leyendo patrimonial: %s", e)
@@ -1294,6 +1298,7 @@ class SISGENXmlGenerator:
                         mp.desmpagos AS mp_des,
                         pat.fpago AS pat_fpago,
                         pat.idoppago AS pat_idoppago,
+                        pat.des_idoppago AS pat_des_idoppago,
                         pat.exhibiomp AS pat_exhibiomp,
                         ban.desbanco AS ban_des
                     FROM detallemediopago dmp
@@ -1346,7 +1351,15 @@ class SISGENXmlGenerator:
         except (ValueError, TypeError):
             return None
 
-    def _descripcion_momento_pago(self, idoppago_raw) -> str:
+    def _descripcion_momento_pago(
+        self, idoppago_raw, des_idoppago_raw=None
+    ) -> str:
+        """
+        Legacy xml_kardex.php / RoClass generateData (plane_rows item_48):
+
+        - Códigos de catálogo 01–07: solo <MomentoPago>; sin descripción.
+        - Código 99 (OTRO): ``patrimonial.des_idoppago`` normalizado, máx 40.
+        """
         if idoppago_raw is None or str(idoppago_raw).strip() == "":
             return ""
         try:
@@ -1354,9 +1367,17 @@ class SISGENXmlGenerator:
             meta = OPORTUNIDADES_PAGO.get(idx) or {}
             if not str(meta.get("codoppago") or "").strip():
                 return ""
-            return meta.get("desoppago", "") or ""
+            cod = str(meta["codoppago"]).strip()
         except (ValueError, TypeError):
             return ""
+
+        if cod != "99":
+            return ""
+
+        from uif.services.ro_text import remplace_string_ro
+
+        text = remplace_string_ro(des_idoppago_raw or "NO PRECISA").upper()
+        return text[: self.DESCRIPCION_MOMENTO_PAGO_MAX]
 
     def _justificado_manifestado_medio(
         self, exhib_row, exhib_pat_fallback
@@ -1568,6 +1589,7 @@ class SISGENXmlGenerator:
         base = {
             "pat_fpago": pat_row.get("fpago"),
             "pat_idoppago": pat_row.get("idoppago"),
+            "pat_des_idoppago": pat_row.get("des_idoppago"),
             "pat_exhibiomp": pat_row.get("exhibiomp"),
             "dmp_idmon": pat_row.get("idmon"),
             "importemp": pat_row.get("importetrans"),
@@ -1622,6 +1644,7 @@ class SISGENXmlGenerator:
         *,
         fp_pat,
         idopp_pat,
+        des_idopp_pat=None,
         exhib_pat,
     ) -> Optional[str]:
         """
@@ -1648,8 +1671,11 @@ class SISGENXmlGenerator:
         idopp_use = r.get("pat_idoppago")
         if idopp_use in (None, ""):
             idopp_use = idopp_pat
+        des_idopp_use = r.get("pat_des_idoppago")
+        if des_idopp_use in (None, ""):
+            des_idopp_use = des_idopp_pat
         momento = self._momento_pago_codigo(idopp_use)
-        desc_mom = self._descripcion_momento_pago(idopp_use)
+        desc_mom = self._descripcion_momento_pago(idopp_use, des_idopp_use)
         cuant_mp = self._safe_float(str(r.get("importemp") or "0"), default=0.0)
         justif = self._justificado_manifestado_medio(
             r.get("pat_exhibiomp"), exhib_pat
@@ -1667,7 +1693,8 @@ class SISGENXmlGenerator:
         if desc_mom:
             parts.append(
                 f"\t\t\t<DescripcionMomentoPago>"
-                f"{escape(desc_mom[:200])}</DescripcionMomentoPago>\n"
+                f"{self._xml_pcdata_trunc(desc_mom, self.DESCRIPCION_MOMENTO_PAGO_MAX)}"
+                f"</DescripcionMomentoPago>\n"
             )
         parts.append(f"\t\t\t<CuantiaPago>{cuant_mp:.2f}</CuantiaPago>\n")
         parts.append(f"\t\t\t<TipoMonedaPago>{mon_mp}</TipoMonedaPago>\n")
@@ -1695,6 +1722,7 @@ class SISGENXmlGenerator:
     ) -> str:
         fp_pat = pat_row.get("fpago") if pat_row else None
         idopp_pat = pat_row.get("idoppago") if pat_row else None
+        des_idopp_pat = pat_row.get("des_idoppago") if pat_row else None
         exhib_pat = pat_row.get("exhibiomp") if pat_row else None
 
         blocks: List[str] = []
@@ -1703,6 +1731,7 @@ class SISGENXmlGenerator:
                 r,
                 fp_pat=fp_pat,
                 idopp_pat=idopp_pat,
+                des_idopp_pat=des_idopp_pat,
                 exhib_pat=exhib_pat,
             )
             if block:

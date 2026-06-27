@@ -21,6 +21,7 @@ from compliance.models import KardexComplianceCache
 from compliance.services.bulk_collector import bulk_collect_compliance_error_counts
 from compliance.services.payload import sisgen_errores_count_from_payload
 from compliance.services.refresh_service import EXCLUDED_TIPOKAR
+from compliance.services.sisgen_sent_filter import partition_kardex_by_sisgen_sent
 
 User = get_user_model()
 
@@ -48,6 +49,19 @@ def _user_display_name(user) -> str:
     return name or getattr(user, "username", "") or ""
 
 
+def _kardex_row_from_model(k: models.Kardex) -> Dict[str, Any]:
+    return {
+        "kardex": str(k.kardex).strip(),
+        "idkardex": k.idkardex,
+        "idusuario": k.idusuario,
+        "numescritura": k.numescritura,
+        "fechaingreso": k.fechaingreso,
+        "fechaescritura": k.fechaescritura,
+        "idtipkar": k.idtipkar,
+        "estado_sisgen": k.estado_sisgen,
+    }
+
+
 def _load_month_kardex_and_counts(
     *,
     year: Optional[int] = None,
@@ -68,21 +82,28 @@ def _load_month_kardex_and_counts(
     if idusuario is not None:
         qs = qs.filter(idusuario=idusuario)
 
-    kardex_models = list(qs)
-    kardex_rows = [
-        {
-            "kardex": str(k.kardex).strip(),
-            "idkardex": k.idkardex,
-            "idusuario": k.idusuario,
-            "numescritura": k.numescritura,
-            "fechaingreso": k.fechaingreso,
-            "fechaescritura": k.fechaescritura,
-            "idtipkar": k.idtipkar,
-        }
+    kardex_models_all = list(qs)
+    kardex_models, excluded_sisgen_sent = partition_kardex_by_sisgen_sent(kardex_models_all)
+
+    all_kardex_rows = [
+        _kardex_row_from_model(k)
+        for k in kardex_models_all
+        if k.kardex and str(k.kardex).strip()
+    ]
+    eligible_kardex_rows = [
+        _kardex_row_from_model(k)
         for k in kardex_models
         if k.kardex and str(k.kardex).strip()
     ]
-    kardex_keys = [r["kardex"] for r in kardex_rows]
+    kardex_keys = [r["kardex"] for r in eligible_kardex_rows]
+
+    exclusion_meta = {
+        "excluded_sisgen_sent": len(excluded_sisgen_sent),
+        "sisgen_sent_note": (
+            "Kardex con estado_sisgen Enviado (1) u Observado (2) no muestran errores, "
+            "pero siguen contando en total_kardex del mes."
+        ),
+    }
 
     if use_cache:
         cache_by_kardex = {
@@ -105,6 +126,7 @@ def _load_month_kardex_and_counts(
             "source": "kardex_compliance_cache",
             "cached": len(cache_by_kardex),
             "missing": len(kardex_keys) - len(cache_by_kardex),
+            **exclusion_meta,
             "note": (
                 "Reading KardexComplianceCache. "
                 "POST /compliance/refresh/ to populate missing rows. "
@@ -116,6 +138,7 @@ def _load_month_kardex_and_counts(
         source_meta = {
             "source": "live_validation",
             "kardex_validated": len(kardex_keys),
+            **exclusion_meta,
             "note": (
                 "Single-pass live validation (batch DB prefetch, parallel SISGEN/UIF). "
                 "Add cache=true to read precomputed KardexComplianceCache instead."
@@ -124,7 +147,7 @@ def _load_month_kardex_and_counts(
 
     user_ids = {
         int(r["idusuario"])
-        for r in kardex_rows
+        for r in all_kardex_rows
         if r.get("idusuario") is not None
     }
     users_by_id = {
@@ -140,7 +163,9 @@ def _load_month_kardex_and_counts(
             "end": end_s,
             "date_field": "fechaingreso",
         },
-        "kardex_rows": kardex_rows,
+        "all_kardex_rows": all_kardex_rows,
+        "eligible_kardex_rows": eligible_kardex_rows,
+        "kardex_rows": eligible_kardex_rows,
         "counts_by_kardex": counts_by_kardex,
         "source_meta": source_meta,
         "users_by_id": users_by_id,
@@ -170,7 +195,8 @@ class ComplianceUserMonthlyService:
         data = _load_month_kardex_and_counts(
             year=year, month=month, use_cache=use_cache
         )
-        kardex_rows = data["kardex_rows"]
+        all_kardex_rows = data["all_kardex_rows"]
+        eligible_kardex_rows = data["eligible_kardex_rows"]
         counts_by_kardex = data["counts_by_kardex"]
         users_by_id = data["users_by_id"]
 
@@ -187,7 +213,11 @@ class ComplianceUserMonthlyService:
             }
         )
 
-        for row in kardex_rows:
+        for row in all_kardex_rows:
+            uid = int(row.get("idusuario") or 0)
+            stats[uid]["total_kardex"] += 1
+
+        for row in eligible_kardex_rows:
             uid = int(row.get("idusuario") or 0)
             k = str(row.get("kardex") or "").strip()
             if not k:
@@ -195,16 +225,12 @@ class ComplianceUserMonthlyService:
 
             item = counts_by_kardex.get(k) or {"sisgen": 0, "uif": 0}
             counts = _kardex_counts_item(item)
-            sisgen_n = counts["sisgen"]
-            uif_n = counts["uif"]
-            pdt_n = counts["pdt"]
             item_total = counts["total"]
 
             bucket = stats[uid]
-            bucket["total_kardex"] += 1
-            bucket["counts"]["sisgen"] += sisgen_n
-            bucket["counts"]["uif"] += uif_n
-            bucket["counts"]["pdt"] += pdt_n
+            bucket["counts"]["sisgen"] += counts["sisgen"]
+            bucket["counts"]["uif"] += counts["uif"]
+            bucket["counts"]["pdt"] += counts["pdt"]
             bucket["counts"]["total"] += item_total
             if item_total > 0:
                 bucket["kardex_with_errors"] += 1
@@ -237,9 +263,11 @@ class ComplianceUserMonthlyService:
         )
 
         summary = {
-            "total_kardex": len(kardex_rows),
+            "total_kardex": len(all_kardex_rows),
+            "kardex_checked_for_errors": len(eligible_kardex_rows),
             "total_users": len(users_out),
             "kardex_with_errors": sum(u["kardex_with_errors"] for u in users_out),
+            "excluded_sisgen_sent": data["source_meta"].get("excluded_sisgen_sent", 0),
             "counts": {
                 "sisgen": sum(u["counts"]["sisgen"] for u in users_out),
                 "uif": sum(u["counts"]["uif"] for u in users_out),
@@ -274,12 +302,17 @@ class ComplianceUserMonthlyService:
             use_cache=use_cache,
             idusuario=idusuario,
         )
-        kardex_rows = data["kardex_rows"]
+        all_kardex_rows = data["all_kardex_rows"]
+        eligible_kardex_rows = data["eligible_kardex_rows"]
         counts_by_kardex = data["counts_by_kardex"]
         users_by_id = data["users_by_id"]
 
+        totals_by_user: Dict[int, int] = defaultdict(int)
+        for row in all_kardex_rows:
+            totals_by_user[int(row.get("idusuario") or 0)] += 1
+
         by_user: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
-        for row in kardex_rows:
+        for row in eligible_kardex_rows:
             k = str(row.get("kardex") or "").strip()
             if not k:
                 continue
@@ -304,6 +337,10 @@ class ComplianceUserMonthlyService:
             if errors_only and not kardex_list:
                 continue
             user = users_by_id.get(uid)
+            total_k = totals_by_user.get(uid, 0)
+            with_err = len(kardex_list) if errors_only else sum(
+                1 for item in kardex_list if item["counts"]["total"] > 0
+            )
             kardex_list.sort(
                 key=lambda item: (
                     -item["counts"]["total"],
@@ -317,7 +354,10 @@ class ComplianceUserMonthlyService:
                     "idusuario": uid,
                     "name": _user_display_name(user),
                     "username": getattr(user, "username", "") if user else "",
+                    "total_kardex": total_k,
+                    "kardex_with_errors": with_err,
                     "kardex_count": len(kardex_list),
+                    "error_rate": round(with_err / total_k, 4) if total_k else 0.0,
                     "counts": {
                         "sisgen": sum(i["counts"]["sisgen"] for i in kardex_list),
                         "uif": sum(i["counts"]["uif"] for i in kardex_list),
@@ -327,6 +367,26 @@ class ComplianceUserMonthlyService:
                     "kardex": kardex_list,
                 }
             )
+
+        # Users with only SISGEN-sent kardex (no error rows) still appear when errors_only=false
+        if not errors_only:
+            for uid, total_k in totals_by_user.items():
+                if uid in by_user:
+                    continue
+                user = users_by_id.get(uid)
+                users_out.append(
+                    {
+                        "idusuario": uid,
+                        "name": _user_display_name(user),
+                        "username": getattr(user, "username", "") if user else "",
+                        "total_kardex": total_k,
+                        "kardex_with_errors": 0,
+                        "kardex_count": 0,
+                        "error_rate": 0.0,
+                        "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
+                        "kardex": [],
+                    }
+                )
 
         users_out.sort(
             key=lambda u: (
@@ -339,7 +399,10 @@ class ComplianceUserMonthlyService:
         all_kardex = [item for u in users_out for item in u["kardex"]]
         summary = {
             "total_users": len(users_out),
-            "total_kardex": len(all_kardex),
+            "total_kardex": len(all_kardex_rows),
+            "kardex_with_errors": len(all_kardex),
+            "kardex_checked_for_errors": len(eligible_kardex_rows),
+            "excluded_sisgen_sent": data["source_meta"].get("excluded_sisgen_sent", 0),
             "counts": {
                 "sisgen": sum(i["counts"]["sisgen"] for i in all_kardex),
                 "uif": sum(i["counts"]["uif"] for i in all_kardex),
@@ -348,6 +411,22 @@ class ComplianceUserMonthlyService:
             },
             "pdt_note": "PDT not included yet",
         }
+
+        if idusuario is not None and not users_out and totals_by_user.get(idusuario, 0) > 0:
+            user = users_by_id.get(idusuario)
+            users_out.append(
+                {
+                    "idusuario": idusuario,
+                    "name": _user_display_name(user),
+                    "username": getattr(user, "username", "") if user else "",
+                    "total_kardex": totals_by_user[idusuario],
+                    "kardex_with_errors": 0,
+                    "kardex_count": 0,
+                    "error_rate": 0.0,
+                    "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
+                    "kardex": [],
+                }
+            )
 
         result: Dict[str, Any] = {
             "year": data["year"],
