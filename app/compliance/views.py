@@ -18,8 +18,51 @@ from compliance.services.dashboard_service import (
 )
 from compliance.services.payload import SUPPORTED_SOURCES, serialize_cache_row
 from compliance.services.refresh_service import ComplianceRefreshService
+from compliance.services.user_monthly_service import ComplianceUserMonthlyService
 
 logger = logging.getLogger(__name__)
+
+
+class ComplianceUsersMonthlyView(APIView):
+    """
+    Error counts by preparer (kardex.idusuario) for a calendar month.
+
+    GET /compliance/users/
+      - year (optional, default: current server year)
+      - month (optional, default: current server month, 1–12)
+
+    Single-pass live validation by default (batch prefetch, no cache).
+    Kardex filtered by ``fechaingreso`` in [first day, last day] of the month.
+
+    Add ``cache=true`` to read KardexComplianceCache instead (requires refresh).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        year_raw = request.query_params.get("year")
+        month_raw = request.query_params.get("month")
+        use_cache = request.query_params.get("cache", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        try:
+            year = int(year_raw) if year_raw not in (None, "") else None
+            month = int(month_raw) if month_raw not in (None, "") else None
+        except ValueError:
+            return Response(
+                {"error": "year and month must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = ComplianceUserMonthlyService()
+        try:
+            report = service.build_report(year=year, month=month, use_cache=use_cache)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(report, status=status.HTTP_200_OK)
 
 
 class ComplianceDashboardView(APIView):

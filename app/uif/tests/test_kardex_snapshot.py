@@ -48,8 +48,27 @@ class KardexSnapshotTests(SimpleTestCase):
         self.assertTrue(result["has_uif_errors"])
         self.assertEqual(len(result["uif_errors"]), 1)
 
-    @patch("uif.services.kardex_snapshot.validate_kardex_number")
-    def test_bulk_validate_maps_keys(self, mock_validate):
-        mock_validate.side_effect = lambda k: {"kardex": k, "has_uif_errors": False, "uif_errors": [], "uif_observations": [], "patrimonial_data": {}}
+    @patch("uif.services.kardex_snapshot.RoEligibleRowValidator")
+    @patch("uif.services.kardex_snapshot.UifDashboardService")
+    @patch("uif.services.kardex_snapshot.models.Tiposdeacto")
+    @patch("uif.services.kardex_snapshot.models.Kardex")
+    def test_bulk_validate_maps_keys(
+        self, mock_kardex_model, mock_tipos, mock_dashboard_cls, mock_validator_cls
+    ):
+        k1 = MagicMock(kardex="A", codactos="094", idtipkar=1)
+        k2 = MagicMock(kardex="B", codactos="094", idtipkar=1)
+        mock_kardex_model.objects.filter.return_value = [k1, k2]
+        tipo = MagicMock(idtipoacto="094", actouif="010", desacto="ACTO")
+        mock_tipos.objects.filter.return_value.exclude.return_value = [tipo]
+        mock_dashboard_cls.return_value._bulk_fetch_related.return_value = (
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
+        mock_validator_cls.return_value.validate_row.return_value = []
         out = bulk_validate_kardex_numbers(["A", "B"])
         self.assertEqual(set(out.keys()), {"A", "B"})
+        mock_dashboard_cls.return_value._bulk_fetch_related.assert_called_once()

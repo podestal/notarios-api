@@ -430,8 +430,58 @@ class DocumentSearchService:
             'pdt_errors': self.pdt_errors
         }
 
-    def _validate_document_data(self, documents: List[Dict]):
+    @staticmethod
+    def _prefetch_document_validation_data(kardex_list: List[str]) -> Dict[str, Dict]:
+        """Batch-load rows used by document-level validation (avoids per-kardex SQL)."""
+        from collections import defaultdict
+
+        detalle_map: Dict[str, list] = defaultdict(list)
+        uif_map: Dict[str, list] = defaultdict(list)
+        keys = [str(k or "").strip() for k in kardex_list if k and str(k).strip()]
+        if not keys:
+            return {"detalle": detalle_map, "uif": uif_map}
+
+        from notaria import models
+
+        for kardex, importemp, idmon in models.Detallemediopago.objects.filter(
+            kardex__in=keys
+        ).values_list("kardex", "importemp", "idmon"):
+            detalle_map[kardex].append((importemp, idmon))
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    cx.kardex,
+                    cx.uif, cx.monto, cx.ofondo,
+                    CASE
+                        WHEN c.tipper = 'N' THEN CONCAT(
+                            COALESCE(c.prinom, ''), ' ', COALESCE(c.segnom, ''), ' ',
+                            COALESCE(c.apepat, ''), ' ', COALESCE(c.apemat, '')
+                        )
+                        WHEN c.tipper = 'J' THEN c.razonsocial
+                        ELSE 'Desconocido'
+                    END as nombre_completo,
+                    c.tipper,
+                    c.numdoc
+                FROM contratantesxacto cx
+                LEFT JOIN cliente2 c ON cx.idcontratante = c.idcontratante
+                WHERE cx.kardex IN %s
+                AND (cx.uif IN ('O', 'B', 'G', 'N', 'R'))
+                """,
+                [tuple(keys)],
+            )
+            for row in cursor.fetchall():
+                uif_map[row[0]].append(row[1:])
+
+        return {"detalle": detalle_map, "uif": uif_map}
+
+    def _validate_document_data(
+        self, documents: List[Dict], validation_prefetch: Optional[Dict[str, Dict]] = None
+    ):
         """Validate document data and track errors"""
+        detalle_map = (validation_prefetch or {}).get("detalle")
+        uif_map = (validation_prefetch or {}).get("uif")
         for doc in documents:
             kardex = doc.get('kardex', '')
             self.logger.debug(f"Validating document data for kardex: {kardex}")
@@ -458,8 +508,16 @@ class DocumentSearchService:
                 self._add_observation(kardex, "Falta código ANCERT")
             
             # Validate UIF data
-            self._validate_uif_data(doc)
-            self._validate_detalle_mediopago_moneda(kardex)
+            if uif_map is not None:
+                self._validate_uif_data(doc, uif_records=uif_map.get(kardex, []))
+            else:
+                self._validate_uif_data(doc)
+            if detalle_map is not None:
+                self._validate_detalle_mediopago_moneda(
+                    kardex, detalle_rows=detalle_map.get(kardex, [])
+                )
+            else:
+                self._validate_detalle_mediopago_moneda(kardex)
             
             self.logger.debug(f"After validation for kardex {kardex}:")
             self.logger.debug(f"Errors: {self.kardex_errors.get(kardex, [])}")
@@ -474,32 +532,36 @@ class DocumentSearchService:
 
         return not doc_requires_uif_sunat_xml(doc)
 
-    def _validate_detalle_mediopago_moneda(self, kardex: str):
+    def _validate_detalle_mediopago_moneda(
+        self, kardex: str, detalle_rows: Optional[List] = None
+    ):
         """ValidarMoneda-style: moneda en detallemediopago requiere importemp > 0."""
         if not kardex:
             return
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT importemp, idmon FROM detallemediopago
-                    WHERE kardex = %s
-                    """,
-                    [kardex],
-                )
-                for importemp, idmon in cursor.fetchall():
-                    ims = str(idmon).strip() if idmon is not None else ""
-                    if ims in ("", "0", "None"):
-                        continue
-                    try:
-                        amt = float(importemp or 0)
-                    except (TypeError, ValueError):
-                        amt = 0.0
-                    if amt <= 0:
-                        self._add_error(
-                            kardex,
-                            "detallemediopago: moneda informada sin importe válido",
-                        )
+            if detalle_rows is None:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT importemp, idmon FROM detallemediopago
+                        WHERE kardex = %s
+                        """,
+                        [kardex],
+                    )
+                    detalle_rows = cursor.fetchall()
+            for importemp, idmon in detalle_rows:
+                ims = str(idmon).strip() if idmon is not None else ""
+                if ims in ("", "0", "None"):
+                    continue
+                try:
+                    amt = float(importemp or 0)
+                except (TypeError, ValueError):
+                    amt = 0.0
+                if amt <= 0:
+                    self._add_error(
+                        kardex,
+                        "detallemediopago: moneda informada sin importe válido",
+                    )
         except Exception as e:
             self.logger.warning(
                 "No se pudo validar detallemediopago para kardex %s: %s",
@@ -507,7 +569,7 @@ class DocumentSearchService:
                 e,
             )
 
-    def _validate_uif_data(self, doc: Dict):
+    def _validate_uif_data(self, doc: Dict, uif_records: Optional[List] = None):
         """Validate UIF-related data"""
         kardex = doc.get('kardex', '')
         self.logger.debug(f"Validating UIF data for kardex: {kardex}")
@@ -520,45 +582,45 @@ class DocumentSearchService:
             return
         
         try:
-            # Get UIF data for the kardex
-            with connection.cursor() as cursor:
-                query = """
-                    SELECT 
-                        cx.uif, cx.monto, cx.ofondo,
-                        CASE 
-                            WHEN c.tipper = 'N' THEN CONCAT(COALESCE(c.prinom, ''), ' ', COALESCE(c.segnom, ''), ' ', COALESCE(c.apepat, ''), ' ', COALESCE(c.apemat, ''))
-                            WHEN c.tipper = 'J' THEN c.razonsocial
-                            ELSE 'Desconocido'
-                        END as nombre_completo,
-                        c.tipper,
-                        c.numdoc
-                    FROM contratantesxacto cx
-                    LEFT JOIN cliente2 c ON cx.idcontratante = c.idcontratante
-                    WHERE cx.kardex = %s
-                    AND (cx.uif IN ('O', 'B', 'G', 'N', 'R'))
-                """
-                cursor.execute(query, [kardex])
-                uif_records = cursor.fetchall()
-                
-                if not uif_records:
-                    self._add_observation(kardex, "No se encontraron registros UIF")
-                    return
-                
-                for uif_record in uif_records:
-                    uif, monto, ofondo, nombre_completo, tipper, numdoc = uif_record
-                    role_name = 'Otorgante' if uif == 'O' else 'Beneficiario'
-                    
-                    # Format person identifier
-                    person_id = f"{nombre_completo.strip()} ({numdoc})" if numdoc else nombre_completo.strip()
-                    
-                    # Validate monto for operations
-                    if uif in ('O', 'B') and (not monto or float(monto or 0) <= 0):
-                        self._add_error(kardex, f"Monto inválido para {role_name}: {person_id}")
-                    
-                    # Validate origen de fondos
-                    if uif in ('O', 'B') and not ofondo:
-                        self._add_error(kardex, f"Falta origen de fondos para {role_name}: {person_id}")
-                
+            if uif_records is None:
+                with connection.cursor() as cursor:
+                    query = """
+                        SELECT
+                            cx.uif, cx.monto, cx.ofondo,
+                            CASE
+                                WHEN c.tipper = 'N' THEN CONCAT(COALESCE(c.prinom, ''), ' ', COALESCE(c.segnom, ''), ' ', COALESCE(c.apepat, ''), ' ', COALESCE(c.apemat, ''))
+                                WHEN c.tipper = 'J' THEN c.razonsocial
+                                ELSE 'Desconocido'
+                            END as nombre_completo,
+                            c.tipper,
+                            c.numdoc
+                        FROM contratantesxacto cx
+                        LEFT JOIN cliente2 c ON cx.idcontratante = c.idcontratante
+                        WHERE cx.kardex = %s
+                        AND (cx.uif IN ('O', 'B', 'G', 'N', 'R'))
+                    """
+                    cursor.execute(query, [kardex])
+                    uif_records = cursor.fetchall()
+
+            if not uif_records:
+                self._add_observation(kardex, "No se encontraron registros UIF")
+                return
+
+            for uif_record in uif_records:
+                uif, monto, ofondo, nombre_completo, tipper, numdoc = uif_record
+                role_name = 'Otorgante' if uif == 'O' else 'Beneficiario'
+
+                # Format person identifier
+                person_id = f"{nombre_completo.strip()} ({numdoc})" if numdoc else nombre_completo.strip()
+
+                # Validate monto for operations
+                if uif in ('O', 'B') and (not monto or float(monto or 0) <= 0):
+                    self._add_error(kardex, f"Monto inválido para {role_name}: {person_id}")
+
+                # Validate origen de fondos
+                if uif in ('O', 'B') and not ofondo:
+                    self._add_error(kardex, f"Falta origen de fondos para {role_name}: {person_id}")
+
         except Exception as e:
             self.logger.error(f"Error validating UIF data for kardex {kardex}: {str(e)}")
             self._add_error(kardex, "Error al validar datos UIF")

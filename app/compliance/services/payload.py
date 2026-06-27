@@ -94,6 +94,17 @@ def build_payload(
     }
 
 
+def sisgen_errores_count_from_payload(payload: Optional[Dict[str, Any]]) -> int:
+    """Document-level SISGEN errores only (excludes personas / observaciones)."""
+    if not payload:
+        return 0
+    sisgen = (payload.get("sources") or {}).get(SOURCE_SISGEN) or {}
+    errores = sisgen.get("errores")
+    if errores is not None:
+        return len(errores)
+    return int(sisgen.get("error_count") or 0)
+
+
 def counts_from_payload(payload: Dict[str, Any]) -> Dict[str, int]:
     sources = payload.get("sources") or {}
     uif = sources.get(SOURCE_UIF) or {}
