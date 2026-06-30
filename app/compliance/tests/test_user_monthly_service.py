@@ -23,9 +23,9 @@ class ParseYearMonthTests(SimpleTestCase):
 class ComplianceUserMonthlyServiceTests(SimpleTestCase):
     def _kardex_models(self):
         return [
-            MagicMock(kardex="K1-2026", idusuario=3, idkardex="1"),
-            MagicMock(kardex="K2-2026", idusuario=3, idkardex="2"),
-            MagicMock(kardex="K3-2026", idusuario=5, idkardex="3"),
+            MagicMock(kardex="K1-2026", idusuario=3, idkardex="1", numescritura="10"),
+            MagicMock(kardex="K2-2026", idusuario=3, idkardex="2", numescritura="11"),
+            MagicMock(kardex="K3-2026", idusuario=5, idkardex="3", numescritura="12"),
         ]
 
     @patch("compliance.services.user_monthly_service.get_user_model")
@@ -194,3 +194,43 @@ class ComplianceUserMonthlyTotalsTests(SimpleTestCase):
         self.assertEqual(user3["kardex_with_errors"], 1)
         self.assertEqual(user3["error_rate"], 0.5)
         self.assertEqual(report["summary"]["total_kardex"], 2)
+
+
+class ComplianceEscrituracionExclusionTests(SimpleTestCase):
+    @patch("compliance.services.user_monthly_service.get_user_model")
+    @patch("compliance.services.user_monthly_service.bulk_collect_compliance_error_counts")
+    @patch("compliance.services.user_monthly_service.models.Kardex")
+    def test_pending_escrituracion_excluded_from_error_checks(
+        self, mock_kardex_model, mock_bulk, mock_get_user_model
+    ):
+        mock_kardex_model.objects.filter.return_value.exclude.return_value.exclude.return_value.exclude.return_value = [
+            MagicMock(
+                kardex="K-DONE",
+                idusuario=3,
+                idkardex="1",
+                numescritura="100",
+                estado_sisgen=0,
+            ),
+            MagicMock(
+                kardex="K-PENDING",
+                idusuario=3,
+                idkardex="2",
+                numescritura="",
+                estado_sisgen=0,
+            ),
+        ]
+        mock_bulk.return_value = {"K-DONE": {"sisgen": 1, "uif": 0}}
+        mock_get_user_model.return_value.filter.return_value = [
+            MagicMock(idusuario=3, first_name="Ana", last_name="L", username="ana")
+        ]
+
+        report = ComplianceUserMonthlyService().build_report(year=2026, month=6)
+
+        self.assertEqual(report["summary"]["total_kardex"], 2)
+        self.assertEqual(report["summary"]["kardex_checked_for_errors"], 1)
+        self.assertEqual(report["summary"]["excluded_pending_escrituracion"], 1)
+        self.assertEqual(report["users"][0]["kardex_with_errors"], 1)
+        mock_bulk.assert_called_once()
+        validated = mock_bulk.call_args[0][0]
+        self.assertEqual(len(validated), 1)
+        self.assertEqual(validated[0].kardex, "K-DONE")

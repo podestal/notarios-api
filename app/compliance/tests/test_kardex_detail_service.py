@@ -102,3 +102,25 @@ class KardexComplianceDetailServiceTests(SimpleTestCase):
         self.assertTrue(detail["sisgen_sent"])
         self.assertFalse(detail["has_errors"])
         self.assertEqual(detail["counts"]["total"], 0)
+
+    @patch("compliance.services.kardex_detail_service.models.Kardex")
+    def test_pending_escrituracion_skips_validation(self, mock_kardex_model):
+        kardex = MagicMock(
+            kardex="K1-2026",
+            idkardex=1,
+            idtipkar=1,
+            numescritura="",
+            codactos="094",
+            contrato="TEST",
+            fechaescritura="",
+            fechaconclusion="",
+            fechaingreso="2026-06-01",
+            estado_sisgen=0,
+        )
+        mock_kardex_model.objects.filter.return_value.first.return_value = kardex
+
+        detail = KardexComplianceDetailService().build_detail("K1-2026")
+        self.assertEqual(detail["source"], "escrituracion_pending")
+        self.assertTrue(detail["escrituracion_pending"])
+        self.assertFalse(detail["has_errors"])
+        self.assertEqual(detail["counts"]["total"], 0)

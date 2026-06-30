@@ -21,6 +21,7 @@ from compliance.models import KardexComplianceCache
 from compliance.services.bulk_collector import bulk_collect_compliance_error_counts
 from compliance.services.payload import sisgen_errores_count_from_payload
 from compliance.services.refresh_service import EXCLUDED_TIPOKAR
+from compliance.services.escrituracion_filter import partition_kardex_by_escrituracion
 from compliance.services.sisgen_sent_filter import partition_kardex_by_sisgen_sent
 
 User = get_user_model()
@@ -84,6 +85,9 @@ def _load_month_kardex_and_counts(
 
     kardex_models_all = list(qs)
     kardex_models, excluded_sisgen_sent = partition_kardex_by_sisgen_sent(kardex_models_all)
+    kardex_models, excluded_pending_escrituracion = partition_kardex_by_escrituracion(
+        kardex_models
+    )
 
     all_kardex_rows = [
         _kardex_row_from_model(k)
@@ -99,9 +103,14 @@ def _load_month_kardex_and_counts(
 
     exclusion_meta = {
         "excluded_sisgen_sent": len(excluded_sisgen_sent),
+        "excluded_pending_escrituracion": len(excluded_pending_escrituracion),
         "sisgen_sent_note": (
             "Kardex con estado_sisgen Enviado (1) u Observado (2) no muestran errores, "
             "pero siguen contando en total_kardex del mes."
+        ),
+        "escrituracion_note": (
+            "Kardex sin numescritura (número de instrumento) no se validan para errores; "
+            "siguen contando en total_kardex del mes."
         ),
     }
 
@@ -268,6 +277,9 @@ class ComplianceUserMonthlyService:
             "total_users": len(users_out),
             "kardex_with_errors": sum(u["kardex_with_errors"] for u in users_out),
             "excluded_sisgen_sent": data["source_meta"].get("excluded_sisgen_sent", 0),
+            "excluded_pending_escrituracion": data["source_meta"].get(
+                "excluded_pending_escrituracion", 0
+            ),
             "counts": {
                 "sisgen": sum(u["counts"]["sisgen"] for u in users_out),
                 "uif": sum(u["counts"]["uif"] for u in users_out),
@@ -403,6 +415,9 @@ class ComplianceUserMonthlyService:
             "kardex_with_errors": len(all_kardex),
             "kardex_checked_for_errors": len(eligible_kardex_rows),
             "excluded_sisgen_sent": data["source_meta"].get("excluded_sisgen_sent", 0),
+            "excluded_pending_escrituracion": data["source_meta"].get(
+                "excluded_pending_escrituracion", 0
+            ),
             "counts": {
                 "sisgen": sum(i["counts"]["sisgen"] for i in all_kardex),
                 "uif": sum(i["counts"]["uif"] for i in all_kardex),
