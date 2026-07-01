@@ -24,3 +24,9 @@ class RoTextNormalizationTests(SimpleTestCase):
 
     def test_strips_punctuation_for_natural_person(self):
         self.assertEqual(remplace_string_ro('ACME "TEST" (S.A.)', 1), "ACME TEST SA")
+
+    def test_strips_apostrophes_in_names(self):
+        self.assertEqual(remplace_string_ro("d'añari", 1), "da#ari")
+        self.assertEqual(remplace_string_ro("D'AÑARI", 1), "DA#ARI")
+        self.assertEqual(remplace_string_ro("O'BRIEN", 1), "OBRIEN")
+        self.assertEqual(remplace_string_ro("d\u2019añari", 1), "da#ari")

@@ -11,6 +11,8 @@ def remplace_string_ro(value, type_person=1):
     if type_person == 1:
         for ch in '"$&@/().,;':
             value_string = value_string.replace(ch, "")
+        for ch in ("'", "\u2019", "\u2018", "\u02bc", "´", "`"):
+            value_string = value_string.replace(ch, "")
     replacements = [
         ("Ã¡", "A"),
         ("Ã©", "E"),
