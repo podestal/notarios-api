@@ -96,8 +96,14 @@ class SisgenSendJob(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["user", "-created_at"]),
-            models.Index(fields=["status", "-created_at"]),
+            models.Index(
+                fields=["user", "-created_at"],
+                name="sisgen_sj_user_crt_idx",
+            ),
+            models.Index(
+                fields=["status", "-created_at"],
+                name="sisgen_sj_stat_crt_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -158,11 +164,14 @@ class SisgenSendJobDocument(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["job", "kardex"],
-                name="sisgen_send_job_document_unique_kardex",
+                name="sisgen_sjd_job_kx_uniq",
             ),
         ]
         indexes = [
-            models.Index(fields=["job", "status"]),
+            models.Index(
+                fields=["job", "status"],
+                name="sisgen_sjd_job_st_idx",
+            ),
         ]
 
     def __str__(self) -> str:

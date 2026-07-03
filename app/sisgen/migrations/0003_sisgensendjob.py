@@ -134,25 +134,25 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="sisgensendjob",
             index=models.Index(
-                fields=["user", "-created_at"], name="sisgen_sisg_user_id_created_idx"
+                fields=["user", "-created_at"], name="sisgen_sj_user_crt_idx"
             ),
         ),
         migrations.AddIndex(
             model_name="sisgensendjob",
             index=models.Index(
-                fields=["status", "-created_at"], name="sisgen_sisg_status_created_idx"
+                fields=["status", "-created_at"], name="sisgen_sj_stat_crt_idx"
             ),
         ),
         migrations.AddIndex(
             model_name="sisgensendjobdocument",
             index=models.Index(
-                fields=["job", "status"], name="sisgen_sisg_job_id_status_idx"
+                fields=["job", "status"], name="sisgen_sjd_job_st_idx"
             ),
         ),
         migrations.AddConstraint(
             model_name="sisgensendjobdocument",
             constraint=models.UniqueConstraint(
-                fields=("job", "kardex"), name="sisgen_send_job_document_unique_kardex"
+                fields=("job", "kardex"), name="sisgen_sjd_job_kx_uniq"
             ),
         ),
     ]

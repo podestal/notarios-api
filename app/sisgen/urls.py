@@ -5,6 +5,7 @@ from .views import (
     SendToSISGENPreviewView,
     SendToSISGENView,
     SisgenErrorsByKardexView,
+    SisgenSendJobDetailView,
     SisgenSoapResponseListView,
     SisgenValidationRecalculateView,
 )
@@ -24,6 +25,11 @@ urlpatterns = [
         name='send_sisgen_preview',
     ),
     path('send-sisgen/', SendToSISGENView.as_view(), name='send_sisgen'),
+    path(
+        'send-jobs/<int:job_id>/',
+        SisgenSendJobDetailView.as_view(),
+        name='send_job_detail',
+    ),
     path(
         'submission-responses/',
         SisgenSoapResponseListView.as_view(),

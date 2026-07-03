@@ -16,28 +16,14 @@ from .services.send_preview_service import (
     extract_search_filters,
     verify_documents_against_filters,
 )
-from .utils.exceptions import ValidationException
-from .services.xml_generator_service import SISGENXmlGenerator
-from .services.soap_client_service import SoapClientService
-from .services.data_processor_service import DataProcessorService
-from .services.send_batch_summary import (
-    BATCH_STATUS_COMPLETED,
-    BATCH_STATUS_DRY_RUN,
-    BATCH_STATUS_ERROR_PROCESSING,
-    BATCH_STATUS_ERROR_SEND,
-    BATCH_STATUS_SKIPPED_NO_XML,
-    BATCH_STATUS_SOAP_REJECTED,
-    aggregate_batch_summary,
-    build_batch_summary_entry,
+from .services.send_job_store import create_send_job
+from .services.send_response_enrichment import (
+    attach_last_submission_status,
+    last_submission_from_soap_obj,
 )
+from .utils.exceptions import ValidationException
 from .services.sisgen_soap_response import (
     SISGEN_IT_CONTACT_NOTE,
-    build_soap_failure_entries,
-    extract_submission_errors,
-    format_soap_return_message,
-    parse_set_documentos_response,
-    save_response_logs_for_batch,
-    soap_response_is_ok,
 )
 from .utils.exceptions import DocumentSearchException
 from .services.book_search_service import BookSearchService
@@ -48,101 +34,54 @@ from .services.search_response import (
 from .services.sync_status import (
     build_sisgen_sync_status,
     merge_last_submission_for_row,
-    status_ui_from_document_status,
 )
-from .models import SisgenSoapResponse, SisgenValidationCache
+from .models import SisgenSendJob, SisgenSoapResponse, SisgenValidationCache
 from notaria.models import Kardex
+from django.urls import reverse
 from rest_framework.decorators import api_view
 import logging
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
-# When True, SendToSISGEN builds XML and returns the SOAP payload only — no HTTP call to SISGEN.
-SISGEN_DRY_RUN = False
 
-
-def _last_submission_from_soap_obj(obj: SisgenSoapResponse) -> Dict[str, Any]:
-    """Shape consumed by search UI as ``sisgen_last_submission``."""
-    payload = obj.parsed_payload or {}
-    errors = extract_submission_errors(
-        payload,
-        soap_return_message=obj.soap_return_message or "",
-        document_status=obj.document_status or "",
-        soap_return_status=obj.soap_return_status or "",
-    )
-    remote_ui = status_ui_from_document_status(obj.document_status or "")
-    if errors and remote_ui == "pendiente":
-        remote_ui = "fallido"
-    last = {
-        "exists": True,
-        "created_at": obj.created_at.isoformat(),
-        "batch_index": obj.batch_index,
-        "http_status": obj.http_status,
-        "soap_return_status": obj.soap_return_status,
-        "soap_return_message": obj.soap_return_message,
-        "document_status": obj.document_status,
-        "remote_status_ui": remote_ui,
-        "status_ui": remote_ui,
-        "errors": errors,
-        "has_errors": bool(errors),
-    }
-    note = payload.get("nota_contacto_it") or (payload.get("user_facing") or {}).get(
-        "nota_contacto_it"
-    )
-    if note:
-        last["nota_contacto_it"] = note
-    elif errors:
-        last["nota_contacto_it"] = SISGEN_IT_CONTACT_NOTE
-    return last
-
-
-def _attach_last_submission_status(rows: list) -> list:
-    kardexes = [str(r.get("kardex") or "").strip() for r in rows if str(r.get("kardex") or "").strip()]
-    if not kardexes:
-        return rows
-
-    seen = set()
-    ordered_unique = []
-    for k in kardexes:
-        if k not in seen:
-            seen.add(k)
-            ordered_unique.append(k)
-
-    estado_by_kardex = {
-        row["kardex"]: row["estado_sisgen"]
-        for row in Kardex.objects.filter(kardex__in=ordered_unique).values(
-            "kardex", "estado_sisgen"
+def _serialize_send_job(job: SisgenSendJob, *, request=None) -> Dict[str, Any]:
+    status_url = None
+    if request is not None:
+        status_url = request.build_absolute_uri(
+            reverse("sisgen_service:send_job_detail", kwargs={"job_id": job.pk})
         )
+    return {
+        "job_id": job.pk,
+        "status": job.status,
+        "celery_task_id": job.celery_task_id or None,
+        "progress_processed": job.progress_processed,
+        "progress_total": job.progress_total,
+        "progress": job.progress_label,
+        "payload": job.payload,
+        "result": job.result,
+        "error": job.error or None,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "status_url": status_url,
+        "documents": [
+            {
+                "kardex": doc.kardex,
+                "idkardex": doc.idkardex,
+                "status": doc.status,
+                "batch_index": doc.batch_index,
+                "attempt": doc.attempt or None,
+                "message": doc.message or None,
+                "submission_response_id": doc.submission_response_id,
+            }
+            for doc in job.documents.all()
+        ],
     }
-
-    latest_by_kardex = {}
-    qs = SisgenSoapResponse.objects.filter(kardex__in=ordered_unique).order_by(
-        "kardex", "-created_at"
-    )
-    for obj in qs:
-        if obj.kardex not in latest_by_kardex:
-            latest_by_kardex[obj.kardex] = _last_submission_from_soap_obj(obj)
-
-    for row in rows:
-        k = str(row.get("kardex") or "").strip()
-        estado_raw = row.get("estado_sisgen_code")
-        if estado_raw is None and k in estado_by_kardex:
-            estado_raw = estado_by_kardex[k]
-        last = latest_by_kardex.get(k, {"exists": False})
-        sync = build_sisgen_sync_status(estado_raw, last)
-        row["sisgen_status"] = sync
-        row["sisgen_last_submission"] = merge_last_submission_for_row(last, sync)
-        row["estado_sisgen_code"] = sync["estado_sisgen_code"]
-        if sync["needs_resubmit"]:
-            row["estado_sisgen"] = sync["estado_sisgen_label"]
-    return rows
 
 
 def _build_document_search_response(rows: list, page_status: dict) -> dict:
-    enriched = _attach_last_submission_status(rows)
+    enriched = attach_last_submission_status(rows)
     return {
         "error": 0,
         "data": [slim_search_document_row(row) for row in enriched],
@@ -153,7 +92,7 @@ def _build_document_search_response(rows: list, page_status: dict) -> dict:
 def _build_book_search_response(rows: list, page_status: dict) -> dict:
     return {
         "error": 0,
-        "data": _attach_last_submission_status(rows),
+        "data": attach_last_submission_status(rows),
         "pagination": slim_search_pagination(page_status),
     }
 
@@ -318,68 +257,23 @@ class SendToSISGENPreviewView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class SendToSISGENView(APIView):
     """
-    Send documents to SISGEN (SOAP), up to 10 kardexes per request batch.
+    Enqueue async SISGEN send. Returns 202 + job_id for polling.
 
     POST body:
-    - documents: [{ kardex, idkardex }, ...] (from preview or manual selection)
-    - Optional: fechaDesde, fechaHasta, tipoInstrumento, estado, codigoActo — if sent,
-      each document must still match those filters.
+    - documents: [{ kardex, idkardex }, ...]
+    - Optional filter fields (fechaDesde, fechaHasta, ...) — validated before enqueue.
     """
 
     permission_classes = [IsAuthenticated, IsSuperuser]
-
-    @staticmethod
-    def _write_debug_xml(content: str, filename: str) -> None:
-        """
-        Persist SISGEN debug XML files in app/sisgen_xml_debug.
-        We keep timestamped filenames to avoid overwriting previous sends.
-        """
-        debug_dir = Path(__file__).resolve().parent / "sisgen_xml_debug"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        (debug_dir / filename).write_text(content or "", encoding="utf-8")
-
-    @staticmethod
-    def _build_user_friendly_errors(batch_rows):
-        """
-        Convert SISGEN technical rows into user-friendly messages by kardex.
-        """
-        friendly = []
-        for row in batch_rows or []:
-            status_txt = (row.get("status") or "").upper()
-            if status_txt not in {"FALLIDO", "CON OBSERVACIONES"}:
-                continue
-            kardex = row.get("kardex") or ""
-            contrato = row.get("contrato") or ""
-            detalle = row.get("mensaje") or "SISGEN devolvio error sin detalle."
-            readable_status = "FALLIDO" if status_txt == "FALLIDO" else "OBSERVADO"
-            friendly.append(
-                {
-                    "kardex": kardex,
-                    "estado": readable_status,
-                    "contrato": contrato,
-                    "mensaje_usuario": f"{kardex}: {detalle}",
-                    "mensaje_tecnico": detalle,
-                }
-            )
-        return friendly
 
     def post(self, request):
         try:
             raw_documents = request.data.get("documents", [])
             filter_payload = extract_search_filters(request.data)
 
-            print("DEBUG: SendToSISGEN request data:", request.data)
-
-            data_processor = DataProcessorService()
-            xml_generator = SISGENXmlGenerator()
-            soap_client = SoapClientService()
-
             if not raw_documents:
                 return Response(
-                    {
-                        "error": 1,
-                        "message": "documents array is required",
-                    },
+                    {"error": 1, "message": "documents array is required"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -411,326 +305,60 @@ class SendToSISGENView(APIView):
 
             if not documents:
                 return Response(
-                    {
-                        "error": 1,
-                        "message": "No valid documents to send",
-                    },
+                    {"error": 1, "message": "No valid documents to send"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Process documents
-            batch_size = 10
-            expected_batches = (len(documents) + batch_size - 1) // batch_size
-            batches_out: list = []
-            combined_result = {
-                'error': 0,
-                'messageDescription': '',
-                'data': [],
-                'errores': [],
-                'errores_sisgen_usuario': [],
-                'soap_errors': [],
-                'observaciones': [],
-                'personas': [],
-                'guardados': 0,
-                'fallidos': 0,
-                'observados': 0,
-                'processed_kardex': [],
-                'dry_run': SISGEN_DRY_RUN,
-                'sisgen_requests': [],
-                'submission_response_ids': [],
-                'batches': batches_out,
-                'nota_contacto_it': SISGEN_IT_CONTACT_NOTE,
-            }
-
-            # Process in batches (even for single document)
-            for i in range(0, len(documents), batch_size):
-                batch = documents[i:i + batch_size]
-                batch_num = (i // batch_size) + 1
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                soap_attempted = False
-                try:
-                    # Process batch
-                    result = data_processor.process_documents_batch(batch)
-                    
-                    # Generate XML (None si todos omitidos → no enviar; SISGEN respondería OK sin GUARDADO)
-                    xml_content, xml_issues = xml_generator.generate_document_xml(
-                        result['documents']
-                    )
-                    if xml_issues:
-                        combined_result['errores'].extend(xml_issues)
-                    if not xml_content:
-                        print(
-                            f'DEBUG: Failed to generate XML for batch {batch_num}: '
-                            f'{xml_issues}'
-                        )
-                        batches_out.append(
-                            build_batch_summary_entry(
-                                batch_index=batch_num,
-                                batch=batch,
-                                status=BATCH_STATUS_SKIPPED_NO_XML,
-                                attempted=False,
-                                message=(
-                                    "No se generó XML para este lote; "
-                                    "ningún documento se envió a SISGEN."
-                                ),
-                                xml_issues=xml_issues,
-                            )
-                        )
-                        continue
-
-                    # Always persist outgoing XML for troubleshooting
-                    self._write_debug_xml(xml_content, f"request_batch_{batch_num}_{ts}.xml")
-
-                    if SISGEN_DRY_RUN:
-                        soap_req = soap_client.build_request(xml_content)
-                        combined_result['messageDescription'] = (
-                            'Dry run: no se envió a SISGEN. Revise sisgen_requests.'
-                        )
-                        combined_result['sisgen_requests'].append(
-                            {
-                                'batch': batch_num,
-                                'kardex_list': [doc['kardex'] for doc in batch],
-                                'url': soap_req['url'],
-                                'headers': soap_req['headers'],
-                                'soap_body': soap_req['soap_body'],
-                                'documentos_notariales_xml': xml_content,
-                            }
-                        )
-                        combined_result['processed_kardex'].extend(
-                            [doc['kardex'] for doc in batch]
-                        )
-                        combined_result['errores'].extend(result.get('errores', []))
-                        combined_result['observaciones'].extend(
-                            result.get('observaciones', [])
-                        )
-                        combined_result['personas'].extend(result.get('personas', []))
-                        batches_out.append(
-                            build_batch_summary_entry(
-                                batch_index=batch_num,
-                                batch=batch,
-                                status=BATCH_STATUS_DRY_RUN,
-                                attempted=False,
-                                message="Dry run: SOAP no enviado a SISGEN.",
-                            )
-                        )
-                        continue
-
-                    response = soap_client.send_documents(xml_content)
-                    soap_attempted = True
-
-                    self._write_debug_xml(response.text, f"response_batch_{batch_num}_{ts}.xml")
-
-                    parsed_soap = parse_set_documentos_response(response.text or "")
-                    if response.status_code >= 400 and soap_response_is_ok(parsed_soap):
-                        parsed_soap = {
-                            **parsed_soap,
-                            "return_status": f"HTTP_{response.status_code}",
-                            "return_message": (
-                                parsed_soap.get("return_message")
-                                or getattr(response, "reason", None)
-                                or f"HTTP {response.status_code}"
-                            ),
-                            "parse_error": parsed_soap.get("parse_error") or "http_error",
-                            "summary": {
-                                **(parsed_soap.get("summary") or {}),
-                                "return_status": f"HTTP_{response.status_code}",
-                                "soap_level_ok": False,
-                            },
-                        }
-
-                    saved_ids: list = []
-                    try:
-                        saved_ids = save_response_logs_for_batch(
-                            batch_documents=batch,
-                            batch_index=batch_num,
-                            http_status=response.status_code,
-                            raw_xml=response.text or "",
-                            parsed=parsed_soap,
-                            user=request.user,
-                        )
-                        combined_result['submission_response_ids'].extend(saved_ids)
-                    except Exception as exc:
-                        logger.exception(
-                            "Persistencia SisgenSoapResponse fallida batch=%s: %s",
-                            batch_num,
-                            exc,
-                        )
-
-                    combined_result['processed_kardex'].extend(
-                        [doc['kardex'] for doc in batch]
-                    )
-                    combined_result['errores'].extend(result.get('errores', []))
-                    combined_result['observaciones'].extend(result.get('observaciones', []))
-                    combined_result['personas'].extend(result.get('personas', []))
-
-                    if not soap_response_is_ok(parsed_soap):
-                        soap_failures = build_soap_failure_entries(
-                            parsed=parsed_soap,
-                            batch_documents=batch,
-                            batch_index=batch_num,
-                            http_status=response.status_code,
-                        )
-                        combined_result['error'] = 1
-                        combined_result['soap_errors'].extend(soap_failures)
-                        combined_result['errores_sisgen_usuario'].extend(soap_failures)
-                        short = format_soap_return_message(
-                            parsed_soap.get("return_message") or ""
-                        )
-                        combined_result['messageDescription'] = (
-                            f"SISGEN rechazó el envío (lote {batch_num}): {short} "
-                            f"{SISGEN_IT_CONTACT_NOTE}"
-                        )
-                        batches_out.append(
-                            build_batch_summary_entry(
-                                batch_index=batch_num,
-                                batch=batch,
-                                status=BATCH_STATUS_SOAP_REJECTED,
-                                attempted=True,
-                                message=short,
-                                http_status=response.status_code,
-                                soap_return_status=(
-                                    parsed_soap.get("return_status") or ""
-                                ),
-                                submission_response_ids=saved_ids,
-                            )
-                        )
-                        continue
-
-                    try:
-                        data_processor.update_document_statuses(response.text)
-                    except Exception as exc:
-                        logger.exception(
-                            "Error actualizando estados SISGEN batch=%s: %s",
-                            batch_num,
-                            exc,
-                        )
-                        batch_failures = build_soap_failure_entries(
-                            parsed={
-                                "return_status": "ERROR_PROCESAMIENTO",
-                                "return_message": str(exc),
-                            },
-                            batch_documents=batch,
-                            batch_index=batch_num,
-                            http_status=response.status_code,
-                        )
-                        combined_result['error'] = 1
-                        combined_result['soap_errors'].extend(batch_failures)
-                        combined_result['errores_sisgen_usuario'].extend(batch_failures)
-                        batches_out.append(
-                            build_batch_summary_entry(
-                                batch_index=batch_num,
-                                batch=batch,
-                                status=BATCH_STATUS_ERROR_PROCESSING,
-                                attempted=True,
-                                message=str(exc),
-                                http_status=response.status_code,
-                                soap_return_status="ERROR_PROCESAMIENTO",
-                                submission_response_ids=saved_ids,
-                            )
-                        )
-                        continue
-
-                    batch_status = data_processor.get_final_status()
-                    batch_guardados = int(batch_status.get('guardados', 0) or 0)
-                    batch_fallidos = int(batch_status.get('fallidos', 0) or 0)
-                    batch_observados = int(batch_status.get('observados', 0) or 0)
-
-                    combined_result['data'].extend(batch_status.get('data', []))
-                    combined_result['guardados'] += batch_guardados
-                    combined_result['fallidos'] += batch_fallidos
-                    combined_result['observados'] += batch_observados
-
-                    combined_result['errores_sisgen_usuario'].extend(
-                        self._build_user_friendly_errors(batch_status.get('data', []))
-                    )
-                    batches_out.append(
-                        build_batch_summary_entry(
-                            batch_index=batch_num,
-                            batch=batch,
-                            status=BATCH_STATUS_COMPLETED,
-                            attempted=True,
-                            message="Lote enviado y procesado.",
-                            http_status=response.status_code,
-                            soap_return_status=(
-                                parsed_soap.get("return_status") or "OK"
-                            ),
-                            guardados=batch_guardados,
-                            fallidos=batch_fallidos,
-                            observados=batch_observados,
-                            submission_response_ids=saved_ids,
-                        )
-                    )
-                    
-                except Exception as e:
-                    print(f'DEBUG: Error processing batch {batch_num}:', str(e))
-                    batch_failures = build_soap_failure_entries(
-                        parsed={
-                            "return_status": "ERROR_ENVIO",
-                            "return_message": str(e),
-                        },
-                        batch_documents=batch,
-                        batch_index=batch_num,
-                    )
-                    combined_result['error'] = 1
-                    combined_result['soap_errors'].extend(batch_failures)
-                    combined_result['errores_sisgen_usuario'].extend(batch_failures)
-                    if not combined_result['messageDescription']:
-                        combined_result['messageDescription'] = (
-                            f"Error al enviar lote {batch_num}: {e}. {SISGEN_IT_CONTACT_NOTE}"
-                        )
-                    batches_out.append(
-                        build_batch_summary_entry(
-                            batch_index=batch_num,
-                            batch=batch,
-                            status=BATCH_STATUS_ERROR_SEND,
-                            attempted=soap_attempted,
-                            message=str(e),
-                            soap_return_status="ERROR_ENVIO",
-                        )
-                    )
-                    continue
-
-            combined_result["batch_summary"] = aggregate_batch_summary(
-                batches_out,
-                total_documents=len(documents),
-                expected_batches=expected_batches,
+            job = create_send_job(
+                user=request.user,
+                documents=documents,
+                filters=filter_payload,
             )
 
-            # For single document, include specific kardex info in response
-            if len(documents) == 1:
-                combined_result['kardex'] = documents[0]['kardex']
-                combined_result['idKardex'] = documents[0]['idkardex']
+            from sisgen.tasks import run_send_job
 
-            if combined_result['error'] and not combined_result['messageDescription']:
-                combined_result['messageDescription'] = (
-                    f"El envío a SISGEN falló. {SISGEN_IT_CONTACT_NOTE}"
-                )
+            async_result = run_send_job.delay(job.pk)
+            if async_result.id:
+                job.celery_task_id = async_result.id
+                job.save(update_fields=["celery_task_id", "updated_at"])
 
-            if combined_result.get("processed_kardex"):
-                submission_rows = [
-                    {"kardex": k} for k in combined_result["processed_kardex"]
-                ]
-                enriched = _attach_last_submission_status(submission_rows)
-                by_kardex = {
-                    row["kardex"]: row.get("sisgen_last_submission") or {"exists": False}
-                    for row in enriched
-                    if row.get("kardex")
-                }
-                combined_result["sisgen_last_submission_by_kardex"] = by_kardex
-                if len(documents) == 1:
-                    k0 = documents[0]["kardex"]
-                    combined_result["sisgen_last_submission"] = by_kardex.get(
-                        k0, {"exists": False}
-                    )
+            payload = _serialize_send_job(job, request=request)
+            payload["error"] = 0
+            payload["message"] = "SISGEN send job queued"
+            return Response(payload, status=status.HTTP_202_ACCEPTED)
 
-            return Response(combined_result)
-            
         except Exception as e:
-            print('DEBUG: Unexpected error in SISGEN send:', str(e))
-            return Response({
-                'error': 1,
-                'message': f'Internal server error: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Unexpected error enqueueing SISGEN send: %s", e)
+            return Response(
+                {"error": 1, "message": f"Internal server error: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SisgenSendJobDetailView(APIView):
+    """GET /sisgen/send-jobs/<job_id>/ — poll async send job status and result."""
+
+    permission_classes = [IsAuthenticated, IsSuperuser]
+
+    def get(self, request, job_id: int):
+        try:
+            job = SisgenSendJob.objects.prefetch_related("documents").get(pk=job_id)
+        except SisgenSendJob.DoesNotExist:
+            return Response(
+                {"error": 1, "message": "Send job not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if job.user_id != request.user.id and not request.user.is_superuser:
+            return Response(
+                {"error": 1, "message": "Forbidden"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        payload = _serialize_send_job(job, request=request)
+        payload["error"] = 0
+        return Response(payload)
 
 
 def _serialize_sisgen_soap_response(
@@ -847,7 +475,7 @@ class SisgenSoapResponseListView(APIView):
                 "-created_at"
             ).first()
             if latest:
-                last_sub = _last_submission_from_soap_obj(latest)
+                last_sub = last_submission_from_soap_obj(latest)
             else:
                 last_sub = {"exists": False}
             sync = build_sisgen_sync_status(estado_code, last_sub)
