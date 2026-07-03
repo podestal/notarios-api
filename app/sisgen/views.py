@@ -20,6 +20,16 @@ from .utils.exceptions import ValidationException
 from .services.xml_generator_service import SISGENXmlGenerator
 from .services.soap_client_service import SoapClientService
 from .services.data_processor_service import DataProcessorService
+from .services.send_batch_summary import (
+    BATCH_STATUS_COMPLETED,
+    BATCH_STATUS_DRY_RUN,
+    BATCH_STATUS_ERROR_PROCESSING,
+    BATCH_STATUS_ERROR_SEND,
+    BATCH_STATUS_SKIPPED_NO_XML,
+    BATCH_STATUS_SOAP_REJECTED,
+    aggregate_batch_summary,
+    build_batch_summary_entry,
+)
 from .services.sisgen_soap_response import (
     SISGEN_IT_CONTACT_NOTE,
     build_soap_failure_entries,
@@ -410,6 +420,8 @@ class SendToSISGENView(APIView):
 
             # Process documents
             batch_size = 10
+            expected_batches = (len(documents) + batch_size - 1) // batch_size
+            batches_out: list = []
             combined_result = {
                 'error': 0,
                 'messageDescription': '',
@@ -426,6 +438,7 @@ class SendToSISGENView(APIView):
                 'dry_run': SISGEN_DRY_RUN,
                 'sisgen_requests': [],
                 'submission_response_ids': [],
+                'batches': batches_out,
                 'nota_contacto_it': SISGEN_IT_CONTACT_NOTE,
             }
 
@@ -434,6 +447,7 @@ class SendToSISGENView(APIView):
                 batch = documents[i:i + batch_size]
                 batch_num = (i // batch_size) + 1
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                soap_attempted = False
                 try:
                     # Process batch
                     result = data_processor.process_documents_batch(batch)
@@ -448,6 +462,19 @@ class SendToSISGENView(APIView):
                         print(
                             f'DEBUG: Failed to generate XML for batch {batch_num}: '
                             f'{xml_issues}'
+                        )
+                        batches_out.append(
+                            build_batch_summary_entry(
+                                batch_index=batch_num,
+                                batch=batch,
+                                status=BATCH_STATUS_SKIPPED_NO_XML,
+                                attempted=False,
+                                message=(
+                                    "No se generó XML para este lote; "
+                                    "ningún documento se envió a SISGEN."
+                                ),
+                                xml_issues=xml_issues,
+                            )
                         )
                         continue
 
@@ -477,9 +504,19 @@ class SendToSISGENView(APIView):
                             result.get('observaciones', [])
                         )
                         combined_result['personas'].extend(result.get('personas', []))
+                        batches_out.append(
+                            build_batch_summary_entry(
+                                batch_index=batch_num,
+                                batch=batch,
+                                status=BATCH_STATUS_DRY_RUN,
+                                attempted=False,
+                                message="Dry run: SOAP no enviado a SISGEN.",
+                            )
+                        )
                         continue
 
                     response = soap_client.send_documents(xml_content)
+                    soap_attempted = True
 
                     self._write_debug_xml(response.text, f"response_batch_{batch_num}_{ts}.xml")
 
@@ -543,6 +580,20 @@ class SendToSISGENView(APIView):
                             f"SISGEN rechazó el envío (lote {batch_num}): {short} "
                             f"{SISGEN_IT_CONTACT_NOTE}"
                         )
+                        batches_out.append(
+                            build_batch_summary_entry(
+                                batch_index=batch_num,
+                                batch=batch,
+                                status=BATCH_STATUS_SOAP_REJECTED,
+                                attempted=True,
+                                message=short,
+                                http_status=response.status_code,
+                                soap_return_status=(
+                                    parsed_soap.get("return_status") or ""
+                                ),
+                                submission_response_ids=saved_ids,
+                            )
+                        )
                         continue
 
                     try:
@@ -565,17 +616,49 @@ class SendToSISGENView(APIView):
                         combined_result['error'] = 1
                         combined_result['soap_errors'].extend(batch_failures)
                         combined_result['errores_sisgen_usuario'].extend(batch_failures)
+                        batches_out.append(
+                            build_batch_summary_entry(
+                                batch_index=batch_num,
+                                batch=batch,
+                                status=BATCH_STATUS_ERROR_PROCESSING,
+                                attempted=True,
+                                message=str(exc),
+                                http_status=response.status_code,
+                                soap_return_status="ERROR_PROCESAMIENTO",
+                                submission_response_ids=saved_ids,
+                            )
+                        )
                         continue
 
                     batch_status = data_processor.get_final_status()
+                    batch_guardados = int(batch_status.get('guardados', 0) or 0)
+                    batch_fallidos = int(batch_status.get('fallidos', 0) or 0)
+                    batch_observados = int(batch_status.get('observados', 0) or 0)
 
                     combined_result['data'].extend(batch_status.get('data', []))
-                    combined_result['guardados'] += batch_status.get('guardados', 0)
-                    combined_result['fallidos'] += batch_status.get('fallidos', 0)
-                    combined_result['observados'] += batch_status.get('observados', 0)
+                    combined_result['guardados'] += batch_guardados
+                    combined_result['fallidos'] += batch_fallidos
+                    combined_result['observados'] += batch_observados
 
                     combined_result['errores_sisgen_usuario'].extend(
                         self._build_user_friendly_errors(batch_status.get('data', []))
+                    )
+                    batches_out.append(
+                        build_batch_summary_entry(
+                            batch_index=batch_num,
+                            batch=batch,
+                            status=BATCH_STATUS_COMPLETED,
+                            attempted=True,
+                            message="Lote enviado y procesado.",
+                            http_status=response.status_code,
+                            soap_return_status=(
+                                parsed_soap.get("return_status") or "OK"
+                            ),
+                            guardados=batch_guardados,
+                            fallidos=batch_fallidos,
+                            observados=batch_observados,
+                            submission_response_ids=saved_ids,
+                        )
                     )
                     
                 except Exception as e:
@@ -595,7 +678,23 @@ class SendToSISGENView(APIView):
                         combined_result['messageDescription'] = (
                             f"Error al enviar lote {batch_num}: {e}. {SISGEN_IT_CONTACT_NOTE}"
                         )
+                    batches_out.append(
+                        build_batch_summary_entry(
+                            batch_index=batch_num,
+                            batch=batch,
+                            status=BATCH_STATUS_ERROR_SEND,
+                            attempted=soap_attempted,
+                            message=str(e),
+                            soap_return_status="ERROR_ENVIO",
+                        )
+                    )
                     continue
+
+            combined_result["batch_summary"] = aggregate_batch_summary(
+                batches_out,
+                total_documents=len(documents),
+                expected_batches=expected_batches,
+            )
 
             # For single document, include specific kardex info in response
             if len(documents) == 1:
