@@ -66,11 +66,96 @@ services:
       - SUNAT_SOL_PASSWORD=${SUNAT_SOL_PASSWORD:-}
       - SUNAT_TEST_RUC_EMISOR=${SUNAT_TEST_RUC_EMISOR:-}
       - SUNAT_TEST_DENOMINACION_EMISOR=${SUNAT_TEST_DENOMINACION_EMISOR:-}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
     depends_on:
       db:
         condition: service_started
+      redis:
+        condition: service_healthy
       # postgres:
       #   condition: service_healthy
+
+  celery_worker:
+    build: .
+    restart: unless-stopped
+    logging: *default-logging
+    command: /scripts/celery_worker.sh
+    volumes:
+      - ./app:/app
+      - ./mediafiles:/vol/media
+      - ${DOC_STORAGE_LOCAL_ROOT}:${DOC_STORAGE_LOCAL_ROOT}
+    environment:
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_NAME=${POSTGRES_NAME}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_SEARCH_PATH=${POSTGRES_SEARCH_PATH:-administracion,almacen,ubigeo,ventas,public}
+      - POSTGRES_APPS=${POSTGRES_APPS:-}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - DJANGO_CORS_ALLOWED_ORIGINS=${DJANGO_CORS_ALLOWED_ORIGINS}
+      - DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - CLOUDFLARE_R2_BUCKET=${CLOUDFLARE_R2_BUCKET}
+      - CLOUDFLARE_R2_ACCESS_KEY=${CLOUDFLARE_R2_ACCESS_KEY}
+      - CLOUDFLARE_R2_SECRET_KEY=${CLOUDFLARE_R2_SECRET_KEY}
+      - CLOUDFLARE_R2_ENDPOINT=${CLOUDFLARE_R2_ENDPOINT}
+      - CLOUDFLARE_R2_MAIN_URL=${CLOUDFLARE_R2_MAIN_URL}
+      - API_TOKENS=${API_TOKENS}
+      - PROVIDER_NAME=${PROVIDER_NAME}
+      - APP_NAME=${APP_NAME}
+      - APP_VERSION=${APP_VERSION}
+      - DOC_STORAGE_BACKEND=${DOC_STORAGE_BACKEND}
+      - DOC_STORAGE_LOCAL_ROOT=${DOC_STORAGE_LOCAL_ROOT}
+      - KARDEX_ABBREVIATIONS=${KARDEX_ABBREVIATIONS}
+      - XML_NOTARIA_ROOT=${XML_NOTARIA_ROOT:-/app/xml_notaria}
+      - CLAVE_PUBLICA=${CLAVE_PUBLICA:-}
+      - CLAVE_PRIVADA=${CLAVE_PRIVADA:-}
+      - WEB_SERVICE_SUNAT=${WEB_SERVICE_SUNAT:-}
+      - SUNAT_WS_URL=${WEB_SERVICE_SUNAT:-}
+      - SUNAT_XML_CERTIFICATE_PATH=${CLAVE_PUBLICA:-}
+      - SUNAT_XML_PRIVATE_KEY_PATH=${CLAVE_PRIVADA:-}
+      - SUNAT_XML_PFX_PATH=${SUNAT_XML_PFX_PATH:-}
+      - SUNAT_XML_PFX_PASSWORD=${SUNAT_XML_PFX_PASSWORD:-}
+      - RUC_CLAVE_SOL=${RUC_CLAVE_SOL:-}
+      - USER_CLAVE_SOL=${USER_CLAVE_SOL:-}
+      - PASS_CLAVE_SOL=${PASS_CLAVE_SOL:-}
+      - SUNAT_SOL_USERNAME=${SUNAT_SOL_USERNAME:-}
+      - SUNAT_SOL_USER=${SUNAT_SOL_USER:-}
+      - SUNAT_SOL_PASSWORD=${SUNAT_SOL_PASSWORD:-}
+      - SUNAT_TEST_RUC_EMISOR=${SUNAT_TEST_RUC_EMISOR:-}
+      - SUNAT_TEST_DENOMINACION_EMISOR=${SUNAT_TEST_DENOMINACION_EMISOR:-}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   db:
     image: mariadb:10.5
@@ -105,3 +190,4 @@ services:
 volumes:
   db_data:
   postgres_data:
+  redis_data:

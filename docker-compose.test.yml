@@ -64,11 +64,28 @@ services:
       - SUNAT_SOL_PASSWORD=${SUNAT_SOL_PASSWORD:-}
       - SUNAT_TEST_RUC_EMISOR=${SUNAT_TEST_RUC_EMISOR:-}
       - SUNAT_TEST_DENOMINACION_EMISOR=${SUNAT_TEST_DENOMINACION_EMISOR:-}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
     depends_on:
       db:
         condition: service_started
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    logging: *default-logging
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   db:
     image: mariadb:10.5
@@ -130,3 +147,4 @@ services:
 volumes:
   db_data:
   postgres_data:
+  redis_data:
