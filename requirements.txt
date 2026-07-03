@@ -69,3 +69,4 @@ reportlab==4.4.1
 qrcode==8.2
 Pillow==11.2.1
 celery[redis]==5.4.0
+watchdog==6.0.0
