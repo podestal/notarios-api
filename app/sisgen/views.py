@@ -315,9 +315,9 @@ class SendToSISGENView(APIView):
                 filters=filter_payload,
             )
 
-            from sisgen.tasks import run_send_job
+            from sisgen.tasks import send_job
 
-            async_result = run_send_job.delay(job.pk)
+            async_result = send_job.delay(job.pk)
             if async_result.id:
                 job.celery_task_id = async_result.id
                 job.save(update_fields=["celery_task_id", "updated_at"])

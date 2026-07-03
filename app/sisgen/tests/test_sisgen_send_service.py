@@ -12,6 +12,7 @@ from sisgen.services.send_batch_summary import (
     BATCH_STATUS_DRY_RUN,
     BATCH_STATUS_SKIPPED_NO_XML,
     BATCH_STATUS_SOAP_REJECTED,
+    build_batch_summary_entry,
 )
 from sisgen.services.send_job_executor import execute_send_job
 from sisgen.services.send_job_store import create_send_job
@@ -149,8 +150,11 @@ class SisgenSendServiceTests(TestCase):
         self.assertEqual(kwargs["batch_index"], 3)
         self.assertTrue(kwargs["dry_run"])
 
+    @patch("sisgen.services.sisgen_send_service.enrich_send_result")
     @patch("sisgen.services.sisgen_send_service.send_batch")
-    def test_send_documents_splits_into_batches(self, mock_send_batch):
+    def test_send_documents_splits_into_batches(
+        self, mock_send_batch, _mock_enrich
+    ):
         mock_send_batch.side_effect = [
             {
                 "batch_summary": {"batch_index": 1, "status": BATCH_STATUS_COMPLETED},
@@ -229,9 +233,9 @@ class SendJobExecutorTests(TestCase):
             email="runner@example.com",
         )
 
-    @patch("sisgen.services.send_job_executor.send_documents")
-    def test_execute_send_job_marks_completed(self, mock_send_documents):
-        mock_send_documents.return_value = {"error": 0, "guardados": 1}
+    @patch("sisgen.services.send_job_executor.run_send_job_orchestrator")
+    def test_execute_send_job_marks_completed(self, mock_orchestrator):
+        mock_orchestrator.return_value = {"error": 0, "guardados": 1}
         job = create_send_job(
             user=self.user,
             documents=[{"kardex": "K1-2026", "idkardex": "1"}],
@@ -243,12 +247,11 @@ class SendJobExecutorTests(TestCase):
         self.assertEqual(job.status, SisgenSendJob.Status.COMPLETED)
         self.assertEqual(job.celery_task_id, "celery-abc")
         self.assertEqual(job.result["guardados"], 1)
-        self.assertEqual(job.progress_label, "1/1")
-        self.assertIsNotNone(job.finished_at)
+        mock_orchestrator.assert_called_once()
 
-    @patch("sisgen.services.send_job_executor.send_documents")
-    def test_execute_send_job_marks_failed_on_exception(self, mock_send_documents):
-        mock_send_documents.side_effect = RuntimeError("worker died")
+    @patch("sisgen.services.send_job_executor.run_send_job_orchestrator")
+    def test_execute_send_job_marks_failed_on_exception(self, mock_orchestrator):
+        mock_orchestrator.side_effect = RuntimeError("worker died")
         job = create_send_job(
             user=self.user,
             documents=[{"kardex": "K2-2026", "idkardex": "2"}],
@@ -271,9 +274,9 @@ class SendToSISGENViewTests(APITestCase):
         )
         self.url = reverse("sisgen_service:send_sisgen")
 
-    @patch("sisgen.tasks.run_send_job")
-    def test_post_returns_202_and_creates_job(self, mock_run_send_job):
-        mock_run_send_job.delay.return_value = MagicMock(id="task-uuid-1")
+    @patch("sisgen.tasks.send_job")
+    def test_post_returns_202_and_creates_job(self, mock_send_job):
+        mock_send_job.delay.return_value = MagicMock(id="task-uuid-1")
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
@@ -296,7 +299,7 @@ class SendToSISGENViewTests(APITestCase):
 
         job = SisgenSendJob.objects.get(pk=response.data["job_id"])
         self.assertEqual(job.documents.count(), 2)
-        mock_run_send_job.delay.assert_called_once_with(job.pk)
+        mock_send_job.delay.assert_called_once_with(job.pk)
 
     def test_post_requires_documents(self):
         self.client.force_authenticate(user=self.user)
@@ -338,7 +341,7 @@ class SisgenSendJobDetailViewTests(APITestCase):
     CELERY_TASK_ALWAYS_EAGER=True,
     CELERY_TASK_EAGER_PROPAGATES=True,
 )
-class RunSendJobTaskTests(TestCase):
+class RunSendJobTaskAliasTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
             username="celery_user",
@@ -346,22 +349,41 @@ class RunSendJobTaskTests(TestCase):
             email="celery@example.com",
         )
 
-    @patch("sisgen.services.send_job_executor.send_documents")
-    def test_run_send_job_task_eager(self, mock_send_documents):
+    @patch("sisgen.services.sisgen_send_service.enrich_send_result")
+    @patch("sisgen.services.send_job_executor.send_batch")
+    def test_run_send_job_alias(self, mock_send_batch, _mock_enrich):
         from sisgen.tasks import run_send_job
 
-        mock_send_documents.return_value = {"error": 0, "guardados": 3}
-        job = create_send_job(
-            user=self.user,
-            documents=[
-                {"kardex": "K1-2026", "idkardex": "1"},
-                {"kardex": "K2-2026", "idkardex": "2"},
-                {"kardex": "K3-2026", "idkardex": "3"},
-            ],
-        )
+        batch = [{"kardex": "K1-2026", "idkardex": "1"}]
+        job = create_send_job(user=self.user, documents=batch)
+        mock_send_batch.return_value = {
+            "batch_summary": build_batch_summary_entry(
+                batch_index=1,
+                batch=batch,
+                status=BATCH_STATUS_COMPLETED,
+                attempted=True,
+                guardados=1,
+            ),
+            "merge": {
+                "error": 0,
+                "messageDescription": "",
+                "data": [],
+                "errores": [],
+                "errores_sisgen_usuario": [],
+                "soap_errors": [],
+                "observaciones": [],
+                "personas": [],
+                "guardados": 1,
+                "fallidos": 0,
+                "observados": 0,
+                "processed_kardex": ["K1-2026"],
+                "sisgen_requests": [],
+                "submission_response_ids": [],
+            },
+        }
 
         run_send_job.delay(job.pk)
         job.refresh_from_db()
 
         self.assertEqual(job.status, SisgenSendJob.Status.COMPLETED)
-        self.assertEqual(job.result["guardados"], 3)
+        self.assertEqual(job.result["guardados"], 1)

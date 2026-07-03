@@ -381,11 +381,16 @@ def send_documents(
     user,
     dry_run: bool = SISGEN_DRY_RUN,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    on_batch_start: Optional[Callable[[List[Dict[str, Any]], int], None]] = None,
     on_batch_complete: Optional[Callable[[int, int], None]] = None,
+    on_batch_result: Optional[
+        Callable[[List[Dict[str, Any]], int, Dict[str, Any]], None]
+    ] = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Send all documents in batches of ``batch_size``. Returns combined_result dict.
+    Optional hooks used by the job orchestrator for DB progress / per-doc rows.
     """
     combined = new_combined_result(dry_run=dry_run)
     total = len(documents)
@@ -395,6 +400,9 @@ def send_documents(
     for i in range(0, total, batch_size):
         batch = documents[i : i + batch_size]
         batch_num = (i // batch_size) + 1
+        if on_batch_start:
+            on_batch_start(batch, batch_num)
+
         batch_result = send_batch(
             batch=batch,
             batch_index=batch_num,
@@ -403,10 +411,28 @@ def send_documents(
             **kwargs,
         )
         merge_batch_result(combined, batch_result)
+        if on_batch_result:
+            on_batch_result(batch, batch_num, batch_result)
+
         processed += len(batch)
         if on_batch_complete:
             on_batch_complete(processed, total)
 
+    return finalize_combined_result(
+        combined,
+        documents,
+        total=total,
+        expected_batches=expected_batches,
+    )
+
+
+def finalize_combined_result(
+    combined: Dict[str, Any],
+    documents: List[Dict[str, Any]],
+    *,
+    total: int,
+    expected_batches: int,
+) -> Dict[str, Any]:
     combined["batch_summary"] = aggregate_batch_summary(
         combined["batches"],
         total_documents=total,
