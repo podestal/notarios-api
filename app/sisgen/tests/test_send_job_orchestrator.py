@@ -9,7 +9,11 @@ from sisgen.services.send_batch_summary import (
     BATCH_STATUS_SOAP_REJECTED,
     build_batch_summary_entry,
 )
-from sisgen.services.send_job_executor import execute_send_job, run_send_job_orchestrator
+from sisgen.services.send_job_executor import (
+    execute_send_job,
+    process_batch_with_fanout,
+    run_send_job_orchestrator,
+)
 from sisgen.services.send_job_store import create_send_job
 
 User = get_user_model()
@@ -124,6 +128,91 @@ class RunSendJobOrchestratorTests(TestCase):
         job_doc = job.documents.get()
         self.assertEqual(job_doc.status, SisgenSendJobDocument.Status.FAILED)
         self.assertIn("INTERNAL_SERVER_ERROR", job_doc.message)
+        self.assertEqual(job_doc.attempt, SisgenSendJobDocument.Attempt.BATCH)
+        mock_send_batch.assert_called_once()
+
+    @patch("sisgen.services.send_job_executor.send_single")
+    @patch("sisgen.services.send_job_executor.send_batch")
+    def test_fan_out_sends_each_doc_after_batch_reject(
+        self, mock_send_batch, mock_send_single
+    ):
+        docs = [
+            {"kardex": "K1-2026", "idkardex": "1"},
+            {"kardex": "K2-2026", "idkardex": "2"},
+            {"kardex": "K3-2026", "idkardex": "3"},
+        ]
+        job = create_send_job(user=self.user, documents=docs)
+        mock_send_batch.return_value = {
+            "batch_summary": build_batch_summary_entry(
+                batch_index=1,
+                batch=docs,
+                status=BATCH_STATUS_SOAP_REJECTED,
+                attempted=True,
+                message="INTERNAL_SERVER_ERROR",
+            ),
+            "merge": {
+                "error": 1,
+                "messageDescription": "rejected",
+                "data": [],
+                "errores": [],
+                "errores_sisgen_usuario": [],
+                "soap_errors": [],
+                "observaciones": [],
+                "personas": [],
+                "guardados": 0,
+                "fallidos": 0,
+                "observados": 0,
+                "processed_kardex": [d["kardex"] for d in docs],
+                "sisgen_requests": [],
+                "submission_response_ids": [],
+            },
+        }
+        mock_send_single.side_effect = [
+            _completed_batch_result(batch_index=1, batch=[docs[0]]),
+            _completed_batch_result(batch_index=1, batch=[docs[1]]),
+            {
+                "batch_summary": build_batch_summary_entry(
+                    batch_index=1,
+                    batch=[docs[2]],
+                    status=BATCH_STATUS_SOAP_REJECTED,
+                    attempted=True,
+                    message="still bad",
+                ),
+                "merge": {
+                    "error": 1,
+                    "messageDescription": "bad k3",
+                    "data": [],
+                    "errores": [],
+                    "errores_sisgen_usuario": [],
+                    "soap_errors": [],
+                    "observaciones": [],
+                    "personas": [],
+                    "guardados": 0,
+                    "fallidos": 0,
+                    "observados": 0,
+                    "processed_kardex": ["K3-2026"],
+                    "sisgen_requests": [],
+                    "submission_response_ids": [],
+                },
+            },
+        ]
+
+        result = run_send_job_orchestrator(job, documents=docs, batch_size=10)
+
+        mock_send_batch.assert_called_once()
+        self.assertEqual(mock_send_single.call_count, 3)
+        self.assertEqual(result["guardados"], 2)
+        self.assertGreaterEqual(result["batch_summary"]["soap_rejected"], 1)
+        self.assertEqual(result["batch_summary"]["fan_out"], 1)
+
+        statuses = {
+            row.kardex: (row.status, row.attempt)
+            for row in job.documents.all()
+        }
+        self.assertEqual(statuses["K1-2026"][0], SisgenSendJobDocument.Status.COMPLETED)
+        self.assertEqual(statuses["K1-2026"][1], SisgenSendJobDocument.Attempt.SINGLE)
+        self.assertEqual(statuses["K2-2026"][0], SisgenSendJobDocument.Status.COMPLETED)
+        self.assertEqual(statuses["K3-2026"][0], SisgenSendJobDocument.Status.FAILED)
 
     @patch("sisgen.services.send_job_executor.send_batch")
     def test_execute_send_job_completes_job(self, mock_send_batch):

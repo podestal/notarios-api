@@ -112,6 +112,7 @@ def mark_job_documents_running(
     *,
     batch: List[Dict[str, Any]],
     batch_index: int,
+    attempt: str = SisgenSendJobDocument.Attempt.BATCH,
 ) -> None:
     kardexes = [
         str(doc.get("kardex") or "").strip()
@@ -123,26 +124,21 @@ def mark_job_documents_running(
     SisgenSendJobDocument.objects.filter(job=job, kardex__in=kardexes).update(
         status=SisgenSendJobDocument.Status.RUNNING,
         batch_index=batch_index,
-        attempt=SisgenSendJobDocument.Attempt.BATCH,
+        attempt=attempt,
     )
 
 
-def sync_job_documents_after_batch(
+def sync_job_documents_after_send(
     job: SisgenSendJob,
     *,
     batch: List[Dict[str, Any]],
     batch_result: Dict[str, Any],
+    attempt: str,
 ) -> None:
-    """
-    Update per-kardex rows from a batch send result (batch attempt, before fan-out).
-    """
     from sisgen.services.send_batch_summary import (
         BATCH_STATUS_COMPLETED,
         BATCH_STATUS_DRY_RUN,
-        BATCH_STATUS_ERROR_PROCESSING,
-        BATCH_STATUS_ERROR_SEND,
         BATCH_STATUS_SKIPPED_NO_XML,
-        BATCH_STATUS_SOAP_REJECTED,
     )
 
     summary = batch_result.get("batch_summary") or {}
@@ -185,9 +181,24 @@ def sync_job_documents_after_batch(
             status=doc_status,
             message=doc_message,
             batch_index=batch_index,
-            attempt=SisgenSendJobDocument.Attempt.BATCH,
+            attempt=attempt,
             submission_response=response_by_kardex.get(kardex),
         )
+
+
+def sync_job_documents_after_batch(
+    job: SisgenSendJob,
+    *,
+    batch: List[Dict[str, Any]],
+    batch_result: Dict[str, Any],
+) -> None:
+    """Update per-kardex rows after a batch attempt (not single fan-out)."""
+    sync_job_documents_after_send(
+        job,
+        batch=batch,
+        batch_result=batch_result,
+        attempt=SisgenSendJobDocument.Attempt.BATCH,
+    )
 
 
 def update_job_document(

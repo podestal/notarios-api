@@ -13,6 +13,30 @@ BATCH_STATUS_SKIPPED_NO_XML = "skipped_no_xml"
 BATCH_STATUS_DRY_RUN = "dry_run"
 BATCH_STATUS_ERROR_PROCESSING = "error_processing"
 BATCH_STATUS_ERROR_SEND = "error_send"
+BATCH_STATUS_FAN_OUT = "fan_out"
+
+# Batch-level outcomes where per-kardex outcome is unknown — retry each doc alone.
+FAN_OUT_BATCH_STATUSES = frozenset(
+    {
+        BATCH_STATUS_SOAP_REJECTED,
+        BATCH_STATUS_ERROR_SEND,
+        BATCH_STATUS_ERROR_PROCESSING,
+        BATCH_STATUS_SKIPPED_NO_XML,
+    }
+)
+
+
+def should_fan_out_batch(batch_result: Dict[str, Any]) -> bool:
+    """
+    Fan-out when the whole batch failed at SOAP/XML level and multiple docs were bundled.
+    Do not fan-out when SOAP returned per-document rows (COMPLETED with some FALLIDO).
+    """
+    summary = batch_result.get("batch_summary") or {}
+    status = summary.get("status") or ""
+    if status not in FAN_OUT_BATCH_STATUSES:
+        return False
+    kardexes = summary.get("kardex") or []
+    return len(kardexes) > 1
 
 
 def snapshot_batch_documents(batch: List[Dict[str, Any]]) -> List[Dict[str, str]]:
@@ -91,6 +115,7 @@ def aggregate_batch_summary(
         "dry_run": by_status.get(BATCH_STATUS_DRY_RUN, 0),
         "error_processing": by_status.get(BATCH_STATUS_ERROR_PROCESSING, 0),
         "error_send": by_status.get(BATCH_STATUS_ERROR_SEND, 0),
+        "fan_out": by_status.get(BATCH_STATUS_FAN_OUT, 0),
         "all_batches_completed": (
             len(batches) == expected_batches
             and by_status.get(BATCH_STATUS_SOAP_REJECTED, 0) == 0
