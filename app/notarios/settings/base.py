@@ -172,6 +172,13 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
+CELERY_BEAT_SCHEDULE = {
+    "taxes-sunat-process-due-outbox": {
+        "task": "taxes.sunat.process_due_outbox",
+        "schedule": 300.0,
+    },
+}
+
 INTERNAL_IPS = ["127.0.0.1"]
 
 

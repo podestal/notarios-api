@@ -13,6 +13,7 @@ from .enviar_resumen import (
 )
 from .context import fetch_recibo_xml_context
 from .paths import firmar_dir, generar_dir, xml_notaria_root
+from taxes.services.sunat_errors import recibo_needs_sunat_retry
 
 
 def procesar_recibo_xml(recibo_id: int) -> dict:
@@ -25,12 +26,20 @@ def procesar_recibo_xml(recibo_id: int) -> dict:
 
     ctx = fetch_recibo_xml_context(recibo_id)
     if should_auto_enviar_sunat(ctx):
-        result["sunat"] = enviar_recibo_sunat(
+        sunat = enviar_recibo_sunat(
             recibo_id=recibo_id,
             ctx=ctx,
             signed_path=signed_path,
-            raise_on_failure=True,
+            raise_on_failure=False,
         )
+        result["sunat"] = sunat
+        if recibo_needs_sunat_retry(sunat):
+            from taxes.services.sunat_outbox import enqueue_recibo_send
+
+            enqueue_recibo_send(
+                recibo_id=recibo_id,
+                last_error=str(sunat.get("msj_sunat") or ""),
+            )
     return result
 
 

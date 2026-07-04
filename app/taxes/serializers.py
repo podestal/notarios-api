@@ -606,6 +606,7 @@ class CreateReciboSerializer(serializers.Serializer):
 class CreateReciboResponseSerializer(serializers.Serializer):
     recibo = RecibosReadSerializer()
     items = ItemsRecibosSerializer(many=True)
+    sunat = serializers.DictField(required=False)
 
 
 class CanjeIngresoSerializer(serializers.Serializer):

@@ -64,7 +64,7 @@ def canjear_ingreso(
         for detalle in detalles
     ]
 
-    recibo, items = create_recibo(
+    recibo, items, _xml_result = create_recibo(
         usuario_id=usuario_id,
         negocio_id=negocio_id,
         serie=serie,

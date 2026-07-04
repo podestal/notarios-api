@@ -304,3 +304,65 @@ class Bajas(models.Model):
     class Meta:
         managed = False
         db_table = "bajas"
+
+
+class SunatOutbox(models.Model):
+    """
+    Retry queue for SUNAT sends (facturas + resúmenes de boletas).
+    Lives on the default DB; does not touch legacy Postgres comprobante tables.
+    """
+
+    class Kind(models.TextChoices):
+        RECIBO = "recibo", "Recibo"
+        RESUMEN = "resumen", "Resumen"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    class Phase(models.TextChoices):
+        SEND = "send", "Send"
+        POLL = "poll", "Poll ticket"
+
+    kind = models.CharField(max_length=16, choices=Kind.choices, db_index=True)
+    target_id = models.PositiveIntegerField(db_index=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    phase = models.CharField(
+        max_length=8,
+        choices=Phase.choices,
+        default=Phase.SEND,
+    )
+    attempt_count = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=36)
+    next_retry_at = models.DateTimeField(db_index=True)
+    last_error = models.TextField(blank=True, default="")
+    celery_task_id = models.CharField(max_length=255, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "taxes_sunat_outbox"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kind", "target_id"],
+                name="taxes_sunat_ob_kind_tgt_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["status", "next_retry_at"],
+                name="taxes_sunat_ob_st_nr_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.kind}:{self.target_id} ({self.status})"

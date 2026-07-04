@@ -28,6 +28,7 @@ from .models import (
     Recibos,
     Resumenes,
     Series,
+    SunatOutbox,
     TiposIgv,
     Usuarios,
 )
@@ -93,6 +94,16 @@ from .services.kardex_billing import (
     normalize_kardex,
 )
 from .services.pdf import generate_ingreso_pdf, generate_recibo_pdf
+from .services.sunat_errors import (
+    build_sunat_user_payload,
+    recibo_needs_sunat_retry,
+    resumen_needs_sunat_retry,
+)
+from .services.sunat_outbox import (
+    enqueue_recibo_send,
+    enqueue_resumen_send,
+    get_active_outbox,
+)
 from .services.xml import (
     consultar_ticket_baja,
     consultar_ticket_resumen,
@@ -325,7 +336,7 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
             recibo_data["kardex"] = kardex_code
             with transaction.atomic(using="default"):
                 kardex = lock_kardex_for_billing(kardex_code)
-                recibo, items = create_recibo(
+                recibo, items, xml_result = create_recibo(
                     usuario_id=user.taxes_usuario_id,
                     negocio_id=user.negocio_id,
                     lineas=lineas,
@@ -334,7 +345,7 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
                 )
                 mark_kardex_as_billed(kardex)
         else:
-            recibo, items = create_recibo(
+            recibo, items, xml_result = create_recibo(
                 usuario_id=user.taxes_usuario_id,
                 negocio_id=user.negocio_id,
                 lineas=lineas,
@@ -342,8 +353,17 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
                 **recibo_data,
             )
 
+        payload = {"recibo": recibo, "items": items}
+        sunat_raw = (xml_result or {}).get("sunat")
+        if sunat_raw:
+            outbox = get_active_outbox(
+                kind=SunatOutbox.Kind.RECIBO,
+                target_id=recibo.id_recibo,
+            )
+            payload["sunat"] = build_sunat_user_payload(sunat=sunat_raw, outbox=outbox)
+
         response = CreateReciboResponseSerializer(
-            {"recibo": recibo, "items": items},
+            payload,
             context={
                 **self.get_serializer_context(),
                 **document_lookup_context([recibo]),
@@ -436,10 +456,28 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
     def enviar_sunat(self, request, pk=None):
         recibo = self.get_object()
 
-        sunat_result = enviar_recibo_sunat(recibo_id=recibo.id_recibo)
+        sunat_result = enviar_recibo_sunat(
+            recibo_id=recibo.id_recibo,
+            raise_on_failure=False,
+        )
+        if recibo_needs_sunat_retry(sunat_result):
+            enqueue_recibo_send(
+                recibo_id=recibo.id_recibo,
+                last_error=str(sunat_result.get("msj_sunat") or ""),
+            )
+
         recibo = Recibos.objects.using("postgres").get(pk=recibo.id_recibo)
         response = self._read_serializer(recibo, many=False)
-        return Response({**sunat_result, "recibo": response.data})
+        outbox = get_active_outbox(
+            kind=SunatOutbox.Kind.RECIBO,
+            target_id=recibo.id_recibo,
+        )
+        return Response(
+            {
+                **build_sunat_user_payload(sunat=sunat_result, outbox=outbox),
+                "recibo": response.data,
+            }
+        )
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):
@@ -681,8 +719,27 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
                 consultar_ticket=True,
                 max_polls=data.get("max_polls", 10),
                 poll_interval_seconds=data.get("poll_interval_seconds", 3.0),
-                raise_on_failure=True,
+                raise_on_failure=False,
             )
+
+            if resumen_needs_sunat_retry(sunat_result):
+                consulta = sunat_result.get("sunat_consulta") or {}
+                envio = sunat_result.get("sunat_envio") or {}
+                ticket = (envio.get("ticket") or consulta.get("ticket") or "").strip()
+                phase = (
+                    SunatOutbox.Phase.POLL
+                    if ticket and (consulta.get("en_proceso") or envio.get("ticket"))
+                    else SunatOutbox.Phase.SEND
+                )
+                enqueue_resumen_send(
+                    resumen_id=resumen.id_resumen,
+                    last_error=str(
+                        consulta.get("msj_sunat") or envio.get("msj_sunat") or ""
+                    ),
+                    phase=phase,
+                    metadata={"ticket": ticket} if ticket else None,
+                )
+
             resumen = Resumenes.objects.using(POSTGRES_DB).get(
                 pk=resumen.id_resumen
             )
@@ -692,7 +749,22 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
                 .order_by("id_recibo")
             )
 
-        payload = {"resumen": resumen, "recibos": recibos, "sunat": sunat_result}
+        envio = sunat_result.get("sunat_envio") or {}
+        consulta = sunat_result.get("sunat_consulta") or {}
+        flat_sunat = {**envio, **consulta}
+        if consulta.get("aceptada_sunat") or envio.get("aceptada_sunat"):
+            flat_sunat["aceptada_sunat"] = True
+
+        outbox = get_active_outbox(
+            kind=SunatOutbox.Kind.RESUMEN,
+            target_id=resumen.id_resumen,
+        )
+        sunat_payload = build_sunat_user_payload(sunat=flat_sunat, outbox=outbox)
+        payload = {
+            "resumen": resumen,
+            "recibos": recibos,
+            "sunat": {**sunat_result, **sunat_payload},
+        }
 
         response = CreateResumenResponseSerializer(
             payload,

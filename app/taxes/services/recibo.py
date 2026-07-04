@@ -218,9 +218,9 @@ def create_recibo(
             )
         )
     ItemsRecibos.objects.using(POSTGRES_DB).bulk_create(items)
-    procesar_recibo_xml(recibo.id_recibo)
+    xml_result = procesar_recibo_xml(recibo.id_recibo)
 
-    return recibo, items
+    return recibo, items, xml_result
 
 
 def boletas_pendientes_sunat_queryset(*, negocio_id: int, fecha_emision):
