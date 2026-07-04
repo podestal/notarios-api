@@ -2,7 +2,7 @@
 This module contains the SOAP client service for the sisgen service.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 import requests
 import logging
@@ -11,6 +11,14 @@ from ..utils.constants import SISGEN_URLS
 logger = logging.getLogger(__name__)
 
 class SoapClientService:
+    def __init__(self, session: Optional[requests.Session] = None) -> None:
+        self._session = session or requests.Session()
+        self._owns_session = session is None
+
+    def close(self) -> None:
+        if self._owns_session:
+            self._session.close()
+
     def build_request(self, xml_content: str) -> Dict[str, object]:
         """
         Build the HTTP POST body and headers that would be sent to SISGEN
@@ -53,7 +61,7 @@ class SoapClientService:
             logger.debug(f"SOAP Request Headers: {headers}")
             logger.debug(f"SOAP Request Body: {soap_envelope}")
 
-            response = requests.post(
+            response = self._session.post(
                 req["url"],
                 data=soap_envelope,
                 headers=headers,

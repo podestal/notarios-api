@@ -1,5 +1,5 @@
 """
-Celery orchestrator: batches of 10 with fan-out to single-doc sends on batch failure.
+Celery orchestrator: batches of 10 with binary-split fan-out on batch failure.
 """
 
 from __future__ import annotations
@@ -28,13 +28,120 @@ from sisgen.services.sisgen_send_service import (
     merge_batch_result,
     new_combined_result,
     send_batch,
-    send_single,
 )
+from sisgen.services.soap_client_service import SoapClientService
 
 logger = logging.getLogger(__name__)
 
 
-def fan_out_batch_to_singles(
+def _send_single_leaf(
+    job: SisgenSendJob,
+    *,
+    doc: Dict[str, Any],
+    batch_index: int,
+    combined: Dict[str, Any],
+    **send_kwargs: Any,
+) -> None:
+    mark_job_documents_running(
+        job,
+        batch=[doc],
+        batch_index=batch_index,
+        attempt=SisgenSendJobDocument.Attempt.SINGLE,
+    )
+    single_result = send_batch(
+        batch=[doc],
+        batch_index=batch_index,
+        user=job.user,
+        **send_kwargs,
+    )
+    merge_batch_result(combined, single_result)
+    sync_job_documents_after_send(
+        job,
+        batch=[doc],
+        batch_result=single_result,
+        attempt=SisgenSendJobDocument.Attempt.SINGLE,
+    )
+
+
+def _send_sub_batch(
+    job: SisgenSendJob,
+    *,
+    sub_batch: List[Dict[str, Any]],
+    batch_index: int,
+    combined: Dict[str, Any],
+    **send_kwargs: Any,
+) -> None:
+    if len(sub_batch) == 1:
+        _send_single_leaf(
+            job,
+            doc=sub_batch[0],
+            batch_index=batch_index,
+            combined=combined,
+            **send_kwargs,
+        )
+        return
+
+    mark_job_documents_running(
+        job,
+        batch=sub_batch,
+        batch_index=batch_index,
+        attempt=SisgenSendJobDocument.Attempt.BATCH,
+    )
+    sub_result = send_batch(
+        batch=sub_batch,
+        batch_index=batch_index,
+        user=job.user,
+        **send_kwargs,
+    )
+    if should_fan_out_batch(sub_result):
+        merge_batch_result(combined, sub_result)
+        resolve_failed_batch(
+            job,
+            batch=sub_batch,
+            batch_index=batch_index,
+            combined=combined,
+            **send_kwargs,
+        )
+    else:
+        merge_batch_result(combined, sub_result)
+        sync_job_documents_after_batch(
+            job, batch=sub_batch, batch_result=sub_result
+        )
+
+
+def resolve_failed_batch(
+    job: SisgenSendJob,
+    *,
+    batch: List[Dict[str, Any]],
+    batch_index: int,
+    combined: Dict[str, Any],
+    **send_kwargs: Any,
+) -> None:
+    """
+    Retry a failed batch by halving it until each leaf is a single document.
+    """
+    if len(batch) == 1:
+        _send_single_leaf(
+            job,
+            doc=batch[0],
+            batch_index=batch_index,
+            combined=combined,
+            **send_kwargs,
+        )
+        return
+
+    mid = len(batch) // 2
+    for sub_batch in (batch[:mid], batch[mid:]):
+        _send_sub_batch(
+            job,
+            sub_batch=sub_batch,
+            batch_index=batch_index,
+            combined=combined,
+            **send_kwargs,
+        )
+
+
+def fan_out_batch_binary_split(
     job: SisgenSendJob,
     *,
     batch: List[Dict[str, Any]],
@@ -44,13 +151,13 @@ def fan_out_batch_to_singles(
     **send_kwargs: Any,
 ) -> None:
     """
-    After a batch-level failure, send each document once as a batch of 1.
+    After a batch-level failure, binary-split and retry smaller batches before singles.
     """
     merge_batch_result(combined, batch_result)
 
     summary = batch_result.get("batch_summary") or {}
     logger.warning(
-        "SISGEN batch %s failed (%s); fan-out to %s single sends for job %s",
+        "SISGEN batch %s failed (%s); binary-split fan-out for %s doc(s), job %s",
         batch_index,
         summary.get("status"),
         len(batch),
@@ -65,31 +172,18 @@ def fan_out_batch_to_singles(
             attempted=True,
             message=(
                 f"Batch failed ({summary.get('status')}); "
-                f"retrying {len(batch)} document(s) individually."
+                f"retrying {len(batch)} document(s) via binary split."
             ),
         )
     )
 
-    for doc in batch:
-        mark_job_documents_running(
-            job,
-            batch=[doc],
-            batch_index=batch_index,
-            attempt=SisgenSendJobDocument.Attempt.SINGLE,
-        )
-        single_result = send_single(
-            doc,
-            batch_index=batch_index,
-            user=job.user,
-            **send_kwargs,
-        )
-        merge_batch_result(combined, single_result)
-        sync_job_documents_after_send(
-            job,
-            batch=[doc],
-            batch_result=single_result,
-            attempt=SisgenSendJobDocument.Attempt.SINGLE,
-        )
+    resolve_failed_batch(
+        job,
+        batch=batch,
+        batch_index=batch_index,
+        combined=combined,
+        **send_kwargs,
+    )
 
 
 def process_batch_with_fanout(
@@ -115,7 +209,7 @@ def process_batch_with_fanout(
     )
 
     if should_fan_out_batch(batch_result):
-        fan_out_batch_to_singles(
+        fan_out_batch_binary_split(
             job,
             batch=batch,
             batch_index=batch_index,
@@ -141,20 +235,28 @@ def run_send_job_orchestrator(
     expected_batches = (total + batch_size - 1) // batch_size if total else 0
     processed = 0
 
-    for i in range(0, total, batch_size):
-        batch = documents[i : i + batch_size]
-        batch_num = (i // batch_size) + 1
+    soap_client = send_kwargs.get("soap_client") or SoapClientService()
+    owns_soap_client = "soap_client" not in send_kwargs
+    send_kwargs = {**send_kwargs, "soap_client": soap_client}
 
-        process_batch_with_fanout(
-            job,
-            batch=batch,
-            batch_index=batch_num,
-            combined=combined,
-            **send_kwargs,
-        )
+    try:
+        for i in range(0, total, batch_size):
+            batch = documents[i : i + batch_size]
+            batch_num = (i // batch_size) + 1
 
-        processed += len(batch)
-        update_job_progress(job, processed=processed, total=total)
+            process_batch_with_fanout(
+                job,
+                batch=batch,
+                batch_index=batch_num,
+                combined=combined,
+                **send_kwargs,
+            )
+
+            processed += len(batch)
+            update_job_progress(job, processed=processed, total=total)
+    finally:
+        if owns_soap_client:
+            soap_client.close()
 
     return finalize_combined_result(
         combined,

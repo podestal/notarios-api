@@ -131,76 +131,76 @@ class RunSendJobOrchestratorTests(TestCase):
         self.assertEqual(job_doc.attempt, SisgenSendJobDocument.Attempt.BATCH)
         mock_send_batch.assert_called_once()
 
-    @patch("sisgen.services.send_job_executor.send_single")
     @patch("sisgen.services.send_job_executor.send_batch")
-    def test_fan_out_sends_each_doc_after_batch_reject(
-        self, mock_send_batch, mock_send_single
-    ):
+    def test_fan_out_binary_split_after_batch_reject(self, mock_send_batch):
         docs = [
             {"kardex": "K1-2026", "idkardex": "1"},
             {"kardex": "K2-2026", "idkardex": "2"},
             {"kardex": "K3-2026", "idkardex": "3"},
         ]
         job = create_send_job(user=self.user, documents=docs)
-        mock_send_batch.return_value = {
-            "batch_summary": build_batch_summary_entry(
-                batch_index=1,
-                batch=docs,
-                status=BATCH_STATUS_SOAP_REJECTED,
-                attempted=True,
-                message="INTERNAL_SERVER_ERROR",
-            ),
-            "merge": {
-                "error": 1,
-                "messageDescription": "rejected",
-                "data": [],
-                "errores": [],
-                "errores_sisgen_usuario": [],
-                "soap_errors": [],
-                "observaciones": [],
-                "personas": [],
-                "guardados": 0,
-                "fallidos": 0,
-                "observados": 0,
-                "processed_kardex": [d["kardex"] for d in docs],
-                "sisgen_requests": [],
-                "submission_response_ids": [],
-            },
-        }
-        mock_send_single.side_effect = [
-            _completed_batch_result(batch_index=1, batch=[docs[0]]),
-            _completed_batch_result(batch_index=1, batch=[docs[1]]),
-            {
-                "batch_summary": build_batch_summary_entry(
-                    batch_index=1,
-                    batch=[docs[2]],
-                    status=BATCH_STATUS_SOAP_REJECTED,
-                    attempted=True,
-                    message="still bad",
-                ),
-                "merge": {
-                    "error": 1,
-                    "messageDescription": "bad k3",
-                    "data": [],
-                    "errores": [],
-                    "errores_sisgen_usuario": [],
-                    "soap_errors": [],
-                    "observaciones": [],
-                    "personas": [],
-                    "guardados": 0,
-                    "fallidos": 0,
-                    "observados": 0,
-                    "processed_kardex": ["K3-2026"],
-                    "sisgen_requests": [],
-                    "submission_response_ids": [],
-                },
-            },
-        ]
+        bad_doc = docs[2]
+
+        def _batch_side_effect(*, batch_index, batch, **kwargs):
+            if len(batch) == 1 and batch[0]["kardex"] == bad_doc["kardex"]:
+                return {
+                    "batch_summary": build_batch_summary_entry(
+                        batch_index=batch_index,
+                        batch=batch,
+                        status=BATCH_STATUS_SOAP_REJECTED,
+                        attempted=True,
+                        message="INTERNAL_SERVER_ERROR",
+                    ),
+                    "merge": {
+                        "error": 1,
+                        "messageDescription": "rejected",
+                        "data": [],
+                        "errores": [],
+                        "errores_sisgen_usuario": [],
+                        "soap_errors": [],
+                        "observaciones": [],
+                        "personas": [],
+                        "guardados": 0,
+                        "fallidos": 0,
+                        "observados": 0,
+                        "processed_kardex": [d["kardex"] for d in batch],
+                        "sisgen_requests": [],
+                        "submission_response_ids": [],
+                    },
+                }
+            if len(batch) > 1:
+                return {
+                    "batch_summary": build_batch_summary_entry(
+                        batch_index=batch_index,
+                        batch=batch,
+                        status=BATCH_STATUS_SOAP_REJECTED,
+                        attempted=True,
+                        message="INTERNAL_SERVER_ERROR",
+                    ),
+                    "merge": {
+                        "error": 1,
+                        "messageDescription": "rejected",
+                        "data": [],
+                        "errores": [],
+                        "errores_sisgen_usuario": [],
+                        "soap_errors": [],
+                        "observaciones": [],
+                        "personas": [],
+                        "guardados": 0,
+                        "fallidos": 0,
+                        "observados": 0,
+                        "processed_kardex": [d["kardex"] for d in batch],
+                        "sisgen_requests": [],
+                        "submission_response_ids": [],
+                    },
+                }
+            return _completed_batch_result(batch_index=batch_index, batch=batch)
+
+        mock_send_batch.side_effect = _batch_side_effect
 
         result = run_send_job_orchestrator(job, documents=docs, batch_size=10)
 
-        mock_send_batch.assert_called_once()
-        self.assertEqual(mock_send_single.call_count, 3)
+        self.assertGreaterEqual(mock_send_batch.call_count, 3)
         self.assertEqual(result["guardados"], 2)
         self.assertGreaterEqual(result["batch_summary"]["soap_rejected"], 1)
         self.assertEqual(result["batch_summary"]["fan_out"], 1)
@@ -212,7 +212,99 @@ class RunSendJobOrchestratorTests(TestCase):
         self.assertEqual(statuses["K1-2026"][0], SisgenSendJobDocument.Status.COMPLETED)
         self.assertEqual(statuses["K1-2026"][1], SisgenSendJobDocument.Attempt.SINGLE)
         self.assertEqual(statuses["K2-2026"][0], SisgenSendJobDocument.Status.COMPLETED)
+        self.assertEqual(statuses["K2-2026"][1], SisgenSendJobDocument.Attempt.SINGLE)
         self.assertEqual(statuses["K3-2026"][0], SisgenSendJobDocument.Status.FAILED)
+        self.assertEqual(statuses["K3-2026"][1], SisgenSendJobDocument.Attempt.SINGLE)
+
+    @patch("sisgen.services.send_job_executor.send_batch")
+    def test_binary_split_uses_fewer_calls_than_linear_singles(self, mock_send_batch):
+        docs = [{"kardex": f"K{i}-2026", "idkardex": str(i)} for i in range(1, 9)]
+        job = create_send_job(user=self.user, documents=docs)
+        bad_doc = docs[1]
+
+        def _batch_side_effect(*, batch, batch_index, **kwargs):
+            if len(batch) == 1 and batch[0]["kardex"] == bad_doc["kardex"]:
+                return {
+                    "batch_summary": build_batch_summary_entry(
+                        batch_index=batch_index,
+                        batch=batch,
+                        status=BATCH_STATUS_SOAP_REJECTED,
+                        attempted=True,
+                        message="bad doc",
+                    ),
+                    "merge": {
+                        "error": 1,
+                        "messageDescription": "bad",
+                        "data": [],
+                        "errores": [],
+                        "errores_sisgen_usuario": [],
+                        "soap_errors": [],
+                        "observaciones": [],
+                        "personas": [],
+                        "guardados": 0,
+                        "fallidos": 0,
+                        "observados": 0,
+                        "processed_kardex": [batch[0]["kardex"]],
+                        "sisgen_requests": [],
+                        "submission_response_ids": [],
+                    },
+                }
+            if len(batch) > 1 and any(
+                d["kardex"] == bad_doc["kardex"] for d in batch
+            ):
+                return {
+                    "batch_summary": build_batch_summary_entry(
+                        batch_index=batch_index,
+                        batch=batch,
+                        status=BATCH_STATUS_SOAP_REJECTED,
+                        attempted=True,
+                        message="batch has bad doc",
+                    ),
+                    "merge": {
+                        "error": 1,
+                        "messageDescription": "rejected",
+                        "data": [],
+                        "errores": [],
+                        "errores_sisgen_usuario": [],
+                        "soap_errors": [],
+                        "observaciones": [],
+                        "personas": [],
+                        "guardados": 0,
+                        "fallidos": 0,
+                        "observados": 0,
+                        "processed_kardex": [d["kardex"] for d in batch],
+                        "sisgen_requests": [],
+                        "submission_response_ids": [],
+                    },
+                }
+            return _completed_batch_result(batch_index=batch_index, batch=batch)
+
+        mock_send_batch.side_effect = _batch_side_effect
+
+        run_send_job_orchestrator(job, documents=docs, batch_size=10)
+
+        linear_calls = 1 + len(docs)
+        self.assertLess(mock_send_batch.call_count, linear_calls)
+
+    @patch("sisgen.services.send_job_executor.SoapClientService")
+    @patch("sisgen.services.send_job_executor.send_batch")
+    def test_orchestrator_reuses_soap_session_across_batches(
+        self, mock_send_batch, mock_soap_cls
+    ):
+        docs = [{"kardex": f"K{i}-2026", "idkardex": str(i)} for i in range(1, 12)]
+        job = create_send_job(user=self.user, documents=docs)
+        soap_client = mock_soap_cls.return_value
+        mock_send_batch.side_effect = [
+            _completed_batch_result(batch_index=1, batch=docs[:10]),
+            _completed_batch_result(batch_index=2, batch=docs[10:]),
+        ]
+
+        run_send_job_orchestrator(job, documents=docs, batch_size=10)
+
+        mock_soap_cls.assert_called_once()
+        for call in mock_send_batch.call_args_list:
+            self.assertIs(call.kwargs["soap_client"], soap_client)
+        soap_client.close.assert_called_once()
 
     @patch("sisgen.services.send_job_executor.send_batch")
     def test_execute_send_job_completes_job(self, mock_send_batch):
