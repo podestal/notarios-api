@@ -1,8 +1,8 @@
 """
 Monthly compliance error counts grouped by kardex preparer (idusuario).
 
-Default: single-pass live validation (no cache).
-Optional cache=true reads KardexComplianceCache when pre-warmed.
+Default: hybrid — KardexComplianceCache when available, live validation for missing.
+Optional cache=true (cache only) or live=true (force full live validation).
 """
 
 from __future__ import annotations
@@ -63,11 +63,47 @@ def _kardex_row_from_model(k: models.Kardex) -> Dict[str, Any]:
     }
 
 
+EXCLUDED_TIPOKAR = (2, 5)
+
+KARDEX_MONTH_FIELDS = (
+    "kardex",
+    "idkardex",
+    "idusuario",
+    "numescritura",
+    "fechaingreso",
+    "fechaescritura",
+    "idtipkar",
+    "estado_sisgen",
+    "codactos",
+)
+
+
+def _counts_from_cache_row(cache_row: KardexComplianceCache) -> Dict[str, int]:
+    return {
+        "sisgen": sisgen_errores_count_from_payload(cache_row.payload),
+        "uif": int(cache_row.uif_error_count or 0),
+    }
+
+
+def _load_cache_counts_by_kardex(
+    kardex_keys: List[str],
+) -> Dict[str, KardexComplianceCache]:
+    if not kardex_keys:
+        return {}
+    return {
+        row.kardex: row
+        for row in KardexComplianceCache.objects.filter(kardex__in=kardex_keys).only(
+            "kardex", "uif_error_count", "payload"
+        )
+    }
+
+
 def _load_month_kardex_and_counts(
     *,
     year: Optional[int] = None,
     month: Optional[int] = None,
     use_cache: bool = False,
+    force_live: bool = False,
     idusuario: Optional[int] = None,
 ) -> Dict[str, Any]:
     y, m, start, end = parse_year_month(year, month)
@@ -79,6 +115,7 @@ def _load_month_kardex_and_counts(
         .exclude(idtipkar__in=EXCLUDED_TIPOKAR)
         .exclude(kardex__isnull=True)
         .exclude(kardex="")
+        .only(*KARDEX_MONTH_FIELDS)
     )
     if idusuario is not None:
         qs = qs.filter(idusuario=idusuario)
@@ -115,20 +152,12 @@ def _load_month_kardex_and_counts(
     }
 
     if use_cache:
-        cache_by_kardex = {
-            row.kardex: row
-            for row in KardexComplianceCache.objects.filter(kardex__in=kardex_keys).only(
-                "kardex", "uif_error_count", "payload"
-            )
-        }
+        cache_by_kardex = _load_cache_counts_by_kardex(kardex_keys)
         counts_by_kardex = {}
         for k in kardex_keys:
             cache_row = cache_by_kardex.get(k)
             if cache_row:
-                counts_by_kardex[k] = {
-                    "sisgen": sisgen_errores_count_from_payload(cache_row.payload),
-                    "uif": int(cache_row.uif_error_count or 0),
-                }
+                counts_by_kardex[k] = _counts_from_cache_row(cache_row)
             else:
                 counts_by_kardex[k] = {"sisgen": 0, "uif": 0}
         source_meta = {
@@ -139,19 +168,65 @@ def _load_month_kardex_and_counts(
             "note": (
                 "Reading KardexComplianceCache. "
                 "POST /compliance/refresh/ to populate missing rows. "
-                "Omit cache=true for live validation."
+                "Omit cache=true for hybrid/live validation."
             ),
         }
-    else:
+    elif force_live:
         counts_by_kardex = bulk_collect_compliance_error_counts(kardex_models)
         source_meta = {
             "source": "live_validation",
             "kardex_validated": len(kardex_keys),
             **exclusion_meta,
             "note": (
-                "Single-pass live validation (batch DB prefetch, parallel SISGEN/UIF). "
-                "Add cache=true to read precomputed KardexComplianceCache instead."
+                "Full live validation (live=true). "
+                "Omit live=true to use cached rows when available."
             ),
+        }
+    else:
+        cache_by_kardex = _load_cache_counts_by_kardex(kardex_keys)
+        counts_by_kardex: Dict[str, Dict[str, int]] = {}
+        missing_models: List[models.Kardex] = []
+
+        for row in kardex_models:
+            k = str(row.kardex or "").strip()
+            if not k:
+                continue
+            cache_row = cache_by_kardex.get(k)
+            if cache_row:
+                counts_by_kardex[k] = _counts_from_cache_row(cache_row)
+            else:
+                missing_models.append(row)
+
+        if missing_models:
+            live_counts = bulk_collect_compliance_error_counts(missing_models)
+            counts_by_kardex.update(live_counts)
+
+        cached_n = len(cache_by_kardex)
+        missing_n = len(missing_models)
+        if cached_n and missing_n:
+            source = "hybrid"
+            note = (
+                f"Served {cached_n} kardex from KardexComplianceCache and validated "
+                f"{missing_n} live. POST /compliance/refresh/ to warm missing rows."
+            )
+        elif cached_n:
+            source = "kardex_compliance_cache"
+            note = "All kardex served from KardexComplianceCache."
+        else:
+            source = "live_validation"
+            note = (
+                "No cache rows found; full live validation. "
+                "POST /compliance/refresh/ to speed up future requests."
+            )
+
+        source_meta = {
+            "source": source,
+            "cached": cached_n,
+            "missing": missing_n,
+            "live_validated": missing_n,
+            "kardex_validated": missing_n,
+            **exclusion_meta,
+            "note": note,
         }
 
     user_ids = {
@@ -200,9 +275,13 @@ class ComplianceUserMonthlyService:
         year: Optional[int] = None,
         month: Optional[int] = None,
         use_cache: bool = False,
+        force_live: bool = False,
     ) -> Dict[str, Any]:
         data = _load_month_kardex_and_counts(
-            year=year, month=month, use_cache=use_cache
+            year=year,
+            month=month,
+            use_cache=use_cache,
+            force_live=force_live,
         )
         all_kardex_rows = data["all_kardex_rows"]
         eligible_kardex_rows = data["eligible_kardex_rows"]
@@ -304,6 +383,7 @@ class ComplianceUserMonthlyService:
         year: Optional[int] = None,
         month: Optional[int] = None,
         use_cache: bool = False,
+        force_live: bool = False,
         idusuario: Optional[int] = None,
         errors_only: bool = True,
     ) -> Dict[str, Any]:
@@ -312,6 +392,7 @@ class ComplianceUserMonthlyService:
             year=year,
             month=month,
             use_cache=use_cache,
+            force_live=force_live,
             idusuario=idusuario,
         )
         all_kardex_rows = data["all_kardex_rows"]

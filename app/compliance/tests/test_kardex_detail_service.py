@@ -124,3 +124,43 @@ class KardexComplianceDetailServiceTests(SimpleTestCase):
         self.assertTrue(detail["escrituracion_pending"])
         self.assertFalse(detail["has_errors"])
         self.assertEqual(detail["counts"]["total"], 0)
+
+    @patch("compliance.services.kardex_detail_service.collect_sisgen_issues")
+    @patch("compliance.services.kardex_detail_service.collect_uif_issues")
+    @patch("compliance.services.kardex_detail_service.kardex_owned_by_user")
+    def test_build_detail_for_user_uses_ownership(self, mock_owned, mock_uif, mock_sisgen):
+        kardex = MagicMock(
+            kardex="K1-2026",
+            idkardex=1,
+            idtipkar=1,
+            numescritura="10",
+            codactos="094",
+            contrato="TEST",
+            fechaescritura="2026-06-01",
+            fechaconclusion="",
+            fechaingreso="2026-06-01",
+            estado_sisgen=0,
+        )
+        mock_owned.return_value = kardex
+        user = MagicMock(is_authenticated=True, idusuario=5, pk=5)
+        mock_uif.return_value = build_uif_block(
+            {"has_uif_errors": False, "uif_errors": [], "uif_observations": []}
+        )
+        mock_sisgen.return_value = build_sisgen_block(
+            errores=["err"], observaciones=[], personas=[]
+        )
+
+        detail = KardexComplianceDetailService().build_detail_for_user(user, "K1-2026")
+
+        mock_owned.assert_called_once_with(kardex="K1-2026", user=user)
+        self.assertEqual(detail["source"], "live_validation")
+
+    @patch("compliance.services.kardex_detail_service.kardex_owned_by_user")
+    def test_build_detail_for_user_not_owned(self, mock_owned):
+        from compliance.services.kardex_detail_service import KardexNotFoundError
+
+        mock_owned.return_value = None
+        user = MagicMock(is_authenticated=True, idusuario=5, pk=5)
+
+        with self.assertRaises(KardexNotFoundError):
+            KardexComplianceDetailService().build_detail_for_user(user, "K1-2026")

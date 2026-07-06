@@ -23,6 +23,7 @@ from compliance.services.kardex_detail_service import (
     KardexComplianceDetailService,
     KardexNotFoundError,
 )
+from compliance.services.access import resolve_idusuario
 from compliance.services.user_monthly_service import ComplianceUserMonthlyService
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,11 @@ class ComplianceUsersMonthlyView(APIView):
       - year (optional, default: current server year)
       - month (optional, default: current server month, 1–12)
 
-    Single-pass live validation by default (batch prefetch, no cache).
-    Kardex filtered by ``fechaingreso`` in [first day, last day] of the month.
+    Single-pass validation by default: uses KardexComplianceCache when available,
+    validates only missing kardex live (hybrid). Kardex filtered by ``fechaingreso``.
 
-    Add ``cache=true`` to read KardexComplianceCache instead (requires refresh).
+    Add ``cache=true`` to read cache only (missing rows count as zero).
+    Add ``live=true`` to force full live validation (slowest, always fresh).
     """
 
     permission_classes = [IsAuthenticated]
@@ -55,6 +57,7 @@ class ComplianceUsersMonthlyView(APIView):
                 year=params["year"],
                 month=params["month"],
                 use_cache=params["use_cache"],
+                force_live=params["force_live"],
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -75,6 +78,11 @@ def _parse_users_month_params(request):
         "false",
         "no",
     )
+    force_live = request.query_params.get("live", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     try:
         year = int(year_raw) if year_raw not in (None, "") else None
         month = int(month_raw) if month_raw not in (None, "") else None
@@ -88,7 +96,126 @@ def _parse_users_month_params(request):
         "month": month,
         "use_cache": use_cache,
         "errors_only": errors_only,
+        "force_live": force_live,
     }, None
+
+
+def _user_kardex_report_response(report: dict) -> Response:
+    """Flatten single-user block from ``build_user_kardex_report``."""
+    if not report["users"]:
+        return Response(
+            {
+                **report,
+                "user": None,
+                "total_kardex": 0,
+                "kardex_with_errors": 0,
+                "error_rate": 0.0,
+                "kardex": [],
+                "kardex_count": 0,
+                "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    user_block = report["users"][0]
+    return Response(
+        {
+            **report,
+            "user": {
+                "idusuario": user_block["idusuario"],
+                "name": user_block["name"],
+                "username": user_block["username"],
+            },
+            "total_kardex": user_block["total_kardex"],
+            "kardex_with_errors": user_block["kardex_with_errors"],
+            "error_rate": user_block["error_rate"],
+            "kardex_count": user_block["kardex_count"],
+            "counts": user_block["counts"],
+            "kardex": user_block["kardex"],
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+class ComplianceMyKardexView(APIView):
+    """
+    Logged-in preparer's kardex list with compliance error counts.
+
+    GET /compliance/me/kardex/
+      - year, month (optional; default current month)
+      - cache=true (optional) — cache only, no live fallback
+      - live=true (optional) — force full live validation
+      - errorsOnly=true (default) | false
+
+    By default uses hybrid mode: cached counts when available, live only for missing.
+
+    ``idusuario`` is taken from the JWT user — never from query params.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        params, err = _parse_users_month_params(request)
+        if err is not None:
+            return err
+
+        service = ComplianceUserMonthlyService()
+        try:
+            report = service.build_user_kardex_report(
+                year=params["year"],
+                month=params["month"],
+                use_cache=params["use_cache"],
+                force_live=params["force_live"],
+                idusuario=resolve_idusuario(request.user),
+                errors_only=params["errors_only"],
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return _user_kardex_report_response(report)
+
+
+class ComplianceMyKardexErrorsView(APIView):
+    """
+    Full error detail for one kardex owned by the logged-in preparer.
+
+    GET /compliance/me/kardex/<kardex>/errors/
+      - cache=true (optional)
+      - source=uif|sisgen (optional)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, kardex: str):
+        use_cache = request.query_params.get("cache", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        source = (request.query_params.get("source") or "").strip().lower() or None
+        if source and source not in SUPPORTED_SOURCES:
+            return Response(
+                {
+                    "error": "Invalid source. Use: uif, sisgen",
+                    "supported_sources": sorted(SUPPORTED_SOURCES),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = KardexComplianceDetailService()
+        try:
+            detail = service.build_detail_for_user(
+                request.user,
+                kardex,
+                use_cache=use_cache,
+                source_filter=source,
+            )
+        except KardexNotFoundError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except ComplianceCacheNotFoundError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(detail, status=status.HTTP_200_OK)
 
 
 class ComplianceUsersKardexView(APIView):
@@ -126,6 +253,7 @@ class ComplianceUsersKardexView(APIView):
                 year=params["year"],
                 month=params["month"],
                 use_cache=params["use_cache"],
+                force_live=params["force_live"],
                 idusuario=idusuario,
                 errors_only=params["errors_only"],
             )
@@ -155,45 +283,14 @@ class ComplianceUserKardexView(APIView):
                 year=params["year"],
                 month=params["month"],
                 use_cache=params["use_cache"],
+                force_live=params["force_live"],
                 idusuario=idusuario,
                 errors_only=params["errors_only"],
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not report["users"]:
-            return Response(
-                {
-                    **report,
-                    "user": None,
-                    "total_kardex": 0,
-                    "kardex_with_errors": 0,
-                    "error_rate": 0.0,
-                    "kardex": [],
-                    "kardex_count": 0,
-                    "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        user_block = report["users"][0]
-        return Response(
-            {
-                **report,
-                "user": {
-                    "idusuario": user_block["idusuario"],
-                    "name": user_block["name"],
-                    "username": user_block["username"],
-                },
-                "total_kardex": user_block["total_kardex"],
-                "kardex_with_errors": user_block["kardex_with_errors"],
-                "error_rate": user_block["error_rate"],
-                "kardex_count": user_block["kardex_count"],
-                "counts": user_block["counts"],
-                "kardex": user_block["kardex"],
-            },
-            status=status.HTTP_200_OK,
-        )
+        return _user_kardex_report_response(report)
 
 
 class ComplianceKardexErrorsView(APIView):

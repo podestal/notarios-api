@@ -4,6 +4,8 @@ from compliance.views import (
     ComplianceDashboardView,
     ComplianceDetailView,
     ComplianceKardexErrorsView,
+    ComplianceMyKardexErrorsView,
+    ComplianceMyKardexView,
     ComplianceOverviewView,
     ComplianceRefreshView,
     ComplianceUserKardexView,
@@ -22,6 +24,12 @@ urlpatterns = [
         "users/<int:idusuario>/kardex/",
         ComplianceUserKardexView.as_view(),
         name="user-kardex",
+    ),
+    path("me/kardex/", ComplianceMyKardexView.as_view(), name="my-kardex"),
+    path(
+        "me/kardex/<str:kardex>/errors/",
+        ComplianceMyKardexErrorsView.as_view(),
+        name="my-kardex-errors",
     ),
     path("refresh/", ComplianceRefreshView.as_view(), name="refresh"),
     path(
