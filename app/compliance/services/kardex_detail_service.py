@@ -19,6 +19,7 @@ from compliance.services.payload import (
     serialize_kardex_errors_detail,
 )
 from compliance.services.sisgen_collector import collect_sisgen_issues
+from compliance.services.uif_collector import collect_uif_issues
 from compliance.services.escrituracion_filter import (
     escrituracion_pending_meta,
     has_escrituracion_info,
