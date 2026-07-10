@@ -5,6 +5,7 @@ from django.test import SimpleTestCase
 from notaria.services.kardex_acto_cleanup import (
     delete_kardex_acto_related,
     filter_participants_to_active_actos,
+    rebuild_contratantes_condicion_for_kardex,
 )
 
 
@@ -23,6 +24,25 @@ class FilterParticipantsToActiveActosTests(SimpleTestCase):
 
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0]["idtipoacto"], "028")
+
+
+class RebuildContratantesCondicionTests(SimpleTestCase):
+    @patch("notaria.services.kardex_acto_cleanup.models.Contratantes")
+    @patch("notaria.services.kardex_acto_cleanup.models.Contratantesxacto")
+    @patch("notaria.services.kardex_acto_cleanup.active_idtipoactos_for_kardex")
+    def test_rebuild_from_active_cxa_only(self, mock_active, mock_cxa, mock_contratantes):
+        mock_active.return_value = {"028"}
+        row = MagicMock(idcontratante="0001", idcondicion="049", item="5642", idtipoacto="028")
+        mock_cxa.objects.filter.return_value = [row]
+        contratante = MagicMock(pk=1, idcontratante="0001", condicion="043.5641/049.5642/")
+        mock_contratantes.objects.filter.return_value = [contratante]
+
+        updated = rebuild_contratantes_condicion_for_kardex("K30-2026")
+
+        self.assertEqual(updated, 1)
+        mock_contratantes.objects.filter(pk=1).update.assert_called_once_with(
+            condicion="049.5642/"
+        )
 
 
 class DeleteKardexActoRelatedTests(SimpleTestCase):

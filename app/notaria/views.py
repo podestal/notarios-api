@@ -18,7 +18,10 @@ from ducumentation.protocolares.TestamentosService import (
     TestamentosReportService,
 )
 from .services.pdt_libros_service import PdtLibrosService
-from .services.kardex_acto_cleanup import delete_kardex_acto_related
+from .services.kardex_acto_cleanup import (
+    delete_kardex_acto_related,
+    rebuild_contratantes_condicion_for_kardex,
+)
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
 from ducumentation.extraprotocolares.permiso_viajes import PermisosViajeReportService
@@ -1527,16 +1530,13 @@ class ContratantesViewSet(ModelViewSet):
                 item=item,
             ).delete()
 
-        # conditions_formatted_array = []
-        # for single_condition in  data.get('condicion').split('/'):
-        #     if single_condition:
-        #         conditions_formatted_array.append(f"{single_condition}.{item}/")
-
-        # data['condicion'] = ''.join(conditions_formatted_array)
-
         serializer = self.get_serializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        if only_in_set_conditions or only_in_set_data:
+            rebuild_contratantes_condicion_for_kardex(
+                instance.kardex, idcontratante=instance.idcontratante
+            )
         _reset_sisgen_for_kardex(instance.kardex)
         _refresh_kardex_fechaconclusion_from_contratantes(instance.kardex)
         return Response(serializer.data)
@@ -1772,7 +1772,11 @@ class ContratantesxactoViewSet(ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         kardex_code = instance.kardex
+        idcontratante = instance.idcontratante
         response = super().destroy(request, *args, **kwargs)
+        rebuild_contratantes_condicion_for_kardex(
+            kardex_code, idcontratante=idcontratante
+        )
         _reset_sisgen_for_kardex(kardex_code)
         return response
 

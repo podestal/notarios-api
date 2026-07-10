@@ -78,6 +78,58 @@ def filter_participants_to_active_actos(
     return filtered
 
 
+def rebuild_contratantes_condicion_for_kardex(
+    kardex: str,
+    *,
+    idcontratante: Optional[str] = None,
+) -> int:
+    """
+    Rebuild ``contratantes.condicion`` from active ``contratantesxacto`` rows.
+
+    Single source of truth after deletes — avoids stale ``043.xxx/`` leftovers.
+    """
+    kardex_key = str(kardex or "").strip()
+    if not kardex_key:
+        return 0
+
+    active = active_idtipoactos_for_kardex(kardex_key)
+    cxa_qs = models.Contratantesxacto.objects.filter(kardex=kardex_key)
+    if idcontratante is not None:
+        cxa_qs = cxa_qs.filter(idcontratante=idcontratante)
+
+    pairs_by_contratante: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
+    seen: Dict[str, Set[Tuple[str, str]]] = defaultdict(set)
+    for row in cxa_qs:
+        idtipoacto = str(row.idtipoacto or "").strip()
+        if active and idtipoacto not in active:
+            continue
+        cid = str(row.idcontratante or "").strip()
+        idcondicion = str(row.idcondicion or "").strip()
+        item = str(row.item or "").strip()
+        if not cid or not idcondicion or not item:
+            continue
+        key = (idcondicion, item)
+        if key in seen[cid]:
+            continue
+        seen[cid].add(key)
+        pairs_by_contratante[cid].append(key)
+
+    contratantes_qs = models.Contratantes.objects.filter(kardex=kardex_key)
+    if idcontratante is not None:
+        contratantes_qs = contratantes_qs.filter(idcontratante=idcontratante)
+
+    updated = 0
+    for contratante in contratantes_qs:
+        cid = str(contratante.idcontratante or "").strip()
+        new_condicion = _format_condicion_entries(pairs_by_contratante.get(cid, []))
+        if new_condicion != (contratante.condicion or ""):
+            models.Contratantes.objects.filter(pk=contratante.pk).update(
+                condicion=new_condicion
+            )
+            updated += 1
+    return updated
+
+
 def _sync_contratantes_condicion(
     *,
     kardex: str,
@@ -181,5 +233,9 @@ def delete_kardex_acto_related(*, kardex: str, idtipoacto: str) -> Dict[str, int
         kardex=kardex_key, idtipoacto=acto_key
     ).delete()
     counts["detalle_actos_kardex"] = int(deleted_detalle)
+
+    counts["contratantes_condicion_rebuilt"] = rebuild_contratantes_condicion_for_kardex(
+        kardex_key
+    )
 
     return dict(counts)
