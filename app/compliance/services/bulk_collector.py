@@ -26,6 +26,9 @@ def _count_sisgen_errores(keys: List[str]) -> Dict[str, int]:
 
 def bulk_collect_compliance_error_counts(
     kardex_rows: List[models.Kardex],
+    *,
+    include_uif: bool = True,
+    include_sisgen: bool = True,
 ) -> Dict[str, Dict[str, int]]:
     """
     Live validation counts for many kardex in one pass.
@@ -36,29 +39,49 @@ def bulk_collect_compliance_error_counts(
     if not keys:
         return {}
 
-    all_act_codes: set = set()
-    for row in kardex_rows:
-        all_act_codes.update(_parse_act_codes(row.codactos or ""))
+    sisgen_counts: Dict[str, int] = {k: 0 for k in keys}
+    uif_counts: Dict[str, int] = {k: 0 for k in keys}
 
-    tipo_by_act: Dict[str, models.Tiposdeacto] = {}
-    if all_act_codes:
-        for t in models.Tiposdeacto.objects.filter(idtipoacto__in=all_act_codes).only(
-            "idtipoacto", "actouif", "desacto"
-        ):
-            tipo_by_act[str(t.idtipoacto)] = t
+    if include_sisgen and include_uif:
+        all_act_codes: set = set()
+        for row in kardex_rows:
+            all_act_codes.update(_parse_act_codes(row.codactos or ""))
 
-    kardex_by_key = {str(k.kardex).strip(): k for k in kardex_rows if k.kardex}
+        tipo_by_act: Dict[str, models.Tiposdeacto] = {}
+        if all_act_codes:
+            for t in models.Tiposdeacto.objects.filter(idtipoacto__in=all_act_codes).only(
+                "idtipoacto", "actouif", "desacto"
+            ):
+                tipo_by_act[str(t.idtipoacto)] = t
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        sisgen_future = pool.submit(_count_sisgen_errores, keys)
-        uif_future = pool.submit(
-            bulk_count_uif_errors,
-            keys,
-            kardex_by_key=kardex_by_key,
-            tipo_by_act=tipo_by_act,
+        kardex_by_key = {str(k.kardex).strip(): k for k in kardex_rows if k.kardex}
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            sisgen_future = pool.submit(_count_sisgen_errores, keys)
+            uif_future = pool.submit(
+                bulk_count_uif_errors,
+                keys,
+                kardex_by_key=kardex_by_key,
+                tipo_by_act=tipo_by_act,
+            )
+            sisgen_counts = sisgen_future.result()
+            uif_counts = uif_future.result()
+    elif include_sisgen:
+        sisgen_counts = _count_sisgen_errores(keys)
+    elif include_uif:
+        all_act_codes = set()
+        for row in kardex_rows:
+            all_act_codes.update(_parse_act_codes(row.codactos or ""))
+        tipo_by_act = {}
+        if all_act_codes:
+            for t in models.Tiposdeacto.objects.filter(idtipoacto__in=all_act_codes).only(
+                "idtipoacto", "actouif", "desacto"
+            ):
+                tipo_by_act[str(t.idtipoacto)] = t
+        kardex_by_key = {str(k.kardex).strip(): k for k in kardex_rows if k.kardex}
+        uif_counts = bulk_count_uif_errors(
+            keys, kardex_by_key=kardex_by_key, tipo_by_act=tipo_by_act
         )
-        sisgen_counts = sisgen_future.result()
-        uif_counts = uif_future.result()
 
     return {
         k: {

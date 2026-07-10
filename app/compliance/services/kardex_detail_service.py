@@ -14,6 +14,7 @@ from compliance.services.payload import (
     SOURCE_SISGEN,
     SOURCE_UIF,
     build_payload,
+    build_sisgen_block,
     empty_pdt_block,
     filter_payload_sources,
     serialize_kardex_errors_detail,
@@ -28,54 +29,6 @@ from compliance.services.sisgen_sent_filter import is_kardex_sent_to_sisgen, sis
 from compliance.services.access import kardex_owned_by_user
 
 
-def _build_escrituracion_pending_detail(kardex_row: models.Kardex) -> Dict[str, Any]:
-    meta = escrituracion_pending_meta(kardex_row)
-    return {
-        "kardex": kardex_row.kardex,
-        "idkardex": str(kardex_row.idkardex or ""),
-        "idtipkar": kardex_row.idtipkar,
-        "numescritura": kardex_row.numescritura,
-        "fechaingreso": kardex_row.fechaingreso,
-        "fechaescritura": kardex_row.fechaescritura,
-        "validated_at": None,
-        "source": "escrituracion_pending",
-        "has_errors": False,
-        "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
-        "errors": {
-            SOURCE_SISGEN: {"errores": [], "personas": [], "observaciones": []},
-            SOURCE_UIF: {"errors": [], "observations": []},
-            SOURCE_PDT: empty_pdt_block(),
-        },
-        "kardex_meta": kardex_meta_from_model(kardex_row),
-        "summary": {"has_errors": False, "total_errors": 0},
-        **meta,
-    }
-
-
-def _build_sisgen_sent_detail(kardex_row: models.Kardex) -> Dict[str, Any]:
-    meta = sisgen_sent_meta(kardex_row)
-    return {
-        "kardex": kardex_row.kardex,
-        "idkardex": str(kardex_row.idkardex or ""),
-        "idtipkar": kardex_row.idtipkar,
-        "numescritura": kardex_row.numescritura,
-        "fechaingreso": kardex_row.fechaingreso,
-        "fechaescritura": kardex_row.fechaescritura,
-        "validated_at": None,
-        "source": "sisgen_sent",
-        "has_errors": False,
-        "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
-        "errors": {
-            SOURCE_SISGEN: {"errores": [], "personas": [], "observaciones": []},
-            SOURCE_UIF: {"errors": [], "observations": []},
-            SOURCE_PDT: empty_pdt_block(),
-        },
-        "kardex_meta": kardex_meta_from_model(kardex_row),
-        "summary": {"has_errors": False, "total_errors": 0},
-        **meta,
-    }
-
-
 class KardexNotFoundError(LookupError):
     pass
 
@@ -84,7 +37,60 @@ class ComplianceCacheNotFoundError(LookupError):
     pass
 
 
+def _empty_sisgen_block() -> Dict[str, Any]:
+    return build_sisgen_block(errores=[], observaciones=[], personas=[])
+
+
 class KardexComplianceDetailService:
+    def _build_live_detail(
+        self,
+        kardex_row: models.Kardex,
+        *,
+        source_filter: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Always collect UIF (same engine as UIF report).
+
+        SISGEN is skipped when already sent or pending escrituración — those flags
+        no longer wipe UIF errors.
+        """
+        key = str(kardex_row.kardex or "").strip()
+        skip_sisgen = is_kardex_sent_to_sisgen(
+            kardex_row.estado_sisgen
+        ) or not has_escrituracion_info(kardex_row)
+
+        uif_block = collect_uif_issues(key)
+        if skip_sisgen:
+            sisgen_block = _empty_sisgen_block()
+            if is_kardex_sent_to_sisgen(kardex_row.estado_sisgen):
+                source = "live_validation_sisgen_sent"
+            else:
+                source = "live_validation_escrituracion_pending"
+        else:
+            sisgen_block = collect_sisgen_issues(key)
+            source = "live_validation"
+
+        payload = build_payload(
+            kardex=key,
+            idkardex=str(kardex_row.idkardex or ""),
+            idtipkar=kardex_row.idtipkar,
+            kardex_meta=kardex_meta_from_model(kardex_row),
+            uif_block=uif_block,
+            sisgen_block=sisgen_block,
+            validated_at=datetime.utcnow(),
+        )
+        detail = serialize_kardex_errors_detail(
+            kardex_row=kardex_row,
+            payload=filter_payload_sources(payload, source_filter),
+            source=source,
+            source_filter=source_filter,
+        )
+        if is_kardex_sent_to_sisgen(kardex_row.estado_sisgen):
+            detail.update(sisgen_sent_meta(kardex_row))
+        if not has_escrituracion_info(kardex_row):
+            detail.update(escrituracion_pending_meta(kardex_row))
+        return detail
+
     def build_detail(
         self,
         kardex: str,
@@ -99,12 +105,6 @@ class KardexComplianceDetailService:
         kardex_row = models.Kardex.objects.filter(kardex=key).first()
         if not kardex_row:
             raise KardexNotFoundError(f"Kardex not found: {key}")
-
-        if is_kardex_sent_to_sisgen(kardex_row.estado_sisgen):
-            return _build_sisgen_sent_detail(kardex_row)
-
-        if not has_escrituracion_info(kardex_row):
-            return _build_escrituracion_pending_detail(kardex_row)
 
         if use_cache:
             cache_row = KardexComplianceCache.objects.filter(kardex=key).first()
@@ -123,23 +123,7 @@ class KardexComplianceDetailService:
                 source_filter=source_filter,
             )
 
-        uif_block = collect_uif_issues(key)
-        sisgen_block = collect_sisgen_issues(key)
-        payload = build_payload(
-            kardex=key,
-            idkardex=str(kardex_row.idkardex or ""),
-            idtipkar=kardex_row.idtipkar,
-            kardex_meta=kardex_meta_from_model(kardex_row),
-            uif_block=uif_block,
-            sisgen_block=sisgen_block,
-            validated_at=datetime.utcnow(),
-        )
-        return serialize_kardex_errors_detail(
-            kardex_row=kardex_row,
-            payload=filter_payload_sources(payload, source_filter),
-            source="live_validation",
-            source_filter=source_filter,
-        )
+        return self._build_live_detail(kardex_row, source_filter=source_filter)
 
     def build_detail_for_user(
         self,
@@ -158,12 +142,6 @@ class KardexComplianceDetailService:
         if not kardex_row:
             raise KardexNotFoundError(f"Kardex not found: {key}")
 
-        if is_kardex_sent_to_sisgen(kardex_row.estado_sisgen):
-            return _build_sisgen_sent_detail(kardex_row)
-
-        if not has_escrituracion_info(kardex_row):
-            return _build_escrituracion_pending_detail(kardex_row)
-
         if use_cache:
             cache_row = KardexComplianceCache.objects.filter(kardex=key).first()
             if not cache_row:
@@ -181,20 +159,4 @@ class KardexComplianceDetailService:
                 source_filter=source_filter,
             )
 
-        uif_block = collect_uif_issues(key)
-        sisgen_block = collect_sisgen_issues(key)
-        payload = build_payload(
-            kardex=key,
-            idkardex=str(kardex_row.idkardex or ""),
-            idtipkar=kardex_row.idtipkar,
-            kardex_meta=kardex_meta_from_model(kardex_row),
-            uif_block=uif_block,
-            sisgen_block=sisgen_block,
-            validated_at=datetime.utcnow(),
-        )
-        return serialize_kardex_errors_detail(
-            kardex_row=kardex_row,
-            payload=filter_payload_sources(payload, source_filter),
-            source="live_validation",
-            source_filter=source_filter,
-        )
+        return self._build_live_detail(kardex_row, source_filter=source_filter)

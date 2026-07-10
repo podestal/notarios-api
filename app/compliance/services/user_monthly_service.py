@@ -1,8 +1,11 @@
 """
 Monthly compliance error counts grouped by kardex preparer (idusuario).
 
-Default: hybrid — KardexComplianceCache when available, live validation for missing.
-Optional cache=true (cache only) or live=true (force full live validation).
+UIF counts: same pipeline as the UIF report (``UifDashboardService``).
+SISGEN counts: live/cache validation; sisgen-sent / pending escritura skip SISGEN only.
+
+Default: hybrid cache for SISGEN when available; UIF always from dashboard.
+Optional cache=true (SISGEN from cache only) or live=true (force SISGEN live).
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ from __future__ import annotations
 import calendar
 from collections import defaultdict
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -23,6 +26,7 @@ from compliance.services.payload import sisgen_errores_count_from_payload
 from compliance.services.refresh_service import EXCLUDED_TIPOKAR
 from compliance.services.escrituracion_filter import partition_kardex_by_escrituracion
 from compliance.services.sisgen_sent_filter import partition_kardex_by_sisgen_sent
+from compliance.services.uif_parity import count_uif_errors_by_kardex
 
 User = get_user_model()
 
@@ -98,6 +102,83 @@ def _load_cache_counts_by_kardex(
     }
 
 
+def _sisgen_counts_for_models(
+    kardex_models: List[models.Kardex],
+    *,
+    use_cache: bool,
+    force_live: bool,
+) -> Tuple[Dict[str, int], Dict[str, Any]]:
+    """SISGEN-only counts; UIF is filled later from the dashboard pipeline."""
+    keys = [str(k.kardex).strip() for k in kardex_models if k.kardex and str(k.kardex).strip()]
+    empty_meta = {
+        "sisgen_source": "none",
+        "sisgen_cached": 0,
+        "sisgen_live_validated": 0,
+    }
+    if not keys:
+        return {}, empty_meta
+
+    if use_cache:
+        cache_by_kardex = _load_cache_counts_by_kardex(keys)
+        out = {}
+        for k in keys:
+            cache_row = cache_by_kardex.get(k)
+            out[k] = int(_counts_from_cache_row(cache_row)["sisgen"]) if cache_row else 0
+        return out, {
+            "sisgen_source": "kardex_compliance_cache",
+            "sisgen_cached": len(cache_by_kardex),
+            "sisgen_live_validated": 0,
+        }
+
+    if force_live:
+        live = bulk_collect_compliance_error_counts(
+            kardex_models, include_uif=False, include_sisgen=True
+        )
+        return (
+            {k: int((live.get(k) or {}).get("sisgen") or 0) for k in keys},
+            {
+                "sisgen_source": "live_validation",
+                "sisgen_cached": 0,
+                "sisgen_live_validated": len(keys),
+            },
+        )
+
+    cache_by_kardex = _load_cache_counts_by_kardex(keys)
+    out: Dict[str, int] = {}
+    missing_models: List[models.Kardex] = []
+    for row in kardex_models:
+        k = str(row.kardex or "").strip()
+        if not k:
+            continue
+        cache_row = cache_by_kardex.get(k)
+        if cache_row:
+            out[k] = int(_counts_from_cache_row(cache_row)["sisgen"])
+        else:
+            missing_models.append(row)
+
+    if missing_models:
+        live = bulk_collect_compliance_error_counts(
+            missing_models, include_uif=False, include_sisgen=True
+        )
+        for row in missing_models:
+            k = str(row.kardex or "").strip()
+            out[k] = int((live.get(k) or {}).get("sisgen") or 0)
+
+    cached_n = len(cache_by_kardex)
+    missing_n = len(missing_models)
+    if cached_n and missing_n:
+        source = "hybrid"
+    elif cached_n:
+        source = "kardex_compliance_cache"
+    else:
+        source = "live_validation"
+    return out, {
+        "sisgen_source": source,
+        "sisgen_cached": cached_n,
+        "sisgen_live_validated": missing_n,
+    }
+
+
 def _load_month_kardex_and_counts(
     *,
     year: Optional[int] = None,
@@ -110,8 +191,9 @@ def _load_month_kardex_and_counts(
     start_s = start.isoformat()
     end_s = end.isoformat()
 
+    # Same date field as UIF report / RoLoadDataService.
     qs = (
-        models.Kardex.objects.filter(fechaingreso__gte=start_s, fechaingreso__lte=end_s)
+        models.Kardex.objects.filter(fechaescritura__range=[start, end])
         .exclude(idtipkar__in=EXCLUDED_TIPOKAR)
         .exclude(kardex__isnull=True)
         .exclude(kardex="")
@@ -121,9 +203,43 @@ def _load_month_kardex_and_counts(
         qs = qs.filter(idusuario=idusuario)
 
     kardex_models_all = list(qs)
-    kardex_models, excluded_sisgen_sent = partition_kardex_by_sisgen_sent(kardex_models_all)
-    kardex_models, excluded_pending_escrituracion = partition_kardex_by_escrituracion(
-        kardex_models
+    by_key: Dict[str, models.Kardex] = {
+        str(k.kardex).strip(): k
+        for k in kardex_models_all
+        if k.kardex and str(k.kardex).strip()
+    }
+
+    # UIF source of truth (includes complementary tipo C + threshold).
+    uif_by_kardex = count_uif_errors_by_kardex(start, end, idusuario=idusuario)
+
+    # Pull in complementary / out-of-month kardex that still have UIF errors.
+    missing_uif_keys = [k for k in uif_by_kardex.keys() if k not in by_key]
+    if missing_uif_keys:
+        extra_qs = models.Kardex.objects.filter(kardex__in=missing_uif_keys).only(
+            *KARDEX_MONTH_FIELDS
+        )
+        if idusuario is not None:
+            extra_qs = extra_qs.filter(idusuario=idusuario)
+        for row in extra_qs:
+            key = str(row.kardex or "").strip()
+            if key and key not in by_key:
+                by_key[key] = row
+                kardex_models_all.append(row)
+
+    sisgen_models, excluded_sisgen_sent = partition_kardex_by_sisgen_sent(kardex_models_all)
+    sisgen_models, excluded_pending_escrituracion = partition_kardex_by_escrituracion(
+        sisgen_models
+    )
+    sisgen_eligible_keys: Set[str] = {
+        str(k.kardex).strip()
+        for k in sisgen_models
+        if k.kardex and str(k.kardex).strip()
+    }
+
+    sisgen_by_kardex, sisgen_meta = _sisgen_counts_for_models(
+        sisgen_models,
+        use_cache=use_cache,
+        force_live=force_live,
     )
 
     all_kardex_rows = [
@@ -131,103 +247,70 @@ def _load_month_kardex_and_counts(
         for k in kardex_models_all
         if k.kardex and str(k.kardex).strip()
     ]
-    eligible_kardex_rows = [
-        _kardex_row_from_model(k)
-        for k in kardex_models
-        if k.kardex and str(k.kardex).strip()
-    ]
+    # Every kardex can carry UIF errors; SISGEN is zeroed when excluded.
+    eligible_kardex_rows = list(all_kardex_rows)
     kardex_keys = [r["kardex"] for r in eligible_kardex_rows]
+
+    counts_by_kardex: Dict[str, Dict[str, int]] = {}
+    for k in kardex_keys:
+        counts_by_kardex[k] = {
+            "uif": int(uif_by_kardex.get(k) or 0),
+            "sisgen": int(sisgen_by_kardex.get(k) or 0)
+            if k in sisgen_eligible_keys
+            else 0,
+        }
+    # UIF-only keys that somehow lacked a row model still contribute to totals.
+    for k, uif_n in uif_by_kardex.items():
+        if k not in counts_by_kardex:
+            counts_by_kardex[k] = {"uif": int(uif_n), "sisgen": 0}
 
     exclusion_meta = {
         "excluded_sisgen_sent": len(excluded_sisgen_sent),
         "excluded_pending_escrituracion": len(excluded_pending_escrituracion),
         "sisgen_sent_note": (
-            "Kardex con estado_sisgen Enviado (1) u Observado (2) no muestran errores, "
-            "pero siguen contando en total_kardex del mes."
+            "Kardex con estado_sisgen Enviado (1) u Observado (2) no cuentan errores "
+            "SISGEN; los errores UIF sí se reportan (misma regla que el reporte UIF)."
         ),
         "escrituracion_note": (
-            "Kardex sin numescritura (número de instrumento) no se validan para errores; "
-            "siguen contando en total_kardex del mes."
+            "Kardex sin numescritura no se validan para SISGEN; "
+            "los errores UIF sí se reportan (misma regla que el reporte UIF)."
         ),
+        "uif_source": "uif_dashboard",
+        "uif_note": (
+            "UIF counts from UifDashboardService (fechaescritura, threshold, "
+            "complementary tipo C) — same engine as the UIF report."
+        ),
+        **sisgen_meta,
     }
 
-    if use_cache:
-        cache_by_kardex = _load_cache_counts_by_kardex(kardex_keys)
-        counts_by_kardex = {}
-        for k in kardex_keys:
-            cache_row = cache_by_kardex.get(k)
-            if cache_row:
-                counts_by_kardex[k] = _counts_from_cache_row(cache_row)
-            else:
-                counts_by_kardex[k] = {"sisgen": 0, "uif": 0}
-        source_meta = {
-            "source": "kardex_compliance_cache",
-            "cached": len(cache_by_kardex),
-            "missing": len(kardex_keys) - len(cache_by_kardex),
-            **exclusion_meta,
-            "note": (
-                "Reading KardexComplianceCache. "
-                "POST /compliance/refresh/ to populate missing rows. "
-                "Omit cache=true for hybrid/live validation."
-            ),
-        }
-    elif force_live:
-        counts_by_kardex = bulk_collect_compliance_error_counts(kardex_models)
-        source_meta = {
-            "source": "live_validation",
-            "kardex_validated": len(kardex_keys),
-            **exclusion_meta,
-            "note": (
-                "Full live validation (live=true). "
-                "Omit live=true to use cached rows when available."
-            ),
-        }
+    sisgen_source = sisgen_meta.get("sisgen_source") or "none"
+    if sisgen_source == "hybrid":
+        source = "hybrid"
+        note = (
+            "UIF from dashboard; SISGEN hybrid (cache + live). "
+            "POST /compliance/refresh/ to warm SISGEN cache."
+        )
+    elif sisgen_source == "kardex_compliance_cache":
+        source = "kardex_compliance_cache"
+        note = "UIF from dashboard; SISGEN from KardexComplianceCache."
+    elif sisgen_source == "live_validation":
+        source = "live_validation"
+        note = "UIF from dashboard; SISGEN live validation."
     else:
-        cache_by_kardex = _load_cache_counts_by_kardex(kardex_keys)
-        counts_by_kardex: Dict[str, Dict[str, int]] = {}
-        missing_models: List[models.Kardex] = []
+        source = "uif_dashboard"
+        note = "UIF from dashboard; no SISGEN-eligible kardex this period."
 
-        for row in kardex_models:
-            k = str(row.kardex or "").strip()
-            if not k:
-                continue
-            cache_row = cache_by_kardex.get(k)
-            if cache_row:
-                counts_by_kardex[k] = _counts_from_cache_row(cache_row)
-            else:
-                missing_models.append(row)
-
-        if missing_models:
-            live_counts = bulk_collect_compliance_error_counts(missing_models)
-            counts_by_kardex.update(live_counts)
-
-        cached_n = len(cache_by_kardex)
-        missing_n = len(missing_models)
-        if cached_n and missing_n:
-            source = "hybrid"
-            note = (
-                f"Served {cached_n} kardex from KardexComplianceCache and validated "
-                f"{missing_n} live. POST /compliance/refresh/ to warm missing rows."
-            )
-        elif cached_n:
-            source = "kardex_compliance_cache"
-            note = "All kardex served from KardexComplianceCache."
-        else:
-            source = "live_validation"
-            note = (
-                "No cache rows found; full live validation. "
-                "POST /compliance/refresh/ to speed up future requests."
-            )
-
-        source_meta = {
-            "source": source,
-            "cached": cached_n,
-            "missing": missing_n,
-            "live_validated": missing_n,
-            "kardex_validated": missing_n,
-            **exclusion_meta,
-            "note": note,
-        }
+    source_meta = {
+        "source": source,
+        "cached": sisgen_meta.get("sisgen_cached", 0),
+        "missing": sisgen_meta.get("sisgen_live_validated", 0),
+        "live_validated": sisgen_meta.get("sisgen_live_validated", 0),
+        "kardex_validated": len(sisgen_eligible_keys),
+        "uif_kardex_with_errors": sum(1 for n in uif_by_kardex.values() if n > 0),
+        "uif_total_errors": sum(uif_by_kardex.values()),
+        **exclusion_meta,
+        "note": note,
+    }
 
     user_ids = {
         int(r["idusuario"])
@@ -245,7 +328,7 @@ def _load_month_kardex_and_counts(
         "period": {
             "start": start_s,
             "end": end_s,
-            "date_field": "fechaingreso",
+            "date_field": "fechaescritura",
         },
         "all_kardex_rows": all_kardex_rows,
         "eligible_kardex_rows": eligible_kardex_rows,

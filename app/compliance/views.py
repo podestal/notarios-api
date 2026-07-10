@@ -37,11 +37,12 @@ class ComplianceUsersMonthlyView(APIView):
       - year (optional, default: current server year)
       - month (optional, default: current server month, 1–12)
 
-    Single-pass validation by default: uses KardexComplianceCache when available,
-    validates only missing kardex live (hybrid). Kardex filtered by ``fechaingreso``.
+    UIF counts use the same engine as the UIF report (``fechaescritura``, threshold,
+    complementary tipo C). SISGEN uses cache/live; sisgen-sent / pending escritura
+    skip SISGEN only. Kardex filtered by ``fechaescritura`` in the calendar month.
 
-    Add ``cache=true`` to read cache only (missing rows count as zero).
-    Add ``live=true`` to force full live validation (slowest, always fresh).
+    Add ``cache=true`` to read SISGEN from cache only (UIF still from dashboard).
+    Add ``live=true`` to force full SISGEN live validation.
     """
 
     permission_classes = [IsAuthenticated]

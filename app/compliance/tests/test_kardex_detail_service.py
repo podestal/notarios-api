@@ -81,8 +81,10 @@ class KardexComplianceDetailServiceTests(SimpleTestCase):
         mock_uif.assert_called_once_with("K1-2026")
         mock_sisgen.assert_called_once_with("K1-2026")
 
+    @patch("compliance.services.kardex_detail_service.collect_sisgen_issues")
+    @patch("compliance.services.kardex_detail_service.collect_uif_issues")
     @patch("compliance.services.kardex_detail_service.models.Kardex")
-    def test_sent_to_sisgen_skips_validation(self, mock_kardex_model):
+    def test_sent_to_sisgen_still_returns_uif(self, mock_kardex_model, mock_uif, mock_sisgen):
         kardex = MagicMock(
             kardex="K1-2026",
             idkardex=1,
@@ -96,15 +98,28 @@ class KardexComplianceDetailServiceTests(SimpleTestCase):
             estado_sisgen=1,
         )
         mock_kardex_model.objects.filter.return_value.first.return_value = kardex
+        mock_uif.return_value = build_uif_block(
+            {
+                "has_uif_errors": True,
+                "uif_errors": [{"error_type": "x", "error_description": "bad"}],
+                "uif_observations": [],
+            }
+        )
 
         detail = KardexComplianceDetailService().build_detail("K1-2026")
-        self.assertEqual(detail["source"], "sisgen_sent")
         self.assertTrue(detail["sisgen_sent"])
-        self.assertFalse(detail["has_errors"])
-        self.assertEqual(detail["counts"]["total"], 0)
+        self.assertEqual(detail["counts"]["uif"], 1)
+        self.assertEqual(detail["counts"]["sisgen"], 0)
+        self.assertTrue(detail["has_errors"])
+        mock_uif.assert_called_once_with("K1-2026")
+        mock_sisgen.assert_not_called()
 
+    @patch("compliance.services.kardex_detail_service.collect_sisgen_issues")
+    @patch("compliance.services.kardex_detail_service.collect_uif_issues")
     @patch("compliance.services.kardex_detail_service.models.Kardex")
-    def test_pending_escrituracion_skips_validation(self, mock_kardex_model):
+    def test_pending_escrituracion_still_returns_uif(
+        self, mock_kardex_model, mock_uif, mock_sisgen
+    ):
         kardex = MagicMock(
             kardex="K1-2026",
             idkardex=1,
@@ -112,18 +127,25 @@ class KardexComplianceDetailServiceTests(SimpleTestCase):
             numescritura="",
             codactos="094",
             contrato="TEST",
-            fechaescritura="",
+            fechaescritura="2026-06-01",
             fechaconclusion="",
             fechaingreso="2026-06-01",
             estado_sisgen=0,
         )
         mock_kardex_model.objects.filter.return_value.first.return_value = kardex
+        mock_uif.return_value = build_uif_block(
+            {
+                "has_uif_errors": True,
+                "uif_errors": [{"error_type": "x", "error_description": "bad"}],
+                "uif_observations": [],
+            }
+        )
 
         detail = KardexComplianceDetailService().build_detail("K1-2026")
-        self.assertEqual(detail["source"], "escrituracion_pending")
         self.assertTrue(detail["escrituracion_pending"])
-        self.assertFalse(detail["has_errors"])
-        self.assertEqual(detail["counts"]["total"], 0)
+        self.assertEqual(detail["counts"]["uif"], 1)
+        self.assertEqual(detail["counts"]["sisgen"], 0)
+        mock_sisgen.assert_not_called()
 
     @patch("compliance.services.kardex_detail_service.collect_sisgen_issues")
     @patch("compliance.services.kardex_detail_service.collect_uif_issues")

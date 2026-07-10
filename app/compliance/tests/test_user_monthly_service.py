@@ -6,6 +6,7 @@ from compliance.services.user_monthly_service import (
     ComplianceUserMonthlyService,
     parse_year_month,
 )
+from compliance.services.uif_parity import count_uif_errors_by_kardex
 
 
 class ParseYearMonthTests(SimpleTestCase):
@@ -20,37 +21,87 @@ class ParseYearMonthTests(SimpleTestCase):
             parse_year_month(2026, 13)
 
 
+class CountUifErrorsByKardexTests(SimpleTestCase):
+    @patch("compliance.services.uif_parity.UifDashboardService")
+    def test_aggregates_validation_error_count_by_kardex(self, mock_dash_cls):
+        mock_dash_cls.return_value.run.return_value = {
+            "lista_kardex_report": [
+                {"kardex": "K1", "validation_error_count": 2},
+                {"kardex": "K1", "validation_error_count": 1},
+                {"kardex": "K2", "validation_error_count": 0},
+                {"kardex": "K3", "validation_error_count": 5},
+            ]
+        }
+        from datetime import date
+
+        counts = count_uif_errors_by_kardex(date(2026, 6, 1), date(2026, 6, 30))
+        self.assertEqual(counts, {"K1": 3, "K3": 5})
+
+
 class ComplianceUserMonthlyServiceTests(SimpleTestCase):
     def _kardex_models(self):
         return [
-            MagicMock(kardex="K1-2026", idusuario=3, idkardex="1", numescritura="10"),
-            MagicMock(kardex="K2-2026", idusuario=3, idkardex="2", numescritura="11"),
-            MagicMock(kardex="K3-2026", idusuario=5, idkardex="3", numescritura="12"),
+            MagicMock(
+                kardex="K1-2026",
+                idusuario=3,
+                idkardex="1",
+                numescritura="10",
+                estado_sisgen=0,
+            ),
+            MagicMock(
+                kardex="K2-2026",
+                idusuario=3,
+                idkardex="2",
+                numescritura="11",
+                estado_sisgen=0,
+            ),
+            MagicMock(
+                kardex="K3-2026",
+                idusuario=5,
+                idkardex="3",
+                numescritura="12",
+                estado_sisgen=0,
+            ),
         ]
 
-    @patch("compliance.services.user_monthly_service._load_cache_counts_by_kardex")
-    @patch("compliance.services.user_monthly_service.get_user_model")
-    @patch("compliance.services.user_monthly_service.bulk_collect_compliance_error_counts")
+    def _qs_chain(self, models_list):
+        qs = MagicMock()
+        qs.exclude.return_value = qs
+        qs.only.return_value = models_list
+        qs.filter.return_value = qs
+        return qs
+
+    @patch("compliance.services.user_monthly_service.count_uif_errors_by_kardex")
+    @patch("compliance.services.user_monthly_service._sisgen_counts_for_models")
+    @patch("compliance.services.user_monthly_service.User")
     @patch("compliance.services.user_monthly_service.models.Kardex")
     def test_live_default_aggregates_counts_by_user(
-        self, mock_kardex_model, mock_bulk, mock_get_user_model, mock_load_cache
+        self, mock_kardex_model, mock_user, mock_sisgen, mock_uif
     ):
-        mock_load_cache.return_value = {}
-        mock_kardex_model.objects.filter.return_value.exclude.return_value.exclude.return_value.exclude.return_value.only.return_value = (
+        mock_kardex_model.objects.filter.return_value = self._qs_chain(
             self._kardex_models()
         )
-        mock_bulk.return_value = {
-            "K1-2026": {"sisgen": 2, "uif": 1},
-            "K2-2026": {"sisgen": 0, "uif": 0},
-            "K3-2026": {"sisgen": 1, "uif": 2},
+        mock_uif.return_value = {
+            "K1-2026": 1,
+            "K2-2026": 0,
+            "K3-2026": 2,
         }
+        mock_sisgen.return_value = (
+            {"K1-2026": 2, "K2-2026": 0, "K3-2026": 1},
+            {
+                "sisgen_source": "live_validation",
+                "sisgen_cached": 0,
+                "sisgen_live_validated": 3,
+            },
+        )
         user3 = MagicMock(idusuario=3, first_name="Ana", last_name="Lopez", username="ana")
         user5 = MagicMock(idusuario=5, first_name="Bob", last_name="", username="bob")
-        mock_get_user_model.return_value.filter.return_value = [user3, user5]
+        mock_user.objects.filter.return_value = [user3, user5]
 
         report = ComplianceUserMonthlyService().build_report(year=2026, month=6)
 
-        self.assertEqual(report["source"]["source"], "live_validation")
+        self.assertEqual(report["period"]["date_field"], "fechaescritura")
+        self.assertEqual(report["source"]["uif_source"], "uif_dashboard")
         self.assertEqual(report["summary"]["total_kardex"], 3)
         self.assertEqual(len(report["users"]), 2)
         top = report["users"][0]
@@ -61,90 +112,43 @@ class ComplianceUserMonthlyServiceTests(SimpleTestCase):
         self.assertEqual(user3_row["counts"]["sisgen"], 2)
         self.assertEqual(user3_row["counts"]["uif"], 1)
         self.assertEqual(user3_row["counts"]["total"], 3)
-        mock_bulk.assert_called_once()
+        mock_uif.assert_called_once()
 
-    @patch("compliance.services.user_monthly_service.get_user_model")
-    @patch("compliance.services.user_monthly_service.KardexComplianceCache")
+    @patch("compliance.services.user_monthly_service.count_uif_errors_by_kardex")
+    @patch("compliance.services.user_monthly_service._sisgen_counts_for_models")
+    @patch("compliance.services.user_monthly_service.User")
     @patch("compliance.services.user_monthly_service.models.Kardex")
-    def test_cache_mode_reads_compliance_cache(
-        self, mock_kardex_model, mock_cache_model, mock_get_user_model
+    def test_uif_counted_even_when_sisgen_sent(
+        self, mock_kardex_model, mock_user, mock_sisgen, mock_uif
     ):
-        mock_kardex_model.objects.filter.return_value.exclude.return_value.exclude.return_value.exclude.return_value.only.return_value = (
-            self._kardex_models()
-        )
-        cache_k1 = MagicMock(
-            kardex="K1-2026",
-            uif_error_count=1,
-            payload={"sources": {"sisgen": {"errores": ["a", "b"]}}},
-        )
-        mock_cache_model.objects.filter.return_value.only.return_value = [cache_k1]
-        mock_get_user_model.return_value.filter.return_value = []
-
-        report = ComplianceUserMonthlyService().build_report(
-            year=2026, month=6, use_cache=True
-        )
-
-        self.assertEqual(report["source"]["source"], "kardex_compliance_cache")
-        self.assertEqual(report["source"]["cached"], 1)
-        self.assertEqual(report["source"]["missing"], 2)
-
-
-class ComplianceHybridModeTests(SimpleTestCase):
-    @patch("compliance.services.user_monthly_service.get_user_model")
-    @patch("compliance.services.user_monthly_service.bulk_collect_compliance_error_counts")
-    @patch("compliance.services.user_monthly_service._load_cache_counts_by_kardex")
-    @patch("compliance.services.user_monthly_service.models.Kardex")
-    def test_hybrid_validates_only_missing_kardex(
-        self, mock_kardex_model, mock_load_cache, mock_bulk, mock_get_user_model
-    ):
-        models = [
-            MagicMock(kardex="K1-2026", idusuario=3, idkardex="1", numescritura="10"),
-            MagicMock(kardex="K2-2026", idusuario=3, idkardex="2", numescritura="11"),
+        models_list = [
+            MagicMock(
+                kardex="K-SENT",
+                idusuario=3,
+                idkardex="1",
+                numescritura="10",
+                estado_sisgen=1,
+            ),
         ]
-        mock_kardex_model.objects.filter.return_value.exclude.return_value.exclude.return_value.exclude.return_value.only.return_value = (
-            models
+        mock_kardex_model.objects.filter.return_value = self._qs_chain(models_list)
+        mock_uif.return_value = {"K-SENT": 4}
+        mock_sisgen.return_value = (
+            {},
+            {
+                "sisgen_source": "none",
+                "sisgen_cached": 0,
+                "sisgen_live_validated": 0,
+            },
         )
-        cache_k1 = MagicMock(
-            kardex="K1-2026",
-            uif_error_count=1,
-            payload={"sources": {"sisgen": {"errores": ["a"]}}},
-        )
-        mock_load_cache.return_value = {"K1-2026": cache_k1}
-        mock_bulk.return_value = {"K2-2026": {"sisgen": 2, "uif": 0}}
-        mock_get_user_model.return_value.filter.return_value = [
+        mock_user.objects.filter.return_value = [
             MagicMock(idusuario=3, first_name="Ana", last_name="L", username="ana")
         ]
 
         report = ComplianceUserMonthlyService().build_report(year=2026, month=6)
-
-        self.assertEqual(report["source"]["source"], "hybrid")
-        self.assertEqual(report["source"]["cached"], 1)
-        self.assertEqual(report["source"]["live_validated"], 1)
-        mock_bulk.assert_called_once()
-        validated = mock_bulk.call_args[0][0]
-        self.assertEqual(len(validated), 1)
-        self.assertEqual(validated[0].kardex, "K2-2026")
-
-    @patch("compliance.services.user_monthly_service.get_user_model")
-    @patch("compliance.services.user_monthly_service.bulk_collect_compliance_error_counts")
-    @patch("compliance.services.user_monthly_service._load_cache_counts_by_kardex")
-    @patch("compliance.services.user_monthly_service.models.Kardex")
-    def test_force_live_skips_cache(
-        self, mock_kardex_model, mock_load_cache, mock_bulk, mock_get_user_model
-    ):
-        mock_kardex_model.objects.filter.return_value.exclude.return_value.exclude.return_value.exclude.return_value.only.return_value = [
-            MagicMock(kardex="K1-2026", idusuario=3, idkardex="1", numescritura="10"),
-        ]
-        mock_bulk.return_value = {"K1-2026": {"sisgen": 1, "uif": 0}}
-        mock_get_user_model.return_value.filter.return_value = []
-
-        report = ComplianceUserMonthlyService().build_report(
-            year=2026, month=6, force_live=True
-        )
-
-        self.assertEqual(report["source"]["source"], "live_validation")
-        mock_load_cache.assert_not_called()
-        mock_bulk.assert_called_once()
+        user3 = report["users"][0]
+        self.assertEqual(user3["counts"]["uif"], 4)
+        self.assertEqual(user3["counts"]["sisgen"], 0)
+        self.assertEqual(user3["counts"]["total"], 4)
 
 
 class ComplianceUserKardexReportTests(SimpleTestCase):
@@ -153,7 +157,11 @@ class ComplianceUserKardexReportTests(SimpleTestCase):
         mock_load.return_value = {
             "year": 2026,
             "month": 6,
-            "period": {"start": "2026-06-01", "end": "2026-06-30", "date_field": "fechaingreso"},
+            "period": {
+                "start": "2026-06-01",
+                "end": "2026-06-30",
+                "date_field": "fechaescritura",
+            },
             "source_meta": {"source": "live_validation", "excluded_sisgen_sent": 1},
             "users_by_id": {3: MagicMock(first_name="Ana", last_name="L", username="ana")},
             "all_kardex_rows": [
@@ -257,15 +265,14 @@ class ComplianceUserMonthlyTotalsTests(SimpleTestCase):
 
 
 class ComplianceEscrituracionExclusionTests(SimpleTestCase):
-    @patch("compliance.services.user_monthly_service._load_cache_counts_by_kardex")
-    @patch("compliance.services.user_monthly_service.get_user_model")
-    @patch("compliance.services.user_monthly_service.bulk_collect_compliance_error_counts")
+    @patch("compliance.services.user_monthly_service.count_uif_errors_by_kardex")
+    @patch("compliance.services.user_monthly_service._sisgen_counts_for_models")
+    @patch("compliance.services.user_monthly_service.User")
     @patch("compliance.services.user_monthly_service.models.Kardex")
-    def test_pending_escrituracion_excluded_from_error_checks(
-        self, mock_kardex_model, mock_bulk, mock_get_user_model, mock_load_cache
+    def test_pending_escrituracion_skips_sisgen_keeps_uif(
+        self, mock_kardex_model, mock_user, mock_sisgen, mock_uif
     ):
-        mock_load_cache.return_value = {}
-        mock_kardex_model.objects.filter.return_value.exclude.return_value.exclude.return_value.exclude.return_value.only.return_value = [
+        models_list = [
             MagicMock(
                 kardex="K-DONE",
                 idusuario=3,
@@ -281,18 +288,31 @@ class ComplianceEscrituracionExclusionTests(SimpleTestCase):
                 estado_sisgen=0,
             ),
         ]
-        mock_bulk.return_value = {"K-DONE": {"sisgen": 1, "uif": 0}}
-        mock_get_user_model.return_value.filter.return_value = [
+        qs = MagicMock()
+        qs.exclude.return_value = qs
+        qs.only.return_value = models_list
+        mock_kardex_model.objects.filter.return_value = qs
+
+        mock_uif.return_value = {"K-DONE": 0, "K-PENDING": 3}
+        mock_sisgen.return_value = (
+            {"K-DONE": 1},
+            {
+                "sisgen_source": "live_validation",
+                "sisgen_cached": 0,
+                "sisgen_live_validated": 1,
+            },
+        )
+        mock_user.objects.filter.return_value = [
             MagicMock(idusuario=3, first_name="Ana", last_name="L", username="ana")
         ]
 
         report = ComplianceUserMonthlyService().build_report(year=2026, month=6)
 
         self.assertEqual(report["summary"]["total_kardex"], 2)
-        self.assertEqual(report["summary"]["kardex_checked_for_errors"], 1)
         self.assertEqual(report["summary"]["excluded_pending_escrituracion"], 1)
-        self.assertEqual(report["users"][0]["kardex_with_errors"], 1)
-        mock_bulk.assert_called_once()
-        validated = mock_bulk.call_args[0][0]
-        self.assertEqual(len(validated), 1)
-        self.assertEqual(validated[0].kardex, "K-DONE")
+        self.assertEqual(report["users"][0]["counts"]["uif"], 3)
+        self.assertEqual(report["users"][0]["counts"]["sisgen"], 1)
+        mock_sisgen.assert_called_once()
+        sisgen_models = mock_sisgen.call_args[0][0]
+        self.assertEqual(len(sisgen_models), 1)
+        self.assertEqual(sisgen_models[0].kardex, "K-DONE")
