@@ -18,6 +18,7 @@ from ducumentation.protocolares.TestamentosService import (
     TestamentosReportService,
 )
 from .services.pdt_libros_service import PdtLibrosService
+from .services.kardex_acto_cleanup import delete_kardex_acto_related
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
 from ducumentation.extraprotocolares.permiso_viajes import PermisosViajeReportService
@@ -484,32 +485,7 @@ class KardexViewSet(ModelViewSet):
             except models.Tiposdeacto.DoesNotExist:
                 return Response({"error": "Tipo de acto no encontrado."}, status=404)
 
-            # Check if there are any contratantes using this tipo_acto
-            if models.Contratantesxacto.objects.filter(
-                kardex=instance.kardex, idtipoacto=id_tipo_acto
-            ).exists():
-                return Response(
-                    {
-                        "error": "No se puede eliminar el tipo de acto porque hay contratantes asociados."
-                    },
-                    status=400,
-                )
-
-            # chec if there any patrimonial records using this tipo_acto
-            if models.Patrimonial.objects.filter(
-                kardex=instance.kardex, idtipoacto=id_tipo_acto
-            ).exists():
-                return Response(
-                    {
-                        "error": "No se puede eliminar el tipo de acto porque hay patrimoniales asociados."
-                    },
-                    status=400,
-                )
-
-            # If no contratantes are using this tipo_acto, delete the detalle acto
-            models.DetalleActosKardex.objects.filter(
-                kardex=instance.kardex, idtipoacto=id_tipo_acto
-            ).delete()
+            delete_kardex_acto_related(kardex=instance.kardex, idtipoacto=id_tipo_acto)
 
         for id_tipo_acto in only_in_set_data:
             try:
@@ -2168,6 +2144,14 @@ class DetalleActosKardexViewSet(ModelViewSet):
     serializer_class = serializers.DetalleActosKardexSerializer
     pagination_class = pagination.KardexPagination
     permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        kardex = instance.kardex
+        delete_kardex_acto_related(kardex=kardex, idtipoacto=instance.idtipoacto)
+        _reset_sisgen_for_kardex(kardex)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"])
     def by_kardex_tipoacto(self, request):

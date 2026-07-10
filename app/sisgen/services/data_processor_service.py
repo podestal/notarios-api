@@ -8,6 +8,8 @@ from django.db import connection
 import logging
 import xml.etree.ElementTree as ET
 
+from notaria.services.kardex_acto_cleanup import filter_participants_to_active_actos
+
 logger = logging.getLogger(__name__)
 
 class DataProcessorService:
@@ -40,7 +42,9 @@ class DataProcessorService:
                         raise Exception("Notary data not found")
                 
                 # Get participants data
-                participants = self._get_participants_data(doc['kardex'])
+                participants = self._get_participants_data(
+                    doc["kardex"], codactos=doc_data.get("codactos")
+                )
                 
                 # Add to processed docs
                 processed_docs.append({
@@ -81,7 +85,9 @@ class DataProcessorService:
                 raise Exception("Notary data not found")
             
             # Get participants data
-            participants = self._get_participants_data(kardex)
+            participants = self._get_participants_data(
+                kardex, codactos=doc_data.get("codactos")
+            )
             
             # Combine all data
             result = {
@@ -152,8 +158,10 @@ class DataProcessorService:
                 
             return dict(zip(columns, row))
     
-    def _get_participants_data(self, kardex: str) -> List[Dict]:
-        """Get participants data"""
+    def _get_participants_data(
+        self, kardex: str, *, codactos: Optional[str] = None
+    ) -> List[Dict]:
+        """Get participants data (only rows for actos still on the kardex)."""
         query = """
             SELECT cx.*, cl.*, co.*
             FROM contratantesxacto cx
@@ -161,11 +169,15 @@ class DataProcessorService:
             LEFT JOIN contratantes co ON cl.idcontratante = co.idcontratante
             WHERE cx.kardex = %s
         """
-        
+
         with connection.cursor() as cursor:
             cursor.execute(query, [kardex])
             columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        return filter_participants_to_active_actos(
+            rows, kardex=kardex, codactos=codactos
+        )
     
     def update_document_statuses(self, response_text: str):
         """Update document statuses based on SISGEN response"""

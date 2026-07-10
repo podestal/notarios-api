@@ -383,6 +383,21 @@ class SISGENXmlGenerator:
             return x.zfill(2)
         return x[-2:]
 
+    def _sede_registral_dos(self, raw) -> str:
+        """
+        SedeRegistral XSD enum [01..14] (zonas registrales SUNARP).
+
+        La BD guarda el código sin cero a la izquierda ('9'), pero el XSD exige
+        dos dígitos ('09'). Devuelve '' para vacío o '00' (no se emite el nodo).
+        """
+        digits = self._solo_digitos(raw)
+        if not digits:
+            return ""
+        s = digits.zfill(2) if len(digits) <= 2 else digits[-2:]
+        if s == "00":
+            return ""
+        return s
+
     def _partes_ubigeo_pe(
         self,
         idubigeo_raw=None,
@@ -880,11 +895,12 @@ class SISGENXmlGenerator:
         xml_parts.append(f'{t_r1}<IdMaestro>{rep.get("idcliente", "")}</IdMaestro>\n')
 
         rep_part = rep.get("numpartidareg") or rep.get("numpartida")
-        if rep.get("inscrito") == "1" and (rep.get("idsedereg") or rep_part):
+        sede_rep = self._sede_registral_dos(rep.get("idsedereg"))
+        if rep.get("inscrito") == "1" and (sede_rep or rep_part):
             xml_parts.append(f"{t_r1}<InscripcionRepresentacion>\n")
-            if rep.get("idsedereg"):
+            if sede_rep:
                 xml_parts.append(
-                    f'{t_r2}<SedeRegistral>{rep.get("idsedereg", "")}</SedeRegistral>\n'
+                    f'{t_r2}<SedeRegistral>{sede_rep}</SedeRegistral>\n'
                 )
             if rep_part:
                 xml_parts.append(
@@ -2038,14 +2054,10 @@ class SISGENXmlGenerator:
                         xml += '\t\t\t</DocsIdentificativos>\n'
                         
                         xml += '\t\t\t\t<RegistroFacultades>\n'
-                        # PHP: sedereg vacío o "00" no emite sede
+                        # PHP: sedereg vacío o "00" no emite sede; XSD exige 2 dígitos
                         sedereg_raw = person.get("sedereg", person.get("idsedereg"))
-                        sedereg_s = (
-                            str(sedereg_raw).strip()
-                            if sedereg_raw is not None
-                            else ""
-                        )
-                        if sedereg_s and sedereg_s != "00":
+                        sedereg_s = self._sede_registral_dos(sedereg_raw)
+                        if sedereg_s:
                             xml += f'\t\t\t\t\t<SedeRegistral>{escape(sedereg_s)}</SedeRegistral>\n'
                         num_part_jur = person.get("numpartidareg") or person.get(
                             "numpartida"
@@ -2111,8 +2123,9 @@ class SISGENXmlGenerator:
                         xml += f'\t\t\t<PredioUrbano id="{predio.get("detbien", "")}">\n'
                         xml += '\t\t\t\t<TipoConstruccion>6</TipoConstruccion>\n'
                         xml += '\t\t\t\t<IdentificacionPredio>\n'
-                        if predio.get("idsedereg"):
-                            xml += f'\t\t\t\t\t<SedeRegistral>{escape(str(predio.get("idsedereg", "")).strip())}</SedeRegistral>\n'
+                        sede_predio = self._sede_registral_dos(predio.get("idsedereg"))
+                        if sede_predio:
+                            xml += f'\t\t\t\t\t<SedeRegistral>{escape(sede_predio)}</SedeRegistral>\n'
                         if predio.get("pregistral"):
                             xml += f'\t\t\t\t\t<PartidaRegistral>{escape(str(predio.get("pregistral", "")).strip())}</PartidaRegistral>\n'
                         xml += '\t\t\t\t</IdentificacionPredio>\n'
@@ -2145,8 +2158,9 @@ class SISGENXmlGenerator:
                         xml += '\t\t\t\t<TipoIdentificacionVehiculo>1</TipoIdentificacionVehiculo>\n'
                         if veh.get("npsm"):
                             xml += f'\t\t\t\t<NumPlaca>{escape(str(veh.get("npsm", "")).strip())}</NumPlaca>\n'
-                        if veh.get("idsedereg"):
-                            xml += f'\t\t\t\t<SedeRegistral>{escape(str(veh.get("idsedereg", "")).strip())}</SedeRegistral>\n'
+                        sede_veh_bien = self._sede_registral_dos(veh.get("idsedereg"))
+                        if sede_veh_bien:
+                            xml += f'\t\t\t\t<SedeRegistral>{escape(sede_veh_bien)}</SedeRegistral>\n'
                         if veh.get("pregistral"):
                             xml += f'\t\t\t\t<PartidaRegistral>{escape(str(veh.get("pregistral", "")).strip())}</PartidaRegistral>\n'
                         xml += '\t\t\t</Vehiculo>\n'
@@ -2173,8 +2187,9 @@ class SISGENXmlGenerator:
                         ):
                             if veh.get(key):
                                 xml += f'\t\t\t\t<{tag}>{escape(str(veh.get(key, "")).strip())}</{tag}>\n'
-                        if veh.get("idsedereg"):
-                            xml += f'\t\t\t\t<SedeRegistral>{escape(str(veh.get("idsedereg", "")).strip())}</SedeRegistral>\n'
+                        sede_veh_det = self._sede_registral_dos(veh.get("idsedereg"))
+                        if sede_veh_det:
+                            xml += f'\t\t\t\t<SedeRegistral>{escape(sede_veh_det)}</SedeRegistral>\n'
                         if veh.get("pregistral"):
                             xml += f'\t\t\t\t<PartidaRegistral>{escape(str(veh.get("pregistral", "")).strip())}</PartidaRegistral>\n'
                         xml += '\t\t\t</Vehiculo>\n'
