@@ -47,6 +47,27 @@ def parse_year_month(
     return y, m, start, end
 
 
+def shift_year_month(year: int, month: int, delta_months: int) -> Tuple[int, int]:
+    """Shift a calendar month by ``delta_months`` (negative = past)."""
+    idx = year * 12 + (month - 1) + delta_months
+    return idx // 12, (idx % 12) + 1
+
+
+def months_window(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    *,
+    months_back: int = 2,
+) -> List[Tuple[int, int]]:
+    """
+    Focus month + previous ``months_back`` months, newest first.
+
+    Default: current/requested month, previous, and the one before (3 total).
+    """
+    y, m, _, _ = parse_year_month(year, month)
+    return [shift_year_month(y, m, -i) for i in range(months_back + 1)]
+
+
 def _user_display_name(user) -> str:
     if user is None:
         return ""
@@ -619,3 +640,121 @@ class ComplianceUserMonthlyService:
         if idusuario is not None:
             result["idusuario"] = idusuario
         return result
+
+    def build_my_kardex_rolling_report(
+        self,
+        *,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        use_cache: bool = False,
+        force_live: bool = False,
+        idusuario: int,
+        errors_only: bool = True,
+        months_back: int = 2,
+    ) -> Dict[str, Any]:
+        """
+        Logged-in preparer report for the focus month + previous ``months_back`` months.
+
+        ``months`` is newest-first. Top-level fields mirror the focus (requested) month
+        for backward compatibility with the single-month ``/me/kardex/`` response.
+        """
+        window = months_window(year, month, months_back=months_back)
+        focus_y, focus_m = window[0]
+
+        months_out: List[Dict[str, Any]] = []
+        user_info: Optional[Dict[str, Any]] = None
+
+        for y, m in window:
+            report = self.build_user_kardex_report(
+                year=y,
+                month=m,
+                use_cache=use_cache,
+                force_live=force_live,
+                idusuario=idusuario,
+                errors_only=errors_only,
+            )
+            if report["users"]:
+                block = report["users"][0]
+                if user_info is None:
+                    user_info = {
+                        "idusuario": block["idusuario"],
+                        "name": block["name"],
+                        "username": block["username"],
+                    }
+                month_payload = {
+                    "year": y,
+                    "month": m,
+                    "period": report["period"],
+                    "source": report["source"],
+                    "errors_only": errors_only,
+                    "total_kardex": block["total_kardex"],
+                    "kardex_with_errors": block["kardex_with_errors"],
+                    "kardex_count": block["kardex_count"],
+                    "error_rate": block["error_rate"],
+                    "counts": block["counts"],
+                    "kardex": block["kardex"],
+                }
+            else:
+                month_payload = {
+                    "year": y,
+                    "month": m,
+                    "period": report["period"],
+                    "source": report["source"],
+                    "errors_only": errors_only,
+                    "total_kardex": 0,
+                    "kardex_with_errors": 0,
+                    "kardex_count": 0,
+                    "error_rate": 0.0,
+                    "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
+                    "kardex": [],
+                }
+            months_out.append(month_payload)
+
+        focus = months_out[0]
+        totals = {
+            "sisgen": sum(m["counts"]["sisgen"] for m in months_out),
+            "uif": sum(m["counts"]["uif"] for m in months_out),
+            "pdt": 0,
+            "total": sum(m["counts"]["total"] for m in months_out),
+        }
+        return {
+            "year": focus_y,
+            "month": focus_m,
+            "idusuario": idusuario,
+            "user": user_info,
+            "errors_only": errors_only,
+            "months_back": months_back,
+            "months": months_out,
+            "rolling_summary": {
+                "months_included": len(months_out),
+                "total_kardex": sum(m["total_kardex"] for m in months_out),
+                "kardex_with_errors": sum(m["kardex_with_errors"] for m in months_out),
+                "counts": totals,
+            },
+            # Focus month flattened (same shape as before for the UI default tab).
+            "period": focus["period"],
+            "source": focus["source"],
+            "total_kardex": focus["total_kardex"],
+            "kardex_with_errors": focus["kardex_with_errors"],
+            "kardex_count": focus["kardex_count"],
+            "error_rate": focus["error_rate"],
+            "counts": focus["counts"],
+            "kardex": focus["kardex"],
+            "users": (
+                [
+                    {
+                        "idusuario": user_info["idusuario"],
+                        "name": user_info["name"],
+                        "username": user_info["username"],
+                        "total_kardex": focus["total_kardex"],
+                        "kardex_with_errors": focus["kardex_with_errors"],
+                        "kardex_count": focus["kardex_count"],
+                        "error_rate": focus["error_rate"],
+                        "counts": focus["counts"],
+                        "kardex": focus["kardex"],
+                    }
+                ]
+                if user_info
+                else []
+            ),
+        }

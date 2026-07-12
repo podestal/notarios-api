@@ -143,12 +143,14 @@ class ComplianceMyKardexView(APIView):
     Logged-in preparer's kardex list with compliance error counts.
 
     GET /compliance/me/kardex/
-      - year, month (optional; default current month)
+      - year, month (optional; default current month) — focus month
       - cache=true (optional) — cache only, no live fallback
       - live=true (optional) — force full live validation
       - errorsOnly=true (default) | false
 
-    By default uses hybrid mode: cached counts when available, live only for missing.
+    Always includes the focus month plus the previous two months in ``months``
+    (newest first). Top-level ``kardex`` / ``counts`` stay the focus month for
+    backward compatibility. ``rolling_summary`` aggregates all three months.
 
     ``idusuario`` is taken from the JWT user — never from query params.
     """
@@ -162,18 +164,19 @@ class ComplianceMyKardexView(APIView):
 
         service = ComplianceUserMonthlyService()
         try:
-            report = service.build_user_kardex_report(
+            report = service.build_my_kardex_rolling_report(
                 year=params["year"],
                 month=params["month"],
                 use_cache=params["use_cache"],
                 force_live=params["force_live"],
                 idusuario=resolve_idusuario(request.user),
                 errors_only=params["errors_only"],
+                months_back=2,
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return _user_kardex_report_response(report)
+        return Response(report, status=status.HTTP_200_OK)
 
 
 class ComplianceMyKardexErrorsView(APIView):
