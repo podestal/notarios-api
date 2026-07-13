@@ -641,7 +641,7 @@ class ComplianceUserMonthlyService:
             result["idusuario"] = idusuario
         return result
 
-    def build_my_kardex_rolling_report(
+    def build_my_kardex_summary(
         self,
         *,
         year: Optional[int] = None,
@@ -650,19 +650,18 @@ class ComplianceUserMonthlyService:
         force_live: bool = False,
         idusuario: int,
         errors_only: bool = True,
-        months_back: int = 2,
+        months_back: int = 1,
     ) -> Dict[str, Any]:
         """
-        Logged-in preparer report for the focus month + previous ``months_back`` months.
+        Counts-only summary for the focus month + previous ``months_back`` months.
 
-        ``months`` is newest-first. Top-level fields mirror the focus (requested) month
-        for backward compatibility with the single-month ``/me/kardex/`` response.
+        Default ``months_back=1`` → current/requested month and the past month.
+        Kardex rows are not included — fetch them via ``build_user_kardex_report``
+        for a single year/month.
         """
         window = months_window(year, month, months_back=months_back)
         focus_y, focus_m = window[0]
-
         months_out: List[Dict[str, Any]] = []
-        user_info: Optional[Dict[str, Any]] = None
 
         for y, m in window:
             report = self.build_user_kardex_report(
@@ -675,86 +674,32 @@ class ComplianceUserMonthlyService:
             )
             if report["users"]:
                 block = report["users"][0]
-                if user_info is None:
-                    user_info = {
-                        "idusuario": block["idusuario"],
-                        "name": block["name"],
-                        "username": block["username"],
+                months_out.append(
+                    {
+                        "year": y,
+                        "month": m,
+                        "total_kardex": block["total_kardex"],
+                        "kardex_with_errors": block["kardex_with_errors"],
+                        "counts": block["counts"],
                     }
-                month_payload = {
-                    "year": y,
-                    "month": m,
-                    "period": report["period"],
-                    "source": report["source"],
-                    "errors_only": errors_only,
-                    "total_kardex": block["total_kardex"],
-                    "kardex_with_errors": block["kardex_with_errors"],
-                    "kardex_count": block["kardex_count"],
-                    "error_rate": block["error_rate"],
-                    "counts": block["counts"],
-                    "kardex": block["kardex"],
-                }
+                )
             else:
-                month_payload = {
-                    "year": y,
-                    "month": m,
-                    "period": report["period"],
-                    "source": report["source"],
-                    "errors_only": errors_only,
-                    "total_kardex": 0,
-                    "kardex_with_errors": 0,
-                    "kardex_count": 0,
-                    "error_rate": 0.0,
-                    "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
-                    "kardex": [],
-                }
-            months_out.append(month_payload)
+                months_out.append(
+                    {
+                        "year": y,
+                        "month": m,
+                        "total_kardex": 0,
+                        "kardex_with_errors": 0,
+                        "counts": {"sisgen": 0, "uif": 0, "pdt": 0, "total": 0},
+                    }
+                )
 
-        focus = months_out[0]
-        totals = {
-            "sisgen": sum(m["counts"]["sisgen"] for m in months_out),
-            "uif": sum(m["counts"]["uif"] for m in months_out),
-            "pdt": 0,
-            "total": sum(m["counts"]["total"] for m in months_out),
-        }
         return {
             "year": focus_y,
             "month": focus_m,
             "idusuario": idusuario,
-            "user": user_info,
-            "errors_only": errors_only,
-            "months_back": months_back,
             "months": months_out,
-            "rolling_summary": {
-                "months_included": len(months_out),
-                "total_kardex": sum(m["total_kardex"] for m in months_out),
-                "kardex_with_errors": sum(m["kardex_with_errors"] for m in months_out),
-                "counts": totals,
-            },
-            # Focus month flattened (same shape as before for the UI default tab).
-            "period": focus["period"],
-            "source": focus["source"],
-            "total_kardex": focus["total_kardex"],
-            "kardex_with_errors": focus["kardex_with_errors"],
-            "kardex_count": focus["kardex_count"],
-            "error_rate": focus["error_rate"],
-            "counts": focus["counts"],
-            "kardex": focus["kardex"],
-            "users": (
-                [
-                    {
-                        "idusuario": user_info["idusuario"],
-                        "name": user_info["name"],
-                        "username": user_info["username"],
-                        "total_kardex": focus["total_kardex"],
-                        "kardex_with_errors": focus["kardex_with_errors"],
-                        "kardex_count": focus["kardex_count"],
-                        "error_rate": focus["error_rate"],
-                        "counts": focus["counts"],
-                        "kardex": focus["kardex"],
-                    }
-                ]
-                if user_info
-                else []
-            ),
         }
+
+    # Back-compat alias
+    build_my_kardex_rolling_report = build_my_kardex_summary

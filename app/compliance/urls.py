@@ -5,6 +5,7 @@ from compliance.views import (
     ComplianceDetailView,
     ComplianceKardexErrorsView,
     ComplianceMyKardexErrorsView,
+    ComplianceMyKardexMonthView,
     ComplianceMyKardexView,
     ComplianceOverviewView,
     ComplianceRefreshView,
@@ -26,6 +27,11 @@ urlpatterns = [
         name="user-kardex",
     ),
     path("me/kardex/", ComplianceMyKardexView.as_view(), name="my-kardex"),
+    path(
+        "me/kardex/month/",
+        ComplianceMyKardexMonthView.as_view(),
+        name="my-kardex-month",
+    ),
     path(
         "me/kardex/<str:kardex>/errors/",
         ComplianceMyKardexErrorsView.as_view(),

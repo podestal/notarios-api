@@ -140,19 +140,14 @@ def _user_kardex_report_response(report: dict) -> Response:
 
 class ComplianceMyKardexView(APIView):
     """
-    Logged-in preparer's kardex list with compliance error counts.
+    Logged-in preparer: counts-only summary for focus month + past month.
 
     GET /compliance/me/kardex/
       - year, month (optional; default current month) — focus month
-      - cache=true (optional) — cache only, no live fallback
-      - live=true (optional) — force full live validation
-      - errorsOnly=true (default) | false
+      - cache=true / live=true / errorsOnly (same as users endpoints)
 
-    Always includes the focus month plus the previous two months in ``months``
-    (newest first). Top-level ``kardex`` / ``counts`` stay the focus month for
-    backward compatibility. ``rolling_summary`` aggregates all three months.
-
-    ``idusuario`` is taken from the JWT user — never from query params.
+    Does not return kardex rows. Use ``GET /compliance/me/kardex/month/``
+    for the list of a specific month, and ``.../errors/`` for one kardex.
     """
 
     permission_classes = [IsAuthenticated]
@@ -164,19 +159,51 @@ class ComplianceMyKardexView(APIView):
 
         service = ComplianceUserMonthlyService()
         try:
-            report = service.build_my_kardex_rolling_report(
+            report = service.build_my_kardex_summary(
                 year=params["year"],
                 month=params["month"],
                 use_cache=params["use_cache"],
                 force_live=params["force_live"],
                 idusuario=resolve_idusuario(request.user),
                 errors_only=params["errors_only"],
-                months_back=2,
+                months_back=1,
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(report, status=status.HTTP_200_OK)
+
+
+class ComplianceMyKardexMonthView(APIView):
+    """
+    Logged-in preparer's kardex list (counts per kardex) for one month.
+
+    GET /compliance/me/kardex/month/
+      - year, month (optional; default current month)
+      - cache=true / live=true / errorsOnly
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        params, err = _parse_users_month_params(request)
+        if err is not None:
+            return err
+
+        service = ComplianceUserMonthlyService()
+        try:
+            report = service.build_user_kardex_report(
+                year=params["year"],
+                month=params["month"],
+                use_cache=params["use_cache"],
+                force_live=params["force_live"],
+                idusuario=resolve_idusuario(request.user),
+                errors_only=params["errors_only"],
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return _user_kardex_report_response(report)
 
 
 class ComplianceMyKardexErrorsView(APIView):
