@@ -1277,11 +1277,8 @@ class NonContentiousDocumentService:
         return contractors_data
 
     def _get_payment_data(self, kardex: str) -> Dict[str, str]:
-        """
-        Get payment information for non-contentious documents
-        """
+        """No medio-de-pago narrative for no-contencioso via this legacy helper."""
         patrimonial = Patrimonial.objects.filter(kardex=kardex).first()
-        
         if not patrimonial:
             return {
                 'MONTO': '',
@@ -1295,48 +1292,21 @@ class NonContentiousDocumentService:
                 'FIN_MED_PAGO': '',
                 'FORMA_PAGO': '',
             }
-        
+
         precio = patrimonial.importetrans or 0
-        moneda = MONEDAS[patrimonial.idmon]['desmon'] if patrimonial else '' 
-        simbolo_moneda = MONEDAS[patrimonial.idmon]['simbolo'] if patrimonial else ''
-        forma_pago = FORMAS_PAGO[patrimonial.fpago]['descripcion'] if patrimonial else ''
-        
-        # Get medio de pago
-        medio_pago_obj = None
-        sunat_medio_pago = ''
-        if patrimonial.fpago:
-            # For now, use a default value since FpagoUif is not available
-            sunat_medio_pago = "008"  # Default to cash payment
-        
-        # Payment method logic (similar to PHP switch)
-        if sunat_medio_pago == "008":
-            medio_pago = f'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
-            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
-            fin_medio_pago = 'EN DINERO EN EFECTIVO'
-            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
-        elif sunat_medio_pago == "009":
-            medio_pago = f'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
-            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
-            fin_medio_pago = 'EN DINERO EN EFECTIVO'
-            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
-        else:
-            # Default case
-            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO CON CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018 EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "CHEQUE -001" '
-            exhibio_medio_pago = 'EN APLICACIÓN DE LA LEY 30730, SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES ME HAN EXHIBIDO EL SIGUIENTE MEDIO DE PAGO: ……… CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018. DOY FE.'
-            fin_medio_pago = 'EN DINERO EN EFECTIVO'
-            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
-        
+        moneda = MONEDAS[patrimonial.idmon]['desmon'] if patrimonial.idmon in MONEDAS else ''
+        simbolo_moneda = MONEDAS[patrimonial.idmon]['simbolo'] if patrimonial.idmon in MONEDAS else ''
         return {
             'MONTO': precio,
             'MON_VEHI': moneda,
             'MONTO_LETRAS': self.letras.money_to_letters(moneda, Decimal(precio)),
             'MONEDA_C': simbolo_moneda + ' ',
-            'SUNAT_MED_PAGO': sunat_medio_pago,
+            'SUNAT_MED_PAGO': '',
             'DES_PRE_VEHI': self.letras.money_to_letters(moneda, Decimal(precio)),
-            'EXH_MED_PAGO': exhibio_medio_pago,
-            'MED_PAGO': medio_pago,
-            'FIN_MED_PAGO': fin_medio_pago,
-            'FORMA_PAGO': forma_pago,
+            'EXH_MED_PAGO': '',
+            'MED_PAGO': '',
+            'FIN_MED_PAGO': '',
+            'FORMA_PAGO': '',
             'C_INICIO_MP': '',
             'TIPO_PAGO_E': '',
             'TIPO_PAGO_C': '',
@@ -2415,57 +2385,65 @@ class GarantiasMobiliariasDocumentService:
         }
 
     def _get_data_pagos(self, raw_data: dict) -> Dict[str, str]:
-        """
-        Get payment data - mirrors get_data_pagos PHP function
-        """
-        sunat_medio_pago = raw_data.get('sunat_medio_pago', '008')
+        """Payment merge fields for garantías — acto-neutral (never vehicular legalese)."""
+        sunat_medio_pago = str(raw_data.get('sunat_medio_pago') or '').strip()
         precio_raw = raw_data.get('precio', 0)
-        
-        # Handle None or invalid precio values
         try:
             precio = float(precio_raw) if precio_raw is not None else 0.0
-            print(f"DEBUG: precio_raw = {precio_raw}, converted to precio = {precio}")
-        except (ValueError, TypeError) as e:
-            print(f"ERROR: Failed to convert precio_raw '{precio_raw}' to float: {e}")
+        except (ValueError, TypeError):
             precio = 0.0
-            
+
         moneda = raw_data.get('moneda', 1)
         simbolo_moneda = raw_data.get('simbolo_moneda', '')
-        
-        # Payment method logic matching PHP switch statement
+        descripcion_moneda = MONEDAS.get(moneda, {}).get('desmon', '') if moneda else ''
+        try:
+            precio_decimal = Decimal(str(precio))
+            monto_letras = self.letras.money_to_letters(descripcion_moneda, precio_decimal)
+        except Exception:
+            monto_letras = ''
+
+        medio_pago = ''
+        exhibio_medio_pago = ''
+        fin_medio_pago = ''
+        forma_pago = ''
         if sunat_medio_pago == '008':
-            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
-            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            medio_pago = (
+                'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DE LA OPERACIÓN EN DINERO EN EFECTIVO. '
+                'NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, '
+                'PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. '
+                'EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE '
+                'NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 '
+                'POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            )
+            exhibio_medio_pago = (
+                'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, '
+                'LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            )
             fin_medio_pago = 'EN DINERO EN EFECTIVO'
             forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
         elif sunat_medio_pago == '009':
-            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
-            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            medio_pago = (
+                'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DE LA OPERACIÓN EN DINERO EN EFECTIVO '
+                'Y CON ANTERIORIDAD A LA CELEBRACIÓN DEL PRESENTE INSTRUMENTO. '
+                'NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, '
+                'EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE '
+                'NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 '
+                'POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            )
+            exhibio_medio_pago = (
+                'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, '
+                'LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            )
             fin_medio_pago = 'EN DINERO EN EFECTIVO'
             forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
-        else:
-            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO CON CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018 EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "CHEQUE -001" '
-            exhibio_medio_pago = 'EN APLICACIÓN DE LA LEY 30730, SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES ME HAN EXHIBIDO EL SIGUIENTE MEDIO DE PAGO: ……… CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018. DOY FE.'
-            fin_medio_pago = 'EN DINERO EN EFECTIVO'
-            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
-        
-        # Get moneda description from constants
-        descripcion_moneda = MONEDAS.get(moneda, {}).get('desmon', '') if moneda else ''
 
-        # Safe Decimal conversion
-        try:
-            precio_decimal = Decimal(str(precio))
-        except Exception as e:
-            print(f"ERROR: Failed to convert precio {precio} to Decimal: {e}")
-            precio_decimal = Decimal("0.00")
-        
         return {
-            'MONTO': str(precio),
-            'MON_VEHI': descripcion_moneda,
-            'MONTO_LETRAS': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
-            'MONEDA_C': simbolo_moneda + ' ' if simbolo_moneda else '',
+            'MONTO': str(precio) if precio else '',
+            'MON_VEHI': descripcion_moneda if precio else '',
+            'MONTO_LETRAS': monto_letras if precio else '',
+            'MONEDA_C': (simbolo_moneda + ' ') if simbolo_moneda else '',
             'SUNAT_MED_PAGO': sunat_medio_pago,
-            'DES_PRE_VEHI': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
+            'DES_PRE_VEHI': monto_letras if precio else '',
             'EXH_MED_PAGO': exhibio_medio_pago,
             'MED_PAGO': medio_pago,
             'FIN_MED_PAGO': fin_medio_pago,
@@ -2474,7 +2452,7 @@ class GarantiasMobiliariasDocumentService:
             'TIPO_PAGO_E': '',
             'TIPO_PAGO_C': '',
             'MONTO_MP': '',
-            'CONSTANCIA': '',
+            'CONSTANCIA': exhibio_medio_pago,
             'DETALLE_MP': '',
             'FORMA_PAGO_S': '',
             'MONEDA_C_MP': '',
@@ -3169,57 +3147,65 @@ class EscrituraPublicaDocumentService:
         }
 
     def _get_data_pagos(self, raw_data: dict) -> Dict[str, str]:
-        """
-        Get payment data - mirrors get_data_pagos PHP function
-        """
-        sunat_medio_pago = raw_data.get('sunat_medio_pago', '008')
+        """Payment merge fields for escritura — acto-neutral (never vehicular legalese)."""
+        sunat_medio_pago = str(raw_data.get('sunat_medio_pago') or '').strip()
         precio_raw = raw_data.get('precio', 0)
-        
-        # Handle None or invalid precio values
         try:
             precio = float(precio_raw) if precio_raw is not None else 0.0
-            print(f"DEBUG: precio_raw = {precio_raw}, converted to precio = {precio}")
-        except (ValueError, TypeError) as e:
-            print(f"ERROR: Failed to convert precio_raw '{precio_raw}' to float: {e}")
+        except (ValueError, TypeError):
             precio = 0.0
-            
+
         moneda = raw_data.get('moneda', 1)
         simbolo_moneda = raw_data.get('simbolo_moneda', '')
-        
-        # Payment method logic matching PHP switch statement
+        descripcion_moneda = MONEDAS.get(moneda, {}).get('desmon', '') if moneda else ''
+        try:
+            precio_decimal = Decimal(str(precio))
+            monto_letras = self.letras.money_to_letters(descripcion_moneda, precio_decimal)
+        except Exception:
+            monto_letras = ''
+
+        medio_pago = ''
+        exhibio_medio_pago = ''
+        fin_medio_pago = ''
+        forma_pago = ''
         if sunat_medio_pago == '008':
-            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
-            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            medio_pago = (
+                'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DE LA OPERACIÓN EN DINERO EN EFECTIVO. '
+                'NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, '
+                'PORQUE EL MONTO TOTAL NO ES IGUAL NI SUPERA LOS S/ 3,500.00 O US$ 1,000.00. '
+                'EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE '
+                'NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-008". INAPLICABLE LA LEY 30730 '
+                'POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            )
+            exhibio_medio_pago = (
+                'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, '
+                'LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            )
             fin_medio_pago = 'EN DINERO EN EFECTIVO'
             forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
         elif sunat_medio_pago == '009':
-            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO EN DINERO EN EFECTIVO Y CON ANTERIORIDAD A LA CELEBRACION DE LA PRESENTE ACTA DE TRANSFERENCIA. NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
-            exhibio_medio_pago = 'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            medio_pago = (
+                'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DE LA OPERACIÓN EN DINERO EN EFECTIVO '
+                'Y CON ANTERIORIDAD A LA CELEBRACIÓN DEL PRESENTE INSTRUMENTO. '
+                'NO HABIENDO UTILIZADO NINGÚN MEDIO DE PAGO ESTABLECIDO EN LA LEY Nº 28194, '
+                'EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "EFECTIVO POR OPERACIONES EN LAS QUE '
+                'NO EXISTE OBLIGACIÓN DE UTILIZAR MEDIOS DE PAGO-009". INAPLICABLE LA LEY 30730 '
+                'POR SER EL PAGO DEL PRECIO INFERIOR A 3 UIT.'
+            )
+            exhibio_medio_pago = (
+                'SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, '
+                'LAS PARTES NO ME HAN EXHIBIDO NINGÚN MEDIO DE PAGO. DOY FE.'
+            )
             fin_medio_pago = 'EN DINERO EN EFECTIVO'
             forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
-        else:
-            medio_pago = 'EL COMPRADOR DECLARA QUE HA PAGADO EL PRECIO DEL VEHICULO CON CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018 EL TIPO Y CÓDIGO DEL MEDIO EMPLEADO ES: "CHEQUE -001" '
-            exhibio_medio_pago = 'EN APLICACIÓN DE LA LEY 30730, SE DEJA CONSTANCIA QUE PARA LA REALIZACIÓN DEL PRESENTE ACTO, LAS PARTES ME HAN EXHIBIDO EL SIGUIENTE MEDIO DE PAGO: ……… CHEQUE DEL BANCO DE CREDITO DEL PERÚ N° 1111111 111111 1111, GIRADO POR: YYYYYYYYY A FAVOR DE: XXXXXXXXX POR LA SUMA DE S/ 15,000.00, JULIACA 16/08/2018. DOY FE.'
-            fin_medio_pago = 'EN DINERO EN EFECTIVO'
-            forma_pago = 'AL CONTADO CON DINERO EN EFECTIVO'
-        
-        # Get moneda description from constants
-        descripcion_moneda = MONEDAS.get(moneda, {}).get('desmon', '') if moneda else ''
 
-        # Safe Decimal conversion
-        try:
-            precio_decimal = Decimal(str(precio))
-        except Exception as e:
-            print(f"ERROR: Failed to convert precio {precio} to Decimal: {e}")
-            precio_decimal = Decimal("0.00")
-        
         return {
-            'MONTO': str(precio),
-            'MON_VEHI': descripcion_moneda,
-            'MONTO_LETRAS': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
-            'MONEDA_C': simbolo_moneda + ' ' if simbolo_moneda else '',
+            'MONTO': str(precio) if precio else '',
+            'MON_VEHI': descripcion_moneda if precio else '',
+            'MONTO_LETRAS': monto_letras if precio else '',
+            'MONEDA_C': (simbolo_moneda + ' ') if simbolo_moneda else '',
             'SUNAT_MED_PAGO': sunat_medio_pago,
-            'DES_PRE_VEHI': self.letras.money_to_letters(descripcion_moneda, precio_decimal),
+            'DES_PRE_VEHI': monto_letras if precio else '',
             'EXH_MED_PAGO': exhibio_medio_pago,
             'MED_PAGO': medio_pago,
             'FIN_MED_PAGO': fin_medio_pago,
@@ -3228,7 +3214,7 @@ class EscrituraPublicaDocumentService:
             'TIPO_PAGO_E': '',
             'TIPO_PAGO_C': '',
             'MONTO_MP': '',
-            'CONSTANCIA': '',
+            'CONSTANCIA': exhibio_medio_pago,
             'DETALLE_MP': '',
             'FORMA_PAGO_S': '',
             'MONEDA_C_MP': '',

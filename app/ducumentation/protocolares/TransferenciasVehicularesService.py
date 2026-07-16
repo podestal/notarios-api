@@ -78,7 +78,7 @@ class TransferenciasVehicularesDocumentService:
         # STEP 4: Format data using REUSABLE utilities
         data_documento = self.formatter.format_document_data(raw_data)
         data_vehiculos = self.formatter.format_vehicle_data(raw_data)
-        data_pagos = self.formatter.format_payment_data(raw_data)
+        data_pagos = self.formatter.format_payment_data(raw_data, kind="vehicular")
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
         data_contratantes = self.formatter.format_contractor_data(raw_data)
         data_contratantes = self._normalize_transferencias_contractor_fields(

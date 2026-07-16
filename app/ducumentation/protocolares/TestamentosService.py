@@ -76,7 +76,7 @@ class TestamentosDocumentService:
         # STEP 4: Format data using REUSABLE utilities
         data_documento = self.formatter.format_document_data(raw_data)
         data_vehiculos = self.formatter.format_vehicle_data(raw_data)
-        data_pagos = self.formatter.format_payment_data(raw_data)
+        data_pagos = self.formatter.format_payment_data(raw_data, kind="none")
         data_escrituracion = self.formatter.format_escrituracion_data(raw_data)
         data_contratantes = self.formatter.format_contractor_data(raw_data)
         data_company = self.formatter.format_company_data(raw_data)
