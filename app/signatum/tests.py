@@ -53,36 +53,7 @@ class AllocateCorrelativesTests(TestCase):
             allocated = allocation.allocate_correlatives(year=2026, idtipkar=3)
 
         self.assertEqual(allocated.num_escritura, "139")
-        self.assertEqual(allocated.num_minuta, "51")
         self.assertEqual(allocated.folio, "201")
-
-    def test_empty_minuta_keeps_proposing_one(self):
-        models.Notarization.objects.create(
-            idtipkar=3,
-            kardex="A100-2026",
-            folio_ini="200",
-            folio_fin="200",
-            num_escritura="10",
-            num_minuta="",
-            fecha_escritura="2026-07-17",
-        )
-        with transaction.atomic():
-            first = allocation.allocate_correlatives(year=2026, idtipkar=3)
-            allocation.advance_folio_on_commit(year=2026, idtipkar=3, folio_fin="200")
-            # Simulate commit with empty minuta so next bump still sees "".
-            models.Notarization.objects.create(
-                idtipkar=3,
-                kardex="A101-2026",
-                folio_ini="200",
-                folio_fin="200",
-                num_escritura=first.num_escritura,
-                num_minuta="",
-                fecha_escritura="2026-07-17",
-            )
-            second = allocation.allocate_correlatives(year=2026, idtipkar=3)
-
-        self.assertEqual(first.num_minuta, "1")
-        self.assertEqual(second.num_minuta, "1")
 
 
 class FinalizeReservationTests(TestCase):
@@ -97,7 +68,7 @@ class FinalizeReservationTests(TestCase):
             "folio_ini": "201",
             "folio_fin": "201",
             "num_escritura": "139",
-            "num_minuta": "1",
+            "num_minuta": "",
             "fecha_escritura": "2026-07-17",
             "status": models.NotarizationReservation.Status.PENDING,
             "held_by": self.user,

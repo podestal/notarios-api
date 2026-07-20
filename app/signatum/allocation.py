@@ -3,8 +3,9 @@ Locked correlative allocation for escrituración reservations.
 
 ``CorrelativeCounter`` is the source of truth for the next num_escritura.
 Folio advances from ``last_folio`` only after a successful commit so an
-expired reservation can reuse the same folio slot. num_minuta follows
-legacy bump-from-last-notarization behavior.
+expired reservation can reuse the same folio slot.
+
+``num_minuta`` is never allocated here — clerks enter it manually on the kardex.
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ from signatum import correlatives, models
 @dataclass(frozen=True)
 class AllocatedCorrelatives:
     num_escritura: str
-    num_minuta: str
     folio: str
 
 
@@ -89,9 +89,7 @@ def allocate_correlatives(*, year: int, idtipkar: int) -> AllocatedCorrelatives:
     Assign the next escritura/folio under a row lock and advance the escritura
     counter. Does not advance ``last_folio`` (commit does).
 
-    ``num_minuta`` follows legacy behavior: bump from the last committed
-    notarization for the year (empty history -> \"1\"), so actos that leave
-    minuta blank keep receiving \"1\" instead of drifting 1,2,3...
+    Does not allocate ``num_minuta`` — that field is clerk-entered only.
     """
     counter = get_locked_counter(year=year, idtipkar=idtipkar)
 
@@ -102,30 +100,11 @@ def allocate_correlatives(*, year: int, idtipkar: int) -> AllocatedCorrelatives:
         else "1"
     )
 
-    last = (
-        models.Notarization.objects.filter(
-            created_at__year=year,
-            idtipkar=idtipkar,
-        )
-        .order_by("-id")
-        .first()
-    )
-    num_minuta = correlatives.bump_int_string(last.num_minuta if last else "")
-
     counter.next_num_escritura = counter.next_num_escritura + 1
-    # Keep next_num_minuta in sync for future admin tooling, but do not use it
-    # as the allocator while legacy empty-minuta behavior is required.
-    try:
-        counter.next_num_minuta = max(1, int(num_minuta) + 1)
-    except ValueError:
-        counter.next_num_minuta = 1
-    counter.save(
-        update_fields=["next_num_escritura", "next_num_minuta", "updated_at"]
-    )
+    counter.save(update_fields=["next_num_escritura", "updated_at"])
 
     return AllocatedCorrelatives(
         num_escritura=num_escritura,
-        num_minuta=num_minuta,
         folio=folio,
     )
 

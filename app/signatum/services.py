@@ -51,6 +51,7 @@ def _apply_reservation_to_kardex(
 
     Client may still send stale numescritura/folioini; reservation wins.
     folio_fin / papel_* may be widened by the client (multi-page acts).
+    num_minuta is never applied from the reservation (clerk-entered).
     """
     updated: list[str] = []
 
@@ -71,10 +72,7 @@ def _apply_reservation_to_kardex(
             kardex_instance.foliofin = reserved_folio_fin
             updated.append("foliofin")
 
-    reserved_minuta = _norm(reservation.num_minuta)
-    if reserved_minuta and _norm(kardex_instance.numminuta) != reserved_minuta:
-        kardex_instance.numminuta = reserved_minuta
-        updated.append("numminuta")
+    # num_minuta is clerk-entered on kardex; never overwrite from reservation.
 
     reserved_fecha = _norm(reservation.fecha_escritura)
     if reserved_fecha and not _norm(kardex_instance.fechaescritura):

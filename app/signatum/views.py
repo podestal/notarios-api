@@ -194,7 +194,7 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
             "folio_fin": allocated.folio,
             "papel_ini": papel_ini,
             "papel_fin": papel_fin,
-            "num_minuta": allocated.num_minuta,
+            "num_minuta": "",
             "num_escritura": allocated.num_escritura,
             "fecha_escritura": correlatives.today_iso(),
             "status": models.NotarizationReservation.Status.PENDING,
