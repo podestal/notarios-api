@@ -9,7 +9,7 @@ from rest_framework.response import Response
 
 
 
-from . import correlatives, models, serializers
+from . import allocation, correlatives, models, serializers
 
 
 class NotarizationViewSet(viewsets.ModelViewSet):
@@ -89,16 +89,6 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
                 status=models.NotarizationReservation.Status.PENDING,
             )
             .select_related("held_by")
-            .order_by("-id")
-            .first()
-        )
-
-    def _last_notarization_for_year(self, year: int, idtipkar: int):
-        return (
-            models.Notarization.objects.filter(
-                created_at__year=year,
-                idtipkar=idtipkar,
-            )
             .order_by("-id")
             .first()
         )
@@ -194,39 +184,18 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
     def _build_reservation_fields(
         self, *, kardex: str, idtipkar: int, year: int, user
     ):
-        last = self._last_notarization_for_year(year, idtipkar)
-        if last is None:
-            one = "1"
-            papel_ini, papel_fin = self._proposed_papel_from_series(idtipkar)
-            return {
-                "idtipkar": idtipkar,
-                "kardex": kardex,
-                "fecha_conclusion": "",
-                "folio_ini": one,
-                "folio_fin": one,
-                "papel_ini": papel_ini,
-                "papel_fin": papel_fin,
-                "num_minuta": one,
-                "num_escritura": one,
-                "fecha_escritura": correlatives.today_iso(),
-                "status": models.NotarizationReservation.Status.PENDING,
-                "held_by": user,
-            }
-
-        folio = correlatives.bump_folio_papel_string(
-            last.folio_fin or last.folio_ini or ""
-        )
+        allocated = allocation.allocate_correlatives(year=year, idtipkar=idtipkar)
         papel_ini, papel_fin = self._proposed_papel_from_series(idtipkar)
         return {
             "idtipkar": idtipkar,
             "kardex": kardex,
-            "fecha_conclusion": last.fecha_conclusion,
-            "folio_ini": folio,
-            "folio_fin": folio,
+            "fecha_conclusion": "",
+            "folio_ini": allocated.folio,
+            "folio_fin": allocated.folio,
             "papel_ini": papel_ini,
             "papel_fin": papel_fin,
-            "num_minuta": correlatives.bump_int_string(last.num_minuta),
-            "num_escritura": correlatives.bump_int_string(last.num_escritura),
+            "num_minuta": allocated.num_minuta,
+            "num_escritura": allocated.num_escritura,
             "fecha_escritura": correlatives.today_iso(),
             "status": models.NotarizationReservation.Status.PENDING,
             "held_by": user,
@@ -259,7 +228,17 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
             self._reservation_reused = True
             return
 
-        active = self._active_pending_reservation(idtipkar)
+        # Lock any active PE row for this tipo so concurrent creates serialize.
+        active = (
+            models.NotarizationReservation.objects.select_for_update()
+            .filter(
+                idtipkar=idtipkar,
+                status=models.NotarizationReservation.Status.PENDING,
+            )
+            .select_related("held_by")
+            .order_by("-id")
+            .first()
+        )
         if active is not None:
             if active.held_by_id != user.id:
                 raise ValidationError(

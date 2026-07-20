@@ -104,3 +104,40 @@ class SerieNotarial(models.Model):
 
     class Meta:
         ordering = ("created_at", "id")
+
+
+class CorrelativeCounter(models.Model):
+    """
+    Authoritative next correlatives per calendar year + tipo de kardex.
+
+    Allocation locks this row with SELECT FOR UPDATE so concurrent reserves
+    cannot hand out the same num_escritura. last_folio advances only on commit
+    so an expired reservation can reuse the same folio slot.
+    """
+
+    year = models.PositiveIntegerField()
+    idtipkar = models.IntegerField()
+    next_num_escritura = models.PositiveIntegerField(default=1)
+    next_num_minuta = models.PositiveIntegerField(default=1)
+    last_folio = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        help_text="Last committed folio_fin; next reserve bumps from this.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-year", "idtipkar")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("year", "idtipkar"),
+                name="signatum_correlative_counter_year_idtipkar_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"Counter y={self.year} tipkar={self.idtipkar} "
+            f"next_esc={self.next_num_escritura} folio={self.last_folio!r}"
+        )
