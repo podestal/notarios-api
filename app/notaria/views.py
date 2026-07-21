@@ -1646,7 +1646,7 @@ class ContratantesViewSet(ModelViewSet):
                     "idprofesion": cliente1.idprofesion or 0,
                     "detaprofesion": cliente1.detaprofesion or "",
                     "idcargoprofe": cliente1.idcargoprofe or 0,
-                    "profocupa": cliente1.detaprofesion or "",
+                    "profocupa": cliente1.profocupa or "",
                     "dirfer": cliente1.direccion,
                     "idubigeo": cliente1.idubigeo or ".",
                     "cumpclie": cliente1.cumpclie or ".",
