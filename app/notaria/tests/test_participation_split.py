@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase
 
-from notaria.services.participation_split import divide_evenly
+from notaria.services.participation_split import divide_evenly, parse_finite_decimal
 from notaria.views import _sanitize_contratantesxacto_patch
 from unittest.mock import MagicMock
 
@@ -35,6 +35,11 @@ class ParticipationSplitTest(SimpleTestCase):
             if pct == 33.33:
                 self.assertNotEqual(amt, legacy_monto)
             self.assertEqual(amt, 8300.0)
+
+    def test_rejects_infinity_strings(self):
+        for bad in ("inf", "Infinity", "-Infinity", "nan", float("inf")):
+            with self.assertRaises(ValueError):
+                parse_finite_decimal(bad, field="porcentaje")
 
     def test_strip_monto_when_editing_ofondo(self):
         instance = MagicMock(monto="8300.00", porcentaje="33.33", ofondo="OLD", opago="")

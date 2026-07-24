@@ -333,6 +333,28 @@ class ContratantesxactoSerializer(serializers.ModelSerializer):
         model = models.Contratantesxacto
         fields = "__all__"
 
+    def validate_porcentaje(self, value):
+        if value in (None, ""):
+            return value
+        from notaria.services.participation_split import parse_finite_decimal
+
+        try:
+            parse_finite_decimal(value, field="porcentaje")
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
+
+    def validate_monto(self, value):
+        if value in (None, ""):
+            return value
+        from notaria.services.participation_split import parse_finite_decimal
+
+        try:
+            parse_finite_decimal(value, field="monto")
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
+
 
 class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
     """

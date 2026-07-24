@@ -4,8 +4,9 @@ Even split of money or percentages for kardex calculate (PHP divide() parity, ce
 
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
-from typing import List, Union
+import math
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import List, Optional, Union
 
 Number = Union[int, float, str, Decimal]
 
@@ -38,9 +39,37 @@ def divide_evenly(count: int, total: Number) -> List[float]:
     return parts
 
 
+def parse_finite_decimal(value: Number, *, field: str = "value") -> Optional[Decimal]:
+    """
+    Parse a finite Decimal or return None for blank.
+
+    Rejects inf / -inf / nan / non-numeric strings (e.g. \"Infinity\" from JS
+    ``(x/0).toString()``).
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"{field} must be a finite number (got non-finite float).")
+    try:
+        dec = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError(f"{field} must be a valid number.") from exc
+    if not dec.is_finite():
+        raise ValueError(f"{field} must be a finite number (got {value!r}).")
+    return dec
+
+
 def format_monto(amount: Number) -> str:
-    return str(Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    dec = parse_finite_decimal(amount, field="monto")
+    if dec is None:
+        return "0.00"
+    return str(dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def format_porcentaje(amount: Number) -> str:
-    return str(Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    dec = parse_finite_decimal(amount, field="porcentaje")
+    if dec is None:
+        return "0.00"
+    return str(dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
