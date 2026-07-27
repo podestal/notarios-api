@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from core.permissions import IsStaffOrSuperuser
 from notaria.models import Kardex
 from notaria.pagination import KardexPagination
-from signatum import correlatives, models, serializers
+from signatum import allocation, correlatives, models, serializers
 
 
 class AdminReservationViewSet(viewsets.ReadOnlyModelViewSet):
@@ -100,6 +100,165 @@ class AdminReservationViewSet(viewsets.ReadOnlyModelViewSet):
             "by_user_id": request.user.id,
         }
         return Response(data)
+
+    @action(detail=True, methods=["post"], url_path="reverse")
+    def reverse(self, request, pk=None):
+        """
+        Undo a committed reservation: delete its notarization, rebuild the
+        correlative counter, optionally clear kardex escrituración fields.
+
+        Body::
+            {
+              "reason": "duplicate / wrong kardex",
+              "clear_kardex": true,
+              "hard_delete": false
+            }
+        """
+        ser = serializers.AdminReverseReservationSerializer(data=request.data or {})
+        ser.is_valid(raise_exception=True)
+        clear_kardex = ser.validated_data.get("clear_kardex", True)
+        hard_delete = ser.validated_data.get("hard_delete", False)
+        reason = ser.validated_data.get("reason") or ""
+
+        with transaction.atomic():
+            reservation = (
+                models.NotarizationReservation.objects.select_for_update()
+                .filter(pk=pk)
+                .first()
+            )
+            if reservation is None:
+                raise NotFound("Reservation not found.")
+
+            if reservation.status != models.NotarizationReservation.Status.COMMITTED:
+                raise ValidationError(
+                    {
+                        "status": (
+                            "Only committed (CO) reservations can be reversed; "
+                            f"current status is {reservation.status}."
+                        )
+                    }
+                )
+
+            notarization = (
+                models.Notarization.objects.select_for_update()
+                .filter(source_reservation_id=reservation.id)
+                .first()
+            )
+            # Fallback: same kardex + tipkar committed row if link missing.
+            if notarization is None:
+                notarization = (
+                    models.Notarization.objects.select_for_update()
+                    .filter(
+                        kardex=reservation.kardex,
+                        idtipkar=reservation.idtipkar,
+                    )
+                    .order_by("-id")
+                    .first()
+                )
+
+            notarization_snapshot = None
+            year = correlatives.correlative_year_today()
+            if notarization is not None:
+                year = (
+                    notarization.created_at.year
+                    if notarization.created_at
+                    else year
+                )
+                notarization_snapshot = {
+                    "id": notarization.id,
+                    "kardex": notarization.kardex,
+                    "num_escritura": notarization.num_escritura,
+                    "folio_ini": notarization.folio_ini,
+                    "folio_fin": notarization.folio_fin,
+                    "papel_ini": notarization.papel_ini,
+                    "papel_fin": notarization.papel_fin,
+                    "fecha_escritura": notarization.fecha_escritura,
+                }
+
+            kardex_cleared = None
+            if clear_kardex and notarization is not None:
+                kardex_cleared = self._clear_kardex_if_matches(notarization)
+
+            if notarization is not None:
+                notarization.delete()
+
+            counter = allocation.rebuild_counter_from_history(
+                year=year,
+                idtipkar=reservation.idtipkar,
+            )
+            counter_snapshot = {
+                "id": counter.id,
+                "year": counter.year,
+                "idtipkar": counter.idtipkar,
+                "next_num_escritura": counter.next_num_escritura,
+                "last_folio": counter.last_folio,
+            }
+
+            reservation_id = reservation.id
+            if hard_delete:
+                reservation.delete()
+                reservation_data = {
+                    "id": reservation_id,
+                    "status": "deleted",
+                    "kardex": notarization_snapshot["kardex"]
+                    if notarization_snapshot
+                    else None,
+                }
+            else:
+                reservation.status = models.NotarizationReservation.Status.REVERSED
+                reservation.save(update_fields=["status"])
+                reservation_data = self.get_serializer(reservation).data
+
+        reservation_data["admin_action"] = {
+            "action": "reverse",
+            "reason": reason,
+            "by_user_id": request.user.id,
+            "deleted_notarization": notarization_snapshot,
+            "kardex_cleared": kardex_cleared,
+            "counter": counter_snapshot,
+            "hard_delete": hard_delete,
+        }
+        return Response(reservation_data)
+
+    @staticmethod
+    def _clear_kardex_if_matches(notarization: models.Notarization) -> dict | None:
+        """
+        Clear escrituración fields on kardex only when numescritura still matches
+        this notarization (avoids wiping a later re-escrituración).
+        """
+        kardex_row = Kardex.objects.filter(kardex=notarization.kardex).first()
+        if kardex_row is None:
+            return {"kardex": notarization.kardex, "cleared": False, "reason": "not_found"}
+
+        esc = str(notarization.num_escritura or "").strip()
+        current = str(kardex_row.numescritura or "").strip()
+        if esc and current and current != esc:
+            return {
+                "kardex": notarization.kardex,
+                "cleared": False,
+                "reason": "numescritura_mismatch",
+                "kardex_numescritura": current,
+                "notarization_num_escritura": esc,
+            }
+
+        fields = [
+            "numescritura",
+            "numminuta",
+            "folioini",
+            "foliofin",
+            "papelini",
+            "papelfin",
+            "fechaescritura",
+            "fechaconclusion",
+        ]
+        for name in fields:
+            setattr(kardex_row, name, "")
+        kardex_row.save(update_fields=fields)
+        return {
+            "kardex": notarization.kardex,
+            "cleared": True,
+            "updated_fields": fields,
+        }
 
 
 class AdminCorrelativeCounterViewSet(

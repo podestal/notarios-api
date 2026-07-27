@@ -61,6 +61,24 @@ class AdminReleaseReservationSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class AdminReverseReservationSerializer(serializers.Serializer):
+    """Undo a committed reservation as if it was never used."""
+
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+    clear_kardex = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text=(
+            "Clear kardex escrituración fields when they still match this commit."
+        ),
+    )
+    hard_delete = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="If true, delete the reservation row; otherwise mark status=RV.",
+    )
+
+
 class AdminSetCounterSerializer(serializers.Serializer):
     """Create or update the correlative counter for year + idtipkar."""
 

@@ -117,3 +117,24 @@ def advance_folio_on_commit(*, year: int, idtipkar: int, folio_fin: str) -> None
     counter = get_locked_counter(year=year, idtipkar=idtipkar)
     counter.last_folio = folio
     counter.save(update_fields=["last_folio", "updated_at"])
+
+
+def rebuild_counter_from_history(*, year: int, idtipkar: int) -> models.CorrelativeCounter:
+    """
+    Reset counter next_escritura / last_folio from remaining committed
+    notarizations for year+tipo (used after reversing a commit).
+    """
+    counter = get_locked_counter(year=year, idtipkar=idtipkar)
+    defaults = _seed_defaults_from_history(year=year, idtipkar=idtipkar)
+    counter.next_num_escritura = defaults["next_num_escritura"]
+    counter.next_num_minuta = defaults["next_num_minuta"]
+    counter.last_folio = defaults["last_folio"]
+    counter.save(
+        update_fields=[
+            "next_num_escritura",
+            "next_num_minuta",
+            "last_folio",
+            "updated_at",
+        ]
+    )
+    return counter

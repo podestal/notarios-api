@@ -49,6 +49,7 @@ class NotarizationReservation(models.Model):
         COMMITTED = "CO", "Committed"
         CANCELLED = "CA", "Cancelled"
         EXPIRED = "EX", "Expired"
+        REVERSED = "RV", "Reversed"
 
     idtipkar = models.IntegerField(
         help_text="Tipo de kardex; pending lock and correlatives are independent per tipo.",
