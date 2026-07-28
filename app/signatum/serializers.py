@@ -89,6 +89,7 @@ class AdminSetCounterSerializer(serializers.Serializer):
     last_folio = serializers.CharField(
         required=False, allow_blank=True, max_length=30
     )
+    freed_num_escrituras = serializers.JSONField(required=False)
 
 
 class AdminPatchCounterSerializer(serializers.Serializer):
@@ -97,6 +98,7 @@ class AdminPatchCounterSerializer(serializers.Serializer):
     last_folio = serializers.CharField(
         required=False, allow_blank=True, max_length=30
     )
+    freed_num_escrituras = serializers.JSONField(required=False)
 
 
 class AdminPatchNotarizationSerializer(serializers.Serializer):

@@ -126,6 +126,15 @@ class CorrelativeCounter(models.Model):
         default="",
         help_text="Last committed folio_fin; next reserve bumps from this.",
     )
+    freed_num_escrituras = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Freed correlative slots while higher ones remain committed. "
+            'Each entry: {"num_escritura": 147, "folio": "10"}. '
+            "Next reserve reuses the lowest escritura with its original folio."
+        ),
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -140,5 +149,6 @@ class CorrelativeCounter(models.Model):
     def __str__(self) -> str:
         return (
             f"Counter y={self.year} tipkar={self.idtipkar} "
-            f"next_esc={self.next_num_escritura} folio={self.last_folio!r}"
+            f"next_esc={self.next_num_escritura} folio={self.last_folio!r} "
+            f"freed={self.freed_num_escrituras!r}"
         )

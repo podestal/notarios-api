@@ -507,11 +507,23 @@ class KardexViewSet(ModelViewSet):
 
             models.DetalleActosKardex.objects.create(**detalle_data)
 
+        from signatum.services import (
+            finalize_notarization_from_reservation,
+            is_clearing_escrituracion,
+            reverse_committed_for_kardex,
+        )
+
+        # Distinguish escrituración clear vs update before the row is overwritten.
+        clearing_escrituracion = is_clearing_escrituracion(instance, data)
+        prior_numescritura = (getattr(instance, "numescritura", None) or "").strip()
+        prior_kardex = (instance.kardex or "").strip()
+        prior_idtipkar = instance.idtipkar
+
         reservation_id = request.data.get("signatum_reservation_id") or request.query_params.get(
             "signatum_reservation_id"
         )
         rid = None
-        if reservation_id not in (None, ""):
+        if reservation_id not in (None, "") and not clearing_escrituracion:
             try:
                 rid = int(reservation_id)
             except (TypeError, ValueError):
@@ -525,9 +537,19 @@ class KardexViewSet(ModelViewSet):
         if isinstance(getattr(response, "data", None), dict):
             response.data["estado_sisgen"] = 0
 
-        if rid is not None:
-            from signatum.services import finalize_notarization_from_reservation
-
+        if clearing_escrituracion:
+            # Kardex fields already cleared by PATCH; free reservation + counter.
+            reverse_result = reverse_committed_for_kardex(
+                kardex_code=prior_kardex,
+                idtipkar=prior_idtipkar,
+                num_escritura=prior_numescritura or None,
+                clear_kardex=False,
+                reason="Kardex escrituración cleared via PATCH",
+                user=request.user,
+            )
+            if isinstance(getattr(response, "data", None), dict) and reverse_result:
+                response.data["signatum_reversed"] = reverse_result
+        elif rid is not None:
             finalize_notarization_from_reservation(
                 kardex_instance=kardex_instance,
                 reservation_id=rid,

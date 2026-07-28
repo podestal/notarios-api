@@ -63,11 +63,25 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
     def _release_stale_pending_on_create(self, idtipkar: int) -> None:
         """Mark PE rows older than 5 minutes as EX, only for this tipo de kardex."""
         cutoff = timezone.now() - timedelta(minutes=self.RESERVATION_BLOCK_MINUTES)
-        models.NotarizationReservation.objects.filter(
-            idtipkar=idtipkar,
-            status=models.NotarizationReservation.Status.PENDING,
-            created_at__lt=cutoff,
-        ).update(status=models.NotarizationReservation.Status.EXPIRED)
+        stale = list(
+            models.NotarizationReservation.objects.filter(
+                idtipkar=idtipkar,
+                status=models.NotarizationReservation.Status.PENDING,
+                created_at__lt=cutoff,
+            )
+        )
+        if not stale:
+            return
+        year = correlatives.correlative_year_today()
+        for reservation in stale:
+            reservation.status = models.NotarizationReservation.Status.EXPIRED
+            reservation.save(update_fields=["status"])
+            allocation.release_num_escritura(
+                year=year,
+                idtipkar=idtipkar,
+                num_escritura=reservation.num_escritura,
+                folio=reservation.folio_ini or reservation.folio_fin,
+            )
 
     def _active_pending_reservation(self, idtipkar: int):
         return (

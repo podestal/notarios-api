@@ -6,7 +6,11 @@ from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
 from signatum import allocation, models
-from signatum.services import finalize_notarization_from_reservation
+from signatum.services import (
+    finalize_notarization_from_reservation,
+    is_clearing_escrituracion,
+    reverse_committed_for_kardex,
+)
 
 User = get_user_model()
 
@@ -131,3 +135,152 @@ class FinalizeReservationTests(TestCase):
                 reservation_id=reservation.id,
                 user=self.other,
             )
+
+
+class ClearEscrituracionDetectionTests(TestCase):
+    def _kardex(self, numescritura="139"):
+        class K:
+            pass
+
+        k = K()
+        k.numescritura = numescritura
+        return k
+
+    def test_detects_clear_when_blanking_escrituracion_fields(self):
+        instance = self._kardex("139")
+        data = {
+            "numescritura": "",
+            "fechaescritura": "",
+            "folioini": "",
+            "foliofin": "",
+            "papelini": "",
+            "papelfin": "",
+            "numminuta": "",
+            "fechaconclusion": "",
+        }
+        self.assertTrue(is_clearing_escrituracion(instance, data))
+
+    def test_update_with_new_values_is_not_clear(self):
+        instance = self._kardex("139")
+        data = {
+            "numescritura": "140",
+            "fechaescritura": "2026-07-18",
+            "folioini": "202",
+            "foliofin": "202",
+        }
+        self.assertFalse(is_clearing_escrituracion(instance, data))
+
+    def test_unrelated_patch_is_not_clear(self):
+        instance = self._kardex("139")
+        self.assertFalse(
+            is_clearing_escrituracion(instance, {"descripcion": "foo"})
+        )
+
+    def test_already_empty_is_not_clear(self):
+        instance = self._kardex("")
+        data = {"numescritura": "", "folioini": ""}
+        self.assertFalse(is_clearing_escrituracion(instance, data))
+
+
+class ReverseCommittedForKardexTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="revuser", password="x")
+
+    def test_reverse_frees_counter_numbers(self):
+        models.CorrelativeCounter.objects.create(
+            year=2026,
+            idtipkar=3,
+            next_num_escritura=140,
+            last_folio="201",
+        )
+        reservation = models.NotarizationReservation.objects.create(
+            idtipkar=3,
+            kardex="A143-2026",
+            folio_ini="201",
+            folio_fin="201",
+            num_escritura="139",
+            status=models.NotarizationReservation.Status.COMMITTED,
+            held_by=self.user,
+        )
+        models.Notarization.objects.create(
+            idtipkar=3,
+            kardex="A143-2026",
+            folio_ini="201",
+            folio_fin="201",
+            num_escritura="139",
+            source_reservation=reservation,
+            created_by=self.user,
+        )
+
+        with patch(
+            "signatum.services.correlatives.correlative_year_today",
+            return_value=2026,
+        ):
+            result = reverse_committed_for_kardex(
+                kardex_code="A143-2026",
+                idtipkar=3,
+                num_escritura="139",
+                clear_kardex=False,
+                reason="test clear",
+                user=self.user,
+            )
+
+        self.assertIsNotNone(result)
+        reservation.refresh_from_db()
+        self.assertEqual(
+            reservation.status, models.NotarizationReservation.Status.REVERSED
+        )
+        self.assertFalse(
+            models.Notarization.objects.filter(kardex="A143-2026").exists()
+        )
+        counter = models.CorrelativeCounter.objects.get(year=2026, idtipkar=3)
+        self.assertEqual(counter.next_num_escritura, 1)
+        self.assertEqual(counter.last_folio, "")
+        self.assertEqual(counter.freed_num_escrituras, [])
+
+
+class FreedEscrituraHoleTests(TestCase):
+    """Reverse an older number while higher ones remain → reuse the hole."""
+
+    def test_reverse_147_with_148_149_still_committed_reuses_147(self):
+        models.CorrelativeCounter.objects.create(
+            year=2026,
+            idtipkar=3,
+            next_num_escritura=150,
+            last_folio="30",
+            freed_num_escrituras=[],
+        )
+        for num, folio in (("147", "10"), ("148", "20"), ("149", "30")):
+            models.Notarization.objects.create(
+                idtipkar=3,
+                kardex=f"A{num}-2026",
+                folio_ini=folio,
+                folio_fin=folio,
+                num_escritura=num,
+            )
+
+        # Client desists on 147: notarization gone, 148/149 remain.
+        models.Notarization.objects.filter(num_escritura="147").delete()
+        with transaction.atomic():
+            counter = allocation.rebuild_counter_from_history(
+                year=2026,
+                idtipkar=3,
+                freed_num_escritura="147",
+                freed_folio="10",
+            )
+
+        self.assertEqual(counter.next_num_escritura, 150)
+        self.assertEqual(
+            counter.freed_num_escrituras,
+            [{"num_escritura": 147, "folio": "10"}],
+        )
+        self.assertEqual(counter.last_folio, "30")
+
+        with transaction.atomic():
+            allocated = allocation.allocate_correlatives(year=2026, idtipkar=3)
+
+        self.assertEqual(allocated.num_escritura, "147")
+        self.assertEqual(allocated.folio, "10")
+        counter.refresh_from_db()
+        self.assertEqual(counter.freed_num_escrituras, [])
+        self.assertEqual(counter.next_num_escritura, 150)
