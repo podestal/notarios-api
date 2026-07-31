@@ -464,7 +464,16 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
             recibo_id=recibo.id_recibo,
             raise_on_failure=False,
         )
-        if recibo_needs_sunat_retry(sunat_result):
+        if sunat_result.get("aceptada_sunat"):
+            outbox = get_active_outbox(
+                kind=SunatOutbox.Kind.RECIBO,
+                target_id=recibo.id_recibo,
+            )
+            if outbox is not None:
+                from taxes.services.sunat_outbox import mark_outbox_completed
+
+                mark_outbox_completed(outbox)
+        elif recibo_needs_sunat_retry(sunat_result):
             try:
                 enqueue_recibo_send(
                     recibo_id=recibo.id_recibo,
