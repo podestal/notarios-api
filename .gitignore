@@ -31,3 +31,4 @@ app/sisgen/sisgen_xml_debug/
 *.Backup
 xml_notaria
 keys
+.env.example
