@@ -8,12 +8,15 @@ Usage:
     python manage.py normalize_postgres_schema taxes --database postgres --dry-run
     python manage.py normalize_postgres_schema taxes --database postgres
 
-It compares the models for one Django app against the target PostgreSQL database
-and adds missing columns. It never drops, renames, or alters existing columns.
+It first runs Django migrations for the app on the target database
+(e.g. ``migrate taxes --database=postgres`` so ``taxes_sunat_outbox`` exists),
+then compares models against the live schema and adds missing columns.
+It never drops, renames, or alters existing columns.
 """
 from typing import Dict, Optional, Tuple
 
 from django.apps import apps
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import connections
 from django.db.models import (
@@ -39,8 +42,8 @@ from django.db.models import (
 
 class Command(BaseCommand):
     help = (
-        "Safely normalizes a PostgreSQL schema by adding missing columns for "
-        "the given app's models. Optionally creates missing tables."
+        "Runs Django migrations for the app on PostgreSQL, then safely adds "
+        "any remaining missing columns. Optionally creates missing unmanaged tables."
     )
 
     def add_arguments(self, parser):
@@ -64,12 +67,18 @@ class Command(BaseCommand):
             action="store_true",
             help="Create missing tables using model fields (basic columns and primary key only)",
         )
+        parser.add_argument(
+            "--skip-migrate",
+            action="store_true",
+            help="Skip ``migrate <app> --database=<database>`` and only add missing columns",
+        )
 
     def handle(self, *args, **options):
         app_label: str = options["app_label"]
         database: str = options["database"]
         dry_run: bool = options["dry_run"]
         create_tables: bool = options["create_tables"]
+        skip_migrate: bool = options["skip_migrate"]
 
         try:
             app_config = apps.get_app_config(app_label)
@@ -89,6 +98,13 @@ class Command(BaseCommand):
                 )
             )
             return
+
+        if not skip_migrate:
+            self._run_app_migrations(
+                app_label=app_label,
+                database=database,
+                dry_run=dry_run,
+            )
 
         with connection.cursor() as cursor:
             for model in app_config.get_models():
@@ -167,6 +183,37 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Dry run completed"))
         else:
             self.stdout.write(self.style.SUCCESS("PostgreSQL normalization completed"))
+
+    def _run_app_migrations(
+        self, *, app_label: str, database: str, dry_run: bool
+    ) -> None:
+        """Apply Django migrations for this app on the target PostgreSQL DB."""
+        cmd = f"migrate {app_label} --database={database}"
+        if dry_run:
+            self.stdout.write(self.style.NOTICE(f"[DRY-RUN] would run: python manage.py {cmd}"))
+            try:
+                call_command(
+                    "migrate",
+                    app_label,
+                    database=database,
+                    plan=True,
+                    verbosity=1,
+                )
+            except TypeError:
+                # Older Django without plan= support — notice only.
+                pass
+            return
+
+        self.stdout.write(self.style.NOTICE(f"Running: python manage.py {cmd}"))
+        call_command(
+            "migrate",
+            app_label,
+            database=database,
+            verbosity=1,
+        )
+        self.stdout.write(
+            self.style.SUCCESS(f"Migrations applied for '{app_label}' on '{database}'")
+        )
 
     def _resolve_table(self, cursor, table_name: str) -> Optional[Tuple[str, str]]:
         if "." in table_name:
