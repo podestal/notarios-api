@@ -143,7 +143,7 @@ def _execute_resumen_send(outbox: SunatOutbox) -> SunatOutbox:
     )
 
 
-@transaction.atomic
+@transaction.atomic(using=POSTGRES_DB)
 def execute_sunat_outbox(outbox_id: int, *, celery_task_id: str = "") -> SunatOutbox:
     outbox = SunatOutbox.objects.select_for_update().get(pk=outbox_id)
 

@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 from django.db import transaction
 from django.utils import timezone
 
+from taxes.legacy_db import POSTGRES_DB
 from taxes.models import SunatOutbox
 from taxes.services.sunat_retry_schedule import compute_next_retry_at
 
@@ -67,7 +68,7 @@ def enqueue_resumen_send(
     )
 
 
-@transaction.atomic
+@transaction.atomic(using=POSTGRES_DB)
 def _enqueue(
     *,
     kind: str,
@@ -122,24 +123,34 @@ def _enqueue(
         lambda: _schedule_outbox_task(
             outbox.pk,
             countdown=_countdown_until(outbox.next_retry_at),
-        )
+        ),
+        using=POSTGRES_DB,
     )
     return outbox
 
 
 def get_active_outbox(*, kind: str, target_id: int) -> Optional[SunatOutbox]:
-    return (
-        SunatOutbox.objects.filter(
-            kind=kind,
-            target_id=target_id,
-            status__in=(
-                SunatOutbox.Status.PENDING,
-                SunatOutbox.Status.PROCESSING,
-            ),
+    try:
+        return (
+            SunatOutbox.objects.filter(
+                kind=kind,
+                target_id=target_id,
+                status__in=(
+                    SunatOutbox.Status.PENDING,
+                    SunatOutbox.Status.PROCESSING,
+                ),
+            )
+            .order_by("-updated_at")
+            .first()
         )
-        .order_by("-updated_at")
-        .first()
-    )
+    except Exception:
+        logger.exception(
+            "SunatOutbox unavailable (kind=%s target_id=%s). "
+            "Run: python manage.py migrate taxes --database=postgres",
+            kind,
+            target_id,
+        )
+        return None
 
 
 def mark_outbox_processing(outbox: SunatOutbox, *, celery_task_id: str = "") -> SunatOutbox:
@@ -209,18 +220,26 @@ def schedule_outbox_retry(
         lambda oid=outbox.pk, when=next_retry_at: _schedule_outbox_task(
             oid,
             countdown=_countdown_until(when),
-        )
+        ),
+        using=POSTGRES_DB,
     )
     return outbox
 
 
 def due_outbox_ids(*, limit: int = 50) -> list[int]:
     now = timezone.now()
-    return list(
-        SunatOutbox.objects.filter(
-            status=SunatOutbox.Status.PENDING,
-            next_retry_at__lte=now,
+    try:
+        return list(
+            SunatOutbox.objects.filter(
+                status=SunatOutbox.Status.PENDING,
+                next_retry_at__lte=now,
+            )
+            .order_by("next_retry_at")
+            .values_list("pk", flat=True)[:limit]
         )
-        .order_by("next_retry_at")
-        .values_list("pk", flat=True)[:limit]
-    )
+    except Exception:
+        logger.exception(
+            "SunatOutbox unavailable while listing due jobs. "
+            "Run: python manage.py migrate taxes --database=postgres"
+        )
+        return []

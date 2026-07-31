@@ -148,6 +148,16 @@ def _build_send_bill_envelope(
 
 
 def _post_send_bill(soap_xml: bytes) -> bytes:
+    # Testing only: SUNAT_SIMULATE_DOWN=1|true|yes|on → fail like SUNAT is unreachable.
+    if os.environ.get("SUNAT_SIMULATE_DOWN", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        raise requests.ConnectionError(
+            "Connection refused (SUNAT_SIMULATE_DOWN): simulated SUNAT outage"
+        )
     try:
         response = requests.post(
             _sunat_ws_url(),

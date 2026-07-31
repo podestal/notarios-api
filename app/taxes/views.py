@@ -14,6 +14,10 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from core.permissions import IsSuperuser
 from notaria.pagination import KardexPagination
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from .models import (
     Bajas,
     Catalogos,
@@ -461,10 +465,16 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
             raise_on_failure=False,
         )
         if recibo_needs_sunat_retry(sunat_result):
-            enqueue_recibo_send(
-                recibo_id=recibo.id_recibo,
-                last_error=str(sunat_result.get("msj_sunat") or ""),
-            )
+            try:
+                enqueue_recibo_send(
+                    recibo_id=recibo.id_recibo,
+                    last_error=str(sunat_result.get("msj_sunat") or ""),
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue SUNAT retry for recibo_id=%s",
+                    recibo.id_recibo,
+                )
 
         recibo = Recibos.objects.using("postgres").get(pk=recibo.id_recibo)
         response = self._read_serializer(recibo, many=False)
@@ -731,14 +741,20 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
                     if ticket and (consulta.get("en_proceso") or envio.get("ticket"))
                     else SunatOutbox.Phase.SEND
                 )
-                enqueue_resumen_send(
-                    resumen_id=resumen.id_resumen,
-                    last_error=str(
-                        consulta.get("msj_sunat") or envio.get("msj_sunat") or ""
-                    ),
-                    phase=phase,
-                    metadata={"ticket": ticket} if ticket else None,
-                )
+                try:
+                    enqueue_resumen_send(
+                        resumen_id=resumen.id_resumen,
+                        last_error=str(
+                            consulta.get("msj_sunat") or envio.get("msj_sunat") or ""
+                        ),
+                        phase=phase,
+                        metadata={"ticket": ticket} if ticket else None,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to enqueue SUNAT retry for resumen_id=%s",
+                        resumen.id_resumen,
+                    )
 
             resumen = Resumenes.objects.using(POSTGRES_DB).get(
                 pk=resumen.id_resumen

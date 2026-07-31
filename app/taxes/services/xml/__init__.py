@@ -1,3 +1,5 @@
+import logging
+
 from .firmar import firmar_recibo_xml
 from .generar import generar_recibo_xml
 from .enviar import can_enviar_recibo_sunat, enviar_recibo_sunat, should_auto_enviar_sunat
@@ -14,6 +16,8 @@ from .enviar_resumen import (
 from .context import fetch_recibo_xml_context
 from .paths import firmar_dir, generar_dir, xml_notaria_root
 from taxes.services.sunat_errors import recibo_needs_sunat_retry
+
+logger = logging.getLogger(__name__)
 
 
 def procesar_recibo_xml(recibo_id: int) -> dict:
@@ -36,10 +40,18 @@ def procesar_recibo_xml(recibo_id: int) -> dict:
         if recibo_needs_sunat_retry(sunat):
             from taxes.services.sunat_outbox import enqueue_recibo_send
 
-            enqueue_recibo_send(
-                recibo_id=recibo_id,
-                last_error=str(sunat.get("msj_sunat") or ""),
-            )
+            try:
+                enqueue_recibo_send(
+                    recibo_id=recibo_id,
+                    last_error=str(sunat.get("msj_sunat") or ""),
+                )
+            except Exception:
+                # Recibo + XML already done; missing outbox table must not 500 the client.
+                logger.exception(
+                    "Failed to enqueue SUNAT retry for recibo_id=%s "
+                    "(run: python manage.py migrate taxes --database=postgres)",
+                    recibo_id,
+                )
     return result
 
 
