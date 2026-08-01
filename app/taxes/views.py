@@ -33,6 +33,8 @@ from .models import (
     Resumenes,
     Series,
     SunatOutbox,
+    TipoNotaCredito,
+    TipoNotaDebito,
     TiposIgv,
     Usuarios,
 )
@@ -68,6 +70,8 @@ from .serializers import (
     ResumenesReadSerializer,
     ResumenesSerializer,
     SeriesSerializer,
+    TipoNotaCreditoSerializer,
+    TipoNotaDebitoSerializer,
     TiposIgvSerializer,
     UsuariosSerializer,
 )
@@ -172,6 +176,42 @@ class TiposIgvViewSet(ModelViewSet):
     queryset = TiposIgv.objects.all()
     serializer_class = TiposIgvSerializer
     permission_classes = [IsAuthenticated]
+
+
+class TipoNotaCreditoViewSet(ReadOnlyModelViewSet):
+    """SUNAT credit-note reason catalog (ventas.tipo_nota_credito)."""
+
+    serializer_class = TipoNotaCreditoSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = "id_tipo_nota_credito"
+
+    def get_queryset(self):
+        qs = TipoNotaCredito.objects.all().order_by("id_tipo_nota_credito")
+        codigo = self.request.query_params.get("codigo", "").strip()
+        if codigo:
+            qs = qs.filter(codigo__icontains=codigo)
+        descripcion = self.request.query_params.get("descripcion", "").strip()
+        if descripcion:
+            qs = qs.filter(descripcion__icontains=descripcion)
+        return qs
+
+
+class TipoNotaDebitoViewSet(ReadOnlyModelViewSet):
+    """SUNAT debit-note reason catalog (ventas.tipo_nota_debito)."""
+
+    serializer_class = TipoNotaDebitoSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = "id_tipo_nota_debito"
+
+    def get_queryset(self):
+        qs = TipoNotaDebito.objects.all().order_by("id_tipo_nota_debito")
+        codigo = self.request.query_params.get("codigo", "").strip()
+        if codigo:
+            qs = qs.filter(codigo__icontains=codigo)
+        descripcion = self.request.query_params.get("descripcion", "").strip()
+        if descripcion:
+            qs = qs.filter(descripcion__icontains=descripcion)
+        return qs
 
 
 class DocumentosViewSet(ModelViewSet):

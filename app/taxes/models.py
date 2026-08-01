@@ -366,3 +366,27 @@ class SunatOutbox(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind}:{self.target_id} ({self.status})"
+
+
+class TipoNotaCredito(models.Model):
+    id_tipo_nota_credito = models.AutoField(primary_key=True)
+    codigo = models.CharField(max_length=10)
+    descripcion = models.CharField(max_length=100)
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tipo_nota_credito'
+
+
+class TipoNotaDebito(models.Model):
+    id_tipo_nota_debito = models.AutoField(primary_key=True)
+    codigo = models.CharField(max_length=10)
+    descripcion = models.CharField(max_length=100)
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tipo_nota_debito'

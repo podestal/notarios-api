@@ -8,20 +8,13 @@
 from django.db import models
 
 
-class Resumenes(models.Model):
-    id_resumen = models.AutoField(primary_key=True)
-    fecha_resumen = models.DateField()
-    fecha_emision = models.DateField()
-    lote = models.IntegerField()
-    cantidad = models.IntegerField()
-    usuario_id = models.IntegerField()
-    ticket_sunat = models.CharField(max_length=100, blank=True, null=True)
-    denominacion = models.CharField(max_length=100, blank=True, null=True)
-    digest_value = models.TextField(blank=True, null=True)
-    signature_value = models.TextField(blank=True, null=True)
-    enviada_sunat = models.BooleanField()
-    aceptada_sunat = models.BooleanField()
+class TipoNotaDebito(models.Model):
+    id_tipo_nota_debito = models.AutoField(primary_key=True)
+    codigo = models.CharField(max_length=10)
+    descripcion = models.CharField(max_length=100)
+    creado = models.DateTimeField(blank=True, null=True)
+    actualizado = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'resumenes'
+        db_table = 'tipo_nota_debito'

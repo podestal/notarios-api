@@ -7,6 +7,16 @@ router.register("catalogos", views.CatalogosViewSet, basename="catalogos")
 router.register("monedas", views.MonedasViewSet, basename="monedas")
 router.register("tipos-igv", views.TiposIgvViewSet, basename="tipos-igv")
 router.register(
+    "tipos-nota-credito",
+    views.TipoNotaCreditoViewSet,
+    basename="tipos-nota-credito",
+)
+router.register(
+    "tipos-nota-debito",
+    views.TipoNotaDebitoViewSet,
+    basename="tipos-nota-debito",
+)
+router.register(
     "codigos-unitarios",
     views.CodigosUnitariosViewSet,
     basename="codigos-unitarios",

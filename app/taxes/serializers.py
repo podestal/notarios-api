@@ -26,6 +26,8 @@ from .models import (
     Recibos,
     Resumenes,
     Series,
+    TipoNotaCredito,
+    TipoNotaDebito,
     TiposIgv,
     Usuarios,
 )
@@ -110,6 +112,32 @@ class TiposIgvSerializer(serializers.ModelSerializer):
             "actualizado",
         ]
         read_only_fields = ["id_tipo_igv", "creado", "actualizado"]
+
+
+class TipoNotaCreditoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoNotaCredito
+        fields = [
+            "id_tipo_nota_credito",
+            "codigo",
+            "descripcion",
+            "creado",
+            "actualizado",
+        ]
+        read_only_fields = fields
+
+
+class TipoNotaDebitoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoNotaDebito
+        fields = [
+            "id_tipo_nota_debito",
+            "codigo",
+            "descripcion",
+            "creado",
+            "actualizado",
+        ]
+        read_only_fields = fields
 
 
 class DocumentosSerializer(serializers.ModelSerializer):
