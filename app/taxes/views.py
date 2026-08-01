@@ -363,9 +363,61 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         return qs
 
     def get_serializer_class(self):
-        if self.action in ("list", "retrieve"):
+        if self.action in ("list", "retrieve", "modificables"):
             return RecibosReadSerializer
         return RecibosSerializer
+
+    @action(detail=False, methods=["get"], url_path="modificables")
+    def modificables(self, request):
+        """
+        Facturas and boletas to select when creating NC/ND
+        (newest first, paginated).
+
+        Optional: ``comprobante_id=1|2``, ``serie``, ``numero``, ``aceptada_sunat``.
+        """
+        qs = Recibos.objects.all().order_by("-fecha_emision", "-id_recibo")
+
+        user = request.user
+        if user.negocio_id is not None:
+            qs = qs.filter(negocio_id=user.negocio_id)
+
+        qs = apply_document_list_filters(qs, request.query_params)
+        qs = qs.filter(
+            comprobante_id__in=(FACTURA_COMPROBANTE_ID, BOLETA_COMPROBANTE_ID),
+            anulada=False,
+        )
+
+        params = request.query_params
+        comprobante_id = (
+            params.get("comprobante_id", "") or params.get("comprobante", "")
+        ).strip()
+        if comprobante_id in {
+            str(FACTURA_COMPROBANTE_ID),
+            str(BOLETA_COMPROBANTE_ID),
+        }:
+            qs = qs.filter(comprobante_id=int(comprobante_id))
+
+        serie = params.get("serie", "").strip()
+        if serie:
+            qs = qs.filter(serie__icontains=serie)
+
+        numero = params.get("numero", "").strip()
+        if numero:
+            qs = qs.filter(numero=numero)
+
+        aceptada = params.get("aceptada_sunat", "").strip().lower()
+        if aceptada in ("true", "1", "yes"):
+            qs = qs.filter(aceptada_sunat=True)
+        elif aceptada in ("false", "0", "no"):
+            qs = qs.filter(aceptada_sunat=False)
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self._read_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self._read_serializer(qs, many=True)
+        return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
         user = self._linked_user_or_raise(request)
