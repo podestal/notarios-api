@@ -1,149 +1,182 @@
-def _subfijo(xx: str) -> str:
-    xx = xx.strip()
-    length = len(xx)
-    if length in (1, 2, 3):
-        return ""
-    if length in (4, 5, 6):
-        return "MIL"
-    return ""
+"""
+Convert a monetary amount to Spanish words (SOLES), SUNAT-style.
+
+Used in CPE XML ``cbc:Note`` and PDF importe-en-letras. Incorrect wording
+is a compliance risk — keep this module covered by unit tests.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+
+
+_UNITS = (
+    "",
+    "UN",
+    "DOS",
+    "TRES",
+    "CUATRO",
+    "CINCO",
+    "SEIS",
+    "SIETE",
+    "OCHO",
+    "NUEVE",
+    "DIEZ",
+    "ONCE",
+    "DOCE",
+    "TRECE",
+    "CATORCE",
+    "QUINCE",
+    "DIECISEIS",
+    "DIECISIETE",
+    "DIECIOCHO",
+    "DIECINUEVE",
+)
+
+_TENS = (
+    "",
+    "",
+    "VEINTE",
+    "TREINTA",
+    "CUARENTA",
+    "CINCUENTA",
+    "SESENTA",
+    "SETENTA",
+    "OCHENTA",
+    "NOVENTA",
+)
+
+_HUNDREDS = (
+    "",
+    "CIENTO",
+    "DOSCIENTOS",
+    "TRESCIENTOS",
+    "CUATROCIENTOS",
+    "QUINIENTOS",
+    "SEISCIENTOS",
+    "SETECIENTOS",
+    "OCHOCIENTOS",
+    "NOVECIENTOS",
+)
+
+
+def _under_100(n: int) -> str:
+    if n < 20:
+        return _UNITS[n]
+    tens, units = divmod(n, 10)
+    if tens == 2 and units:
+        return f"VEINTI{_UNITS[units]}"
+    if units == 0:
+        return _TENS[tens]
+    return f"{_TENS[tens]} Y {_UNITS[units]}"
+
+
+def _under_1000(n: int) -> str:
+    if n < 100:
+        return _under_100(n)
+    if n == 100:
+        return "CIEN"
+    hundreds, rest = divmod(n, 100)
+    head = _HUNDREDS[hundreds]
+    if rest == 0:
+        return head
+    return f"{head} {_under_100(rest)}"
+
+
+def _integer_to_words(n: int) -> str:
+    if n == 0:
+        return "CERO"
+    if n < 0:
+        return f"MENOS {_integer_to_words(-n)}"
+
+    parts: list[str] = []
+
+    billions, n = divmod(n, 1_000_000_000)
+    if billions:
+        if billions == 1:
+            parts.append("UN BILLON")
+        else:
+            parts.append(f"{_integer_to_words(billions)} BILLONES")
+
+    millions, n = divmod(n, 1_000_000)
+    if millions:
+        if millions == 1:
+            parts.append("UN MILLON")
+        else:
+            parts.append(f"{_integer_to_words(millions)} MILLONES")
+
+    thousands, n = divmod(n, 1000)
+    if thousands:
+        if thousands == 1:
+            parts.append("MIL")
+        else:
+            parts.append(f"{_under_1000(thousands)} MIL")
+
+    if n:
+        parts.append(_under_1000(n))
+
+    return " ".join(parts)
+
+
+def _ending_un_to_uno(words: str) -> str:
+    """
+    For importe en letras, a trailing masculine \"UN\" becomes \"UNO\"
+    (e.g. 101 → CIENTO UNO, 21 → VEINTIUNO). \"UN SOL\" is handled separately.
+    """
+    if words.endswith("VEINTIUN"):
+        return f"{words[:-2]}UNO"
+    if words == "UN":
+        return "UNO"
+    if words.endswith(" UN"):
+        return f"{words[:-2]}UNO"
+    return words
+
+
+def _parse_amount(value) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        raw = value
+    else:
+        text = str(value).strip().replace(" ", "")
+        # Allow "1,234.56" or European "1234,56" only when unambiguous.
+        if "," in text and "." in text:
+            text = text.replace(",", "")
+        elif "," in text and "." not in text:
+            text = text.replace(",", ".")
+        try:
+            raw = Decimal(text)
+        except (InvalidOperation, AttributeError, TypeError, ValueError):
+            return Decimal("0")
+    try:
+        return raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return Decimal("0")
 
 
 def numtoletras(total1) -> str:
-    xarray = {
-        0: "CERO",
-        1: "UN",
-        2: "DOS",
-        3: "TRES",
-        4: "CUATRO",
-        5: "CINCO",
-        6: "SEIS",
-        7: "SIETE",
-        8: "OCHO",
-        9: "NUEVE",
-        10: "DIEZ",
-        11: "ONCE",
-        12: "DOCE",
-        13: "TRECE",
-        14: "CATORCE",
-        15: "QUINCE",
-        16: "DIECISEIS",
-        17: "DIECISIETE",
-        18: "DIECIOCHO",
-        19: "DIECINUEVE",
-        20: "VEINTI",
-        30: "TREINTA",
-        40: "CUARENTA",
-        50: "CINCUENTA",
-        60: "SESENTA",
-        70: "SETENTA",
-        80: "OCHENTA",
-        90: "NOVENTA",
-        100: "CIENTO",
-        200: "DOSCIENTOS",
-        300: "TRESCIENTOS",
-        400: "CUATROCIENTOS",
-        500: "QUINIENTOS",
-        600: "SEISCIENTOS",
-        700: "SETECIENTOS",
-        800: "OCHOCIENTOS",
-        900: "NOVENCIENTOS",
-    }
+    """
+    Format amount as ``OCHENTA Y OCHO CON 00/100 SOLES``.
 
-    total1 = str(total1).strip()
-    xpos_punto = total1.find(".")
-    xaux_int = total1
-    xdecimales = "00"
-    if xpos_punto != -1:
-        if xpos_punto == 0:
-            total1 = f"0{total1}"
-            xpos_punto = total1.find(".")
-        xaux_int = total1[:xpos_punto]
-        xdecimales = f"{total1[xpos_punto + 1:]}00"[:2]
+    Accepts int / float / Decimal / str. Always rounds half-up to 2 decimals.
+    """
+    amount = _parse_amount(total1)
+    negative = amount < 0
+    amount = abs(amount)
 
-    xaux_int = xaux_int or "0"
-    xcadena = ""
-    xaux = xaux_int.zfill(18)
+    whole = int(amount)
+    # Avoid float noise: derive cents from quantized Decimal.
+    cents = int((amount - Decimal(whole)) * 100)
+    cents_str = f"{cents:02d}"
 
-    for xz in range(3):
-        chunk = xaux[xz * 6 : (xz + 1) * 6]
-        xi = 0
-        xlimite = 6
-        while xi < xlimite:
-            x3digitos = (xlimite - xi) * -1
-            part = chunk[x3digitos:] if x3digitos else chunk
-            if not part:
-                break
+    if whole == 0:
+        words = f"CERO CON {cents_str}/100 SOLES"
+    elif whole == 1:
+        words = f"UN SOL CON {cents_str}/100"
+    else:
+        integer_words = _ending_un_to_uno(_integer_to_words(whole))
+        words = f"{integer_words} CON {cents_str}/100 SOLES"
 
-            centena = part[:3] if len(part) >= 3 else part.zfill(3)
-            if int(centena) >= 100:
-                seek = xarray.get(int(centena))
-                if seek:
-                    sub = _subfijo(part)
-                    if int(centena) == 100:
-                        xcadena = f" {xcadena} CIEN {sub}"
-                    else:
-                        xcadena = f" {xcadena} {seek} {sub}"
-                    xi = 6
-                    continue
-                seek = xarray.get(int(centena[0]) * 100)
-                if seek:
-                    xcadena = f" {xcadena} {seek}"
-
-            decena = part[1:3] if len(part) >= 3 else part[-2:].zfill(2)
-            if int(decena) >= 10:
-                seek = xarray.get(int(decena))
-                if seek:
-                    sub = _subfijo(part)
-                    if int(decena) == 20:
-                        xcadena = f" {xcadena} VEINTE{sub}"
-                    else:
-                        xcadena = f" {xcadena} {seek} {sub}"
-                    xi = 6
-                    continue
-                seek = xarray.get(int(decena[0]) * 10)
-                if seek:
-                    if int(decena[0]) * 10 == 20:
-                        xcadena = f" {xcadena} {seek}"
-                    else:
-                        xcadena = f" {xcadena} {seek} Y "
-
-            unidad = part[2] if len(part) == 3 else part[-1]
-            if int(unidad) >= 1:
-                seek = xarray.get(int(unidad))
-                sub = _subfijo(part)
-                xcadena = f" {xcadena} {seek} {sub}"
-
-            xi += 3
-
-        if xcadena.strip().endswith("ILLON"):
-            xcadena += " DE"
-        if xcadena.strip().endswith("ILLONES"):
-            xcadena += " DE"
-
-        chunk_trim = chunk.strip()
-        if chunk_trim and int(chunk_trim) > 0:
-            if xz == 0:
-                xcadena += (
-                    "UN BILLON " if chunk_trim == "1" else " BILLONES "
-                )
-            elif xz == 1:
-                xcadena += (
-                    "UN MILLON " if chunk_trim == "1" else " MILLONES"
-                )
-            elif xz == 2:
-                total_float = float(total1)
-                if total_float < 1:
-                    xcadena = f"CERO CON {xdecimales}/100 SOLES"
-                elif total_float < 2:
-                    xcadena = f" CON {xdecimales}/100 UN SOL "
-                else:
-                    xcadena += f"  CON {xdecimales}/100 SOLES "
-
-    xcadena = xcadena.replace("VEINTI ", "VEINTI")
-    while "  " in xcadena:
-        xcadena = xcadena.replace("  ", " ")
-    xcadena = xcadena.replace("UN UN", "UN")
-    xcadena = xcadena.replace("BILLON DE BILLONES", "BILLON DE")
-    xcadena = xcadena.replace("BILLONES DE MILLONES", "BILLONES DE")
-    xcadena = xcadena.replace("DE UN", "UN")
-    return xcadena.strip()
+    if negative:
+        words = f"MENOS {words}"
+    return words
