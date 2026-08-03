@@ -2,13 +2,13 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from taxes.models import Ingresos, IngresosDetalles
+from taxes.models import Ingresos, IngresosDetalles, Series
 from taxes.services.control_interno import (
     BOLETA_COMPROBANTE_ID,
     CONTROL_INTERNO_COMPROBANTE_ID,
     FACTURA_COMPROBANTE_ID,
 )
-from taxes.services.recibo import POSTGRES_DB, create_recibo, resolve_comprobante_from_serie
+from taxes.services.recibo import POSTGRES_DB, create_recibo
 
 ELECTRONIC_COMPROBANTE_IDS = frozenset({FACTURA_COMPROBANTE_ID, BOLETA_COMPROBANTE_ID})
 
@@ -41,8 +41,13 @@ def canjear_ingreso(
     if ingreso.anulada:
         raise ValidationError("No se puede canjear un ingreso anulado.")
 
-    comprobante_id = resolve_comprobante_from_serie(serie)
-    if comprobante_id not in ELECTRONIC_COMPROBANTE_IDS:
+    comprobante_id = (
+        Series.objects.using(POSTGRES_DB)
+        .filter(serie=serie, comprobante_id__in=ELECTRONIC_COMPROBANTE_IDS)
+        .values_list("comprobante_id", flat=True)
+        .first()
+    )
+    if comprobante_id is None:
         raise ValidationError(
             "Solo se puede canjear por boleta o factura electrónica."
         )
@@ -68,6 +73,7 @@ def canjear_ingreso(
         usuario_id=usuario_id,
         negocio_id=negocio_id,
         serie=serie,
+        comprobante_id=comprobante_id,
         moneda_id=ingreso.moneda_id or 1,
         persona_id=ingreso.persona_id,
         direccion=ingreso.direccion or "",

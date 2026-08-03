@@ -554,6 +554,7 @@ class ReciboLineaSerializer(serializers.Serializer):
 class CreateReciboSerializer(serializers.Serializer):
     fecha_emision = FechaEmisionInputField(required=False, allow_null=True)
     serie = serializers.CharField(max_length=10)
+    comprobante_id = serializers.IntegerField()
     moneda_id = serializers.IntegerField()
     persona_id = serializers.IntegerField()
     direccion = serializers.CharField(max_length=200)
@@ -598,9 +599,17 @@ class CreateReciboSerializer(serializers.Serializer):
             NOTA_CREDITO_COMPROBANTE_ID,
             NOTA_DEBITO_COMPROBANTE_ID,
         )
-        from taxes.services.recibo import resolve_comprobante_from_serie
+        from taxes.services.recibo import validate_serie_for_comprobante
 
-        comprobante_id = resolve_comprobante_from_serie(attrs["serie"])
+        comprobante_id = attrs["comprobante_id"]
+        try:
+            validate_serie_for_comprobante(
+                serie=attrs["serie"], comprobante_id=comprobante_id
+            )
+        except Exception as exc:
+            detail = getattr(exc, "detail", None) or str(exc)
+            raise serializers.ValidationError({"serie": detail}) from exc
+
         nota_fields = (
             "tipo_recibo_modificado_id",
             "serie_documento_modificado_id",

@@ -1,12 +1,15 @@
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework.exceptions import ValidationError
 
 from taxes.legacy_db import next_serial_id, POSTGRES_DB
 from taxes.models import Recibos, Resumenes
+from taxes.services.control_interno import (
+    BOLETA_COMPROBANTE_ID,
+    NOTA_CREDITO_COMPROBANTE_ID,
+    NOTA_DEBITO_COMPROBANTE_ID,
+)
 from taxes.services.document_queryset import filter_recibos_by_fecha_emision_date
-
-BOLETA_COMPROBANTE_ID = 2
 
 
 def get_next_resumen_lote() -> int:
@@ -15,6 +18,14 @@ def get_next_resumen_lote() -> int:
         or 0
     )
     return current + 1
+
+
+def _resumen_boleta_q() -> Q:
+    """Boletas + NC/ND that modify boletas (same daily resumen)."""
+    return Q(comprobante_id=BOLETA_COMPROBANTE_ID) | Q(
+        comprobante_id__in=(NOTA_CREDITO_COMPROBANTE_ID, NOTA_DEBITO_COMPROBANTE_ID),
+        tipo_recibo_modificado_id=BOLETA_COMPROBANTE_ID,
+    )
 
 
 @transaction.atomic(using=POSTGRES_DB)
@@ -30,17 +41,22 @@ def create_resumen(
     if not recibo_ids:
         raise ValidationError("At least one recibo is required.")
 
-    recibos = list(
+    qs = (
         Recibos.objects.using(POSTGRES_DB)
         .select_for_update()
-        .filter(
-            id_recibo__in=recibo_ids,
-            negocio_id=negocio_id,
-            comprobante_id=comprobante_id,
-        )
+        .filter(id_recibo__in=recibo_ids, negocio_id=negocio_id)
     )
+    if comprobante_id == BOLETA_COMPROBANTE_ID:
+        qs = qs.filter(_resumen_boleta_q())
+    else:
+        qs = qs.filter(comprobante_id=comprobante_id)
+
+    recibos = list(qs)
     if len(recibos) != len(set(recibo_ids)):
-        raise ValidationError("Uno o más recibos no son válidos para este resumen.")
+        raise ValidationError(
+            "Uno o más recibos no son válidos para este resumen "
+            "(boletas o notas de crédito/débito que modifican boleta)."
+        )
 
     already_linked = [r.id_recibo for r in recibos if r.resumen_id]
     if already_linked:
@@ -84,15 +100,17 @@ def recibos_pendientes_queryset(
     comprobante_id: int = BOLETA_COMPROBANTE_ID,
     fecha_emision=None,
 ):
-    qs = (
-        Recibos.objects.using(POSTGRES_DB)
-        .filter(
-            negocio_id=negocio_id,
-            comprobante_id=comprobante_id,
-            resumen_id__isnull=True,
-        )
-        .order_by("-fecha_emision", "-id_recibo")
+    qs = Recibos.objects.using(POSTGRES_DB).filter(
+        negocio_id=negocio_id,
+        resumen_id__isnull=True,
     )
+    if comprobante_id == BOLETA_COMPROBANTE_ID:
+        # Daily resumen: boletas + NC/ND over boleta (not sendBill).
+        qs = qs.filter(_resumen_boleta_q())
+    else:
+        qs = qs.filter(comprobante_id=comprobante_id)
+
+    qs = qs.order_by("-fecha_emision", "-id_recibo")
     if fecha_emision is not None:
         qs = filter_recibos_by_fecha_emision_date(qs, fecha_emision)
     return qs

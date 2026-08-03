@@ -11,6 +11,7 @@ from taxes.models import Recibos, Resumenes
 from taxes.services.control_interno import (
     BOLETA_COMPROBANTE_ID,
     NOTA_CREDITO_COMPROBANTE_ID,
+    NOTA_DEBITO_COMPROBANTE_ID,
 )
 
 from .context import ReciboXmlContext, fetch_recibo_xml_context
@@ -93,7 +94,7 @@ def _build_resumen_item(
     ctx: ReciboXmlContext,
     anulada: bool,
 ) -> str:
-    if ctx.codigo_comprobante == "07":
+    if ctx.codigo_comprobante in ("07", "08"):
         template_name = "resumen_item_ncredito.xml"
     else:
         template_name = "resumen_item.xml"
@@ -139,9 +140,21 @@ def fetch_resumen_xml_context(resumen_id: int) -> ResumenXmlContext:
     contexts: list[ReciboXmlContext] = []
     for recibo in recibos:
         ctx = fetch_recibo_xml_context(recibo.id_recibo)
-        if ctx.id_comprobante not in (BOLETA_COMPROBANTE_ID, NOTA_CREDITO_COMPROBANTE_ID):
+        if ctx.id_comprobante not in (
+            BOLETA_COMPROBANTE_ID,
+            NOTA_CREDITO_COMPROBANTE_ID,
+            NOTA_DEBITO_COMPROBANTE_ID,
+        ):
             raise ValidationError(
-                f"El recibo {recibo.id_recibo} no es boleta ni nota de crédito."
+                f"El recibo {recibo.id_recibo} no es boleta ni nota de crédito/débito."
+            )
+        if ctx.id_comprobante in (
+            NOTA_CREDITO_COMPROBANTE_ID,
+            NOTA_DEBITO_COMPROBANTE_ID,
+        ) and ctx.codigo_recibo_modificado != "03":
+            raise ValidationError(
+                f"El recibo {recibo.id_recibo} es nota que no modifica boleta; "
+                "no pertenece al resumen diario."
             )
         signed_path = firmar_path(
             ruc=ctx.ruc_emisor,

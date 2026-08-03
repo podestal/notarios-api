@@ -75,6 +75,7 @@ def _resolve_serie_documento_modificado(value) -> str | None:
 
 
 def resolve_comprobante_from_serie(serie: str) -> int:
+    """Used by canje (boleta/factura). Prefer an explicit comprobante_id on create."""
     comprobante_id = (
         Series.objects.using(POSTGRES_DB)
         .filter(serie=serie)
@@ -90,12 +91,26 @@ def resolve_comprobante_from_serie(serie: str) -> int:
     return comprobante_id
 
 
+def validate_serie_for_comprobante(*, serie: str, comprobante_id: int) -> None:
+    if comprobante_id == CONTROL_INTERNO_COMPROBANTE_ID:
+        raise ValidationError(
+            "La serie pertenece a control interno; use POST /taxes/ingresos/control-interno/."
+        )
+    if not Series.objects.using(POSTGRES_DB).filter(
+        serie=serie, comprobante_id=comprobante_id
+    ).exists():
+        raise ValidationError(
+            f"Serie '{serie}' no está registrada para comprobante_id={comprobante_id}."
+        )
+
+
 @transaction.atomic(using=POSTGRES_DB)
 def create_recibo(
     *,
     usuario_id: int,
     negocio_id: int,
     serie: str,
+    comprobante_id: int,
     moneda_id: int,
     persona_id: int,
     direccion: str,
@@ -113,7 +128,7 @@ def create_recibo(
     if not lineas:
         raise ValidationError("At least one line is required.")
 
-    comprobante_id = resolve_comprobante_from_serie(serie)
+    validate_serie_for_comprobante(serie=serie, comprobante_id=comprobante_id)
 
     fecha_emision_db = _resolve_fecha_emision(fecha_emision)
     numero = get_next_recibo_numero(
