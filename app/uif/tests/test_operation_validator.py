@@ -26,6 +26,35 @@ def _staged(**kwargs):
 
 
 class OperationValidatorTests(SimpleTestCase):
+    def test_missing_fecha_conclusion_is_not_a_validation_error(self):
+        """PHP parity: empty fechaconclusion → plane item 9 N, not lista_errores."""
+        rules = RoValidationRulesRepository()
+        rules._loaded = True
+        rules._rules = {}
+        validator = RoOperationValidator(rules)
+        pat = MagicMock(
+            fpago="1",
+            idoppago="1",
+            des_idoppago="",
+            idmon=1,
+            importetrans=Decimal("1000"),
+            exhibiomp="No",
+        )
+        detalle = MagicMock(kardex="K1", tipacto="001", codmepag=1, importemp=1000)
+        errors = validator.validate(
+            staged=_staged(fecha_conclusion=None),
+            act_description="COMPRA VENTA",
+            patrimonial=pat,
+            detalle_medio_pago_rows=[detalle],
+            fpago_codigo_map={"1": "C"},
+        )
+        self.assertFalse(
+            any(e["error_type"] == "missing_conclusion_date" for e in errors)
+        )
+        self.assertFalse(
+            any("conclusión" in (e.get("error_description") or "").lower() for e in errors)
+        )
+
     def test_invalid_forma_pago_when_codigo_missing(self):
         rules = RoValidationRulesRepository()
         rules._loaded = True

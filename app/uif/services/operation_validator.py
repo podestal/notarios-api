@@ -68,10 +68,8 @@ class RoOperationValidator:
         errors.extend(
             self._validate_escritura(staged, act_description, uif_code, cod_acto)
         )
-        if str(getattr(staged, "tipo", "I")) == "I":
-            errors.extend(
-                self._validate_conclusion(staged, act_description, uif_code, cod_acto)
-            )
+        # Missing fechaconclusion is not a PHP/RoClass lista_errores rule — plane
+        # item 9 becomes N; do not surface it as a dashboard validation error.
 
         if patrimonial is None:
             errors.append(
@@ -125,24 +123,6 @@ class RoOperationValidator:
                 row_type=ROW_TYPE_OPERATION,
                 is_correctable=False,
                 detail_value=detail,
-            )
-        ]
-
-    def _validate_conclusion(self, staged, act_description, uif_code, cod_acto) -> List[dict]:
-        if staged.fecha_conclusion:
-            return []
-        return [
-            build_ro_error(
-                id_kardex=staged.id_kardex,
-                kardex=staged.kardex,
-                act=act_description,
-                codacto=cod_acto,
-                uif_code=uif_code,
-                error_type="missing_conclusion_date",
-                error_description="Fecha de conclusión faltante",
-                field_number=0,
-                row_type=ROW_TYPE_OPERATION,
-                is_correctable=False,
             )
         ]
 
