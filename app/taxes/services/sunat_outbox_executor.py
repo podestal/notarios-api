@@ -14,7 +14,6 @@ from taxes.services.sunat_errors import (
     is_transient_sunat_result,
     recibo_needs_sunat_retry,
     resumen_needs_sunat_retry,
-    resumen_should_poll,
 )
 from taxes.services.sunat_outbox import (
     mark_outbox_completed,
@@ -70,12 +69,13 @@ def _execute_resumen_poll(outbox: SunatOutbox) -> SunatOutbox:
         return mark_outbox_completed(outbox)
 
     ticket = (outbox.metadata or {}).get("ticket") or resumen.ticket_sunat or ""
+    # One getStatus per task — do not loop/sleep in the worker (that burned 30–60s).
     consulta = consultar_ticket_resumen(
         resumen_id=outbox.target_id,
         ticket=ticket,
         raise_on_failure=False,
-        max_polls=3,
-        poll_interval_seconds=3.0,
+        max_polls=1,
+        poll_interval_seconds=1.0,
     )
     if consulta.get("aceptada_sunat"):
         return mark_outbox_completed(outbox)
@@ -102,11 +102,16 @@ def _execute_resumen_send(outbox: SunatOutbox) -> SunatOutbox:
     if resumen.aceptada_sunat:
         return mark_outbox_completed(outbox)
 
+    # Already have a ticket from a previous send — only poll CDR, never re-send.
+    existing_ticket = (
+        (outbox.metadata or {}).get("ticket") or resumen.ticket_sunat or ""
+    ).strip()
+    if existing_ticket and resumen.enviada_sunat:
+        return _execute_resumen_poll(outbox)
+
     result = procesar_resumen_sunat(
         resumen_id=outbox.target_id,
-        consultar_ticket=True,
-        max_polls=5,
-        poll_interval_seconds=3.0,
+        consultar_ticket=False,
         raise_on_failure=False,
     )
 
@@ -116,7 +121,7 @@ def _execute_resumen_send(outbox: SunatOutbox) -> SunatOutbox:
         return mark_outbox_completed(outbox)
 
     ticket = (envio.get("ticket") or consulta.get("ticket") or "").strip()
-    if resumen_should_poll(result):
+    if ticket:
         return schedule_outbox_retry(
             outbox,
             last_error=str(consulta.get("msj_sunat") or envio.get("msj_sunat") or ""),

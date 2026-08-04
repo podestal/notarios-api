@@ -30,6 +30,11 @@ def emitir_dir() -> Path:
     return xml_notaria_root() / "emitir"
 
 
+def analizar_dir() -> Path:
+    """Legacy 4_analizar: CDR from getStatus (resumen / baja)."""
+    return xml_notaria_root() / "analizar"
+
+
 def exception_dir() -> Path:
     return xml_notaria_root() / "exception"
 
@@ -122,11 +127,21 @@ def summary_ticket_path(*, archivo: str) -> Path:
 
 
 def summary_cdr_path(*, archivo: str) -> Path:
-    return emitir_dir() / f"R-{archivo}.XML"
+    return analizar_dir() / f"R-{archivo}.XML"
+
+
+def summary_status_soap_path(*, archivo: str) -> Path:
+    """Raw getStatus SOAP response (legacy 4_analizar intermediate)."""
+    return analizar_dir() / f"{archivo}.XML"
+
+
+def summary_cdr_zip_path(*, archivo: str) -> Path:
+    return analizar_dir() / f"{archivo}.ZIP"
 
 
 def ensure_output_dirs() -> None:
     generar_dir().mkdir(parents=True, exist_ok=True)
     firmar_dir().mkdir(parents=True, exist_ok=True)
     emitir_dir().mkdir(parents=True, exist_ok=True)
+    analizar_dir().mkdir(parents=True, exist_ok=True)
     exception_dir().mkdir(parents=True, exist_ok=True)

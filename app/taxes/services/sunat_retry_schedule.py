@@ -16,12 +16,15 @@ RECIBO_RETRY_DELAYS_SECONDS = (300, 900, 1800, 3600, 7200)
 # Resumen lane: 30m → 2h (steady)
 RESUMEN_RETRY_DELAYS_SECONDS = (1800, 7200)
 
-# Ticket still processing at SUNAT
-RESUMEN_POLL_DELAY_SECONDS = 180
+# First POLL after ticket: almost immediate. Later polls: every 15s.
+RESUMEN_POLL_FIRST_DELAY_SECONDS = 5
+RESUMEN_POLL_DELAY_SECONDS = 15
 
 
 def _delay_for_attempt(*, kind: str, phase: str, attempt_count: int) -> int:
     if kind == SunatOutbox.Kind.RESUMEN and phase == SunatOutbox.Phase.POLL:
+        if attempt_count <= 1:
+            return RESUMEN_POLL_FIRST_DELAY_SECONDS
         return RESUMEN_POLL_DELAY_SECONDS
 
     if kind == SunatOutbox.Kind.RESUMEN:

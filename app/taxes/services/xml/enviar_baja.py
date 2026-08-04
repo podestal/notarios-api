@@ -31,6 +31,8 @@ from .paths import (
     baja_firmar_path,
     ensure_output_dirs,
     summary_cdr_path,
+    summary_cdr_zip_path,
+    summary_status_soap_path,
     summary_ticket_path,
 )
 
@@ -102,7 +104,7 @@ def enviar_baja_sunat(
     )
 
     try:
-        soap_response = _post_send_bill(soap_xml)
+        soap_response = _post_send_bill(soap_xml, soap_action="urn:sendSummary")
     except requests.RequestException as exc:
         error_message = f"Error de conexión con SUNAT: {exc}"
         if raise_on_failure:
@@ -178,7 +180,7 @@ def consultar_ticket_baja(
             password=password,
         )
         try:
-            soap_response = _post_send_bill(soap_xml)
+            soap_response = _post_send_bill(soap_xml, soap_action="urn:getStatus")
         except requests.RequestException as exc:
             error_message = f"Error de conexión con SUNAT: {exc}"
             if raise_on_failure:
@@ -194,6 +196,8 @@ def consultar_ticket_baja(
 
         parsed = _parse_status_response(soap_response)
         if parsed.get("en_proceso"):
+            ensure_output_dirs()
+            summary_status_soap_path(archivo=archivo).write_bytes(soap_response)
             last_result = {
                 "ticket": ticket_value,
                 "cod_sunat": parsed["cod_sunat"],
@@ -224,9 +228,14 @@ def consultar_ticket_baja(
                 "en_proceso": False,
             }
 
+        ensure_output_dirs()
+        summary_status_soap_path(archivo=archivo).write_bytes(soap_response)
+        summary_cdr_zip_path(archivo=archivo).write_bytes(parsed["cdr_zip_bytes"])
+
         cdr_xml = _extract_cdr_xml(
             cdr_zip_bytes=parsed["cdr_zip_bytes"],
             archivo=archivo,
+            output_path=summary_cdr_path(archivo=archivo),
         )
         cdr_fields = _parse_cdr_fields(cdr_xml)
         update_fields = {

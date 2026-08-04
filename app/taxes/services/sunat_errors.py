@@ -113,6 +113,23 @@ def build_sunat_user_payload(
         outbox.Status.PENDING,
         outbox.Status.PROCESSING,
     ):
+        # Ticket already issued — waiting for CDR is normal for resumen/baja.
+        if getattr(outbox, "phase", None) == outbox.Phase.POLL:
+            return {
+                **sunat,
+                "status": "pending_ticket",
+                "recoverable": True,
+                "message": (
+                    "SUNAT recibió el resumen (ticket emitido). "
+                    "El CDR aún está en proceso; el sistema consultará el ticket automáticamente."
+                ),
+                "next_retry_at": outbox.next_retry_at.isoformat(),
+                "retry_count": outbox.attempt_count,
+                "last_error": outbox.last_error,
+                "ticket": (outbox.metadata or {}).get("ticket")
+                or sunat.get("ticket")
+                or "",
+            }
         return {
             **sunat,
             "status": "sunat_down",
@@ -125,6 +142,17 @@ def build_sunat_user_payload(
             "next_retry_at": outbox.next_retry_at.isoformat(),
             "retry_count": outbox.attempt_count,
             "last_error": outbox.last_error,
+        }
+
+    if sunat.get("en_proceso") and sunat.get("ticket"):
+        return {
+            **sunat,
+            "status": "pending_ticket",
+            "recoverable": True,
+            "message": (
+                sunat.get("msj_sunat")
+                or "SUNAT recibió el resumen; el CDR está en proceso."
+            ),
         }
 
     if sunat.get("enviada_sunat") and not sunat.get("aceptada_sunat"):

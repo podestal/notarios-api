@@ -147,7 +147,12 @@ def _build_send_bill_envelope(
     )
 
 
-def _post_send_bill(soap_xml: bytes) -> bytes:
+def _post_send_bill(
+    soap_xml: bytes,
+    *,
+    timeout: float = 120,
+    soap_action: str = "urn:sendBill",
+) -> bytes:
     # Testing only: SUNAT_SIMULATE_DOWN=1|true|yes|on → fail like SUNAT is unreachable.
     if os.environ.get("SUNAT_SIMULATE_DOWN", "").strip().lower() in {
         "1",
@@ -164,24 +169,30 @@ def _post_send_bill(soap_xml: bytes) -> bytes:
             data=soap_xml,
             headers={
                 "Content-Type": "text/xml; charset=utf-8",
-                "SOAPAction": "urn:sendBill",
+                "SOAPAction": soap_action,
             },
-            timeout=120,
+            timeout=timeout,
         )
     except requests.RequestException:
         raise
     return response.content
 
 
-def _extract_cdr_xml(*, cdr_zip_bytes: bytes, archivo: str) -> bytes:
+def _extract_cdr_xml(
+    *,
+    cdr_zip_bytes: bytes,
+    archivo: str,
+    output_path: Path | None = None,
+) -> bytes:
     with zipfile.ZipFile(io.BytesIO(cdr_zip_bytes)) as archive:
         xml_names = [name for name in archive.namelist() if name.lower().endswith(".xml")]
         if not xml_names:
             raise ValidationError("El CDR de SUNAT no contiene un archivo XML.")
         cdr_xml = archive.read(xml_names[0])
 
-    output_path = cdr_path(archivo=archivo)
-    output_path.write_bytes(cdr_xml)
+    path = output_path or cdr_path(archivo=archivo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(cdr_xml)
     return cdr_xml
 
 

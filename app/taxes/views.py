@@ -825,52 +825,56 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
                 negocio_id=user.negocio_id,
             )
 
-            sunat_result = procesar_resumen_sunat(
-                resumen_id=resumen.id_resumen,
-                consultar_ticket=True,
-                max_polls=data.get("max_polls", 10),
-                poll_interval_seconds=data.get("poll_interval_seconds", 3.0),
-                raise_on_failure=False,
-            )
-
-            if resumen_needs_sunat_retry(sunat_result):
-                consulta = sunat_result.get("sunat_consulta") or {}
-                envio = sunat_result.get("sunat_envio") or {}
-                ticket = (envio.get("ticket") or consulta.get("ticket") or "").strip()
-                phase = (
-                    SunatOutbox.Phase.POLL
-                    if ticket and (consulta.get("en_proceso") or envio.get("ticket"))
-                    else SunatOutbox.Phase.SEND
-                )
-                try:
-                    enqueue_resumen_send(
-                        resumen_id=resumen.id_resumen,
-                        last_error=str(
-                            consulta.get("msj_sunat") or envio.get("msj_sunat") or ""
-                        ),
-                        phase=phase,
-                        metadata={"ticket": ticket} if ticket else None,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to enqueue SUNAT retry for resumen_id=%s",
-                        resumen.id_resumen,
-                    )
-
-            resumen = Resumenes.objects.using(POSTGRES_DB).get(
-                pk=resumen.id_resumen
-            )
-            recibos = list(
-                Recibos.objects.using(POSTGRES_DB)
-                .filter(resumen_id=resumen.id_resumen)
-                .order_by("id_recibo")
-            )
+        # sendSummary only in the request (ticket is instant). Never block the UI
+        # on getStatus — CDR polling belongs in Celery (resumen ≠ factura sendBill).
+        sunat_result = procesar_resumen_sunat(
+            resumen_id=resumen.id_resumen,
+            consultar_ticket=False,
+            raise_on_failure=False,
+        )
 
         envio = sunat_result.get("sunat_envio") or {}
-        consulta = sunat_result.get("sunat_consulta") or {}
-        flat_sunat = {**envio, **consulta}
-        if consulta.get("aceptada_sunat") or envio.get("aceptada_sunat"):
-            flat_sunat["aceptada_sunat"] = True
+        ticket = (envio.get("ticket") or "").strip()
+        if ticket:
+            try:
+                enqueue_resumen_send(
+                    resumen_id=resumen.id_resumen,
+                    last_error="CDR pendiente de consulta (ticket emitido).",
+                    phase=SunatOutbox.Phase.POLL,
+                    metadata={"ticket": ticket},
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue SUNAT ticket poll for resumen_id=%s",
+                    resumen.id_resumen,
+                )
+        elif resumen_needs_sunat_retry(sunat_result):
+            try:
+                enqueue_resumen_send(
+                    resumen_id=resumen.id_resumen,
+                    last_error=str(envio.get("msj_sunat") or ""),
+                    phase=SunatOutbox.Phase.SEND,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue SUNAT retry for resumen_id=%s",
+                    resumen.id_resumen,
+                )
+
+        resumen = Resumenes.objects.using(POSTGRES_DB).get(pk=resumen.id_resumen)
+        recibos = list(
+            Recibos.objects.using(POSTGRES_DB)
+            .filter(resumen_id=resumen.id_resumen)
+            .order_by("id_recibo")
+        )
+
+        flat_sunat = {
+            **envio,
+            "en_proceso": bool(ticket) and not resumen.aceptada_sunat,
+            "enviada_sunat": bool(ticket) or bool(envio.get("enviada_sunat")),
+            "aceptada_sunat": bool(resumen.aceptada_sunat),
+            "ticket": ticket or envio.get("ticket") or "",
+        }
 
         outbox = get_active_outbox(
             kind=SunatOutbox.Kind.RESUMEN,
@@ -914,11 +918,12 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
         data = serializer.validated_data
 
         ticket = (data.get("ticket") or "").strip() or None
+        # One getStatus call only — never block the UI with multi-poll loops.
         sunat_result = consultar_ticket_resumen(
             resumen_id=resumen.id_resumen,
             ticket=ticket,
-            max_polls=data.get("max_polls", 10),
-            poll_interval_seconds=data.get("poll_interval_seconds", 3.0),
+            max_polls=1,
+            poll_interval_seconds=1.0,
             raise_on_failure=False,
         )
 

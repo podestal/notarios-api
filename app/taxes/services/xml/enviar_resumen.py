@@ -27,6 +27,8 @@ from .paths import (
     resumen_cdr_path,
     resumen_firmar_path,
     resumen_ticket_path,
+    summary_cdr_zip_path,
+    summary_status_soap_path,
 )
 
 SERVICE_NS = "http://service.sunat.gob.pe"
@@ -106,7 +108,31 @@ def _extract_ticket(soap_response: bytes) -> str:
 
 
 def _parse_status_response(soap_response: bytes) -> dict:
-    root = etree.fromstring(soap_response)
+    text_preview = (soap_response or b"")[:200].lstrip().lower()
+    if text_preview.startswith(b"<!doctype html") or text_preview.startswith(b"<html"):
+        return {
+            "status_code": "",
+            "en_proceso": True,
+            "cod_sunat": "98",
+            "msj_sunat": (
+                "SUNAT devolvió HTML en getStatus (respuesta no SOAP). "
+                "Se reintentará la consulta del ticket."
+            ),
+        }
+
+    try:
+        root = etree.fromstring(soap_response)
+    except etree.XMLSyntaxError:
+        return {
+            "status_code": "",
+            "en_proceso": True,
+            "cod_sunat": "98",
+            "msj_sunat": (
+                "Respuesta inválida al consultar ticket SUNAT. "
+                "Se reintentará automáticamente."
+            ),
+        }
+
     status_code_node = _find_by_localname(root, "statusCode")
     content_node = _find_by_localname(root, "content")
 
@@ -235,7 +261,7 @@ def enviar_resumen_sunat(
     )
 
     try:
-        soap_response = _post_send_bill(soap_xml)
+        soap_response = _post_send_bill(soap_xml, soap_action="urn:sendSummary")
     except requests.RequestException as exc:
         error_message = f"Error de conexión con SUNAT: {exc}"
         if raise_on_failure:
@@ -312,7 +338,9 @@ def consultar_ticket_resumen(
             password=password,
         )
         try:
-            soap_response = _post_send_bill(soap_xml)
+            soap_response = _post_send_bill(
+                soap_xml, timeout=10, soap_action="urn:getStatus"
+            )
         except requests.RequestException as exc:
             error_message = f"Error de conexión con SUNAT: {exc}"
             if raise_on_failure:
@@ -323,11 +351,14 @@ def consultar_ticket_resumen(
                 "msj_sunat": error_message,
                 "enviada_sunat": bool(resumen.enviada_sunat),
                 "aceptada_sunat": False,
-                "en_proceso": False,
+                "en_proceso": True,
             }
 
         parsed = _parse_status_response(soap_response)
         if parsed.get("en_proceso"):
+            # Keep last getStatus payload in analizar (legacy 4_analizar).
+            ensure_output_dirs()
+            summary_status_soap_path(archivo=archivo).write_bytes(soap_response)
             last_result = {
                 "ticket": ticket_value,
                 "cod_sunat": parsed["cod_sunat"],
@@ -358,9 +389,15 @@ def consultar_ticket_resumen(
                 "en_proceso": False,
             }
 
+        ensure_output_dirs()
+        summary_status_soap_path(archivo=archivo).write_bytes(soap_response)
+        zip_path = summary_cdr_zip_path(archivo=archivo)
+        zip_path.write_bytes(parsed["cdr_zip_bytes"])
+
         cdr_xml = _extract_cdr_xml(
             cdr_zip_bytes=parsed["cdr_zip_bytes"],
             archivo=archivo,
+            output_path=resumen_cdr_path(archivo=archivo),
         )
         cdr_fields = _parse_cdr_fields(cdr_xml)
         update_fields = {
