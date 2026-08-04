@@ -532,6 +532,18 @@ class DocumentSearchService:
 
         return not doc_requires_uif_sunat_xml(doc)
 
+    def _skip_monto_origen_fondos_required(self, doc: Dict) -> bool:
+        """
+        Asuntos no contenciosos (idtipkar=2) and testamentos (idtipkar=5) often
+        have no patrimonial; do not require contratantesxacto.monto / ofondo.
+        Escrituras / vehiculares / garantías keep the hard validation.
+        """
+        try:
+            tipkar = int(doc.get("idtipkar") or 0)
+        except (TypeError, ValueError):
+            tipkar = 0
+        return tipkar in (2, 5)
+
     def _validate_detalle_mediopago_moneda(
         self, kardex: str, detalle_rows: Optional[List] = None
     ):
@@ -570,7 +582,7 @@ class DocumentSearchService:
             )
 
     def _validate_uif_data(self, doc: Dict, uif_records: Optional[List] = None):
-        """Validate UIF-related data"""
+        """Validate UIF-related monto / origen de fondos on contratantesxacto."""
         kardex = doc.get('kardex', '')
         self.logger.debug(f"Validating UIF data for kardex: {kardex}")
 
@@ -580,7 +592,14 @@ class DocumentSearchService:
                 kardex,
             )
             return
-        
+
+        if self._skip_monto_origen_fondos_required(doc):
+            self.logger.debug(
+                "Saltando monto/origen fondos requeridos (tipkar 2/5) kardex=%s",
+                kardex,
+            )
+            return
+
         try:
             if uif_records is None:
                 with connection.cursor() as cursor:
@@ -624,7 +643,7 @@ class DocumentSearchService:
         except Exception as e:
             self.logger.error(f"Error validating UIF data for kardex {kardex}: {str(e)}")
             self._add_error(kardex, "Error al validar datos UIF")
-            
+
         self.logger.debug(f"After UIF validation for kardex {kardex}:")
         self.logger.debug(f"Errors: {self.kardex_errors.get(kardex, [])}")
         self.logger.debug(f"Observations: {self.kardex_observations.get(kardex, [])}")
