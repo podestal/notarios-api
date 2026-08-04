@@ -17,6 +17,7 @@ from sisgen.services.send_batch_summary import (
 from sisgen.services.send_job_executor import execute_send_job
 from sisgen.services.send_job_store import create_send_job
 from sisgen.services.sisgen_send_service import (
+    apply_estado_sisgen_from_send,
     merge_batch_result,
     new_combined_result,
     send_batch,
@@ -25,6 +26,42 @@ from sisgen.services.sisgen_send_service import (
 )
 
 User = get_user_model()
+
+
+class ApplyEstadoSisgenFromSendTests(TestCase):
+    @patch("notaria.models.Kardex.objects")
+    def test_fallido_sets_estado_3(self, mock_kardex_objects):
+        mock_kardex_objects.filter.return_value.update.return_value = 1
+        apply_estado_sisgen_from_send(
+            batch=[{"kardex": "K1-2026"}],
+            parsed={
+                "return_status": "OK",
+                "summary": {"soap_level_ok": True},
+                "documents": [
+                    {"num_kardex": "K1-2026", "doc_status": "FALLIDO"},
+                ],
+            },
+        )
+        mock_kardex_objects.filter.assert_called_with(kardex="K1-2026")
+        mock_kardex_objects.filter.return_value.update.assert_called_with(
+            estado_sisgen=3
+        )
+
+    @patch("notaria.models.Kardex.objects")
+    def test_soap_reject_without_docs_marks_batch_fallido(self, mock_kardex_objects):
+        mock_kardex_objects.filter.return_value.update.return_value = 1
+        apply_estado_sisgen_from_send(
+            batch=[{"kardex": "K1-2026"}, {"kardex": "K2-2026"}],
+            parsed={
+                "return_status": "INTERNAL_SERVER_ERROR",
+                "summary": {"soap_level_ok": False},
+                "documents": [],
+            },
+        )
+        self.assertEqual(mock_kardex_objects.filter.call_count, 2)
+        mock_kardex_objects.filter.return_value.update.assert_called_with(
+            estado_sisgen=3
+        )
 
 
 class SisgenSendServiceTests(TestCase):
@@ -91,6 +128,7 @@ class SisgenSendServiceTests(TestCase):
         self.assertEqual(result["batch_summary"]["status"], BATCH_STATUS_SKIPPED_NO_XML)
         self.assertIn("XML validation failed", result["batch_summary"]["xml_issues"])
 
+    @patch("sisgen.services.sisgen_send_service.apply_estado_sisgen_from_send")
     @patch("sisgen.services.sisgen_send_service.save_response_logs_for_batch")
     @patch("sisgen.services.sisgen_send_service.parse_set_documentos_response")
     @patch("sisgen.services.sisgen_send_service.SoapClientService")
@@ -103,6 +141,7 @@ class SisgenSendServiceTests(TestCase):
         mock_soap_cls,
         mock_parse,
         mock_save_logs,
+        mock_apply_estado,
     ):
         mock_dp = mock_dp_cls.return_value
         mock_dp.process_documents_batch.return_value = {
@@ -136,6 +175,7 @@ class SisgenSendServiceTests(TestCase):
         self.assertEqual(result["batch_summary"]["status"], BATCH_STATUS_SOAP_REJECTED)
         self.assertEqual(result["merge"]["error"], 1)
         self.assertTrue(result["merge"]["soap_errors"])
+        mock_apply_estado.assert_called_once()
 
     @patch("sisgen.services.sisgen_send_service.send_batch")
     def test_send_single_delegates_to_batch(self, mock_send_batch):

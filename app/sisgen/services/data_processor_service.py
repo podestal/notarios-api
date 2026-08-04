@@ -214,8 +214,9 @@ class DataProcessorService:
                 documento = doc.find('.//ns3:Documento', namespaces)
                 
                 if status_elem is not None and documento is not None:
-                    doc_status = status_elem.text
+                    doc_status = (status_elem.text or "").strip().upper()
                     kardex = documento.find('.//ns3:NumKardex', namespaces).text if documento.find('.//ns3:NumKardex', namespaces) is not None else ''
+                    kardex = (kardex or "").strip()
                     
                     # Map status to estado_sisgen
                     estado_map = {
@@ -223,7 +224,14 @@ class DataProcessorService:
                         'GUARDADO': 1,
                         'CON OBSERVACIONES': 2
                     }
-                    estado = estado_map.get(doc_status, 0)
+                    estado = estado_map.get(doc_status)
+                    if estado is None:
+                        self.logger.warning(
+                            "Unknown SISGEN doc status %r for kardex %r; skipping estado update",
+                            doc_status,
+                            kardex,
+                        )
+                        continue
                     
                     # Get document details
                     tipo_instrumento = documento.find('.//ns3:TipoInstrumento', namespaces)

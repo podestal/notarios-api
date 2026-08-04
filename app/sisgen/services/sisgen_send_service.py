@@ -23,6 +23,7 @@ from sisgen.services.send_batch_summary import (
 from sisgen.services.send_response_enrichment import enrich_send_result
 from sisgen.services.sisgen_soap_response import (
     SISGEN_IT_CONTACT_NOTE,
+    SOAP_FAILURE_STATUSES,
     build_soap_failure_entries,
     format_soap_return_message,
     parse_set_documentos_response,
@@ -36,6 +37,61 @@ logger = logging.getLogger(__name__)
 
 SISGEN_DRY_RUN = False
 DEFAULT_BATCH_SIZE = 10
+
+# kardex.estado_sisgen codes (ESTADO_SISGEN_MAPPING)
+_DOC_STATUS_TO_ESTADO = {
+    "FALLIDO": 3,  # No Enviado(Fallido)
+    "GUARDADO": 1,  # Enviado
+    "CON OBSERVACIONES": 2,  # Enviado(Observado)
+}
+
+
+def apply_estado_sisgen_from_send(
+    *,
+    batch: List[Dict[str, Any]],
+    parsed: Dict[str, Any],
+) -> None:
+    """
+    Persist workflow state on kardex after a SISGEN send.
+
+    Uses the already-parsed SOAP payload (namespace-safe). Previously we only
+    updated via DataProcessorService XPath, which often matched nothing, and we
+    skipped updates entirely on SOAP-level reject — leaving estado_sisgen=0.
+    """
+    from notaria.models import Kardex
+
+    docs = parsed.get("documents") or []
+    if docs:
+        for doc in docs:
+            kardex = (doc.get("num_kardex") or "").strip()
+            if not kardex:
+                continue
+            status = (doc.get("doc_status") or "").strip().upper()
+            estado = _DOC_STATUS_TO_ESTADO.get(status)
+            if estado is None and status in SOAP_FAILURE_STATUSES:
+                estado = 3
+            if estado is None and status.startswith("HTTP_"):
+                estado = 3
+            if estado is None:
+                continue
+            updated = Kardex.objects.filter(kardex=kardex).update(estado_sisgen=estado)
+            if not updated:
+                logger.warning(
+                    "SISGEN estado_sisgen=%s not applied: kardex %r not found",
+                    estado,
+                    kardex,
+                )
+        return
+
+    if soap_response_is_ok(parsed):
+        return
+
+    # SOAP reject / empty echo: mark every kardex in the batch as fallido.
+    for row in batch:
+        kardex = str(row.get("kardex") or "").strip()
+        if not kardex:
+            continue
+        Kardex.objects.filter(kardex=kardex).update(estado_sisgen=3)
 
 
 def write_debug_xml(content: str, filename: str) -> None:
@@ -242,6 +298,15 @@ def send_batch(
         except Exception as exc:
             logger.exception(
                 "Persistencia SisgenSoapResponse fallida batch=%s: %s",
+                batch_index,
+                exc,
+            )
+
+        try:
+            apply_estado_sisgen_from_send(batch=batch, parsed=parsed_soap)
+        except Exception as exc:
+            logger.exception(
+                "Error aplicando estado_sisgen batch=%s: %s",
                 batch_index,
                 exc,
             )
