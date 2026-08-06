@@ -184,11 +184,23 @@ def _extract_cdr_xml(
     archivo: str,
     output_path: Path | None = None,
 ) -> bytes:
-    with zipfile.ZipFile(io.BytesIO(cdr_zip_bytes)) as archive:
-        xml_names = [name for name in archive.namelist() if name.lower().endswith(".xml")]
-        if not xml_names:
-            raise ValidationError("El CDR de SUNAT no contiene un archivo XML.")
-        cdr_xml = archive.read(xml_names[0])
+    if not cdr_zip_bytes or not cdr_zip_bytes.startswith(b"PK"):
+        raise ValidationError(
+            "El CDR de SUNAT no es un archivo ZIP válido "
+            f"(inicio={cdr_zip_bytes[:40]!r})."
+        )
+    try:
+        with zipfile.ZipFile(io.BytesIO(cdr_zip_bytes)) as archive:
+            xml_names = [
+                name for name in archive.namelist() if name.lower().endswith(".xml")
+            ]
+            if not xml_names:
+                raise ValidationError("El CDR de SUNAT no contiene un archivo XML.")
+            cdr_xml = archive.read(xml_names[0])
+    except zipfile.BadZipFile as exc:
+        raise ValidationError(
+            "El CDR de SUNAT no es un archivo ZIP válido."
+        ) from exc
 
     path = output_path or cdr_path(archivo=archivo)
     path.parent.mkdir(parents=True, exist_ok=True)

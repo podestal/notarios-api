@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import binascii
+import io
 import time
 from pathlib import Path
 
@@ -162,7 +164,37 @@ def _parse_status_response(soap_response: bytes) -> dict:
             "aceptada_sunat": False,
         }
 
-    cdr_zip_bytes = base64.b64decode(content)
+    try:
+        cdr_zip_bytes = base64.b64decode(content, validate=False)
+    except (binascii.Error, ValueError):
+        return {
+            "status_code": status_code,
+            "en_proceso": False,
+            "cod_sunat": status_code or "error",
+            "msj_sunat": (
+                f"SUNAT devolvió content no-base64 en getStatus "
+                f"(statusCode={status_code or 'vacío'})."
+            ),
+            "enviada_sunat": True,
+            "aceptada_sunat": False,
+        }
+
+    # ZIP local header magic — CDR must be a zip; otherwise UI used to 500 on BadZipFile.
+    if not cdr_zip_bytes.startswith(b"PK"):
+        preview = cdr_zip_bytes[:80]
+        return {
+            "status_code": status_code,
+            "en_proceso": True,
+            "cod_sunat": status_code or "98",
+            "msj_sunat": (
+                f"SUNAT aún no devolvió un CDR ZIP válido "
+                f"(statusCode={status_code or 'vacío'}, "
+                f"content={preview!r}). Reintente consultar el ticket."
+            ),
+            "enviada_sunat": True,
+            "aceptada_sunat": False,
+        }
+
     return {
         "status_code": status_code,
         "en_proceso": False,
@@ -394,12 +426,26 @@ def consultar_ticket_resumen(
         zip_path = summary_cdr_zip_path(archivo=archivo)
         zip_path.write_bytes(parsed["cdr_zip_bytes"])
 
-        cdr_xml = _extract_cdr_xml(
-            cdr_zip_bytes=parsed["cdr_zip_bytes"],
-            archivo=archivo,
-            output_path=resumen_cdr_path(archivo=archivo),
-        )
-        cdr_fields = _parse_cdr_fields(cdr_xml)
+        try:
+            cdr_xml = _extract_cdr_xml(
+                cdr_zip_bytes=parsed["cdr_zip_bytes"],
+                archivo=archivo,
+                output_path=resumen_cdr_path(archivo=archivo),
+            )
+            cdr_fields = _parse_cdr_fields(cdr_xml)
+        except (ValidationError, etree.XMLSyntaxError) as exc:
+            error_message = str(getattr(exc, "detail", None) or exc)
+            exception_path(archivo=archivo).write_bytes(soap_response)
+            if raise_on_failure:
+                raise ValidationError(error_message) from exc
+            return {
+                "ticket": ticket_value,
+                "cod_sunat": parsed.get("status_code") or "error",
+                "msj_sunat": error_message,
+                "enviada_sunat": True,
+                "aceptada_sunat": False,
+                "en_proceso": True,
+            }
         update_fields = {
             "digest_value": cdr_fields["digest_value"] or resumen.digest_value,
         }
