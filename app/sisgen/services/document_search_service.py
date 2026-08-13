@@ -281,19 +281,14 @@ class DocumentSearchService:
     @staticmethod
     def _reference_date_in_range_sql(fecha_desde: str, fecha_hasta: str) -> Tuple[str, List]:
         """
-        Rango por fecha de referencia del expediente.
+        Rango por fecha de ingreso del expediente.
 
-        ``k.fechaescritura`` es VARCHAR y en legado viene en ISO (YYYY-MM-DD) o DD/MM/YYYY;
-        un ``BETWEEN`` lexicográfico sobre strings excluye filas válidas. En vehículos a veces
-        ``fechaescritura`` viene vacío y la fecha útil está en ``fechaconclusion`` / ``fechainstrumento``.
+        ``k.fechaingreso`` es VARCHAR (DD/MM/YYYY o YYYY-MM-DD).
         """
         sql = """(
             COALESCE(
-                STR_TO_DATE(NULLIF(TRIM(k.fechaescritura), ''), '%%Y-%%m-%%d'),
-                STR_TO_DATE(NULLIF(TRIM(k.fechaescritura), ''), '%%d/%%m/%%Y'),
-                STR_TO_DATE(NULLIF(TRIM(k.fechaconclusion), ''), '%%d/%%m/%%Y'),
-                STR_TO_DATE(NULLIF(TRIM(k.fechainstrumento), ''), '%%d/%%m/%%Y'),
-                STR_TO_DATE(NULLIF(TRIM(k.fechainstrumento), ''), '%%Y-%%m-%%d')
+                STR_TO_DATE(NULLIF(TRIM(k.fechaingreso), ''), '%%d/%%m/%%Y'),
+                STR_TO_DATE(NULLIF(TRIM(k.fechaingreso), ''), '%%Y-%%m-%%d')
             ) BETWEEN CAST(%s AS DATE) AND CAST(%s AS DATE)
         )"""
         return sql, [fecha_desde, fecha_hasta]
@@ -1096,12 +1091,12 @@ class DocumentSearchService:
             'estado_sisgen': estado_display,
             'estado_sisgen_code': estado_code if estado_code is not None else 0,
             'idtipkar': doc['idtipkar'],
-            'fechaingreso': self._format_datetime_safely(doc['fechaingreso']),
+            'fechaingreso': self._format_date_safely(doc.get('fechaingreso')),
             'codactos': doc['codactos'],
             'contrato': doc['contrato'],
             'folioini': doc['folioini'],
             'foliofin': doc['foliofin'],
-            'fechaconclusion': self._format_date_safely(doc['fechaconclusion']),
+            'fechaconclusion': self._format_date_safely(doc.get('fechaconclusion')),
             'cod_ancert': doc['cod_ancert'] or '',
             'actouif': doc['actouif'] or '',
             'actosunat': doc['actosunat'] or '',
@@ -1140,17 +1135,21 @@ class DocumentSearchService:
         """Safely format date values"""
         if date_value is None:
             return ''
-        
+
         try:
             if isinstance(date_value, str):
-                # Try to parse the date string
+                text = date_value.strip()
+                if not text or text in {"0000-00-00", "00/00/0000", "None"}:
+                    return ''
+                if len(text) >= 10 and text[4] == '-' and text[7] == '-':
+                    text = text[:10]
                 for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
                     try:
-                        date_obj = datetime.strptime(date_value, fmt)
+                        date_obj = datetime.strptime(text, fmt)
                         return date_obj.strftime('%d/%m/%Y')
                     except ValueError:
                         continue
-                return date_value
+                return text
             elif hasattr(date_value, 'strftime'):
                 return date_value.strftime('%d/%m/%Y')
             else:

@@ -30,6 +30,8 @@ class SearchResponseSlimTests(SimpleTestCase):
             "estado_sisgen": "Pendiente",
             "idtipkar": 1,
             "numescritura": "1234",
+            "fechaingreso": "01/08/2026",
+            "fechaconclusion": "15/04/2026",
             "notary_data": {"codnotario": "x"},
             "errores": ["e1"],
             "observaciones": ["warn"],
@@ -63,6 +65,7 @@ class SearchResponseSlimTests(SimpleTestCase):
                 "kardex",
                 "idkardex",
                 "numero_instrumento",
+                "fecha_ingreso",
                 "contrato",
                 "estado_sisgen",
                 "idtipkar",
@@ -74,6 +77,8 @@ class SearchResponseSlimTests(SimpleTestCase):
             },
         )
         self.assertEqual(slim["numero_instrumento"], "1234")
+        self.assertEqual(slim["fecha_ingreso"], "01/08/2026")
+        self.assertNotIn("fecha_conclusion", slim)
         self.assertEqual(slim["sisgen_error_count"], 1)
         self.assertEqual(slim["sisgen_observaciones_count"], 1)
         self.assertEqual(slim["sisgen_personas_count"], 1)
