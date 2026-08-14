@@ -281,14 +281,14 @@ class DocumentSearchService:
     @staticmethod
     def _reference_date_in_range_sql(fecha_desde: str, fecha_hasta: str) -> Tuple[str, List]:
         """
-        Rango por fecha de ingreso del expediente.
+        Rango por fecha de escrituración.
 
-        ``k.fechaingreso`` es VARCHAR (DD/MM/YYYY o YYYY-MM-DD).
+        ``k.fechaescritura`` es VARCHAR (YYYY-MM-DD o DD/MM/YYYY).
         """
         sql = """(
             COALESCE(
-                STR_TO_DATE(NULLIF(TRIM(k.fechaingreso), ''), '%%d/%%m/%%Y'),
-                STR_TO_DATE(NULLIF(TRIM(k.fechaingreso), ''), '%%Y-%%m-%%d')
+                STR_TO_DATE(NULLIF(TRIM(k.fechaescritura), ''), '%%Y-%%m-%%d'),
+                STR_TO_DATE(NULLIF(TRIM(k.fechaescritura), ''), '%%d/%%m/%%Y')
             ) BETWEEN CAST(%s AS DATE) AND CAST(%s AS DATE)
         )"""
         return sql, [fecha_desde, fecha_hasta]
