@@ -57,6 +57,7 @@ from .serializers import (
     CreateBajaSerializer,
     CreateResumenResponseSerializer,
     CreateResumenSerializer,
+    EnviarBoletaResumenSerializer,
     DocumentosSerializer,
     IngresosDetallesSerializer,
     IngresosReadSerializer,
@@ -91,7 +92,11 @@ from .services.baja import (
     recibos_anulados_queryset,
     recibos_pendientes_baja_queryset,
 )
-from .services.resumen import create_resumen, recibos_pendientes_queryset
+from .services.resumen import (
+    create_resumen,
+    create_resumen_for_single_recibo,
+    recibos_pendientes_queryset,
+)
 from .legacy_db import POSTGRES_DB
 from .services.document_lookup import document_lookup_context
 from .services.document_queryset import apply_document_list_filters
@@ -825,6 +830,30 @@ class ResumenesViewSet(DocumentReadViewSetMixin, ModelViewSet):
                 negocio_id=user.negocio_id,
             )
 
+        return self._respond_after_resumen_sunat(resumen)
+
+    @action(detail=False, methods=["post"], url_path="enviar-boleta")
+    def enviar_boleta(self, request):
+        """Create a resumen with one boleta and send it to SUNAT (sendSummary)."""
+        user = request.user
+        if user.taxes_usuario_id is None or user.negocio_id is None:
+            raise ValidationError(
+                "El usuario no está vinculado a taxes (taxes_usuario_id / negocio_id)."
+            )
+
+        serializer = EnviarBoletaResumenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        resumen, _recibos = create_resumen_for_single_recibo(
+            recibo_id=data["recibo_id"],
+            usuario_id=user.taxes_usuario_id,
+            negocio_id=user.negocio_id,
+            fecha_comunicacion=data.get("fecha_comunicacion"),
+        )
+        return self._respond_after_resumen_sunat(resumen)
+
+    def _respond_after_resumen_sunat(self, resumen):
         # sendSummary only in the request (ticket is instant). Never block the UI
         # on getStatus — CDR polling belongs in Celery (resumen ≠ factura sendBill).
         sunat_result = procesar_resumen_sunat(

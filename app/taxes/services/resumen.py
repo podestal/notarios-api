@@ -1,5 +1,8 @@
+from datetime import date, datetime
+
 from django.db import transaction
 from django.db.models import Count, Q
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from taxes.legacy_db import next_serial_id, POSTGRES_DB
@@ -92,6 +95,57 @@ def create_resumen(
         recibo.fecha_resumen = fecha_resumen
 
     return resumen, recibos
+
+
+def _as_date(value) -> date:
+    if value is None:
+        raise ValidationError("El recibo no tiene fecha de emisión.")
+    if isinstance(value, datetime):
+        return timezone.localtime(value).date() if timezone.is_aware(value) else value.date()
+    if isinstance(value, date):
+        return value
+    raise ValidationError("Fecha de emisión del recibo inválida.")
+
+
+def create_resumen_for_single_recibo(
+    *,
+    recibo_id: int,
+    usuario_id: int,
+    negocio_id: int,
+    fecha_comunicacion=None,
+):
+    """
+    Build a daily resumen with exactly one boleta (or NC/ND over boleta).
+
+    Reuses create_resumen; does not change the multi-recibo POST /resumenes/ flow.
+    """
+    recibo = (
+        Recibos.objects.using(POSTGRES_DB)
+        .filter(id_recibo=recibo_id, negocio_id=negocio_id)
+        .first()
+    )
+    if recibo is None:
+        raise ValidationError("Recibo no encontrado.")
+
+    is_boleta = recibo.comprobante_id == BOLETA_COMPROBANTE_ID
+    is_nota_sobre_boleta = recibo.comprobante_id in (
+        NOTA_CREDITO_COMPROBANTE_ID,
+        NOTA_DEBITO_COMPROBANTE_ID,
+    ) and recibo.tipo_recibo_modificado_id == BOLETA_COMPROBANTE_ID
+    if not (is_boleta or is_nota_sobre_boleta):
+        raise ValidationError(
+            "Solo boletas (o notas de crédito/débito que modifican boleta) "
+            "se envían a SUNAT por resumen."
+        )
+
+    return create_resumen(
+        fecha_resumen=fecha_comunicacion or timezone.localdate(),
+        fecha_emision=_as_date(recibo.fecha_emision),
+        comprobante_id=BOLETA_COMPROBANTE_ID,
+        recibo_ids=[recibo.id_recibo],
+        usuario_id=usuario_id,
+        negocio_id=negocio_id,
+    )
 
 
 def recibos_pendientes_queryset(

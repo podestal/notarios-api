@@ -719,6 +719,11 @@ class CreateResumenSerializer(serializers.Serializer):
     poll_interval_seconds = serializers.FloatField(default=1.0, min_value=0.5, max_value=10.0)
 
 
+class EnviarBoletaResumenSerializer(serializers.Serializer):
+    recibo_id = serializers.IntegerField(min_value=1)
+    fecha_comunicacion = serializers.DateField(required=False)
+
+
 class ConsultarTicketResumenSerializer(serializers.Serializer):
     ticket = serializers.CharField(required=False, allow_blank=True)
     max_polls = serializers.IntegerField(default=1, min_value=1, max_value=5)
