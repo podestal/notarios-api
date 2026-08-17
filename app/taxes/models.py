@@ -25,6 +25,11 @@ class Usuarios(models.Model):
     class Meta:
         managed = False
         db_table = 'usuarios'
+        verbose_name = "usuario de facturación"
+        verbose_name_plural = "usuarios de facturación"
+
+    def __str__(self) -> str:
+        return f"{self.usuario} ({self.id_usuario})"
 
 
 class CodigosUnitarios(models.Model):

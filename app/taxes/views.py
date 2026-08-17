@@ -75,7 +75,10 @@ from .serializers import (
     TipoNotaDebitoSerializer,
     TiposIgvSerializer,
     UsuariosSerializer,
+    CreateTaxesUsuarioSerializer,
+    CreateTaxesUsuarioResponseSerializer,
 )
+from .services.usuario import create_taxes_usuario
 from .services.canje import canjear_ingreso
 from .services.control_interno import (
     BOLETA_COMPROBANTE_ID,
@@ -1235,6 +1238,13 @@ class UsuariosViewSet(ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated, IsSuperuser]
     # pagination_class = KardexPagination
     lookup_field = "id_usuario"
+
+    def create(self, request, *args, **kwargs):
+        serializer = CreateTaxesUsuarioSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = create_taxes_usuario(actor=request.user, **serializer.validated_data)
+        response = CreateTaxesUsuarioResponseSerializer(result)
+        return Response(response.data, status=status.HTTP_201_CREATED)
 
     def get_queryset(self):
         # Materialize on MariaDB — lazy QuerySet would become a Postgres subquery.

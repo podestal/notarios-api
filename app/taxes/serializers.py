@@ -855,3 +855,70 @@ class UsuariosSerializer(serializers.ModelSerializer):
             "rol_id",
             "persona_id",
         ]
+
+
+class CreateTaxesPersonaSerializer(serializers.Serializer):
+    nombres = serializers.CharField(max_length=45, required=False, allow_blank=True, default="")
+    apellido_paterno = serializers.CharField(
+        max_length=45, required=False, allow_blank=True, default=""
+    )
+    apellido_materno = serializers.CharField(
+        max_length=45, required=False, allow_blank=True, default=""
+    )
+    razon_social = serializers.CharField(
+        max_length=150, required=False, allow_blank=True, default=""
+    )
+    nombre_comercial = serializers.CharField(
+        max_length=45, required=False, allow_blank=True, default=""
+    )
+    documento = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="id_documento. Defaults to DNI (codigo='1').",
+    )
+    numero_documento = serializers.CharField(max_length=20)
+    direccion = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default=""
+    )
+    fecha_nacimiento = serializers.DateField(required=False, allow_null=True, default=None)
+    nombre_completo = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default=""
+    )
+    email = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+
+
+class CreateTaxesUsuarioSerializer(serializers.Serializer):
+    usuario = serializers.CharField(max_length=20)
+    email = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+    telefono = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    negocio_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    rol_id = serializers.IntegerField(required=False, default=1)
+    estado = serializers.IntegerField(required=False, default=1)
+    clave = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Legacy taxes.clave only — not used for API login.",
+    )
+    idusuario = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Existing core User.idusuario to link (login stays on core).",
+    )
+    persona = CreateTaxesPersonaSerializer()
+
+
+class CreateTaxesUsuarioCoreUserSerializer(serializers.Serializer):
+    idusuario = serializers.IntegerField()
+    username = serializers.CharField()
+    taxes_usuario_id = serializers.IntegerField(allow_null=True)
+    negocio_id = serializers.IntegerField(allow_null=True)
+
+
+class CreateTaxesUsuarioResponseSerializer(serializers.Serializer):
+    persona = PersonasSerializer()
+    usuario = UsuariosSerializer()
+    core_user = CreateTaxesUsuarioCoreUserSerializer(allow_null=True)
