@@ -1,9 +1,12 @@
 from django.contrib.auth import get_user_model
 from rest_framework import mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .permissions import IsSuperuser
+from .permissions import IsStaffOrSuperuser
 from .serializers import AdminUserSerializer, UserSummarySerializer
+from .services.celery_status import celery_status_payload
 
 User = get_user_model()
 
@@ -38,3 +41,12 @@ class UserAdminViewSet(
 
     def get_queryset(self):
         return User.objects.all().order_by('username')
+
+
+class CeleryStatusView(APIView):
+    """Beat schedule, next run times, and SUNAT outbox retries/failures."""
+
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
+
+    def get(self, request):
+        return Response(celery_status_payload())

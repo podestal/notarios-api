@@ -20,6 +20,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 import debug_toolbar
 
+from core.views import CeleryStatusView
+
 urlpatterns = []
 
 if settings.DEBUG:
@@ -36,6 +38,7 @@ urlpatterns += [
     path('compliance/', include('compliance.urls')),
     path('viajes/', include('viajes.urls')),
     path('taxes/', include('taxes.urls')),
+    path('celery/', CeleryStatusView.as_view(), name='celery-status'),
     path('auth/', include('djoser.urls')),
     path('auth/', include('djoser.urls.jwt')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
