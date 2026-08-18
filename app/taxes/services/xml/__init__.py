@@ -1,4 +1,7 @@
 import logging
+from pathlib import Path
+
+from rest_framework.exceptions import NotFound
 
 from .firmar import firmar_recibo_xml
 from .generar import generar_recibo_xml
@@ -14,7 +17,7 @@ from .enviar_resumen import (
     procesar_resumen_sunat,
 )
 from .context import fetch_recibo_xml_context
-from .paths import firmar_dir, generar_dir, xml_notaria_root
+from .paths import firmar_dir, firmar_path, generar_dir, xml_notaria_root
 from taxes.services.sunat_errors import recibo_needs_sunat_retry
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,24 @@ def procesar_recibo_xml(recibo_id: int) -> dict:
     return result
 
 
+def resolve_recibo_signed_xml_path(recibo_id: int) -> tuple[Path, str]:
+    """Signed XML in xml_notaria/firmar and a download filename (serie-numero.xml)."""
+    ctx = fetch_recibo_xml_context(recibo_id)
+    path = firmar_path(
+        ruc=ctx.ruc_emisor,
+        codigo_comprobante=ctx.codigo_comprobante,
+        serie=ctx.serie,
+        numero=ctx.numero,
+    )
+    if not path.is_file():
+        raise NotFound(
+            "Signed XML not found. Create the comprobante first "
+            "(POST /taxes/recibos/) so xml_notaria/firmar is populated."
+        )
+    filename = f"{ctx.serie}-{ctx.numero_padded}.xml"
+    return path, filename
+
+
 __all__ = [
     "can_enviar_recibo_sunat",
     "consultar_ticket_baja",
@@ -69,6 +90,7 @@ __all__ = [
     "procesar_baja_sunat",
     "procesar_recibo_xml",
     "procesar_resumen_sunat",
+    "resolve_recibo_signed_xml_path",
     "should_auto_enviar_sunat",
     "xml_notaria_root",
 ]

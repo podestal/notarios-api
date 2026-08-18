@@ -5,7 +5,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
@@ -126,6 +126,7 @@ from .services.xml import (
     enviar_recibo_sunat,
     procesar_baja_sunat,
     procesar_resumen_sunat,
+    resolve_recibo_signed_xml_path,
 )
 
 User = get_user_model()
@@ -607,6 +608,15 @@ class RecibosViewSet(DocumentReadViewSetMixin, ModelViewSet):
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="recibo-{pk}.pdf"'
+        return response
+
+    @action(detail=True, methods=["get"], url_path="xml")
+    def xml(self, request, pk=None):
+        """Download signed XML from xml_notaria/firmar (legacy 2_firmar link)."""
+        self.get_object()
+        path, filename = resolve_recibo_signed_xml_path(int(pk))
+        response = HttpResponse(path.read_bytes(), content_type="application/xml")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
 
