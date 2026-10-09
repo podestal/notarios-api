@@ -3441,10 +3441,8 @@ class PoderesFueraregViewSet(ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="reporte")
     def reporte(self, request):
-        # TEST THIS ENDPOINT
         """Generate poderes report (Excel or Word)"""
-        from app.ducumentation.extraprotocolares.poderes import PoderesReportService
-        from datetime import datetime
+        from ducumentation.extraprotocolares.poderes import PoderesReportService
 
         fechade = request.query_params.get("fechade")
         fechaa = request.query_params.get("fechaa")
