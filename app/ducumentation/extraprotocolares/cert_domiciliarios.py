@@ -894,6 +894,11 @@ class CertDomiciliariosReportService:
                         pass
                 adjusted_width = min(max_length + 2, 50)
                 ws.column_dimensions[column_letter].width = adjusted_width
+
+            # Auto-fit counts characters, which is too narrow for the 13.5pt data font.
+            for column_letter, min_width in (('B', 18), ('D', 18)):  # FECHA, N° DNI
+                current = ws.column_dimensions[column_letter].width or 0
+                ws.column_dimensions[column_letter].width = max(current, min_width)
             
             # Save to buffer
             buffer = io.BytesIO()
@@ -1033,6 +1038,22 @@ class CertDomiciliariosReportService:
                     row.cells[5].text = str(motivo_solicitante or '')
                     row.cells[6].text = str(recibo_formatted or '')
                     row.cells[7].text = str(numero_recibo or '')
+
+                # Widths sum to the 7.5in printable width (letter, 0.5in margins).
+                column_widths = [
+                    Inches(0.5),   # N°
+                    Inches(1.0),   # FECHA
+                    Inches(1.3),   # SOLICITANTE
+                    Inches(0.95),  # N° DNI
+                    Inches(1.3),   # DOMICILIO
+                    Inches(0.85),  # MOTIVO
+                    Inches(0.8),   # DOCUMENTO VERIFICADO
+                    Inches(0.8),   # COMPROBANTE
+                ]
+                data_table.autofit = False
+                for table_row in data_table.rows:
+                    for idx, width in enumerate(column_widths):
+                        table_row.cells[idx].width = width
             
             # Save to buffer
             buffer = io.BytesIO()
