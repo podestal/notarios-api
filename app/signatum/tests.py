@@ -1,8 +1,10 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from signatum import allocation, models
@@ -123,6 +125,25 @@ class FinalizeReservationTests(TestCase):
         reservation.refresh_from_db()
         self.assertEqual(
             reservation.status, models.NotarizationReservation.Status.COMMITTED
+        )
+
+    def test_finalize_rejects_expired_pending_reservation(self):
+        reservation = self._reservation()
+        models.NotarizationReservation.objects.filter(pk=reservation.pk).update(
+            created_at=timezone.now()
+            - timedelta(minutes=models.RESERVATION_BLOCK_MINUTES, seconds=1)
+        )
+        kardex = self._kardex()
+
+        with self.assertRaises(ValidationError):
+            finalize_notarization_from_reservation(
+                kardex_instance=kardex,
+                reservation_id=reservation.id,
+                user=self.user,
+            )
+        reservation.refresh_from_db()
+        self.assertEqual(
+            reservation.status, models.NotarizationReservation.Status.PENDING
         )
 
     def test_finalize_rejects_other_users_reservation(self):

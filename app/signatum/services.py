@@ -10,6 +10,7 @@ Call :func:`reverse_committed_for_kardex` when a Kardex PATCH clears escrituraci
 from __future__ import annotations
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from notaria.models import Kardex
@@ -165,6 +166,18 @@ def finalize_notarization_from_reservation(
         if reservation.status != NotarizationReservation.Status.PENDING:
             raise ValidationError(
                 {"signatum_reservation_id": "Reservation is not pending."},
+            )
+
+        # Stale PE rows are only flipped to EX lazily (on the next create), so
+        # the time window must be enforced here too or an expired number can be
+        # committed after it was handed out again.
+        if reservation.expires_at is not None and timezone.now() >= reservation.expires_at:
+            raise ValidationError(
+                {
+                    "signatum_reservation_id": (
+                        "La reserva expiró. Vuelva a obtener datos antes de guardar."
+                    )
+                },
             )
 
         if reservation.held_by_id != user.id:

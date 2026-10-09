@@ -13,6 +13,7 @@ class NotarizationReservationSerializer(serializers.ModelSerializer):
     """Full reservation; use for retrieve, list, update."""
 
     held_by_username = serializers.SerializerMethodField()
+    expires_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = models.NotarizationReservation

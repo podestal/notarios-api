@@ -33,14 +33,14 @@ class SerieNotarialViewSet(viewsets.ModelViewSet):
 
 class NotarizationReservationViewSet(viewsets.ModelViewSet):
     """
-    On create: expire stale pendings (>5 min) for the same idtipkar, then enforce
+    On create: expire stale pendings (older than RESERVATION_BLOCK_MINUTES) for the same idtipkar, then enforce
     lock only within that tipo. Correlatives chain is per calendar year + idtipkar.
     """
 
     queryset = models.NotarizationReservation.objects.all()
     serializer_class = serializers.NotarizationReservationSerializer
 
-    RESERVATION_BLOCK_MINUTES = 5
+    RESERVATION_BLOCK_MINUTES = models.RESERVATION_BLOCK_MINUTES
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -61,10 +61,10 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
         return Response(output.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _release_stale_pending_on_create(self, idtipkar: int) -> None:
-        """Mark PE rows older than 5 minutes as EX, only for this tipo de kardex."""
+        """Mark PE rows older than RESERVATION_BLOCK_MINUTES as EX, only for this tipo de kardex."""
         cutoff = timezone.now() - timedelta(minutes=self.RESERVATION_BLOCK_MINUTES)
         stale = list(
-            models.NotarizationReservation.objects.filter(
+            models.NotarizationReservation.objects.select_for_update().filter(
                 idtipkar=idtipkar,
                 status=models.NotarizationReservation.Status.PENDING,
                 created_at__lt=cutoff,
@@ -260,7 +260,7 @@ class NotarizationReservationViewSet(viewsets.ModelViewSet):
                         "detail": (
                             "Another user has an active notarization reservation "
                             "for this tipo de kardex. Try again after they finish "
-                            "or after 5 minutes."
+                            f"or after {self.RESERVATION_BLOCK_MINUTES} minute(s)."
                         )
                     }
                 )

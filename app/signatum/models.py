@@ -1,6 +1,11 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
+# Pending reservations older than this are treated as stale and released.
+RESERVATION_BLOCK_MINUTES = 1
 
 
 class Notarization(models.Model):
@@ -80,6 +85,12 @@ class NotarizationReservation(models.Model):
 
     class Meta:
         ordering = ("-id",)
+
+    @property
+    def expires_at(self):
+        if not self.created_at:
+            return None
+        return self.created_at + timedelta(minutes=RESERVATION_BLOCK_MINUTES)
 
 
 class SerieNotarial(models.Model):
