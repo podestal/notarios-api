@@ -93,6 +93,19 @@ def generate_new_id(model, id_field='id', fill=10):
             return str(int(last_id) + 1).zfill(fill)
     return str(1).zfill(fill)
 
+def condicion_ids(condicion_value):
+    """
+    Ordered unique condicion ids from a contratante ``condicion`` string.
+    '001.1/002.1/' -> ['001', '002']; legacy values without '.item' ('001') are kept.
+    """
+    ids = []
+    for raw in str(condicion_value or "").split("/"):
+        idcondicion = raw.split(".", 1)[0].strip()
+        if idcondicion and idcondicion not in ids:
+            ids.append(idcondicion)
+    return ids
+
+
 def normalize_name_for_search(name):
     """
     Normalize a name for search purposes.

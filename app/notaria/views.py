@@ -1730,9 +1730,11 @@ class ContratantesViewSet(ModelViewSet):
         contratantes = models.Contratantes.objects.filter(kardex=kardex)
         contratante_ids = set(c.idcontratante for c in contratantes)
 
-        contratantes_tipoactos = set(c.condicion.split(".")[0] for c in contratantes)
-
-        print("contratantes_tipoactos", contratantes_tipoactos)
+        contratantes_tipoactos = {
+            idcondicion
+            for c in contratantes
+            for idcondicion in utils.condicion_ids(c.condicion)
+        }
 
         condicion_map = {
             c["idcondicion"]: c

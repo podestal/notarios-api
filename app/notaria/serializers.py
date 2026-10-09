@@ -317,10 +317,12 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
 
     def get_condicion_str(self, obj):
         condicion_map = self.context.get("condicion_map", {})
-        condicion = condicion_map.get(obj.condicion.split(".")[0])
-        if condicion:
-            return f"{condicion['condicion']}"
-        return ""
+        nombres = []
+        for idcondicion in utils.condicion_ids(obj.condicion):
+            condicion = condicion_map.get(idcondicion)
+            if condicion and condicion["condicion"] not in nombres:
+                nombres.append(condicion["condicion"])
+        return " / ".join(nombres)
 
 
 class ContratantesxactoSerializer(serializers.ModelSerializer):
