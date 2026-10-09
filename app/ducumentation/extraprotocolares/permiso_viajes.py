@@ -724,7 +724,6 @@ class PermisosViajeReportService:
                 WHERE vc.id_viaje IN ({placeholders})
                 GROUP BY vc.id_viaje, vc.c_codcontrat, cc.des_condicion
                 ORDER BY vc.id_viaje, vc.id_contratante
-                LIMIT 100
             """
             
             try:
@@ -748,6 +747,16 @@ class PermisosViajeReportService:
                 print(f"DEBUG: Error in batch participant query: {e}")
                 return {}  # Return empty dict on error
     
+    @staticmethod
+    def _doc_label(tipo_doc, num_doc) -> str:
+        """Doc type comes from cliente by numdoc; participants not in cliente have none."""
+        if tipo_doc:
+            return str(tipo_doc)
+        num = str(num_doc or '').strip()
+        if len(num) == 8 and num.isdigit():
+            return 'DNI'
+        return 'DOC'
+
     def _format_date_in_spanish(self, date_str: str) -> str:
         """Convert YYYY-MM-DD date string to Spanish format."""
         if not date_str:
@@ -962,8 +971,7 @@ class PermisosViajeReportService:
             # Add data rows
             row += 1
             
-            # Limit to first 20 records for faster testing
-            limited_data = report_data[:20] if len(report_data) > 20 else report_data
+            limited_data = report_data
             
             # Batch query all participants for all viajes at once
             viaje_ids = [data_row[0] for data_row in limited_data if len(data_row) > 0]
@@ -993,8 +1001,8 @@ class PermisosViajeReportService:
                 for participant in participants:
                     condicion = participant.get('des_condicion', '')
                     nombre = participant.get('c_descontrat', '')
-                    tipo_doc = participant.get('tipo_documento', '')
                     num_doc = participant.get('doc', '')
+                    tipo_doc = self._doc_label(participant.get('tipo_documento'), num_doc)
                     # Format exactly like PHP: "CONDICION :NOMBRE" and "TIPO_DOC:NUM_DOC"
                     participant_text += f"{condicion} :{nombre}\n{tipo_doc}:{num_doc}\n"
                 
@@ -1206,9 +1214,7 @@ class PermisosViajeReportService:
             if report_data and len(report_data) > 0:
                 print(f"DEBUG: Processing {len(report_data)} data rows...")
                 
-                # Limit to first 20 records for faster testing
-                limited_data = report_data[:20] if len(report_data) > 20 else report_data
-                print(f"DEBUG: Limited to {len(limited_data)} records for testing")
+                limited_data = report_data
                 
                 # Batch query all participants for all viajes at once
                 viaje_ids = [data_row[0] for data_row in limited_data if len(data_row) > 0]
@@ -1246,8 +1252,8 @@ class PermisosViajeReportService:
                         for participant in participants:
                             condicion = participant.get('des_condicion', '')
                             nombre = participant.get('c_descontrat', '')
-                            tipo_doc = participant.get('tipo_documento', '')
                             num_doc = participant.get('doc', '')
+                            tipo_doc = self._doc_label(participant.get('tipo_documento'), num_doc)
                             participant_text += f"{condicion}: {nombre}\n{tipo_doc}: {num_doc}\n"
                         
                         print(f"DEBUG: Participant text: {participant_text.strip()}")
