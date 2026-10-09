@@ -680,7 +680,9 @@ class TransferenciasVehicularesReportService:
                     AND k.fechaescritura <> '' 
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
-                ORDER BY k.numescritura ASC
+                ORDER BY k.fechaescritura ASC,
+                    CAST(NULLIF(TRIM(k.numescritura), '') AS UNSIGNED) ASC,
+                    k.kardex ASC
             """
 
             with connection.cursor() as cursor:
