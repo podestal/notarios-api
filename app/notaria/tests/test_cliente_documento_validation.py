@@ -32,6 +32,9 @@ def test_validate_juridica_documento_accepts_valid_cases(attrs, expected_numdoc)
         ({"tipper": "J", "idtipdoc": 8, "numdoc": ""}, "numdoc"),
         ({"tipper": "J", "idtipdoc": 8, "numdoc": "123"}, "numdoc"),
         ({"tipper": "J", "idtipdoc": 10, "numdoc": "20555555555"}, "numdoc"),
+        ({"tipper": "J", "idtipdoc": 1, "numdoc": "12345678"}, "idtipdoc"),
+        ({"tipper": "J", "idtipdoc": 5, "numdoc": "AB123456"}, "idtipdoc"),
+        ({"tipper": "J", "numdoc": "20555555555"}, "idtipdoc"),
     ],
 )
 def test_validate_juridica_documento_rejects_invalid_cases(attrs, field):
@@ -48,6 +51,13 @@ def test_validate_juridica_documento_skips_natural_person():
 def test_validate_juridica_documento_partial_update_uses_instance():
     instance = _JuridicaInstance()
     assert utils.validate_juridica_documento({}, instance) == {}
+
+
+def test_validate_juridica_documento_rejects_switching_natural_dni_to_juridica():
+    instance = _JuridicaInstance(tipper="N", idtipdoc=1, numdoc="12345678")
+    with pytest.raises(ValidationError) as exc:
+        utils.validate_juridica_documento({"tipper": "J"}, instance)
+    assert "idtipdoc" in exc.value.detail
 
 
 def test_validate_juridica_documento_partial_update_rejects_clearing_ruc():

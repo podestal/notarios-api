@@ -26,6 +26,7 @@ def validate_juridica_documento(attrs, instance=None):
     Persona jurídica (tipper=J):
     - idtipdoc=8 (RUC): numdoc required, 11 digits.
     - idtipdoc=10 (sin documento): numdoc must be empty.
+    - any other idtipdoc (DNI, pasaporte, ...) is rejected.
     """
     tipper = (_effective_attr(attrs, instance, "tipper") or "").strip().upper()
     if tipper != "J":
@@ -43,13 +44,18 @@ def validate_juridica_documento(attrs, instance=None):
             raise serializers.ValidationError(
                 {"numdoc": "RUC inválido: debe tener 11 dígitos."}
             )
-        attrs["numdoc"] = numdoc
+        if "numdoc" in attrs:
+            attrs["numdoc"] = numdoc
     elif idtipdoc == TIPDOC_SIN_DOCUMENTO:
         if numdoc:
             raise serializers.ValidationError(
                 {"numdoc": "Empresa sin documento no debe tener número de documento."}
             )
         attrs["numdoc"] = ""
+    else:
+        raise serializers.ValidationError(
+            {"idtipdoc": "Persona jurídica solo admite RUC o Sin documento."}
+        )
 
     return attrs
 
