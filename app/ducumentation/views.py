@@ -60,7 +60,11 @@ from django.views.decorators.http import require_GET
 from django.utils.decorators import method_decorator
 import secrets
 import hashlib
+import hmac
+import logging
 from functools import wraps
+
+logger = logging.getLogger(__name__)
 
 import re
 from django.urls import reverse
@@ -106,50 +110,25 @@ def generate_secure_token():
     return token, token_hash
 
 
+def _token_matches(token, env_var):
+    """Constant-time check of token against the comma-separated list in env_var (empty list rejects all)."""
+    valid_tokens = [t.strip() for t in os.environ.get(env_var, "").split(",") if t.strip()]
+    if not valid_tokens:
+        logger.error("%s is not configured; rejecting token-authenticated request", env_var)
+        return False
+    return any(hmac.compare_digest(token.encode(), t.encode()) for t in valid_tokens)
+
+
 def validate_api_token(request):
     """Validate the API token from request headers"""
-    print("DEBUG: ===== TOKEN VALIDATION START =====")
-
-    # Get token from Authorization header
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-    print(f"DEBUG: Raw auth header: '{auth_header}'")
-
     if not auth_header.startswith("Token "):
-        print(f"DEBUG: Header doesn't start with 'Token '")
         return False, "Missing or invalid Authorization header format"
 
-    token = auth_header[6:]  # Remove 'Token ' prefix
-    print(f"DEBUG: Extracted token: '{token}'")
-
-    # Get valid tokens from environment variables
-    env_tokens = os.environ.get("API_TOKENS", "")
-    print(f"DEBUG: Environment API_TOKENS: '{env_tokens}'")
-    print(f"DEBUG: Environment API_TOKENS type: {type(env_tokens)}")
-    print(f"DEBUG: All environment variables: {dict(os.environ)}")
-
-    if env_tokens:
-        valid_tokens = [t.strip() for t in env_tokens.split(",") if t.strip()]
-        print(f"DEBUG: Parsed valid_tokens: {valid_tokens}")
-    else:
-        print(f"DEBUG: No environment tokens, using fallback")
-        # Fallback to hardcoded tokens (for development only)
-        valid_tokens = [
-            "your-secure-token-here-12345",
-            "office-addin-token-67890",
-        ]
-        print(f"DEBUG: Fallback valid_tokens: {valid_tokens}")
-
-    print(f"DEBUG: Final valid_tokens list: {valid_tokens}")
-    print(f"DEBUG: Token in valid_tokens: {token in valid_tokens}")
-    print(f"DEBUG: Token length: {len(token)}")
-    print(f"DEBUG: Valid token lengths: {[len(t) for t in valid_tokens]}")
-
-    if token in valid_tokens:
-        print(f"DEBUG: TOKEN VALID - Authentication successful!")
+    if _token_matches(auth_header[6:].strip(), "API_TOKENS"):
         return True, "Token valid"
-    else:
-        print(f"DEBUG: TOKEN INVALID - Authentication failed!")
-        return False, "Invalid token"
+    logger.warning("Invalid API token on %s from %s", request.path, request.META.get("REMOTE_ADDR"))
+    return False, "Invalid token"
 
 
 def require_api_token(view_func):
@@ -172,49 +151,19 @@ def require_admin_user(view_func):
 
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        print(
-            f"DEBUG: require_admin_user - User: {request.user}, Authenticated: {request.user.is_authenticated}, Staff: {getattr(request.user, 'is_staff', False)}"
-        )
-        print(f"DEBUG: require_admin_user - Headers: {dict(request.META)}")
-
         # Check if user is authenticated via JWT (like your other endpoints)
         if request.user.is_authenticated and request.user.is_staff:
-            print(
-                f"DEBUG: require_admin_user - JWT auth successful for user: {request.user.username}"
-            )
             return view_func(request, *args, **kwargs)
 
         # If not JWT authenticated, check for admin token as fallback
         admin_token = request.META.get("HTTP_X_ADMIN_TOKEN", "")
-        if admin_token:
-            print(f"DEBUG: require_admin_user - Admin token provided: {admin_token[:10]}...")
-            # Check if admin token is valid
-            valid_admin_tokens = os.environ.get("ADMIN_TOKENS", "admin-secret-token-12345").split(
-                ","
-            )
-            if admin_token in valid_admin_tokens:
-                print(f"DEBUG: require_admin_user - Admin token valid")
-                return view_func(request, *args, **kwargs)
-            else:
-                print(f"DEBUG: require_admin_user - Admin token invalid")
+        if admin_token and _token_matches(admin_token, "ADMIN_TOKENS"):
+            return view_func(request, *args, **kwargs)
 
-        # If neither JWT nor admin token is valid
-        print(f"DEBUG: require_admin_user - No valid authentication found")
         return JsonResponse(
             {
                 "status": "error",
                 "message": "Admin access required. Use JWT authentication or provide X-Admin-Token header.",
-                "debug_info": {
-                    "user_authenticated": request.user.is_authenticated,
-                    "user_is_staff": getattr(request.user, "is_staff", False),
-                    "admin_token_provided": bool(admin_token),
-                    "jwt_token_provided": bool(
-                        request.META.get("HTTP_AUTHORIZATION", "").startswith("Bearer ")
-                    ),
-                    "session_id": (
-                        request.session.session_key if hasattr(request, "session") else None
-                    ),
-                },
             },
             status=403,
         )

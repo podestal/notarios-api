@@ -2,6 +2,7 @@ import io
 import logging
 import os
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import IO, Optional
 
@@ -111,12 +112,14 @@ class LocalFsStorageBackend(DocumentStorageBackend):
         path = self._abs(object_key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+        schedule_r2_backup(object_key)
 
     def upload_fileobj(self, object_key: str, fileobj: IO[bytes]) -> None:
         path = self._abs(object_key)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "wb") as f:
             f.write(fileobj.read())
+        schedule_r2_backup(object_key)
 
     def exists(self, object_key: str) -> bool:
         return self._abs(object_key).exists()
@@ -172,6 +175,58 @@ def get_document_storage_backend() -> DocumentStorageBackend:
         prefix,
     )
     return _backend_instance
+
+
+def r2_backup_enabled() -> bool:
+    """DOC_STORAGE_R2_BACKUP=true mirrors every local save to Cloudflare R2 via Celery."""
+    raw = (os.environ.get("DOC_STORAGE_R2_BACKUP") or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def r2_backup_object_key(object_key: str) -> str:
+    """Same key layout as DOC_STORAGE_BACKEND=r2, so the backup can be used as the primary store."""
+    rel = str(object_key).replace("\\", "/").lstrip("/")
+    main_url = (os.environ.get("CLOUDFLARE_R2_MAIN_URL") or "").strip().strip("/")
+    if main_url and not rel.startswith(f"{main_url}/"):
+        return f"{main_url}/{rel}"
+    return rel
+
+
+_r2_backup_dispatcher: Optional[ThreadPoolExecutor] = None
+
+
+def _enqueue_r2_backup(object_key: str) -> None:
+    try:
+        from .tasks import backup_document_to_r2
+
+        backup_document_to_r2.apply_async(args=[object_key], retry=False)
+    except Exception:
+        logger.warning("R2 backup not queued for %s", object_key, exc_info=True)
+
+
+def schedule_r2_backup(object_key: str) -> None:
+    """Queue the R2 upload off the request thread: a slow or down broker must not delay the local save."""
+    global _r2_backup_dispatcher
+    if not r2_backup_enabled():
+        return
+    try:
+        if _r2_backup_dispatcher is None:
+            _r2_backup_dispatcher = ThreadPoolExecutor(max_workers=1, thread_name_prefix="r2-backup")
+        _r2_backup_dispatcher.submit(_enqueue_r2_backup, object_key)
+    except Exception:
+        logger.warning("R2 backup not scheduled for %s", object_key, exc_info=True)
+
+
+def backup_local_object_to_r2(object_key: str) -> bool:
+    """Upload the current local copy of object_key to R2. Returns False if there is nothing to upload."""
+    root = (os.environ.get("DOC_STORAGE_LOCAL_ROOT") or "C:/documentos/gc").strip()
+    path = LocalFsStorageBackend(root)._abs(object_key)
+    if not path.is_file():
+        logger.info("R2 backup skipped, local file no longer exists: %s", path)
+        return False
+    with open(path, "rb") as f:
+        R2StorageBackend().upload_fileobj(r2_backup_object_key(object_key), f)
+    return True
 
 
 def proyecto_document_filename(kardex: str) -> str:
