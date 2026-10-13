@@ -4,6 +4,7 @@ Persistence for async SISGEN send jobs (Celery orchestrator reads/writes these r
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from django.db import transaction
@@ -14,6 +15,8 @@ from sisgen.models import (
     SisgenSendJobDocument,
     SisgenSoapResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_documents(documents: List[Dict[str, Any]]) -> List[Dict[str, str]]:
@@ -175,7 +178,11 @@ def sync_job_documents_after_send(
         except SisgenSendJobDocument.DoesNotExist:
             continue
 
-        doc_message = per_kardex_messages.get(kardex) or message
+        doc_message = (
+            _explained_message(response_by_kardex.get(kardex))
+            or per_kardex_messages.get(kardex)
+            or message
+        )
         update_job_document(
             job_doc,
             status=doc_status,
@@ -184,6 +191,27 @@ def sync_job_documents_after_send(
             attempt=attempt,
             submission_response=response_by_kardex.get(kardex),
         )
+
+
+def _explained_message(response: Optional[SisgenSoapResponse]) -> str:
+    """Short user-facing line (error titles) for the job table, from the stored SISGEN response."""
+    if response is None:
+        return ""
+    from sisgen.services.sisgen_error_explainer import short_user_message
+    from sisgen.services.sisgen_soap_response import extract_submission_errors
+
+    try:
+        errors = extract_submission_errors(
+            response.parsed_payload or {},
+            soap_return_message=response.soap_return_message or "",
+            document_status=response.document_status or "",
+            soap_return_status=response.soap_return_status or "",
+            kardex=response.kardex,
+        )
+    except Exception:
+        logger.warning("Could not explain SISGEN errors for %s", response.kardex, exc_info=True)
+        return ""
+    return short_user_message(errors)
 
 
 def sync_job_documents_after_batch(

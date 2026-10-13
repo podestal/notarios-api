@@ -34,7 +34,7 @@ class SisgenSoapUserErrorsTests(SimpleTestCase):
         raw = "line one error\norg.xml.sax.SAXParseException; line 123"
         self.assertEqual(format_soap_return_message(raw), "line one error")
 
-    def test_build_soap_failure_entries_include_it_note(self):
+    def test_build_soap_failure_entries_structural_error_is_system_with_it_note(self):
         parsed = parse_set_documentos_response(INTERNAL_ERROR_XML)
         entries = build_soap_failure_entries(
             parsed=parsed,
@@ -46,25 +46,59 @@ class SisgenSoapUserErrorsTests(SimpleTestCase):
         row = entries[0]
         self.assertEqual(row["kardex"], "A41-2026")
         self.assertEqual(row["estado"], "INTERNAL_SERVER_ERROR")
-        self.assertIn("A41-2026", row["mensaje_usuario"])
+        self.assertEqual(row["origen"], "sistema")
+        self.assertIn("Cargo", row["mensaje_usuario"])
         self.assertIn("Cargo", row["mensaje_tecnico"])
         self.assertEqual(row["nota_contacto_it"], SISGEN_IT_CONTACT_NOTE)
 
-    def test_extract_submission_errors_reads_soap_failure_payload(self):
+    def test_build_soap_failure_entries_pins_culprit_from_location(self):
+        parsed = {
+            "return_status": "INTERNAL_SERVER_ERROR",
+            "return_message": (
+                "cvc-enumeration-valid: Value '01' is not facet-valid with respect to enumeration "
+                "'[08, 09, 10, 12, 13]'. It must be a value from the enumeration. En la Fila: 55 Columna: 45"
+            ),
+        }
+        location = {
+            "elemento": "TipoDocIdentidad",
+            "valor": "01",
+            "persona": "AMI & RAI NETWORK SOLUTIONS E.I.R.L.",
+            "persona_tipo": "J",
+            "kardex": "K119-2026",
+        }
+        entries = build_soap_failure_entries(
+            parsed=parsed,
+            batch_documents=[{"kardex": "K118-2026"}, {"kardex": "K119-2026"}],
+            batch_index=1,
+            location=location,
+        )
+        by_kardex = {e["kardex"]: e for e in entries}
+        culprit = by_kardex["K119-2026"]
+        self.assertEqual(culprit["titulo"], "Valor no permitido en Tipo de documento")
+        self.assertIn("persona jurídica", culprit["mensaje_usuario"])
+        self.assertEqual(culprit["campos"][0]["campo"], "Tipo de documento")
+        self.assertEqual(culprit["campos"][0]["referencia"], "AMI & RAI NETWORK SOLUTIONS E.I.R.L.")
+        self.assertNotIn("nota_contacto_it", culprit)
+        other = by_kardex["K118-2026"]
+        self.assertEqual(other["codigo"], "LOTE")
+        self.assertIn("K119-2026", other["que_hacer"])
+
+    def test_extract_submission_errors_explains_legacy_soap_failure_payload(self):
         payload = {
             "soap_failure": True,
             "user_facing": {
-                "mensaje_usuario": "A41-2026: SISGEN rechazó el envío (INTERNAL_SERVER_ERROR). AnoFabricacion",
+                "mensaje_usuario": "A90-2026: SISGEN rechazó el envío (INTERNAL_SERVER_ERROR).",
                 "nota_contacto_it": SISGEN_IT_CONTACT_NOTE,
             },
-            "nota_contacto_it": SISGEN_IT_CONTACT_NOTE,
         }
         errors = extract_submission_errors(
             payload,
-            soap_return_message="AnoFabricacion '-' is not valid",
+            soap_return_message='For input string: "-" En la Fila: 146 Columna: 39',
             document_status="INTERNAL_SERVER_ERROR",
             soap_return_status="INTERNAL_SERVER_ERROR",
+            kardex="A90-2026",
         )
-        self.assertGreaterEqual(len(errors), 1)
-        self.assertIn("A41-2026", errors[0])
-        self.assertIn(SISGEN_IT_CONTACT_NOTE, errors[-1])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]["titulo"], "Valor numérico inválido")
+        self.assertIn("«-»", errors[0]["mensaje_usuario"])
+        self.assertEqual(errors[0]["origen"], "dato")

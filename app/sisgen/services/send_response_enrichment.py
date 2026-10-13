@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from notaria.models import Kardex
 from sisgen.models import SisgenSoapResponse
+from sisgen.services.sisgen_error_explainer import ORIGEN_SISTEMA
 from sisgen.services.sisgen_soap_response import (
     SISGEN_IT_CONTACT_NOTE,
     extract_submission_errors,
@@ -26,6 +27,7 @@ def last_submission_from_soap_obj(obj: SisgenSoapResponse) -> Dict[str, Any]:
         soap_return_message=obj.soap_return_message or "",
         document_status=obj.document_status or "",
         soap_return_status=obj.soap_return_status or "",
+        kardex=obj.kardex,
     )
     remote_ui = status_ui_from_document_status(obj.document_status or "")
     if errors and remote_ui == "pendiente":
@@ -43,12 +45,7 @@ def last_submission_from_soap_obj(obj: SisgenSoapResponse) -> Dict[str, Any]:
         "errors": errors,
         "has_errors": bool(errors),
     }
-    note = payload.get("nota_contacto_it") or (payload.get("user_facing") or {}).get(
-        "nota_contacto_it"
-    )
-    if note:
-        last["nota_contacto_it"] = note
-    elif errors:
+    if any(e.get("origen") == ORIGEN_SISTEMA for e in errors):
         last["nota_contacto_it"] = SISGEN_IT_CONTACT_NOTE
     return last
 

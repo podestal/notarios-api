@@ -21,6 +21,7 @@ from sisgen.services.send_batch_summary import (
     build_batch_summary_entry,
 )
 from sisgen.services.send_response_enrichment import enrich_send_result
+from sisgen.services.sisgen_error_explainer import locate_soap_failure
 from sisgen.services.sisgen_soap_response import (
     SISGEN_IT_CONTACT_NOTE,
     SOAP_FAILURE_STATUSES,
@@ -284,6 +285,13 @@ def send_batch(
                 },
             }
 
+        soap_ok = soap_response_is_ok(parsed_soap)
+        error_location = (
+            None
+            if soap_ok
+            else locate_soap_failure(parsed_soap.get("return_message") or "", xml_content)
+        )
+
         saved_ids: List[int] = []
         try:
             saved_ids = save_response_logs_for_batch(
@@ -293,6 +301,7 @@ def send_batch(
                 raw_xml=response.text or "",
                 parsed=parsed_soap,
                 user=user,
+                location=error_location,
             )
             merge["submission_response_ids"].extend(saved_ids)
         except Exception as exc:
@@ -316,21 +325,29 @@ def send_batch(
         merge["observaciones"].extend(result.get("observaciones", []))
         merge["personas"].extend(result.get("personas", []))
 
-        if not soap_response_is_ok(parsed_soap):
+        if not soap_ok:
             soap_failures = build_soap_failure_entries(
                 parsed=parsed_soap,
                 batch_documents=batch,
                 batch_index=batch_index,
                 http_status=response.status_code,
+                location=error_location,
             )
             merge["error"] = 1
             merge["soap_errors"].extend(soap_failures)
             merge["errores_sisgen_usuario"].extend(soap_failures)
-            short = format_soap_return_message(parsed_soap.get("return_message") or "")
-            merge["messageDescription"] = (
-                f"SISGEN rechazó el envío (lote {batch_index}): {short} "
-                f"{SISGEN_IT_CONTACT_NOTE}"
+            culprit = next(
+                (f for f in soap_failures if f.get("codigo") != "LOTE"),
+                soap_failures[0] if soap_failures else {},
             )
+            if culprit:
+                short = (
+                    f"{culprit.get('kardex', '')}: {culprit.get('titulo', '')}. "
+                    f"{culprit.get('mensaje_usuario', '')}"
+                )
+            else:
+                short = format_soap_return_message(parsed_soap.get("return_message") or "")
+            merge["messageDescription"] = f"SISGEN rechazó el envío (lote {batch_index}). {short}"
             batch_summary = build_batch_summary_entry(
                 batch_index=batch_index,
                 batch=batch,

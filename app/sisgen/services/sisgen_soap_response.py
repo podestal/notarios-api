@@ -10,6 +10,12 @@ from typing import Any, Dict, List, Optional
 
 import defusedxml.ElementTree as ET
 
+from sisgen.services.sisgen_error_explainer import (
+    ORIGEN_SISTEMA,
+    explain_document_errors,
+    explain_soap_message,
+)
+
 logger = logging.getLogger(__name__)
 
 SISGEN_IT_CONTACT_NOTE = (
@@ -76,55 +82,41 @@ def extract_submission_errors(
     soap_return_message: str = "",
     document_status: str = "",
     soap_return_status: str = "",
-) -> List[str]:
+    kardex: str = "",
+) -> List[Dict[str, Any]]:
     """
-    Errors for ``sisgen_last_submission.errors`` — document-level SISGEN echo or SOAP reject.
+    Explained errors for ``sisgen_last_submission.errors`` — document-level SISGEN echo or SOAP reject.
+    Each item has titulo / mensaje_usuario / que_hacer / campos (see sisgen_error_explainer).
     """
     payload = parsed_payload if isinstance(parsed_payload, dict) else {}
-    merged: List[str] = []
-    seen: set[str] = set()
-
-    def add(msg: Any) -> None:
-        text = str(msg or "").strip()
-        if not text or text in seen:
-            return
-        seen.add(text)
-        merged.append(text)
-
     doc = payload.get("document") or {}
-    for err in doc.get("errors") or []:
-        add(err)
+    kardex = kardex or str(doc.get("num_kardex") or "")
 
-    summary = payload.get("summary") or {}
-    for doc_row in summary.get("documents") or []:
-        for err in doc_row.get("errors") or []:
-            add(err)
+    raw_errors: List[Any] = list(doc.get("errors") or [])
+    if not raw_errors:
+        for doc_row in (payload.get("summary") or {}).get("documents") or []:
+            if not kardex or str(doc_row.get("num_kardex") or "") in ("", kardex):
+                raw_errors.extend(doc_row.get("errors") or [])
+    if raw_errors:
+        return explain_document_errors(raw_errors, kardex=kardex, estado=document_status)
 
-    if merged:
-        return merged
+    if not is_soap_level_submission_failure(
+        document_status=document_status,
+        soap_return_status=soap_return_status,
+        parsed_payload=payload,
+    ):
+        return []
 
     user_facing = payload.get("user_facing") or {}
-    add(user_facing.get("mensaje_usuario"))
-    add(user_facing.get("mensaje_tecnico"))
+    if user_facing.get("titulo"):
+        return [user_facing]
 
-    if is_soap_level_submission_failure(
-        document_status=document_status,
-        soap_return_status=soap_return_status,
-        parsed_payload=payload,
-    ):
-        add(format_soap_return_message(soap_return_message))
-
-    note = payload.get("nota_contacto_it") or user_facing.get("nota_contacto_it")
-    if note and merged:
-        add(note)
-    elif note and is_soap_level_submission_failure(
-        document_status=document_status,
-        soap_return_status=soap_return_status,
-        parsed_payload=payload,
-    ):
-        add(note)
-
-    return merged
+    message = soap_return_message or user_facing.get("mensaje_tecnico") or ""
+    explained = explain_soap_message(message, kardex=kardex)
+    explained["estado"] = document_status or soap_return_status
+    if explained["origen"] == ORIGEN_SISTEMA:
+        explained["nota_contacto_it"] = SISGEN_IT_CONTACT_NOTE
+    return [explained]
 
 
 def build_soap_failure_entries(
@@ -133,43 +125,63 @@ def build_soap_failure_entries(
     batch_documents: List[Dict[str, Any]],
     batch_index: int,
     http_status: Optional[int] = None,
+    location: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     User-facing rows when SOAP-level send fails (INTERNAL_SERVER_ERROR, parse errors, etc.).
-    One entry per kardex in the batch.
+    One entry per kardex in the batch. ``location`` (from the request XML) pins the culprit
+    kardex and field; the other kardex in the batch were not processed because of it.
     """
     return_status = (parsed.get("return_status") or "").strip()
     status_label = return_status or "ERROR_SOAP"
     if parsed.get("parse_error") and not return_status:
         status_label = "ERROR_RESPUESTA"
-    short_msg = format_soap_return_message(parsed.get("return_message") or "")
+    technical = (parsed.get("return_message") or "").strip()
     if parsed.get("parse_error") == "empty_response":
-        short_msg = "SISGEN devolvió una respuesta vacía."
+        technical = "SISGEN devolvió una respuesta vacía."
     elif parsed.get("parse_error") == "missing_return_element":
-        short_msg = "La respuesta de SISGEN no tiene el formato esperado."
+        technical = "La respuesta de SISGEN no tiene el formato esperado."
+    elif not technical:
+        technical = format_soap_return_message("")
+
+    culprit = str((location or {}).get("kardex") or "").strip()
 
     entries: List[Dict[str, Any]] = []
     for bd in batch_documents:
         kardex = str(bd.get("kardex") or "").strip()
         if not kardex:
             continue
-        user_line = (
-            f"{kardex}: SISGEN rechazó el envío ({status_label}). {short_msg}"
-        )
-        entries.append(
-            {
+        if culprit and kardex != culprit:
+            explained = {
                 "kardex": kardex,
-                "idkardex": str(bd.get("idkardex") or ""),
-                "batch": batch_index,
-                "estado": status_label,
-                "http_status": http_status,
-                "soap_return_status": return_status,
-                "mensaje_tecnico": (parsed.get("return_message") or short_msg).strip(),
-                "mensaje_usuario": user_line,
-                "nota_contacto_it": SISGEN_IT_CONTACT_NOTE,
-                "parse_error": parsed.get("parse_error"),
+                "codigo": "LOTE",
+                "titulo": "No procesado por un error en otro documento del lote",
+                "mensaje_usuario": (
+                    f"SISGEN rechazó el lote completo por un error en el kardex {culprit}. "
+                    "Este documento no tiene ese error."
+                ),
+                "que_hacer": f"Corrija el kardex {culprit} y vuelva a enviar este documento.",
+                "campos": [],
+                "origen": "lote",
+                "mensaje_tecnico": format_soap_return_message(technical),
             }
-        )
+        else:
+            explained = explain_soap_message(
+                technical, kardex=kardex, location=location
+            )
+            explained["kardex"] = kardex
+        entry = {
+            **explained,
+            "idkardex": str(bd.get("idkardex") or ""),
+            "batch": batch_index,
+            "estado": status_label,
+            "http_status": http_status,
+            "soap_return_status": return_status,
+            "parse_error": parsed.get("parse_error"),
+        }
+        if explained.get("origen") == ORIGEN_SISTEMA:
+            entry["nota_contacto_it"] = SISGEN_IT_CONTACT_NOTE
+        entries.append(entry)
     return entries
 
 
@@ -179,6 +191,7 @@ def user_facing_payload_for_saved_row(
     kardex: str,
     batch_index: int,
     http_status: Optional[int] = None,
+    location: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Extra JSON stored in SisgenSoapResponse.parsed_payload on SOAP failures."""
     entries = build_soap_failure_entries(
@@ -186,6 +199,7 @@ def user_facing_payload_for_saved_row(
         batch_documents=[{"kardex": kardex}],
         batch_index=batch_index,
         http_status=http_status,
+        location=location,
     )
     row = entries[0] if entries else {}
     return {
@@ -398,6 +412,7 @@ def save_response_logs_for_batch(
     raw_xml: str,
     parsed: Dict[str, Any],
     user=None,
+    location: Optional[Dict[str, Any]] = None,
 ) -> List[int]:
     """
     Crea una fila SisgenSoapResponse por documento devuelto en el SOAP, o por cada
@@ -445,6 +460,7 @@ def save_response_logs_for_batch(
                         kardex=nk,
                         batch_index=batch_index,
                         http_status=http_status,
+                        location=location,
                     )
                 )
 
@@ -479,6 +495,7 @@ def save_response_logs_for_batch(
                     kardex=k,
                     batch_index=batch_index,
                     http_status=http_status,
+                    location=location,
                 )
             )
 
