@@ -12,6 +12,7 @@ import defusedxml.ElementTree as ET
 
 from sisgen.services.sisgen_error_explainer import (
     ORIGEN_SISTEMA,
+    default_accion,
     explain_document_errors,
     explain_soap_message,
 )
@@ -109,7 +110,12 @@ def extract_submission_errors(
 
     user_facing = payload.get("user_facing") or {}
     if user_facing.get("titulo"):
-        return [user_facing]
+        campos = [
+            c if c.get("accion") else {**c, "accion": default_accion(c.get("seccion", ""))}
+            for c in user_facing.get("campos") or []
+            if isinstance(c, dict)
+        ]
+        return [{**user_facing, "campos": campos}]
 
     message = soap_return_message or user_facing.get("mensaje_tecnico") or ""
     explained = explain_soap_message(message, kardex=kardex)

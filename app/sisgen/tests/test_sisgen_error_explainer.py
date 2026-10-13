@@ -131,6 +131,62 @@ class SisgenErrorExplainerTests(SimpleTestCase):
         self.assertIn("vuelva a enviar", out["que_hacer"])
         self.assertEqual(out["campos"], [])
 
+    def test_ro04_offers_profession_quick_fix(self):
+        ctx = FakeContext(
+            personas=[{"idcontratante": 77, "idcliente": "1", "tipper": "N", "prinom": "LUIS", "idprofesion": None}]
+        )
+        out = explain_document_errors(["RO04: PROFESION OBLIGATORIA"], kardex="K1-2026", ctx=ctx)
+        self.assertEqual(
+            out[0]["campos"][0]["accion"],
+            {"tipo": "cliente2_profesion", "idcontratante": "77", "idprofesion": None},
+        )
+
+    def test_vl34_no_requiere_suggests_vacio(self):
+        ctx = FakeContext(patrimoniales=[{"itemmp": "000206", "desacto": "ADJUDICACION", "idoppago": 6}])
+        out = explain_document_errors(
+            ["VL34: LA OPORTUNIDAD DE PAGO DEBE SER NO REQUIERE"], kardex="K1-2026", ctx=ctx
+        )
+        accion = out[0]["campos"][0]["accion"]
+        self.assertEqual(accion["tipo"], "patrimonial_oportunidad_pago")
+        self.assertEqual((accion["itemmp"], accion["idoppago"], accion["sugerido"]), ("000206", "6", "10"))
+
+    def test_campos_without_quick_fix_link_to_kardex_tab(self):
+        out = explain_document_errors(
+            ["EC36: EL ACTO JURÃ­DICO 0109 REQUIERE MEDIOS DE PAGO"], kardex="K1-2026", ctx=FakeContext()
+        )
+        self.assertEqual(out[0]["campos"][0]["accion"], {"tipo": "ir_kardex", "seccion": "patrimonial"})
+
+    def test_soap_tipo_documento_resolves_contratante(self):
+        ctx = FakeContext(
+            personas=[{"idcontratante": 501, "idcliente": "0000009253", "tipper": "J", "idtipdoc": 1, "numdoc": "123"}]
+        )
+        loc = locate_xml_position(REQUEST_XML, 12, 46)
+        out = explain_soap_message(
+            "cvc-enumeration-valid: Value '01' is not facet-valid with respect to enumeration "
+            "'[08, 09, 10, 12, 13]'. En la Fila: 12 Columna: 46",
+            location=loc,
+            ctx=ctx,
+        )
+        self.assertEqual(
+            out["campos"][0]["accion"],
+            {"tipo": "cliente2_tipo_documento", "idcontratante": "501", "tipper": "J", "idtipdoc": 1, "numdoc": "123"},
+        )
+
+    def test_soap_forma_pago_matches_patrimonial_by_acto(self):
+        ctx = FakeContext(
+            patrimoniales=[
+                {"itemmp": "1", "cod_ancert": "0109", "fpago": "1"},
+                {"itemmp": "2", "cod_ancert": "0201", "fpago": "2"},
+            ]
+        )
+        out = explain_soap_message(
+            "cvc-enumeration-valid: Value '9' is not facet-valid with respect to enumeration '[1, 2, 3]' "
+            "for type '#AnonType_FormaPagoOperacionType'.",
+            location={"elemento": "FormaPago", "acto_codigo": "0201", "kardex": "K1-2026"},
+            ctx=ctx,
+        )
+        self.assertEqual(out["campos"][0]["accion"], {"tipo": "patrimonial_forma_pago", "itemmp": "2", "fpago": "2"})
+
     def test_lookup_failure_does_not_break_explanation(self):
         ctx = KardexContext("K1-2026")
         broken = mock.Mock()

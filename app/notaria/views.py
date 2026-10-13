@@ -2086,6 +2086,15 @@ class Cliente2ViewSet(ModelViewSet):
         # Reload to sync cliente with the true persisted state.
         updated_cliente2.refresh_from_db()
         _sync_cliente_from_cliente2(updated_cliente2, force_overrides=overrides or None)
+        kardex_codes = (
+            models.Contratantes.objects.filter(idcontratante=updated_cliente2.idcontratante)
+            .exclude(kardex__isnull=True)
+            .exclude(kardex="")
+            .values_list("kardex", flat=True)
+            .distinct()
+        )
+        for kardex_code in kardex_codes:
+            _reset_sisgen_for_kardex(kardex_code)
 
     @action(detail=False, methods=["get"])
     def by_dni(self, request):
@@ -2351,7 +2360,7 @@ class PatrimonialViewSet(ModelViewSet):
         data = request.data
         instance = self.get_object()
 
-        if data.get("idtipoacto") != instance.idtipoacto:
+        if "idtipoacto" in data and data.get("idtipoacto") != instance.idtipoacto:
             vehicular = models.Detallevehicular.objects.filter(
                 kardex=instance.kardex, idtipacto=instance.idtipoacto
             ).first()

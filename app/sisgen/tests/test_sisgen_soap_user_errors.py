@@ -102,3 +102,19 @@ class SisgenSoapUserErrorsTests(SimpleTestCase):
         self.assertEqual(errors[0]["titulo"], "Valor numérico inválido")
         self.assertIn("«-»", errors[0]["mensaje_usuario"])
         self.assertEqual(errors[0]["origen"], "dato")
+
+    def test_extract_submission_errors_backfills_kardex_link_on_stored_campos(self):
+        payload = {
+            "soap_failure": True,
+            "user_facing": {
+                "titulo": "Valor no permitido en Tipo de documento",
+                "campos": [{"seccion": "Contratantes", "campo": "Tipo de documento"}],
+            },
+        }
+        errors = extract_submission_errors(
+            payload,
+            document_status="INTERNAL_SERVER_ERROR",
+            soap_return_status="INTERNAL_SERVER_ERROR",
+            kardex="K119-2026",
+        )
+        self.assertEqual(errors[0]["campos"][0]["accion"], {"tipo": "ir_kardex", "seccion": "contratantes"})

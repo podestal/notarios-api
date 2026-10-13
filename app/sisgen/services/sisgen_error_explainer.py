@@ -24,6 +24,8 @@ SEC_PATRIMONIAL = "UIF/PDT Patrimonial"
 ORIGEN_DATO = "dato"
 ORIGEN_SISTEMA = "sistema"
 
+OPORTUNIDAD_VACIO = "10"
+
 # XML element -> (section, user label)
 XML_FIELD_LABELS: Dict[str, Tuple[str, str]] = {
     "TipoDocIdentidad": (SEC_CONTRATANTES, "Tipo de documento"),
@@ -158,8 +160,9 @@ class KardexContext:
         return self._rows(
             "personas",
             """
-            SELECT DISTINCT cl.idcliente, cl.tipper, cl.prinom, cl.segnom, cl.apepat, cl.apemat,
-                   cl.razonsocial, cl.idtipdoc, cl.numdoc, cl.idprofesion, cl.detaprofesion
+            SELECT DISTINCT co.idcontratante, cl.idcliente, cl.tipper, cl.prinom, cl.segnom,
+                   cl.apepat, cl.apemat, cl.razonsocial, cl.idtipdoc, cl.numdoc, cl.idprofesion,
+                   cl.detaprofesion
             FROM contratantes co
             JOIN cliente2 cl ON cl.idcontratante = co.idcontratante
             WHERE co.kardex = %s
@@ -178,7 +181,7 @@ class KardexContext:
         return self._rows(
             "patrimonial",
             """
-            SELECT p.itemmp, p.idtipoacto, t.desacto, p.importetrans, p.fpago,
+            SELECT p.itemmp, p.idtipoacto, t.desacto, t.cod_ancert, p.importetrans, p.fpago,
                    f.descripcion AS fpago_desc, p.idoppago, p.des_idoppago
             FROM patrimonial p
             LEFT JOIN tiposdeacto t ON t.idtipoacto = p.idtipoacto
@@ -233,12 +236,72 @@ def persona_nombre(p: Optional[Dict[str, Any]]) -> str:
     return name or str(p.get("razonsocial") or "").strip()
 
 
-def _campo(seccion: str, campo: str, referencia: str = "", valor_actual: Any = None) -> Dict[str, Any]:
+def _campo(
+    seccion: str,
+    campo: str,
+    referencia: str = "",
+    valor_actual: Any = None,
+    accion: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     out: Dict[str, Any] = {"seccion": seccion, "campo": campo}
     if referencia:
         out["referencia"] = referencia
     if valor_actual not in (None, ""):
         out["valor_actual"] = str(valor_actual)
+    out["accion"] = accion or default_accion(seccion)
+    return out
+
+
+# ``accion`` tells the UI how to fix a campo: quick fix in place, edit form, or open the kardex.
+def default_accion(seccion: str) -> Dict[str, Any]:
+    tab = {SEC_CONTRATANTES: "contratantes", SEC_PATRIMONIAL: "patrimonial"}.get(seccion, "kardex")
+    return {"tipo": "ir_kardex", "seccion": tab}
+
+
+def _accion_editar_contratante(p: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not p or not p.get("idcontratante"):
+        return None
+    return {"tipo": "editar_contratante", "idcontratante": str(p["idcontratante"])}
+
+
+def _accion_tipo_documento(p: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not p or not p.get("idcontratante"):
+        return None
+    return {
+        "tipo": "cliente2_tipo_documento",
+        "idcontratante": str(p["idcontratante"]),
+        "tipper": (p.get("tipper") or "").upper(),
+        "idtipdoc": p.get("idtipdoc"),
+        "numdoc": str(p.get("numdoc") or "").strip(),
+    }
+
+
+def _accion_profesion(p: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not p or not p.get("idcontratante"):
+        return None
+    return {
+        "tipo": "cliente2_profesion",
+        "idcontratante": str(p["idcontratante"]),
+        "idprofesion": p.get("idprofesion") or None,
+    }
+
+
+def _accion_forma_pago(pat: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "tipo": "patrimonial_forma_pago",
+        "itemmp": str(pat.get("itemmp") or ""),
+        "fpago": str(pat.get("fpago") or ""),
+    }
+
+
+def _accion_oportunidad_pago(pat: Dict[str, Any], sugerido: str = "") -> Dict[str, Any]:
+    out = {
+        "tipo": "patrimonial_oportunidad_pago",
+        "itemmp": str(pat.get("itemmp") or ""),
+        "idoppago": str(pat.get("idoppago") or ""),
+    }
+    if sugerido:
+        out["sugerido"] = sugerido
     return out
 
 
@@ -277,15 +340,29 @@ def _rule_ro04(body: str, ctx: KardexContext) -> Explained:
         "titulo": "Falta la profesión de una persona natural",
         "mensaje_usuario": "SISGEN exige la profesión u ocupación de todas las personas naturales que intervienen.",
         "que_hacer": "Registre la profesión u ocupación en la ficha del contratante y vuelva a enviar.",
-        "campos": [_campo(SEC_CONTRATANTES, "Profesión / ocupación", persona_nombre(p)) for p in faltan]
+        "campos": [
+            _campo(SEC_CONTRATANTES, "Profesión / ocupación", persona_nombre(p), accion=_accion_profesion(p))
+            for p in faltan
+        ]
         or [_campo(SEC_CONTRATANTES, "Profesión / ocupación")],
     }
 
 
-def _patrimonial_campos(ctx: KardexContext, campo: str, value_fn: Callable[[Dict[str, Any]], Any]) -> List[Dict[str, Any]]:
+def _patrimonial_campos(
+    ctx: KardexContext,
+    campo: str,
+    value_fn: Callable[[Dict[str, Any]], Any],
+    accion_fn: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
     rows = ctx.patrimoniales()
     return [
-        _campo(SEC_PATRIMONIAL, campo, str(p.get("desacto") or "").strip(), value_fn(p))
+        _campo(
+            SEC_PATRIMONIAL,
+            campo,
+            str(p.get("desacto") or "").strip(),
+            value_fn(p),
+            accion=accion_fn(p) if accion_fn else None,
+        )
         for p in rows
     ] or [_campo(SEC_PATRIMONIAL, campo)]
 
@@ -296,7 +373,7 @@ def _rule_ro12(body: str, ctx: KardexContext) -> Explained:
         "mensaje_usuario": "SISGEN no acepta la forma de pago registrada para este tipo de acto.",
         "que_hacer": "Cambie la forma de pago del acto por una admitida (por ejemplo, al contado o a plazos) y revise que los medios de pago sean coherentes.",
         "campos": _patrimonial_campos(
-            ctx, "Forma de pago", lambda p: p.get("fpago_desc") or p.get("fpago")
+            ctx, "Forma de pago", lambda p: p.get("fpago_desc") or p.get("fpago"), _accion_forma_pago
         ),
     }
 
@@ -350,7 +427,10 @@ def _rule_vl34(body: str, ctx: KardexContext) -> Explained:
             else "Seleccione la oportunidad de pago del acto (por ejemplo, a la firma de la minuta o del instrumento)."
         ),
         "campos": _patrimonial_campos(
-            ctx, "Oportunidad de pago", lambda p: p.get("des_idoppago") or p.get("idoppago")
+            ctx,
+            "Oportunidad de pago",
+            lambda p: p.get("des_idoppago") or p.get("idoppago"),
+            lambda p: _accion_oportunidad_pago(p, OPORTUNIDAD_VACIO if no_requiere else ""),
         ),
     }
 
@@ -445,13 +525,16 @@ def _rule_text_cleanup(titulo: str, que_hacer: str) -> Rule:
     def rule(body: str, ctx: KardexContext) -> Explained:
         m = _ID_RE.search(body.upper())
         ref = _persona_ref(ctx, m.group(1)) if m else ""
+        persona = ctx.persona(m.group(1)) if m else None
         texto = re.split(r"\s+EN PERSONA CON", body, maxsplit=1)[0]
         texto = re.sub(r"^.*?(?:INCLUIDOS? EN(?: EL TEXTO)?)\s+", "", texto)
         return {
             "titulo": titulo,
             "mensaje_usuario": f"Texto observado: «{texto.strip()}».",
             "que_hacer": que_hacer,
-            "campos": [_campo(SEC_CONTRATANTES, "Datos del cliente", ref)],
+            "campos": [
+                _campo(SEC_CONTRATANTES, "Datos del cliente", ref, accion=_accion_editar_contratante(persona))
+            ],
         }
 
     return rule
@@ -488,7 +571,10 @@ def _rule_vl01(body: str, ctx: KardexContext) -> Explained:
         "titulo": "RUC con formato incorrecto",
         "mensaje_usuario": "Una persona jurídica tiene RUC vacío o sin 11 dígitos.",
         "que_hacer": "Corrija el RUC (11 dígitos). Si la empresa está en constitución, use el tipo de documento «Sin documento».",
-        "campos": [_campo(SEC_CONTRATANTES, "Número de documento (RUC)", persona_nombre(p), p.get("numdoc")) for p in sin_ruc]
+        "campos": [
+            _campo(SEC_CONTRATANTES, "Número de documento (RUC)", persona_nombre(p), p.get("numdoc"), accion=_accion_tipo_documento(p))
+            for p in sin_ruc
+        ]
         or [_campo(SEC_CONTRATANTES, "Número de documento (RUC)")],
     }
 
@@ -499,7 +585,10 @@ def _rule_ex06(body: str, ctx: KardexContext) -> Explained:
         "titulo": "Falta el número de documento",
         "mensaje_usuario": "Un contratante no tiene número de documento de identidad.",
         "que_hacer": "Registre el número de documento del contratante.",
-        "campos": [_campo(SEC_CONTRATANTES, "Número de documento", persona_nombre(p)) for p in sin_doc]
+        "campos": [
+            _campo(SEC_CONTRATANTES, "Número de documento", persona_nombre(p), accion=_accion_tipo_documento(p))
+            for p in sin_doc
+        ]
         or [_campo(SEC_CONTRATANTES, "Número de documento")],
     }
 
@@ -739,15 +828,55 @@ def _enum_text(field: str, values: List[str]) -> str:
     return ", ".join(f"{v} ({labels[v]})" if v in labels else v for v in values)
 
 
+_PERSONA_DOC_FIELDS = {"TipoDocIdentidad", "NumDocIdentificativo"}
+_PERSONA_PROFESION_FIELDS = {"Profesion", "OtraProfesion"}
+# Persona fields stored per contratante (condition in the act), not in the client's ficha.
+_CONTRATANTE_ACTO_FIELDS = {
+    "Cargo", "OtroCargo", "FechaFirma", "PorcentajeDerecho",
+    "TipoIntervencion", "ClaseIntervencion", "DescripcionIntervencion",
+}
+
+
+def _patrimonial_for_acto(ctx: KardexContext, acto_codigo: str) -> Optional[Dict[str, Any]]:
+    rows = ctx.patrimoniales()
+    if acto_codigo:
+        matches = [p for p in rows if str(p.get("cod_ancert") or "").strip() == str(acto_codigo).strip()]
+        if len(matches) == 1:
+            return matches[0]
+    return rows[0] if len(rows) == 1 else None
+
+
+def _soap_accion(element: str, seccion: str, loc: Dict[str, Any], ctx: Optional[KardexContext]) -> Optional[Dict[str, Any]]:
+    if ctx is None:
+        return None
+    if seccion == SEC_CONTRATANTES and element not in _CONTRATANTE_ACTO_FIELDS:
+        persona = ctx.persona(loc["persona_id"]) if loc.get("persona_id") else None
+        if element in _PERSONA_DOC_FIELDS:
+            return _accion_tipo_documento(persona)
+        if element in _PERSONA_PROFESION_FIELDS:
+            return _accion_profesion(persona)
+        return _accion_editar_contratante(persona)
+    if element in ("FormaPago", "MomentoPago", "DescripcionMomentoPago"):
+        pat = _patrimonial_for_acto(ctx, loc.get("acto_codigo") or "")
+        if pat is None:
+            return None
+        return _accion_forma_pago(pat) if element == "FormaPago" else _accion_oportunidad_pago(pat)
+    return None
+
+
 def explain_soap_message(
     message: str,
     *,
     kardex: str = "",
     location: Optional[Dict[str, Any]] = None,
+    ctx: Optional[KardexContext] = None,
 ) -> Dict[str, Any]:
     """Explain a SOAP-level rejection (XSD validation / SISGEN parser error)."""
     raw = fix_mojibake((message or "").strip().splitlines()[0] if message else "")
     loc = location or {}
+    target_kardex = loc.get("kardex") or kardex
+    if ctx is None and target_kardex:
+        ctx = KardexContext(target_kardex)
     element = loc.get("elemento") or ""
     value = loc.get("valor", "")
 
@@ -829,12 +958,14 @@ def explain_soap_message(
 
     campos = []
     if origen == ORIGEN_DATO and campo:
-        campos.append(_campo(seccion or SEC_KARDEX, campo, referencia, value))
+        campos.append(
+            _campo(seccion or SEC_KARDEX, campo, referencia, value, accion=_soap_accion(element, seccion, loc, ctx))
+        )
     if origen == ORIGEN_DATO and not campo:
         que_hacer += " Si no ubica el dato, vuelva a enviar el documento: el sistema indicará el campo exacto."
 
     return {
-        "kardex": loc.get("kardex") or kardex,
+        "kardex": target_kardex,
         "codigo": "XSD",
         "titulo": titulo,
         "mensaje_usuario": mensaje,
