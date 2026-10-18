@@ -1,3 +1,6 @@
+import os
+from unittest import mock
+
 from django.test import SimpleTestCase
 
 from sisgen.services.sisgen_soap_response import (
@@ -118,3 +121,55 @@ class SisgenSoapUserErrorsTests(SimpleTestCase):
             kardex="K119-2026",
         )
         self.assertEqual(errors[0]["campos"][0]["accion"], {"tipo": "ir_kardex", "seccion": "contratantes"})
+
+
+class SisgenXmlPersistPolicyTests(SimpleTestCase):
+    def test_development_always_persists_xml(self):
+        from sisgen.services import sisgen_soap_response as mod
+
+        with mock.patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=False):
+            self.assertTrue(
+                mod.should_persist_sisgen_xml(
+                    {"return_status": "OK", "summary": {"soap_level_ok": True}, "documents": []},
+                    http_status=200,
+                )
+            )
+
+    def test_local_skips_xml_on_success(self):
+        from sisgen.services import sisgen_soap_response as mod
+
+        with mock.patch.dict(os.environ, {"ENVIRONMENT": "local", "DJANGO_SETTINGS_MODULE": "notarios.settings.dev"}, clear=False):
+            self.assertFalse(
+                mod.should_persist_sisgen_xml(
+                    {"return_status": "OK", "summary": {"soap_level_ok": True}, "documents": [
+                        {"doc_status": "GUARDADO", "errors": [], "has_errors": False}
+                    ]},
+                    http_status=200,
+                )
+            )
+
+    def test_local_persists_xml_on_soap_error(self):
+        from sisgen.services import sisgen_soap_response as mod
+
+        with mock.patch.dict(os.environ, {"ENVIRONMENT": "localf"}, clear=False):
+            self.assertTrue(
+                mod.should_persist_sisgen_xml(
+                    {"return_status": "INTERNAL_SERVER_ERROR", "summary": {"soap_level_ok": False}},
+                    http_status=200,
+                )
+            )
+
+    def test_test_env_persists_xml_on_document_errors(self):
+        from sisgen.services import sisgen_soap_response as mod
+
+        with mock.patch.dict(os.environ, {"ENVIRONMENT": "testing"}, clear=False):
+            self.assertTrue(
+                mod.should_persist_sisgen_xml(
+                    {
+                        "return_status": "OK",
+                        "summary": {"soap_level_ok": True},
+                        "documents": [{"doc_status": "FALLIDO", "errors": ["RO04"], "has_errors": True}],
+                    },
+                    http_status=200,
+                )
+            )

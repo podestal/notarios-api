@@ -29,6 +29,7 @@ from sisgen.services.sisgen_soap_response import (
     format_soap_return_message,
     parse_set_documentos_response,
     save_response_logs_for_batch,
+    should_persist_sisgen_xml,
     soap_response_is_ok,
 )
 from sisgen.services.soap_client_service import SoapClientService
@@ -233,8 +234,6 @@ def send_batch(
             )
             return {"batch_summary": batch_summary, "merge": merge}
 
-        write_debug(xml_content, f"request_batch_{batch_index}_{ts}.xml")
-
         if dry_run:
             soap_req = soap_client.build_request(xml_content)
             merge["messageDescription"] = (
@@ -265,7 +264,6 @@ def send_batch(
 
         response = soap_client.send_documents(xml_content)
         soap_attempted = True
-        write_debug(response.text, f"response_batch_{batch_index}_{ts}.xml")
 
         parsed_soap = parse_set_documentos_response(response.text or "")
         if response.status_code >= 400 and soap_response_is_ok(parsed_soap):
@@ -285,6 +283,13 @@ def send_batch(
                 },
             }
 
+        persist_xml = should_persist_sisgen_xml(
+            parsed_soap, http_status=response.status_code
+        )
+        if persist_xml:
+            write_debug(xml_content, f"request_batch_{batch_index}_{ts}.xml")
+            write_debug(response.text, f"response_batch_{batch_index}_{ts}.xml")
+
         soap_ok = soap_response_is_ok(parsed_soap)
         error_location = (
             None
@@ -298,10 +303,11 @@ def send_batch(
                 batch_documents=batch,
                 batch_index=batch_index,
                 http_status=response.status_code,
-                raw_xml=response.text or "",
+                raw_xml=(response.text or "") if persist_xml else "",
                 parsed=parsed_soap,
                 user=user,
                 location=error_location,
+                request_xml=xml_content if persist_xml else "",
             )
             merge["submission_response_ids"].extend(saved_ids)
         except Exception as exc:

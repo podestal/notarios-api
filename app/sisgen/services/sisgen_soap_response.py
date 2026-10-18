@@ -24,6 +24,11 @@ SISGEN_IT_CONTACT_NOTE = (
     "la fecha/hora del envío y el mensaje de error mostrado."
 )
 
+# local / localf / test stacks: keep SisgenSoapResponse rows but skip bulky XML unless SISGEN erred.
+# development / production (and anything else): always persist request + response XML.
+_SISGEN_XML_ON_ERROR_ONLY_ENVS = frozenset({"local", "localf", "test", "testing"})
+_DOC_ERROR_STATUSES = frozenset({"FALLIDO", "CON OBSERVACIONES"})
+
 
 def soap_response_is_ok(parsed: Dict[str, Any]) -> bool:
     """True when SISGEN SOAP <return><status> is OK."""
@@ -34,6 +39,51 @@ def soap_response_is_ok(parsed: Dict[str, Any]) -> bool:
         return True
     rs = (parsed.get("return_status") or "").strip().upper()
     return rs == "OK"
+
+
+def sisgen_xml_on_error_only() -> bool:
+    """True on local/localf/test — persist request/response XML only when SISGEN returns an error."""
+    env = (os.environ.get("ENVIRONMENT") or "").strip().lower()
+    if env in _SISGEN_XML_ON_ERROR_ONLY_ENVS:
+        return True
+    settings_module = (os.environ.get("DJANGO_SETTINGS_MODULE") or "").strip().lower()
+    return settings_module.endswith(".local")
+
+
+def sisgen_submission_has_errors(
+    parsed: Optional[Dict[str, Any]],
+    *,
+    http_status: Optional[int] = None,
+) -> bool:
+    """True when the send failed at HTTP/SOAP level or any echoed document has errors."""
+    if http_status is not None and http_status >= 400:
+        return True
+    payload = parsed if isinstance(parsed, dict) else {}
+    if not soap_response_is_ok(payload):
+        return True
+    for doc in payload.get("documents") or []:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("has_errors") or doc.get("errors"):
+            return True
+        if (doc.get("doc_status") or "").strip().upper() in _DOC_ERROR_STATUSES:
+            return True
+    return False
+
+
+def should_persist_sisgen_xml(
+    parsed: Optional[Dict[str, Any]] = None,
+    *,
+    http_status: Optional[int] = None,
+) -> bool:
+    """
+    Whether to store SISGEN request/response XML (debug files + DB raw fields).
+
+    Always on development/production. On local/localf/test only when SISGEN returned an error.
+    """
+    if not sisgen_xml_on_error_only():
+        return True
+    return sisgen_submission_has_errors(parsed, http_status=http_status)
 
 
 def format_soap_return_message(raw: str, *, max_len: int = 600) -> str:
@@ -419,10 +469,14 @@ def save_response_logs_for_batch(
     parsed: Dict[str, Any],
     user=None,
     location: Optional[Dict[str, Any]] = None,
+    request_xml: str = "",
 ) -> List[int]:
     """
     Crea una fila SisgenSoapResponse por documento devuelto en el SOAP, o por cada
     kardex del batch si SISGEN no devolvió DocumentoNotarial (solo ACK o error SOAP).
+
+    On local/localf/test, bulky request/response XML is stored only when SISGEN erred.
+    Dashboard metadata (status, user_facing, summary) is always saved.
 
     Returns IDs of rows created.
     """
@@ -434,7 +488,11 @@ def save_response_logs_for_batch(
         for d in batch_documents
     }
 
-    stored_raw, raw_meta = _maybe_truncate_raw(raw_xml or "")
+    persist_xml = should_persist_sisgen_xml(parsed, http_status=http_status)
+    stored_raw, raw_meta = (
+        _maybe_truncate_raw(raw_xml or "") if persist_xml else ("", {})
+    )
+    stored_request = (request_xml or "") if persist_xml else ""
 
     common = {
         "batch_index": batch_index,
@@ -449,6 +507,15 @@ def save_response_logs_for_batch(
     created_ids: List[int] = []
     soap_failed = not soap_response_is_ok(parsed)
 
+    def _attach_xml_payload(pl: Dict[str, Any]) -> None:
+        if raw_meta:
+            pl["raw_storage"] = raw_meta
+        if stored_request:
+            pl["request_xml"] = stored_request
+        if not persist_xml:
+            pl["xml_omitted"] = True
+            pl["xml_omit_reason"] = "success_on_restricted_env"
+
     if docs:
         for d in docs:
             nk = (d.get("num_kardex") or "").strip() or "?"
@@ -457,8 +524,7 @@ def save_response_logs_for_batch(
                 "document": d,
                 "parse_error": parsed.get("parse_error"),
             }
-            if raw_meta:
-                pl["raw_storage"] = raw_meta
+            _attach_xml_payload(pl)
             if soap_failed:
                 pl.update(
                     user_facing_payload_for_saved_row(
@@ -492,8 +558,7 @@ def save_response_logs_for_batch(
             "documents_echo": [],
             "parse_error": parsed.get("parse_error"),
         }
-        if raw_meta:
-            pl_ack["raw_storage"] = raw_meta
+        _attach_xml_payload(pl_ack)
         if soap_failed:
             pl_ack.update(
                 user_facing_payload_for_saved_row(
