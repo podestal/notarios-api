@@ -678,6 +678,7 @@ class TransferenciasVehicularesReportService:
                 FROM kardex as k 
                 WHERE k.idtipkar='3' 
                     AND k.fechaescritura <> '' 
+                    AND TRIM(IFNULL(k.numescritura, '')) <> ''
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.fechaescritura ASC,

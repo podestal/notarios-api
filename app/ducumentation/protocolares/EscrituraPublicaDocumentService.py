@@ -702,6 +702,7 @@ class EscriturasPublicasReportService:
                 LEFT JOIN monedas as m ON m.idmon=p.idmon
                 WHERE k.idtipkar='1' 
                     AND k.fechaescritura <> '' 
+                    AND TRIM(IFNULL(k.numescritura, '')) <> ''
                     AND STR_TO_DATE(k.fechaescritura,'%%Y-%%m-%%d') >= STR_TO_DATE(%s,'%%Y-%%m-%%d')
                     AND STR_TO_DATE(k.fechaescritura,'%%Y-%%m-%%d') <= STR_TO_DATE(%s,'%%Y-%%m-%%d')
                 ORDER BY numescritura2 ASC, fechaescritura ASC

@@ -509,6 +509,7 @@ class TestamentosReportService:
                 FROM kardex as k 
                 WHERE k.idtipkar='5' 
                     AND k.fechaescritura <> '' 
+                    AND TRIM(IFNULL(k.numescritura, '')) <> ''
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.fechaescritura ASC, k.numescritura ASC, k.numminuta ASC

@@ -613,6 +613,7 @@ class NoContenciososReportService:
                 FROM kardex as k 
                 WHERE k.idtipkar='2' 
                     AND k.fechaescritura <> '' 
+                    AND TRIM(IFNULL(k.numescritura, '')) <> ''
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.numescritura ASC

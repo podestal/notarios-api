@@ -523,6 +523,7 @@ class GarantiasReportService:
                 FROM kardex as k 
                 WHERE k.idtipkar='4' 
                     AND k.fechaescritura <> '' 
+                    AND TRIM(IFNULL(k.numescritura, '')) <> ''
                     AND k.fechaescritura >= %s
                     AND k.fechaescritura <= %s
                 ORDER BY k.numescritura ASC
