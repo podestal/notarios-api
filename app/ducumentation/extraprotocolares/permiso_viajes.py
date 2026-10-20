@@ -854,99 +854,94 @@ class PermisosViajeReportService:
             # Notary info section - matches PHP table with border='0'
             row = 4
             # Row 1: NOTARIA (colspan="2" align="left")
-            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'NOTARIA'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = f': {notary_info["nombre"]}'
-            ws[f'C{row}'].font = data_font
-            ws[f'C{row}'].alignment = left_alignment
-            ws[f'C{row}'].border = no_border
+            ws[f'B{row}'] = f': {notary_info["nombre"]}'
+            ws[f'B{row}'].font = data_font
+            ws[f'B{row}'].alignment = left_alignment
+            ws[f'B{row}'].border = no_border
             
             row += 1
             # Row 2: DIRECCION
-            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'DIRECCION'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = f': {notary_info["direccion"]}'
-            ws[f'C{row}'].font = data_font
-            ws[f'C{row}'].alignment = left_alignment
-            ws[f'C{row}'].border = no_border
-            ws[f'E{row}'] = 'TELEFONO'
-            ws[f'E{row}'].font = header_font
+            ws[f'B{row}'] = f': {notary_info["direccion"]}'
+            ws[f'B{row}'].font = data_font
+            ws[f'B{row}'].alignment = left_alignment
+            ws[f'B{row}'].border = no_border
+            ws[f'D{row}'] = 'TELEFONO'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].alignment = left_alignment
+            ws[f'D{row}'].border = no_border
+            ws.merge_cells(f'E{row}:G{row}')
+            ws[f'E{row}'] = f': {notary_info["telefono"]}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
-            ws.merge_cells(f'F{row}:G{row}')
-            ws[f'F{row}'] = f': {notary_info["telefono"]}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].alignment = left_alignment
-            ws[f'F{row}'].border = no_border
             
             row += 1
             # Row 3: DEPARTAMENTO
-            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'DEPARTAMENTO'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = f': {notary_info["departamento"]}'
-            ws[f'C{row}'].font = data_font
-            ws[f'C{row}'].alignment = left_alignment
-            ws[f'C{row}'].border = no_border
-            ws[f'E{row}'] = 'RUC'
-            ws[f'E{row}'].font = header_font
+            ws[f'B{row}'] = f': {notary_info["departamento"]}'
+            ws[f'B{row}'].font = data_font
+            ws[f'B{row}'].alignment = left_alignment
+            ws[f'B{row}'].border = no_border
+            ws[f'D{row}'] = 'RUC'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].alignment = left_alignment
+            ws[f'D{row}'].border = no_border
+            ws.merge_cells(f'E{row}:G{row}')
+            ws[f'E{row}'] = f': {notary_info["ruc"]}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
-            ws.merge_cells(f'F{row}:G{row}')
-            ws[f'F{row}'] = f': {notary_info["ruc"]}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].alignment = left_alignment
-            ws[f'F{row}'].border = no_border
             
             row += 1
             # Row 4: PROVINCIA
-            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'PROVINCIA'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = f': {notary_info["provincia"]}'
-            ws[f'C{row}'].font = data_font
-            ws[f'C{row}'].alignment = left_alignment
-            ws[f'C{row}'].border = no_border
-            ws[f'E{row}'] = 'DESDE'
-            ws[f'E{row}'].font = header_font
+            ws[f'B{row}'] = f': {notary_info["provincia"]}'
+            ws[f'B{row}'].font = data_font
+            ws[f'B{row}'].alignment = left_alignment
+            ws[f'B{row}'].border = no_border
+            ws[f'D{row}'] = 'DESDE'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].alignment = left_alignment
+            ws[f'D{row}'].border = no_border
+            ws.merge_cells(f'E{row}:G{row}')
+            ws[f'E{row}'] = f': {self._format_date_in_spanish(desde)}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
-            ws.merge_cells(f'F{row}:G{row}')
-            ws[f'F{row}'] = f': {self._format_date_in_spanish(desde)}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].alignment = left_alignment
-            ws[f'F{row}'].border = no_border
             
             row += 1
             # Row 5: DISTRITO
-            ws.merge_cells(f'A{row}:B{row}')
             ws[f'A{row}'] = 'DISTRITO'
             ws[f'A{row}'].font = header_font
             ws[f'A{row}'].alignment = left_alignment
             ws[f'A{row}'].border = no_border
-            ws[f'C{row}'] = f': {notary_info["distrito"]}'
-            ws[f'C{row}'].font = data_font
-            ws[f'C{row}'].alignment = left_alignment
-            ws[f'C{row}'].border = no_border
-            ws[f'E{row}'] = 'HASTA'
-            ws[f'E{row}'].font = header_font
+            ws[f'B{row}'] = f': {notary_info["distrito"]}'
+            ws[f'B{row}'].font = data_font
+            ws[f'B{row}'].alignment = left_alignment
+            ws[f'B{row}'].border = no_border
+            ws[f'D{row}'] = 'HASTA'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].alignment = left_alignment
+            ws[f'D{row}'].border = no_border
+            ws.merge_cells(f'E{row}:G{row}')
+            ws[f'E{row}'] = f': {self._format_date_in_spanish(hasta)}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].alignment = left_alignment
             ws[f'E{row}'].border = no_border
-            ws.merge_cells(f'F{row}:G{row}')
-            ws[f'F{row}'] = f': {self._format_date_in_spanish(hasta)}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].alignment = left_alignment
-            ws[f'F{row}'].border = no_border
             
             # Add spacing
             row += 2

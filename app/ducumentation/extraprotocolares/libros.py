@@ -484,12 +484,12 @@ class LibrosReportService:
             ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["direccion"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
-            ws[f'E{row}'] = 'TELEFONO'
-            ws[f'E{row}'].font = header_font
+            ws[f'D{row}'] = 'TELEFONO'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].border = no_border
+            ws[f'E{row}'] = f': {self._sanitize_cell_value(notary_info["telefono"])}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].border = no_border
-            ws[f'F{row}'] = f': {self._sanitize_cell_value(notary_info["telefono"])}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].border = no_border
             
             row += 1
             ws[f'A{row}'] = 'DEPARTAMENTO'
@@ -498,12 +498,12 @@ class LibrosReportService:
             ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["departamento"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
-            ws[f'E{row}'] = 'RUC'
-            ws[f'E{row}'].font = header_font
+            ws[f'D{row}'] = 'RUC'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].border = no_border
+            ws[f'E{row}'] = f': {self._sanitize_cell_value(notary_info["ruc"])}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].border = no_border
-            ws[f'F{row}'] = f': {self._sanitize_cell_value(notary_info["ruc"])}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].border = no_border
             
             row += 1
             ws[f'A{row}'] = 'PROVINCIA'
@@ -512,12 +512,12 @@ class LibrosReportService:
             ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["provincia"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
-            ws[f'E{row}'] = 'DESDE'
-            ws[f'E{row}'].font = header_font
+            ws[f'D{row}'] = 'DESDE'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].border = no_border
+            ws[f'E{row}'] = f': {self._format_date_in_spanish(desde)}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].border = no_border
-            ws[f'F{row}'] = f': {self._format_date_in_spanish(desde)}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].border = no_border
             
             row += 1
             ws[f'A{row}'] = 'DISTRITO'
@@ -526,12 +526,12 @@ class LibrosReportService:
             ws[f'B{row}'] = f': {self._sanitize_cell_value(notary_info["distrito"])}'
             ws[f'B{row}'].font = data_font
             ws[f'B{row}'].border = no_border
-            ws[f'E{row}'] = 'HASTA'
-            ws[f'E{row}'].font = header_font
+            ws[f'D{row}'] = 'HASTA'
+            ws[f'D{row}'].font = header_font
+            ws[f'D{row}'].border = no_border
+            ws[f'E{row}'] = f': {self._format_date_in_spanish(hasta)}'
+            ws[f'E{row}'].font = data_font
             ws[f'E{row}'].border = no_border
-            ws[f'F{row}'] = f': {self._format_date_in_spanish(hasta)}'
-            ws[f'F{row}'].font = data_font
-            ws[f'F{row}'].border = no_border
             
             # Table headers with borders
             row += 2
