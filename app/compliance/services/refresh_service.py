@@ -12,6 +12,7 @@ from notaria import models
 from compliance.models import KardexComplianceCache
 from compliance.services.kardex_meta import kardex_meta_from_model, parse_kardex_date
 from compliance.services.payload import build_payload, counts_from_payload
+from compliance.services.pdt_collector import collect_pdt_issues
 from compliance.services.sisgen_collector import collect_sisgen_issues
 from compliance.services.uif_collector import collect_uif_issues
 
@@ -37,6 +38,7 @@ class ComplianceRefreshService:
 
         uif_block = collect_uif_issues(key)
         sisgen_block = collect_sisgen_issues(key)
+        pdt_block = collect_pdt_issues(key)
         payload = build_payload(
             kardex=key,
             idkardex=str(kardex_row.idkardex or ""),
@@ -44,6 +46,7 @@ class ComplianceRefreshService:
             kardex_meta=kardex_meta_from_model(kardex_row),
             uif_block=uif_block,
             sisgen_block=sisgen_block,
+            pdt_block=pdt_block,
         )
         counts = counts_from_payload(payload)
 

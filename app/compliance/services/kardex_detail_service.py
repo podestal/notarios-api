@@ -10,15 +10,12 @@ from notaria import models
 from compliance.models import KardexComplianceCache
 from compliance.services.kardex_meta import kardex_meta_from_model
 from compliance.services.payload import (
-    SOURCE_PDT,
-    SOURCE_SISGEN,
-    SOURCE_UIF,
     build_payload,
     build_sisgen_block,
-    empty_pdt_block,
     filter_payload_sources,
     serialize_kardex_errors_detail,
 )
+from compliance.services.pdt_collector import collect_pdt_issues
 from compliance.services.sisgen_collector import collect_sisgen_issues
 from compliance.services.uif_collector import collect_uif_issues
 from compliance.services.escrituracion_filter import (
@@ -60,6 +57,7 @@ class KardexComplianceDetailService:
         ) or not has_escrituracion_info(kardex_row)
 
         uif_block = collect_uif_issues(key)
+        pdt_block = collect_pdt_issues(key)
         if skip_sisgen:
             sisgen_block = _empty_sisgen_block()
             if is_kardex_sent_to_sisgen(kardex_row.estado_sisgen):
@@ -77,6 +75,7 @@ class KardexComplianceDetailService:
             kardex_meta=kardex_meta_from_model(kardex_row),
             uif_block=uif_block,
             sisgen_block=sisgen_block,
+            pdt_block=pdt_block,
             validated_at=datetime.utcnow(),
         )
         detail = serialize_kardex_errors_detail(

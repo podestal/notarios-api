@@ -26,6 +26,7 @@ from compliance.services.payload import sisgen_errores_count_from_payload
 from compliance.services.refresh_service import EXCLUDED_TIPOKAR
 from compliance.services.escrituracion_filter import partition_kardex_by_escrituracion
 from compliance.services.sisgen_sent_filter import partition_kardex_by_sisgen_sent
+from compliance.services.pdt_collector import bulk_collect_pdt_error_counts
 from compliance.services.uif_parity import count_uif_errors_by_kardex
 
 User = get_user_model()
@@ -271,6 +272,7 @@ def _load_month_kardex_and_counts(
     # Every kardex can carry UIF errors; SISGEN is zeroed when excluded.
     eligible_kardex_rows = list(all_kardex_rows)
     kardex_keys = [r["kardex"] for r in eligible_kardex_rows]
+    pdt_by_kardex = bulk_collect_pdt_error_counts(kardex_keys)
 
     counts_by_kardex: Dict[str, Dict[str, int]] = {}
     for k in kardex_keys:
@@ -279,11 +281,16 @@ def _load_month_kardex_and_counts(
             "sisgen": int(sisgen_by_kardex.get(k) or 0)
             if k in sisgen_eligible_keys
             else 0,
+            "pdt": int(pdt_by_kardex.get(k) or 0),
         }
     # UIF-only keys that somehow lacked a row model still contribute to totals.
     for k, uif_n in uif_by_kardex.items():
         if k not in counts_by_kardex:
-            counts_by_kardex[k] = {"uif": int(uif_n), "sisgen": 0}
+            counts_by_kardex[k] = {
+                "uif": int(uif_n),
+                "sisgen": 0,
+                "pdt": int(pdt_by_kardex.get(k) or 0),
+            }
 
     exclusion_meta = {
         "excluded_sisgen_sent": len(excluded_sisgen_sent),
@@ -300,6 +307,11 @@ def _load_month_kardex_and_counts(
         "uif_note": (
             "UIF counts from UifDashboardService (fechaescritura, threshold, "
             "complementary tipo C) — same engine as the UIF report."
+        ),
+        "pdt_source": "getErrors.php",
+        "pdt_note": (
+            "PDT counts from the four Mis errores checks (renta, bienes, origen "
+            "de fondos, conclusión), same SQL as getErrors.php."
         ),
         **sisgen_meta,
     }
@@ -466,10 +478,9 @@ class ComplianceUserMonthlyService:
             "counts": {
                 "sisgen": sum(u["counts"]["sisgen"] for u in users_out),
                 "uif": sum(u["counts"]["uif"] for u in users_out),
-                "pdt": 0,
+                "pdt": sum(u["counts"]["pdt"] for u in users_out),
                 "total": sum(u["counts"]["total"] for u in users_out),
             },
-            "pdt_note": "PDT not included yet",
         }
 
         return {
@@ -558,7 +569,7 @@ class ComplianceUserMonthlyService:
                     "counts": {
                         "sisgen": sum(i["counts"]["sisgen"] for i in kardex_list),
                         "uif": sum(i["counts"]["uif"] for i in kardex_list),
-                        "pdt": 0,
+                        "pdt": sum(i["counts"]["pdt"] for i in kardex_list),
                         "total": sum(i["counts"]["total"] for i in kardex_list),
                     },
                     "kardex": kardex_list,
@@ -606,10 +617,9 @@ class ComplianceUserMonthlyService:
             "counts": {
                 "sisgen": sum(i["counts"]["sisgen"] for i in all_kardex),
                 "uif": sum(i["counts"]["uif"] for i in all_kardex),
-                "pdt": 0,
+                "pdt": sum(i["counts"]["pdt"] for i in all_kardex),
                 "total": sum(i["counts"]["total"] for i in all_kardex),
             },
-            "pdt_note": "PDT not included yet",
         }
 
         if idusuario is not None and not users_out and totals_by_user.get(idusuario, 0) > 0:

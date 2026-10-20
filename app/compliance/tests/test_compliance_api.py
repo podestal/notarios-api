@@ -4,6 +4,7 @@ from django.test import SimpleTestCase
 
 from compliance.services.payload import (
     build_payload,
+    build_pdt_block,
     build_sisgen_block,
     build_uif_block,
     counts_from_payload,
@@ -47,7 +48,8 @@ class PayloadShapeTests(SimpleTestCase):
         self.assertTrue(payload["summary"]["has_errors"])
         self.assertEqual(payload["summary"]["by_source"]["uif"], 1)
         self.assertEqual(payload["summary"]["by_source"]["sisgen"], 2)
-        self.assertEqual(payload["sources"]["pdt"]["status"], "pending")
+        self.assertEqual(payload["sources"]["pdt"]["status"], "ok")
+        self.assertEqual(payload["summary"]["by_source"]["pdt"], 0)
 
     def test_filter_payload_by_source_uif(self):
         payload = build_payload(
@@ -66,12 +68,13 @@ class PayloadShapeTests(SimpleTestCase):
 
 
 class RefreshServiceTests(SimpleTestCase):
+    @patch("compliance.services.refresh_service.collect_pdt_issues")
     @patch("compliance.services.refresh_service.collect_sisgen_issues")
     @patch("compliance.services.refresh_service.collect_uif_issues")
     @patch("compliance.services.refresh_service.models.Kardex")
     @patch("compliance.services.refresh_service.KardexComplianceCache")
     def test_refresh_kardex_upserts(
-        self, mock_cache_model, mock_kardex_model, mock_uif, mock_sisgen
+        self, mock_cache_model, mock_kardex_model, mock_uif, mock_sisgen, mock_pdt
     ):
         from compliance.services.refresh_service import ComplianceRefreshService
 
@@ -90,6 +93,7 @@ class RefreshServiceTests(SimpleTestCase):
             {"has_uif_errors": False, "uif_errors": [], "uif_observations": []}
         )
         mock_sisgen.return_value = build_sisgen_block(errores=[], observaciones=[], personas=[])
+        mock_pdt.return_value = build_pdt_block([])
 
         row = MagicMock()
         row.kardex = "K1-2026"

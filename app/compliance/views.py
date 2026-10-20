@@ -391,7 +391,7 @@ class ComplianceDashboardView(APIView):
         if source and source not in SUPPORTED_SOURCES:
             return Response(
                 {
-                    "error": "Invalid source. Use: uif, sisgen (pdt coming soon)",
+                    "error": "Invalid source. Use: uif, sisgen, pdt",
                     "supported_sources": sorted(SUPPORTED_SOURCES),
                 },
                 status=status.HTTP_400_BAD_REQUEST,

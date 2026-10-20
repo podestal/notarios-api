@@ -19,6 +19,7 @@ class KardexComplianceCache(models.Model):
     uif_error_count = models.PositiveIntegerField(default=0)
     sisgen_error_count = models.PositiveIntegerField(default=0)
     sisgen_observation_count = models.PositiveIntegerField(default=0)
+    pdt_error_count = models.PositiveIntegerField(default=0)
     total_error_count = models.PositiveIntegerField(default=0)
     has_errors = models.BooleanField(default=False, db_index=True)
 

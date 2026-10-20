@@ -9,6 +9,7 @@ from django.db.models import QuerySet
 
 from compliance.models import KardexComplianceCache
 from compliance.services.payload import (
+    SOURCE_PDT,
     SOURCE_SISGEN,
     SOURCE_UIF,
     SUPPORTED_SOURCES,
@@ -50,6 +51,8 @@ class ComplianceDashboardService:
                 qs = qs.filter(uif_error_count__gt=0)
             elif source == SOURCE_SISGEN:
                 qs = qs.filter(sisgen_error_count__gt=0)
+            elif source == SOURCE_PDT:
+                qs = qs.filter(pdt_error_count__gt=0)
             elif source in SUPPORTED_SOURCES:
                 qs = qs.filter(has_errors=True)
             else:
@@ -68,13 +71,18 @@ class ComplianceDashboardService:
         with_errors = qs.filter(has_errors=True).count()
         uif_kardex = qs.filter(uif_error_count__gt=0).count()
         sisgen_kardex = qs.filter(sisgen_error_count__gt=0).count()
+        pdt_kardex = qs.filter(pdt_error_count__gt=0).count()
         return {
             "total_cached": total_cached,
             "with_errors": with_errors,
             "without_errors": total_cached - with_errors,
             "kardex_with_uif_errors": uif_kardex,
             "kardex_with_sisgen_errors": sisgen_kardex,
-            "pdt": {"status": "pending", "note": "PDT not collected yet"},
+            "kardex_with_pdt_errors": pdt_kardex,
+            "pdt": {
+                "status": "ok",
+                "note": "PDT collected with Mis errores checks (renta, bienes, fondos, conclusión).",
+            },
             "filters": filters_meta,
         }
 

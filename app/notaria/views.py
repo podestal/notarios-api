@@ -55,6 +55,11 @@ from .services.pdt_file_service import PdtFileService
 from .services.pdt_escrituras_service import PdtEscriturasService
 from .services.pdt_vehiculares_service import PdtVehicularesService
 from .services.pdt_garantias_service import PdtGarantiasService
+from .services.pdt_mis_errores_service import (
+    list_errors_for_user,
+    parse_year,
+    ranking_for_year,
+)
 from .services.participation_split import (
     divide_evenly,
     format_monto,
@@ -854,6 +859,27 @@ class KardexViewSet(ModelViewSet):
 
         except Exception as e:
             return Response({"error": 1, "errorDescription": str(e)}, status=500)
+
+    @action(detail=False, methods=["get"], url_path="pdt-mis-errores")
+    def pdt_mis_errores(self, request):
+        """Personal PDT error list (legacy getErrors.php)."""
+        year = parse_year(request.query_params.get("year"))
+        usuario = (request.query_params.get("usuario") or "").strip()
+        if not usuario:
+            usuario = getattr(request.user, "username", "") or ""
+        if not usuario:
+            return Response(
+                {"error": 1, "errorDescription": "No se pudo identificar al usuario."},
+                status=400,
+            )
+        return Response(list_errors_for_user(usuario, year))
+
+    @action(detail=False, methods=["get"], url_path="pdt-ranking-errores")
+    def pdt_ranking_errores(self, request):
+        """Worker ranking by PDT error count (legacy reportRankErrors)."""
+        year = parse_year(request.query_params.get("year"))
+        ranking = ranking_for_year(year)
+        return Response({"year": year, "ranking": ranking, "total": len(ranking)})
 
     @action(detail=False, methods=["get"], url_path="pdt-garantias")
     def pdt_garantias(self, request):

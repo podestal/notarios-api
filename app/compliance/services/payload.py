@@ -12,17 +12,28 @@ PAYLOAD_VERSION = 1
 SOURCE_UIF = "uif"
 SOURCE_SISGEN = "sisgen"
 SOURCE_PDT = "pdt"
-SUPPORTED_SOURCES = frozenset({SOURCE_UIF, SOURCE_SISGEN})
+SUPPORTED_SOURCES = frozenset({SOURCE_UIF, SOURCE_SISGEN, SOURCE_PDT})
+
+
+def build_pdt_block(errors: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    errors = list(errors or [])
+    counts = {
+        "renta": sum(1 for item in errors if item.get("kind") == "renta"),
+        "bien": sum(1 for item in errors if item.get("kind") == "bien"),
+        "ofondo": sum(1 for item in errors if item.get("kind") == "ofondo"),
+        "conclusion": sum(1 for item in errors if item.get("kind") == "conclusion"),
+    }
+    return {
+        "status": "ok",
+        "has_errors": len(errors) > 0,
+        "error_count": len(errors),
+        "errors": errors,
+        "counts": counts,
+    }
 
 
 def empty_pdt_block() -> Dict[str, Any]:
-    return {
-        "status": "pending",
-        "has_errors": False,
-        "error_count": 0,
-        "errors": [],
-        "note": "PDT collector not implemented yet",
-    }
+    return build_pdt_block([])
 
 
 def build_uif_block(uif_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,15 +78,19 @@ def build_payload(
     kardex_meta: Dict[str, Any],
     uif_block: Dict[str, Any],
     sisgen_block: Dict[str, Any],
+    pdt_block: Optional[Dict[str, Any]] = None,
     validated_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     validated_at = validated_at or datetime.utcnow()
+    pdt_block = pdt_block or empty_pdt_block()
     by_source = {
         SOURCE_UIF: uif_block.get("error_count", 0),
         SOURCE_SISGEN: sisgen_block.get("error_count", 0),
-        SOURCE_PDT: 0,
+        SOURCE_PDT: pdt_block.get("error_count", 0),
     }
-    total_errors = by_source[SOURCE_UIF] + by_source[SOURCE_SISGEN]
+    total_errors = (
+        by_source[SOURCE_UIF] + by_source[SOURCE_SISGEN] + by_source[SOURCE_PDT]
+    )
     total_observations = (
         uif_block.get("observation_count", 0) + sisgen_block.get("observation_count", 0)
     )
@@ -86,7 +101,7 @@ def build_payload(
         "sources": {
             SOURCE_UIF: uif_block,
             SOURCE_SISGEN: sisgen_block,
-            SOURCE_PDT: empty_pdt_block(),
+            SOURCE_PDT: pdt_block,
         },
         "summary": {
             "has_errors": total_errors > 0,
@@ -112,15 +127,19 @@ def counts_from_payload(payload: Dict[str, Any]) -> Dict[str, int]:
     sources = payload.get("sources") or {}
     uif = sources.get(SOURCE_UIF) or {}
     sisgen = sources.get(SOURCE_SISGEN) or {}
+    pdt = sources.get(SOURCE_PDT) or {}
     uif_count = int(uif.get("error_count") or 0)
     sisgen_count = int(sisgen.get("error_count") or 0)
     sisgen_obs = int(sisgen.get("observation_count") or 0)
+    pdt_count = int(pdt.get("error_count") or len(pdt.get("errors") or []))
+    total = uif_count + sisgen_count + pdt_count
     return {
         "uif_error_count": uif_count,
         "sisgen_error_count": sisgen_count,
         "sisgen_observation_count": sisgen_obs,
-        "total_error_count": uif_count + sisgen_count,
-        "has_errors": (uif_count + sisgen_count) > 0,
+        "pdt_error_count": pdt_count,
+        "total_error_count": total,
+        "has_errors": total > 0,
     }
 
 
@@ -158,10 +177,10 @@ def serialize_kardex_errors_detail(
     }
 
     if source_filter and source_filter in SUPPORTED_SOURCES:
-        errors_block = {
-            source_filter: errors_block[source_filter],
-            SOURCE_PDT: errors_block[SOURCE_PDT],
-        }
+        filtered_errors = {source_filter: errors_block[source_filter]}
+        if source_filter != SOURCE_PDT:
+            filtered_errors[SOURCE_PDT] = errors_block[SOURCE_PDT]
+        errors_block = filtered_errors
 
     return {
         "kardex": kardex_row.kardex,
@@ -203,6 +222,7 @@ def serialize_cache_row(
             "uif": row.uif_error_count,
             "sisgen": row.sisgen_error_count,
             "sisgen_observations": row.sisgen_observation_count,
+            "pdt": int(getattr(row, "pdt_error_count", 0) or 0),
             "total": row.total_error_count,
         },
         "summary": payload.get("summary") or {},
@@ -220,15 +240,16 @@ def filter_payload_sources(
         return payload
     sources = dict(payload.get("sources") or {})
     filtered = {key: sources.get(key) for key in sources if key == source_filter}
-    filtered[SOURCE_PDT] = sources.get(SOURCE_PDT) or empty_pdt_block()
+    if source_filter != SOURCE_PDT:
+        filtered[SOURCE_PDT] = sources.get(SOURCE_PDT) or empty_pdt_block()
     out = dict(payload)
     out["sources"] = filtered
     summary = dict(out.get("summary") or {})
     by_source = dict(summary.get("by_source") or {})
-    summary["by_source"] = {k: by_source.get(k, 0) for k in filtered if k != SOURCE_PDT}
-    summary["total_errors"] = (filtered.get(SOURCE_UIF) or {}).get(
-        "error_count", 0
-    ) + (filtered.get(SOURCE_SISGEN) or {}).get("error_count", 0)
+    summary["by_source"] = {k: by_source.get(k, 0) for k in filtered}
+    summary["total_errors"] = sum(
+        int((filtered.get(key) or {}).get("error_count") or 0) for key in filtered
+    )
     summary["has_errors"] = summary["total_errors"] > 0
     out["summary"] = summary
     return out

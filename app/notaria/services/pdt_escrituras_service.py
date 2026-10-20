@@ -3,6 +3,8 @@ from typing import Dict, List, Any, Optional
 from django.db import connection
 from django.db.models import Q
 
+from .pdt_dates import format_pdt_writing_date
+
 class PdtEscriturasService:
     """Service for checking PDT errors in Escrituras records."""
 
@@ -249,7 +251,7 @@ class PdtEscriturasService:
             'isCorrectable': 1 if is_correctable else 0,
             'typeOfCorrection': type_of_correction,
             'categoryCorrect': 'ESCRITURA',
-            'writingDate': writing_date.strftime('%Y-%m-%d') if writing_date else None,
+            'writingDate': format_pdt_writing_date(writing_date),
             'idContractor': id_contractor,
             'itemMp': item_mp,
             'typeAct': act
