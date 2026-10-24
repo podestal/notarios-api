@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'uif',
     'compliance',
     'notaria',
+    'audit.apps.AuditConfig',
     'viajes',
     'signatum',
     'taxes',
@@ -59,6 +60,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     # 'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'audit.middleware.KardexAuditMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

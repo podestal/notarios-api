@@ -1,6 +1,7 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from core.permissions import IsSuperuser
 
 from ducumentation.protocolares.EscrituraPublicaDocumentService import (
     EscriturasPublicasReportService,
@@ -654,6 +655,58 @@ class KardexViewSet(ModelViewSet):
 
         return Response(serializer.data, status=201)
 
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="logs",
+        permission_classes=[IsAuthenticated, IsSuperuser],
+    )
+    def logs(self, request):
+        """
+        Read-only kardex change history. Superuser only.
+
+        Query params:
+        - kardex (required): kardex code, e.g. KAR2315-2025
+        - table / table_name: filter by table (kardex, cliente2, patrimonial, ...)
+        - action: create | update | delete
+        - user_id / idusuario: actor
+        - dateFrom / dateTo: YYYY-MM-DD or DD/MM/YYYY
+        """
+        from audit.query import kardex_logs_queryset
+        from audit.serializers import KardexChangeLogSerializer
+
+        kardex = (request.query_params.get("kardex") or "").strip()
+        if not kardex:
+            return Response({"error": "kardex is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = kardex_logs_queryset(request.query_params, kardex=kardex)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = KardexChangeLogSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = KardexChangeLogSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="logs",
+        permission_classes=[IsAuthenticated, IsSuperuser],
+    )
+    def logs_for_kardex(self, request, pk=None):
+        """Read-only history for one kardex row (lookup is idkardex). Superuser only."""
+        from audit.query import kardex_logs_queryset
+        from audit.serializers import KardexChangeLogSerializer
+
+        instance = self.get_object()
+        queryset = kardex_logs_queryset(request.query_params, kardex=instance.kardex)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = KardexChangeLogSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = KardexChangeLogSerializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=["get"], url_path="escrituras-cronologico")
     def escrituras_cronologico(self, request):
         """
@@ -1199,6 +1252,19 @@ class KardexViewSet(ModelViewSet):
                 updates_performed["kardex_updates"] += kardex_updated
 
             _reset_sisgen_for_kardex(kardex)
+            try:
+                from audit.services import enqueue_manual_event
+
+                enqueue_manual_event(
+                    kardex=kardex,
+                    table_name="contratantesxacto",
+                    action="update",
+                    record_pk="*",
+                    changes={"calculation": {"old": None, "new": updates_performed}},
+                    source="kardex.calculate",
+                )
+            except Exception:
+                pass
 
             return Response(
                 {
@@ -1348,6 +1414,19 @@ class KardexViewSet(ModelViewSet):
                 updates_performed["kardex_updates"] += kardex_updated
 
             _reset_sisgen_for_kardex(kardex)
+            try:
+                from audit.services import enqueue_manual_event
+
+                enqueue_manual_event(
+                    kardex=kardex,
+                    table_name="contratantesxacto",
+                    action="update",
+                    record_pk="*",
+                    changes={"calculation": {"old": None, "new": updates_performed}},
+                    source="kardex.execute_calculation",
+                )
+            except Exception:
+                pass
 
             return Response(
                 {
