@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
 
-from audit.context import get_actor
+from audit.context import get_actor, is_audit_suppressed
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +346,8 @@ def enqueue_instance_change(
     new: Optional[Dict[str, Any]] = None,
     update_fields: Optional[Iterable[str]] = None,
 ) -> None:
+    if is_audit_suppressed():
+        return
     try:
         table_name = instance._meta.db_table
         if update_fields:

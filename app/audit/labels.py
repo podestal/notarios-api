@@ -28,6 +28,8 @@ KARDEX_FIELD_LABELS = {
 
 KARDEX_USER_VALUE_FIELDS = frozenset({"idusuario", "responsable", "recepcion"})
 KARDEX_LABEL_TO_FIELD = {label: field for field, label in KARDEX_FIELD_LABELS.items()}
+PERSON_NAME_TABLES = frozenset({"contratantes", "cliente", "cliente2"})
+PERSON_NAME_FIELDS = ("razonsocial", "nombre", "prinom", "segnom", "apepat", "apemat")
 
 
 def _as_int(value: Any) -> Optional[int]:
@@ -110,6 +112,82 @@ def _abogado_label(value: Any, cache: Dict[str, Any]) -> Any:
             label = name
     except Exception:
         label = value
+    cache[key] = label
+    return label
+
+
+def _id_candidates(value: Any) -> list:
+    raw = str(value).strip() if value not in (None, "") else ""
+    if not raw:
+        return []
+    ids = {raw}
+    if raw.isdigit():
+        ids.add(raw.zfill(10))
+        ids.add(str(int(raw)))
+    return list(ids)
+
+
+def _compose_person_name(row: Optional[Dict[str, Any]]) -> str:
+    if not row:
+        return ""
+    razon = str(row.get("razonsocial") or "").strip()
+    if razon:
+        return razon
+    nombre = str(row.get("nombre") or "").strip()
+    if nombre:
+        return nombre
+    parts = [row.get("prinom"), row.get("segnom"), row.get("apepat"), row.get("apemat")]
+    return " ".join(str(part).strip() for part in parts if part and str(part).strip())
+
+
+def _name_from_changes(changes: Optional[Dict[str, Any]]) -> str:
+    if not changes:
+        return ""
+    row: Dict[str, Any] = {}
+    for field in PERSON_NAME_FIELDS:
+        delta = changes.get(field)
+        if isinstance(delta, dict) and ("old" in delta or "new" in delta):
+            row[field] = delta.get("new") or delta.get("old")
+        elif delta not in (None, ""):
+            row[field] = delta
+    return _compose_person_name(row)
+
+
+def _lookup_person_row(table_name: str, record_pk: Any) -> Optional[Dict[str, Any]]:
+    ids = _id_candidates(record_pk)
+    if not ids:
+        return None
+    try:
+        from notaria.models import Cliente, Cliente2
+
+        values = list(PERSON_NAME_FIELDS)
+        if table_name == "cliente":
+            return Cliente.objects.filter(idcliente__in=ids).values(*values).first()
+        return Cliente2.objects.filter(idcontratante__in=ids).values(*values).first()
+    except Exception:
+        return None
+
+
+def record_label_for(
+    table_name: str,
+    record_pk: Any,
+    changes: Optional[Dict[str, Any]] = None,
+    cache: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Display name for contratante / cliente logs. Falls back to the id."""
+    raw_pk = "" if record_pk in (None, "") else str(record_pk)
+    if table_name not in PERSON_NAME_TABLES:
+        return raw_pk
+    cache = cache if cache is not None else {}
+    key = f"record-label:{table_name}:{raw_pk}"
+    if key in cache:
+        return cache[key]
+
+    label = _name_from_changes(changes)
+    if not label:
+        label = _compose_person_name(_lookup_person_row(table_name, raw_pk))
+    if not label:
+        label = raw_pk
     cache[key] = label
     return label
 

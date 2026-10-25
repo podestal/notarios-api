@@ -1,5 +1,6 @@
 import threading
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 _local = threading.local()
 
@@ -31,3 +32,18 @@ def clear_actor() -> None:
 
 def set_source(source: str) -> None:
     _local.source = source or ""
+
+
+def is_audit_suppressed() -> bool:
+    return bool(getattr(_local, "audit_suppressed", False))
+
+
+@contextmanager
+def suppress_audit() -> Iterator[None]:
+    """Skip kardex change logs for internal cleanup (leftover rows, retries)."""
+    previous = getattr(_local, "audit_suppressed", False)
+    _local.audit_suppressed = True
+    try:
+        yield
+    finally:
+        _local.audit_suppressed = previous

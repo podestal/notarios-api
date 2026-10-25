@@ -1,17 +1,28 @@
 from rest_framework import serializers
 
-from audit.labels import humanize_kardex_changes
+from audit.labels import humanize_kardex_changes, record_label_for
 from audit.models import KardexChangeLog
 from audit.services import TABLE_KARDEX, drop_hidden_log_fields, drop_unchanged_log_fields
 
 
 class KardexChangeLogSerializer(serializers.ModelSerializer):
+    record_label = serializers.SerializerMethodField()
+
+    def get_record_label(self, instance):
+        cache = self.context.setdefault("_kardex_label_cache", {})
+        return record_label_for(
+            getattr(instance, "table_name", "") or "",
+            getattr(instance, "record_pk", "") or "",
+            getattr(instance, "changes", None) or {},
+            cache=cache,
+        )
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         table_name = data.get("table_name") or ""
+        cache = self.context.setdefault("_kardex_label_cache", {})
         changes = drop_hidden_log_fields(data.get("changes") or {}, table_name)
         if table_name == TABLE_KARDEX:
-            cache = self.context.setdefault("_kardex_label_cache", {})
             changes = humanize_kardex_changes(changes, cache=cache)
         else:
             changes = drop_unchanged_log_fields(changes)
@@ -26,6 +37,7 @@ class KardexChangeLogSerializer(serializers.ModelSerializer):
             "idkardex",
             "table_name",
             "record_pk",
+            "record_label",
             "action",
             "changes",
             "user_id",

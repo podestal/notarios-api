@@ -46,6 +46,7 @@ from django.db import transaction
 from django.db import connection
 
 from collections import defaultdict
+from audit.context import suppress_audit
 from . import utils
 from datetime import datetime
 
@@ -1741,7 +1742,8 @@ class ContratantesViewSet(ModelViewSet):
 
                 # Check orphan
                 if models.Cliente2.objects.filter(idcontratante=idcontratante).exists():
-                    models.Cliente2.objects.filter(idcontratante=idcontratante).delete()
+                    with suppress_audit():
+                        models.Cliente2.objects.filter(idcontratante=idcontratante).delete()
                     continue  # Try again with a new idcontratante
 
                 # Create Contratante

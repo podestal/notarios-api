@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
-from audit.context import clear_actor, get_actor, set_actor
+from audit.context import clear_actor, get_actor, set_actor, suppress_audit
 from audit.query import kardex_logs_queryset
-from audit.labels import humanize_kardex_changes
+from audit.labels import humanize_kardex_changes, record_label_for
 from audit.services import (
     _norm,
     build_payload,
@@ -139,6 +139,41 @@ class JsonableAndDiffTests(SimpleTestCase):
         )
         self.assertEqual(labeled["Abogado"]["new"], "PEREZ RAMOS JUAN")
 
+    def test_contratante_record_uses_name_from_cliente2(self):
+        with patch(
+            "audit.labels._lookup_person_row",
+            return_value={"razonsocial": "", "nombre": "PEREZ RAMOS JUAN"},
+        ):
+            self.assertEqual(
+                record_label_for("contratantes", "0000001095", {"fechafirma": {"old": "", "new": "03/03/1991"}}),
+                "PEREZ RAMOS JUAN",
+            )
+
+    def test_cliente_record_uses_name_from_changes(self):
+        self.assertEqual(
+            record_label_for(
+                "cliente",
+                "0000000099",
+                {"razonsocial": {"old": None, "new": "ACME SAC"}, "numdoc": {"old": None, "new": "201"}},
+            ),
+            "ACME SAC",
+        )
+        self.assertEqual(
+            record_label_for(
+                "cliente2",
+                "0000001095",
+                {
+                    "prinom": {"old": None, "new": "JUAN"},
+                    "apepat": {"old": None, "new": "PEREZ"},
+                    "apemat": {"old": None, "new": "RAMOS"},
+                },
+            ),
+            "JUAN PEREZ RAMOS",
+        )
+
+    def test_other_tables_keep_record_pk(self):
+        self.assertEqual(record_label_for("kardex", "K148-2026", {}), "K148-2026")
+
     def test_snapshot_skips_primary_key(self):
         field_pk = SimpleNamespace(primary_key=True, name="idkardex", value_from_object=lambda inst: 9)
         field_name = SimpleNamespace(
@@ -220,6 +255,23 @@ class EnqueueTests(SimpleTestCase):
             old={"pagado": 0, "estado_sisgen": 1, "contrato": "A"},
             new={"pagado": 1, "estado_sisgen": 0, "contrato": "A"},
         )
+        enqueue.assert_not_called()
+
+    @patch("audit.services.enqueue_kardex_change")
+    def test_suppressed_leftover_delete_is_not_logged(self, enqueue):
+        instance = SimpleNamespace(
+            pk="0000000099",
+            kardex="",
+            idkardex=None,
+            _meta=SimpleNamespace(db_table="cliente2"),
+        )
+        with suppress_audit():
+            enqueue_instance_change(
+                instance,
+                action="delete",
+                old={"idcliente": "0000000099", "numdoc": "12345678"},
+                new=None,
+            )
         enqueue.assert_not_called()
 
     @patch("audit.services.enqueue_kardex_change")
