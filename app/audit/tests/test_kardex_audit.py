@@ -7,7 +7,8 @@ from django.test import SimpleTestCase
 
 from audit.context import clear_actor, get_actor, set_actor, suppress_audit
 from audit.query import kardex_logs_queryset
-from audit.labels import humanize_kardex_changes, record_label_for
+from audit.labels import humanize_contratantes_changes, humanize_kardex_changes, record_label_for
+from audit.services import HIDDEN_LOG_TABLES
 from audit.services import (
     _norm,
     build_payload,
@@ -174,6 +175,17 @@ class JsonableAndDiffTests(SimpleTestCase):
     def test_other_tables_keep_record_pk(self):
         self.assertEqual(record_label_for("kardex", "K148-2026", {}), "K148-2026")
 
+    @patch(
+        "audit.labels._actocondicion_name",
+        side_effect=lambda value, cache: {"113": "VENDEDOR", "117": "COMPRADOR"}.get(str(value), ""),
+    )
+    def test_contratante_condicion_uses_acto_names(self, _name):
+        labeled = humanize_contratantes_changes(
+            {"condicion": {"old": "113.5976/117.5976/", "new": "113.5976/"}}
+        )
+        self.assertEqual(labeled["condicion"]["old"], "VENDEDOR / COMPRADOR")
+        self.assertEqual(labeled["condicion"]["new"], "VENDEDOR")
+
     def test_snapshot_skips_primary_key(self):
         field_pk = SimpleNamespace(primary_key=True, name="idkardex", value_from_object=lambda inst: 9)
         field_name = SimpleNamespace(
@@ -275,6 +287,22 @@ class EnqueueTests(SimpleTestCase):
         enqueue.assert_not_called()
 
     @patch("audit.services.enqueue_kardex_change")
+    def test_contratantesxacto_changes_are_not_logged(self, enqueue):
+        instance = SimpleNamespace(
+            pk=88,
+            kardex="KAR1-2026",
+            idkardex=None,
+            _meta=SimpleNamespace(db_table="contratantesxacto"),
+        )
+        enqueue_instance_change(
+            instance,
+            action="create",
+            old=None,
+            new={"idcontratante": "0000001095", "idcondicion": "113"},
+        )
+        enqueue.assert_not_called()
+
+    @patch("audit.services.enqueue_kardex_change")
     def test_instance_update_without_changes_is_skipped(self, enqueue):
         instance = SimpleNamespace(
             pk=1,
@@ -309,6 +337,7 @@ class QueryTests(SimpleTestCase):
     def test_filters_are_applied(self):
         qs = MagicMock()
         qs.filter.return_value = qs
+        qs.exclude.return_value = qs
         with patch("audit.query.KardexChangeLog.objects") as objects:
             objects.all.return_value = qs
             kardex_logs_queryset(
@@ -326,6 +355,7 @@ class QueryTests(SimpleTestCase):
         self.assertIn({"table_name": "cliente2"}, kwargs_used)
         self.assertIn({"action": "update"}, kwargs_used)
         self.assertIn({"user_id": 9}, kwargs_used)
+        qs.exclude.assert_called_with(table_name__in=HIDDEN_LOG_TABLES)
 
 
 class LogsEndpointTests(SimpleTestCase):

@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from audit.models import KardexChangeLog
+from audit.services import HIDDEN_LOG_TABLES
 
 
 def _parse_when(value: Optional[str]):
@@ -29,6 +30,8 @@ def _parse_when(value: Optional[str]):
 
 def kardex_logs_queryset(params, kardex: Optional[str] = None):
     qs = KardexChangeLog.objects.all()
+    if HIDDEN_LOG_TABLES:
+        qs = qs.exclude(table_name__in=HIDDEN_LOG_TABLES)
     code = (kardex or params.get("kardex") or "").strip()
     if code:
         qs = qs.filter(kardex=code)

@@ -192,6 +192,73 @@ def record_label_for(
     return label
 
 
+def _actocondicion_name(idcondicion: Any, cache: Dict[str, Any]) -> str:
+    raw = str(idcondicion).strip() if idcondicion not in (None, "") else ""
+    if not raw:
+        return ""
+    key = f"actocondicion:{raw}"
+    if key in cache:
+        return cache[key]
+    label = ""
+    try:
+        from notaria.models import Actocondicion
+
+        name = (
+            Actocondicion.objects.filter(idcondicion__in=_id_candidates(raw))
+            .values_list("condicion", flat=True)
+            .first()
+        )
+        if name:
+            label = str(name).strip()
+    except Exception:
+        label = ""
+    cache[key] = label
+    return label
+
+
+def _condicion_label(value: Any, cache: Dict[str, Any]) -> Any:
+    if value in (None, ""):
+        return value
+    raw = str(value)
+    key = f"condicion:{raw}"
+    if key in cache:
+        return cache[key]
+    from notaria.utils import condicion_ids
+
+    names = []
+    for idcondicion in condicion_ids(raw):
+        name = _actocondicion_name(idcondicion, cache)
+        if name and name not in names:
+            names.append(name)
+    label = " / ".join(names) if names else value
+    cache[key] = label
+    return label
+
+
+def humanize_contratantes_changes(
+    changes: Optional[Dict[str, Any]],
+    cache: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    from audit.services import drop_unchanged_log_fields
+
+    raw = dict(changes or {})
+    if not raw:
+        return {}
+    cache = cache if cache is not None else {}
+    labeled: Dict[str, Any] = {}
+    for field, delta in raw.items():
+        if field == "condicion" and isinstance(delta, dict) and ("old" in delta or "new" in delta):
+            labeled[field] = {
+                "old": _condicion_label(delta.get("old"), cache),
+                "new": _condicion_label(delta.get("new"), cache),
+            }
+        elif field == "condicion":
+            labeled[field] = _condicion_label(delta, cache)
+        else:
+            labeled[field] = delta
+    return drop_unchanged_log_fields(labeled)
+
+
 def _template_label(value: Any, cache: Dict[str, Any]) -> Any:
     template_id = _as_int(value)
     if template_id is None:

@@ -14,6 +14,10 @@ TABLE_DETALLE_ACTOS = "detalle_actos_kardex"
 TABLE_CLIENTE = "cliente"
 TABLE_CLIENTE2 = "cliente2"
 TABLE_FORMULARIO = "formulario"
+TABLE_CONTRATANTES = "contratantes"
+TABLE_CONTRATANTESXACTO = "contratantesxacto"
+
+HIDDEN_LOG_TABLES = frozenset({TABLE_CONTRATANTESXACTO})
 
 HIDDEN_KARDEX_LOG_FIELDS = frozenset(
     {
@@ -243,12 +247,18 @@ def persist_kardex_change_sync(payload: Dict[str, Any]) -> int:
     from audit.models import KardexChangeLog
 
     table_name = str(payload.get("table_name") or "")
+    if table_name in HIDDEN_LOG_TABLES:
+        return 0
     action = str(payload.get("action") or KardexChangeLog.ACTION_UPDATE)
     changes = drop_hidden_log_fields(payload.get("changes") or {}, table_name)
     if table_name == TABLE_KARDEX:
         from audit.labels import humanize_kardex_changes
 
         changes = humanize_kardex_changes(changes)
+    elif table_name == TABLE_CONTRATANTES:
+        from audit.labels import humanize_contratantes_changes
+
+        changes = humanize_contratantes_changes(changes)
     else:
         changes = drop_unchanged_log_fields(changes)
     if action == KardexChangeLog.ACTION_UPDATE and not changes:
@@ -350,6 +360,8 @@ def enqueue_instance_change(
         return
     try:
         table_name = instance._meta.db_table
+        if table_name in HIDDEN_LOG_TABLES:
+            return
         if update_fields:
             allowed = set(update_fields)
             old = {k: v for k, v in (old or {}).items() if k in allowed}
