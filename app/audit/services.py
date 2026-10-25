@@ -10,9 +10,38 @@ from audit.context import get_actor
 logger = logging.getLogger(__name__)
 
 TABLE_KARDEX = "kardex"
+TABLE_DETALLE_ACTOS = "detalle_actos_kardex"
 TABLE_CLIENTE = "cliente"
 TABLE_CLIENTE2 = "cliente2"
 TABLE_FORMULARIO = "formulario"
+
+HIDDEN_KARDEX_LOG_FIELDS = frozenset(
+    {
+        "estado_sisgen",
+        "idnotario",
+        "visita",
+        "pagado",
+        "idrecogio",
+        "autorizado",
+        "desistido",
+        "retenido",
+        "codactos",
+    }
+)
+
+HIDDEN_LOG_FIELDS_BY_TABLE = {
+    TABLE_KARDEX: HIDDEN_KARDEX_LOG_FIELDS,
+    TABLE_DETALLE_ACTOS: frozenset({"idtipoacto", "idtipkar", "kardex"}),
+}
+
+
+def drop_hidden_log_fields(data: Optional[Dict[str, Any]], table_name: str = "") -> Dict[str, Any]:
+    if not data:
+        return {}
+    hidden = HIDDEN_LOG_FIELDS_BY_TABLE.get(table_name or "")
+    if not hidden:
+        return dict(data)
+    return {key: value for key, value in data.items() if key not in hidden}
 
 # Tables whose instance already has a `kardex` column.
 DIRECT_KARDEX_TABLES = frozenset(
@@ -56,7 +85,36 @@ def jsonable(value: Any) -> Any:
 def _norm(value: Any) -> Any:
     if value is None or value == "":
         return ""
-    return value
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, Decimal):
+        text = format(value, "f").rstrip("0").rstrip(".")
+        return text or "0"
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value)
+    text = str(value).strip()
+    try:
+        number = float(text)
+        if number.is_integer():
+            return str(int(number))
+    except ValueError:
+        pass
+    return text
+
+
+def drop_unchanged_log_fields(changes: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Keep only real diffs after type/label normalization."""
+    if not changes:
+        return {}
+    kept: Dict[str, Any] = {}
+    for key, delta in changes.items():
+        if isinstance(delta, dict) and ("old" in delta or "new" in delta):
+            if _norm(delta.get("old")) == _norm(delta.get("new")):
+                continue
+        kept[key] = delta
+    return kept
 
 
 def snapshot_instance(instance: Any) -> Dict[str, Any]:
@@ -186,7 +244,15 @@ def persist_kardex_change_sync(payload: Dict[str, Any]) -> int:
 
     table_name = str(payload.get("table_name") or "")
     action = str(payload.get("action") or KardexChangeLog.ACTION_UPDATE)
-    changes = payload.get("changes") or {}
+    changes = drop_hidden_log_fields(payload.get("changes") or {}, table_name)
+    if table_name == TABLE_KARDEX:
+        from audit.labels import humanize_kardex_changes
+
+        changes = humanize_kardex_changes(changes)
+    else:
+        changes = drop_unchanged_log_fields(changes)
+    if action == KardexChangeLog.ACTION_UPDATE and not changes:
+        return 0
     record_pk = str(payload.get("record_pk") or "")
     user_id = payload.get("user_id")
     username = str(payload.get("username") or "")
@@ -286,6 +352,9 @@ def enqueue_instance_change(
             allowed = set(update_fields)
             old = {k: v for k, v in (old or {}).items() if k in allowed}
             new = {k: v for k, v in (new or {}).items() if k in allowed}
+
+        old = drop_hidden_log_fields(old, table_name)
+        new = drop_hidden_log_fields(new, table_name)
 
         if action == "create":
             changes = create_changes(new or {})
