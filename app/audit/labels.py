@@ -42,6 +42,13 @@ PATRIMONIAL_FIELD_LABELS = {
     "idoppago": "Oportunidad de pago",
 }
 PATRIMONIAL_LABEL_TO_FIELD = {label: field for field, label in PATRIMONIAL_FIELD_LABELS.items()}
+MEDIO_PAGO_FIELD_LABELS = {
+    "codmepag": "Medio de pago",
+    "fpago": "Forma de pago",
+    "idbancos": "Banco",
+    "idmon": "Moneda",
+}
+MEDIO_PAGO_LABEL_TO_FIELD = {label: field for field, label in MEDIO_PAGO_FIELD_LABELS.items()}
 
 
 def _as_int(value: Any) -> Optional[int]:
@@ -53,27 +60,52 @@ def _as_int(value: Any) -> Optional[int]:
         return None
 
 
+def actor_display_for(
+    user_id: Any,
+    username: str = "",
+    cache: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    """Resolve first/last/full name for the user who wrote a log."""
+    cache = cache if cache is not None else {}
+    fallback = {
+        "first_name": "",
+        "last_name": "",
+        "user_name": str(username or ""),
+    }
+    uid = _as_int(user_id)
+    if uid is None:
+        return fallback
+    key = f"actor:{uid}"
+    if key in cache:
+        return cache[key]
+    info = dict(fallback)
+    try:
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(idusuario=uid).only(
+            "first_name", "last_name", "username"
+        ).first()
+        if user:
+            first = (user.first_name or "").strip()
+            last = (user.last_name or "").strip()
+            full = f"{first} {last}".strip()
+            info = {
+                "first_name": first,
+                "last_name": last,
+                "user_name": full or (user.username or "") or fallback["user_name"],
+            }
+    except Exception:
+        pass
+    cache[key] = info
+    return info
+
+
 def _user_label(value: Any, cache: Dict[str, Any]) -> Any:
     user_id = _as_int(value)
     if user_id is None:
         return value
-    key = f"user:{user_id}"
-    if key in cache:
-        return cache[key]
-    label = value
-    try:
-        from django.contrib.auth import get_user_model
-
-        user = get_user_model().objects.filter(idusuario=user_id).only(
-            "first_name", "last_name", "username"
-        ).first()
-        if user:
-            name = f"{user.first_name} {user.last_name}".strip()
-            label = name or user.username or value
-    except Exception:
-        label = value
-    cache[key] = label
-    return label
+    display = actor_display_for(user_id, cache=cache)
+    return display.get("user_name") or value
 
 
 def _tipo_kardex_label(value: Any, cache: Dict[str, Any]) -> Any:
@@ -391,6 +423,98 @@ def humanize_patrimonial_changes(
             }
         else:
             labeled[label] = humanize_patrimonial_value(source_field, delta, cache)
+    return drop_unchanged_log_fields(labeled)
+
+
+def _medio_pago_label(value: Any, cache: Dict[str, Any]) -> Any:
+    if value in (None, ""):
+        return value
+    idx = _as_int(value)
+    if idx is None:
+        return value
+    key = f"codmepag:{idx}"
+    if key in cache:
+        return cache[key]
+    label = value
+    try:
+        from uif.models import Mediospago
+
+        name = (
+            Mediospago.objects.filter(codmepag=idx)
+            .values_list("desmpagos", flat=True)
+            .first()
+        )
+        if name:
+            label = name
+    except Exception:
+        label = value
+    cache[key] = label
+    return label
+
+
+def _banco_label(value: Any, cache: Dict[str, Any]) -> Any:
+    if value in (None, ""):
+        return value
+    idx = _as_int(value)
+    if idx is None:
+        return value
+    key = f"banco:{idx}"
+    if key in cache:
+        return cache[key]
+    label = value
+    try:
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT desbanco FROM bancos WHERE idbancos = %s LIMIT 1",
+                [idx],
+            )
+            row = cursor.fetchone()
+        if row and row[0]:
+            label = row[0]
+    except Exception:
+        label = value
+    cache[key] = label
+    return label
+
+
+def humanize_medio_pago_value(field: str, value: Any, cache: Optional[Dict[str, Any]] = None) -> Any:
+    cache = cache if cache is not None else {}
+    if field == "codmepag":
+        return _medio_pago_label(value, cache)
+    if field == "fpago":
+        return _fpago_label(value, cache)
+    if field == "idbancos":
+        return _banco_label(value, cache)
+    if field == "idmon":
+        return _moneda_label(value, cache)
+    return value
+
+
+def humanize_medio_pago_changes(
+    changes: Optional[Dict[str, Any]],
+    cache: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    from audit.services import drop_hidden_log_fields, drop_unchanged_log_fields
+
+    raw = drop_hidden_log_fields(changes or {}, "detallemediopago")
+    if not raw:
+        return {}
+    cache = cache if cache is not None else {}
+    labeled: Dict[str, Any] = {}
+    for field, delta in raw.items():
+        source_field = (
+            field if field in MEDIO_PAGO_FIELD_LABELS else MEDIO_PAGO_LABEL_TO_FIELD.get(field, field)
+        )
+        label = MEDIO_PAGO_FIELD_LABELS.get(source_field, field)
+        if isinstance(delta, dict) and ("old" in delta or "new" in delta):
+            labeled[label] = {
+                "old": humanize_medio_pago_value(source_field, delta.get("old"), cache),
+                "new": humanize_medio_pago_value(source_field, delta.get("new"), cache),
+            }
+        else:
+            labeled[label] = humanize_medio_pago_value(source_field, delta, cache)
     return drop_unchanged_log_fields(labeled)
 
 

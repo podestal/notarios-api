@@ -17,6 +17,7 @@ TABLE_FORMULARIO = "formulario"
 TABLE_CONTRATANTES = "contratantes"
 TABLE_CONTRATANTESXACTO = "contratantesxacto"
 TABLE_PATRIMONIAL = "patrimonial"
+TABLE_DETALLE_MEDIOPAGO = "detallemediopago"
 
 HIDDEN_LOG_TABLES = frozenset()
 HIDDEN_LOG_TABLE_ACTIONS = {
@@ -52,6 +53,7 @@ HIDDEN_LOG_FIELDS_BY_TABLE = {
         }
     ),
     TABLE_PATRIMONIAL: frozenset({"kardex", "idtipoacto"}),
+    TABLE_DETALLE_MEDIOPAGO: frozenset({"kardex", "tipacto"}),
 }
 
 
@@ -290,6 +292,10 @@ def persist_kardex_change_sync(payload: Dict[str, Any]) -> int:
         from audit.labels import humanize_patrimonial_changes
 
         changes = humanize_patrimonial_changes(changes)
+    elif table_name == TABLE_DETALLE_MEDIOPAGO:
+        from audit.labels import humanize_medio_pago_changes
+
+        changes = humanize_medio_pago_changes(changes)
     else:
         changes = drop_unchanged_log_fields(changes)
     if action == KardexChangeLog.ACTION_UPDATE and not changes:

@@ -8,8 +8,10 @@ from django.test import SimpleTestCase
 from audit.context import clear_actor, get_actor, set_actor, suppress_audit
 from audit.query import kardex_logs_queryset
 from audit.labels import (
+    actor_display_for,
     humanize_contratantes_changes,
     humanize_kardex_changes,
+    humanize_medio_pago_changes,
     humanize_participa_changes,
     humanize_patrimonial_changes,
     record_label_for,
@@ -245,6 +247,45 @@ class JsonableAndDiffTests(SimpleTestCase):
             "CON LA ENTREGA FISICA DEL BIEN",
         )
 
+    def test_hidden_medio_pago_fields_are_dropped(self):
+        changes = {
+            "kardex": {"old": None, "new": "K148-2026"},
+            "tipacto": {"old": None, "new": "030"},
+            "codmepag": {"old": 1, "new": 8},
+            "idmon": {"old": 1, "new": 2},
+        }
+        self.assertEqual(
+            drop_hidden_log_fields(changes, "detallemediopago"),
+            {
+                "codmepag": {"old": 1, "new": 8},
+                "idmon": {"old": 1, "new": 2},
+            },
+        )
+
+    @patch("audit.labels._medio_pago_label", side_effect=lambda value, cache: {1: "DEPOSITO EN CUENTA", 8: "EFECTIVO"}.get(int(value), value))
+    @patch("audit.labels._banco_label", side_effect=lambda value, cache: {1: "DE CREDITO DEL PERU", 6: "SCOTIABANK"}.get(int(value), value))
+    def test_medio_pago_ids_use_descriptions(self, _banco, _medio):
+        labeled = humanize_medio_pago_changes(
+            {
+                "kardex": {"old": None, "new": "K148-2026"},
+                "tipacto": {"old": None, "new": "030"},
+                "codmepag": {"old": 1, "new": 8},
+                "fpago": {"old": "1", "new": "5"},
+                "idbancos": {"old": 1, "new": 6},
+                "idmon": {"old": 1, "new": 2},
+            }
+        )
+        self.assertNotIn("kardex", labeled)
+        self.assertNotIn("tipacto", labeled)
+        self.assertEqual(labeled["Medio de pago"]["old"], "DEPOSITO EN CUENTA")
+        self.assertEqual(labeled["Medio de pago"]["new"], "EFECTIVO")
+        self.assertEqual(labeled["Forma de pago"]["old"], "AL CONTADO")
+        self.assertEqual(labeled["Forma de pago"]["new"], "NO APLICA")
+        self.assertEqual(labeled["Banco"]["old"], "DE CREDITO DEL PERU")
+        self.assertEqual(labeled["Banco"]["new"], "SCOTIABANK")
+        self.assertEqual(labeled["Moneda"]["old"], "SOLES")
+        self.assertEqual(labeled["Moneda"]["new"], "DOLARES N.A.")
+
     def test_snapshot_skips_primary_key(self):
         field_pk = SimpleNamespace(primary_key=True, name="idkardex", value_from_object=lambda inst: 9)
         field_name = SimpleNamespace(
@@ -262,6 +303,19 @@ class ActorContextTests(SimpleTestCase):
         user = SimpleNamespace(is_authenticated=True, idusuario=17, username="ana")
         set_actor(user, source="/api/kardex/")
         self.assertEqual(get_actor(), {"user_id": 17, "username": "ana", "source": "/api/kardex/"})
+
+    def test_actor_display_uses_first_and_last_name(self):
+        user = SimpleNamespace(first_name="Ana", last_name="Torres", username="galaxia69")
+        with patch("django.contrib.auth.get_user_model") as get_user_model:
+            get_user_model.return_value.objects.filter.return_value.only.return_value.first.return_value = user
+            self.assertEqual(
+                actor_display_for(26, username="galaxia69"),
+                {
+                    "first_name": "Ana",
+                    "last_name": "Torres",
+                    "user_name": "Ana Torres",
+                },
+            )
 
     def test_anonymous_user_is_empty(self):
         user = SimpleNamespace(is_authenticated=False, idusuario=1, username="x")
