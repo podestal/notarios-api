@@ -32,6 +32,7 @@ class DocumentosLogs(models.Model):
     ACTIONS_CHOICES = [
         ('G', 'Generate'),
         ('U', 'Update'),
+        ('S', 'Save'),
         ('O', 'Open'),
     ]
 

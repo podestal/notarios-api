@@ -19,6 +19,7 @@ from audit.labels import (
 from audit.services import (
     _norm,
     build_payload,
+    enqueue_manual_event,
     create_changes,
     delete_changes,
     diff_snapshots,
@@ -471,6 +472,23 @@ class EnqueueTests(SimpleTestCase):
         self.assertEqual(payload["user_id"], 4)
         self.assertEqual(payload["username"], "lucia")
         self.assertEqual(payload["source"], "/api/contratantes/")
+
+    @patch("audit.services.enqueue_kardex_change")
+    def test_manual_event_uses_explicit_user(self, enqueue):
+        user = SimpleNamespace(is_authenticated=True, idusuario=26, username="galaxia69")
+        enqueue_manual_event(
+            kardex="K148-2026",
+            table_name="documento",
+            action="update",
+            record_pk="__PROY__K148-2026.docx",
+            changes={"Acción": {"old": None, "new": "Guardó el documento"}},
+            source="/docs/save-doc/",
+            user=user,
+        )
+        payload = enqueue.call_args.args[0]
+        self.assertEqual(payload["user_id"], 26)
+        self.assertEqual(payload["username"], "galaxia69")
+        self.assertEqual(payload["table_name"], "documento")
 
 
 class QueryTests(SimpleTestCase):

@@ -443,6 +443,7 @@ def enqueue_manual_event(
     record_pk: str = "",
     changes: Optional[Dict[str, Any]] = None,
     source: str = "",
+    user: Any = None,
 ) -> None:
     """Used for QuerySet.update() paths (calculate) that skip model signals."""
     try:
@@ -455,6 +456,9 @@ def enqueue_manual_event(
         )
         if source:
             payload["source"] = source
+        if user is not None:
+            payload["user_id"] = getattr(user, "idusuario", None) or getattr(user, "pk", None)
+            payload["username"] = getattr(user, "username", "") or ""
         payload["kardex_codes"] = [kardex] if kardex else []
         enqueue_kardex_change(payload)
     except Exception:

@@ -299,12 +299,14 @@ def update_document_by_tipkar(request):
 
         tipkar = kardex_obj.idtipkar
         
-        # Log the update action
-        from . import models
-        models.DocumentosLogs.objects.create(
+        from ducumentation.document_audit import log_digitacion_document
+
+        log_digitacion_document(
             kardex=kardex,
             user=request.user,
-            action='U'  # U = Update
+            action="U",
+            source=request.path,
+            filename=f"__PROY__{kardex}.docx",
         )
 
         # Service map for all document types
@@ -490,11 +492,14 @@ class DocumentosGeneradosViewSet(ModelViewSet):
                 )
             print(f"DEBUG: Created new documentogenerados: {documentogenerados}")
         
-        # Log the action in DocumentosLogs
-        models.DocumentosLogs.objects.create(
+        from ducumentation.document_audit import log_digitacion_document
+
+        log_digitacion_document(
             kardex=kardex,
             user=user,
-            action='G'  # G = Generate
+            action="G",
+            source=request.path,
+            filename=f"__PROY__{kardex}.docx",
         )
 
         # Parse template_id
@@ -607,10 +612,14 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         if doc_content:
             # Document exists in storage, return it
             # Log the open action
-            models.DocumentosLogs.objects.create(
+            from ducumentation.document_audit import log_digitacion_document
+
+            log_digitacion_document(
                 kardex=kardex,
                 user=user,
-                action='O'  # O = Open
+                action="O",
+                source=request.path,
+                filename=f"__PROY__{kardex}.docx",
             )
 
             if mode == "open":
@@ -620,6 +629,15 @@ class DocumentosGeneradosViewSet(ModelViewSet):
 
         # Document doesn't exist, generate it
         print(f"DEBUG: Generating new document for kardex: {kardex}")
+        from ducumentation.document_audit import log_digitacion_document
+
+        log_digitacion_document(
+            kardex=kardex,
+            user=user,
+            action="G",
+            source=request.path,
+            filename=f"__PROY__{kardex}.docx",
+        )
 
         # Get kardex object to determine tipkar
         kardex_obj = Kardex.objects.filter(kardex=kardex).first()
@@ -1166,6 +1184,20 @@ def save_doc(request):
             get_document_storage_backend().upload_fileobj(object_key, uploaded_file)
 
             print(f"DEBUG: Successfully saved document ({storage_backend}): {object_key}")
+
+            from ducumentation.document_audit import (
+                kardex_from_proyecto_filename,
+                log_digitacion_document,
+            )
+
+            kardex = kardex_from_proyecto_filename(sanitized_filename)
+            if kardex:
+                log_digitacion_document(
+                    kardex=kardex,
+                    action="S",
+                    source="/docs/save-doc/",
+                    filename=sanitized_filename,
+                )
 
             return JsonResponse(
                 {
