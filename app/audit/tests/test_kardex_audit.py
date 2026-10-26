@@ -7,8 +7,13 @@ from django.test import SimpleTestCase
 
 from audit.context import clear_actor, get_actor, set_actor, suppress_audit
 from audit.query import kardex_logs_queryset
-from audit.labels import humanize_contratantes_changes, humanize_kardex_changes, record_label_for
-from audit.services import HIDDEN_LOG_TABLES
+from audit.labels import (
+    humanize_contratantes_changes,
+    humanize_kardex_changes,
+    humanize_participa_changes,
+    humanize_patrimonial_changes,
+    record_label_for,
+)
 from audit.services import (
     _norm,
     build_payload,
@@ -99,6 +104,21 @@ class JsonableAndDiffTests(SimpleTestCase):
             },
         )
 
+    def test_hidden_patrimonial_fields_are_dropped(self):
+        changes = {
+            "kardex": {"old": None, "new": "K148-2026"},
+            "idtipoacto": {"old": None, "new": "030"},
+            "idmon": {"old": 1, "new": 2},
+            "fpago": {"old": "1", "new": "5"},
+        }
+        self.assertEqual(
+            drop_hidden_log_fields(changes, "patrimonial"),
+            {
+                "idmon": {"old": 1, "new": 2},
+                "fpago": {"old": "1", "new": "5"},
+            },
+        )
+
     @patch("audit.labels._template_label", side_effect=lambda value, cache: "COMPRA VENTA INMUEBLE PN PN +")
     def test_unchanged_plantilla_id_is_dropped(self, _template):
         labeled = humanize_kardex_changes(
@@ -185,6 +205,45 @@ class JsonableAndDiffTests(SimpleTestCase):
         )
         self.assertEqual(labeled["condicion"]["old"], "VENDEDOR / COMPRADOR")
         self.assertEqual(labeled["condicion"]["new"], "VENDEDOR")
+
+    def test_participa_fields_use_spanish_labels(self):
+        labeled = humanize_participa_changes(
+            {
+                "monto": {"old": "100", "new": "200"},
+                "porcentaje": {"old": "10", "new": "20"},
+                "ofondo": {"old": "", "new": "Ahorros"},
+                "idcondicion": {"old": "113", "new": "117"},
+            }
+        )
+        self.assertEqual(labeled["Monto"]["new"], "200")
+        self.assertEqual(labeled["Porcentaje"]["new"], "20")
+        self.assertEqual(labeled["Origen de fondos"]["new"], "Ahorros")
+        self.assertNotIn("idcondicion", labeled)
+
+    def test_patrimonial_ids_use_descriptions(self):
+        labeled = humanize_patrimonial_changes(
+            {
+                "kardex": {"old": None, "new": "K148-2026"},
+                "idtipoacto": {"old": None, "new": "030"},
+                "idmon": {"old": 1, "new": 2},
+                "fpago": {"old": "1", "new": "5"},
+                "idoppago": {"old": "1", "new": "6"},
+            }
+        )
+        self.assertNotIn("kardex", labeled)
+        self.assertNotIn("idtipoacto", labeled)
+        self.assertEqual(labeled["Moneda"]["old"], "SOLES")
+        self.assertEqual(labeled["Moneda"]["new"], "DOLARES N.A.")
+        self.assertEqual(labeled["Forma de pago"]["old"], "AL CONTADO")
+        self.assertEqual(labeled["Forma de pago"]["new"], "NO APLICA")
+        self.assertEqual(
+            labeled["Oportunidad de pago"]["old"],
+            "A LA FIRMA DEL CONTRATO/MINUTA",
+        )
+        self.assertEqual(
+            labeled["Oportunidad de pago"]["new"],
+            "CON LA ENTREGA FISICA DEL BIEN",
+        )
 
     def test_snapshot_skips_primary_key(self):
         field_pk = SimpleNamespace(primary_key=True, name="idkardex", value_from_object=lambda inst: 9)
@@ -287,7 +346,7 @@ class EnqueueTests(SimpleTestCase):
         enqueue.assert_not_called()
 
     @patch("audit.services.enqueue_kardex_change")
-    def test_contratantesxacto_changes_are_not_logged(self, enqueue):
+    def test_contratantesxacto_create_and_delete_are_not_logged(self, enqueue):
         instance = SimpleNamespace(
             pk=88,
             kardex="KAR1-2026",
@@ -298,9 +357,36 @@ class EnqueueTests(SimpleTestCase):
             instance,
             action="create",
             old=None,
-            new={"idcontratante": "0000001095", "idcondicion": "113"},
+            new={"idcontratante": "0000001095", "monto": "100"},
+        )
+        enqueue_instance_change(
+            instance,
+            action="delete",
+            old={"idcontratante": "0000001095", "monto": "100"},
+            new=None,
         )
         enqueue.assert_not_called()
+
+    @patch("audit.services.enqueue_kardex_change")
+    def test_participa_field_updates_are_logged(self, enqueue):
+        instance = SimpleNamespace(
+            pk=88,
+            kardex="KAR1-2026",
+            idkardex=None,
+            _meta=SimpleNamespace(db_table="contratantesxacto"),
+        )
+        enqueue_instance_change(
+            instance,
+            action="update",
+            old={"monto": "100", "porcentaje": "10", "ofondo": ""},
+            new={"monto": "200", "porcentaje": "20", "ofondo": "Ahorros"},
+        )
+        enqueue.assert_called_once()
+        payload = enqueue.call_args.args[0]
+        self.assertEqual(payload["table_name"], "contratantesxacto")
+        self.assertEqual(payload["action"], "update")
+        self.assertEqual(payload["changes"]["monto"]["new"], "200")
+        self.assertEqual(payload["changes"]["ofondo"]["new"], "Ahorros")
 
     @patch("audit.services.enqueue_kardex_change")
     def test_instance_update_without_changes_is_skipped(self, enqueue):
@@ -355,7 +441,14 @@ class QueryTests(SimpleTestCase):
         self.assertIn({"table_name": "cliente2"}, kwargs_used)
         self.assertIn({"action": "update"}, kwargs_used)
         self.assertIn({"user_id": 9}, kwargs_used)
-        qs.exclude.assert_called_with(table_name__in=HIDDEN_LOG_TABLES)
+        qs.exclude.assert_called()
+        self.assertTrue(
+            any(
+                call.kwargs.get("source__in")
+                == ("kardex.calculate", "kardex.execute_calculation")
+                for call in qs.exclude.call_args_list
+            )
+        )
 
 
 class LogsEndpointTests(SimpleTestCase):

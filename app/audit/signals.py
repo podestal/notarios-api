@@ -6,7 +6,7 @@ from audit.services import enqueue_instance_change, snapshot_instance, snapshot_
 
 logger = logging.getLogger(__name__)
 
-_CONNECTED = False
+_CONNECTED_TABLES = set()
 
 
 def audited_models():
@@ -14,6 +14,7 @@ def audited_models():
         Cliente,
         Cliente2,
         Contratantes,
+        Contratantesxacto,
         DetalleActosKardex,
         Detallebienes,
         Detallemediopago,
@@ -30,6 +31,7 @@ def audited_models():
         Kardex,
         DetalleActosKardex,
         Contratantes,
+        Contratantesxacto,
         Cliente2,
         Cliente,
         Representantes,
@@ -94,11 +96,10 @@ def kardex_audit_post_delete(sender, instance, **kwargs):
 
 
 def connect_signals() -> None:
-    global _CONNECTED
-    if _CONNECTED:
-        return
     for model in audited_models():
         table = model._meta.db_table
+        if table in _CONNECTED_TABLES:
+            continue
         pre_save.connect(
             kardex_audit_pre_save,
             sender=model,
@@ -119,4 +120,4 @@ def connect_signals() -> None:
             sender=model,
             dispatch_uid=f"audit.post_delete.{table}",
         )
-    _CONNECTED = True
+        _CONNECTED_TABLES.add(table)

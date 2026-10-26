@@ -1,10 +1,18 @@
 from rest_framework import serializers
 
-from audit.labels import humanize_contratantes_changes, humanize_kardex_changes, record_label_for
+from audit.labels import (
+    humanize_contratantes_changes,
+    humanize_kardex_changes,
+    humanize_participa_changes,
+    humanize_patrimonial_changes,
+    record_label_for,
+)
 from audit.models import KardexChangeLog
 from audit.services import (
     TABLE_CONTRATANTES,
+    TABLE_CONTRATANTESXACTO,
     TABLE_KARDEX,
+    TABLE_PATRIMONIAL,
     drop_hidden_log_fields,
     drop_unchanged_log_fields,
 )
@@ -31,6 +39,10 @@ class KardexChangeLogSerializer(serializers.ModelSerializer):
             changes = humanize_kardex_changes(changes, cache=cache)
         elif table_name == TABLE_CONTRATANTES:
             changes = humanize_contratantes_changes(changes, cache=cache)
+        elif table_name == TABLE_CONTRATANTESXACTO:
+            changes = humanize_participa_changes(changes, cache=cache)
+        elif table_name == TABLE_PATRIMONIAL:
+            changes = humanize_patrimonial_changes(changes, cache=cache)
         else:
             changes = drop_unchanged_log_fields(changes)
         data["changes"] = changes

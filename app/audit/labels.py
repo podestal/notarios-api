@@ -28,8 +28,20 @@ KARDEX_FIELD_LABELS = {
 
 KARDEX_USER_VALUE_FIELDS = frozenset({"idusuario", "responsable", "recepcion"})
 KARDEX_LABEL_TO_FIELD = {label: field for field, label in KARDEX_FIELD_LABELS.items()}
-PERSON_NAME_TABLES = frozenset({"contratantes", "cliente", "cliente2"})
+PERSON_NAME_TABLES = frozenset({"contratantes", "cliente", "cliente2", "contratantesxacto"})
 PERSON_NAME_FIELDS = ("razonsocial", "nombre", "prinom", "segnom", "apepat", "apemat")
+PARTICIPA_FIELD_LABELS = {
+    "monto": "Monto",
+    "porcentaje": "Porcentaje",
+    "ofondo": "Origen de fondos",
+    "opago": "Origen de pago",
+}
+PATRIMONIAL_FIELD_LABELS = {
+    "idmon": "Moneda",
+    "fpago": "Forma de pago",
+    "idoppago": "Oportunidad de pago",
+}
+PATRIMONIAL_LABEL_TO_FIELD = {label: field for field, label in PATRIMONIAL_FIELD_LABELS.items()}
 
 
 def _as_int(value: Any) -> Optional[int]:
@@ -153,16 +165,44 @@ def _name_from_changes(changes: Optional[Dict[str, Any]]) -> str:
     return _compose_person_name(row)
 
 
-def _lookup_person_row(table_name: str, record_pk: Any) -> Optional[Dict[str, Any]]:
-    ids = _id_candidates(record_pk)
-    if not ids:
-        return None
+def _idcontratante_from_changes(changes: Optional[Dict[str, Any]]) -> str:
+    if not changes:
+        return ""
+    delta = changes.get("idcontratante")
+    if isinstance(delta, dict) and ("old" in delta or "new" in delta):
+        value = delta.get("new") or delta.get("old")
+    else:
+        value = delta
+    return "" if value in (None, "") else str(value)
+
+
+def _lookup_person_row(
+    table_name: str,
+    record_pk: Any,
+    changes: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
     try:
-        from notaria.models import Cliente, Cliente2
+        from notaria.models import Cliente, Cliente2, Contratantesxacto
 
         values = list(PERSON_NAME_FIELDS)
         if table_name == "cliente":
+            ids = _id_candidates(record_pk)
+            if not ids:
+                return None
             return Cliente.objects.filter(idcliente__in=ids).values(*values).first()
+
+        idcontratante = record_pk
+        if table_name == "contratantesxacto":
+            idcontratante = _idcontratante_from_changes(changes)
+            if not idcontratante:
+                idcontratante = (
+                    Contratantesxacto.objects.filter(pk=record_pk)
+                    .values_list("idcontratante", flat=True)
+                    .first()
+                )
+        ids = _id_candidates(idcontratante)
+        if not ids:
+            return None
         return Cliente2.objects.filter(idcontratante__in=ids).values(*values).first()
     except Exception:
         return None
@@ -185,7 +225,7 @@ def record_label_for(
 
     label = _name_from_changes(changes)
     if not label:
-        label = _compose_person_name(_lookup_person_row(table_name, raw_pk))
+        label = _compose_person_name(_lookup_person_row(table_name, raw_pk, changes))
     if not label:
         label = raw_pk
     cache[key] = label
@@ -256,6 +296,116 @@ def humanize_contratantes_changes(
             labeled[field] = _condicion_label(delta, cache)
         else:
             labeled[field] = delta
+    return drop_unchanged_log_fields(labeled)
+
+
+def _moneda_label(value: Any, cache: Dict[str, Any]) -> Any:
+    if value in (None, ""):
+        return value
+    key = f"moneda:{value}"
+    if key in cache:
+        return cache[key]
+    from notaria.constants import MONEDAS
+
+    idmon = _as_int(value)
+    if idmon == 0:
+        label = "NO APLICA"
+    else:
+        meta = MONEDAS.get(idmon) if idmon is not None else None
+        label = (meta or {}).get("desmon") or value
+    cache[key] = label
+    return label
+
+
+def _fpago_label(value: Any, cache: Dict[str, Any]) -> Any:
+    if value in (None, ""):
+        return value
+    raw = str(value).strip()
+    key = f"fpago:{raw}"
+    if key in cache:
+        return cache[key]
+    from notaria.constants import FORMAS_PAGO
+
+    meta = FORMAS_PAGO.get(raw)
+    if not meta:
+        idx = _as_int(raw)
+        if idx is not None:
+            meta = FORMAS_PAGO.get(str(idx))
+    label = (meta or {}).get("descripcion") or value
+    cache[key] = label
+    return label
+
+
+def _oppago_label(value: Any, cache: Dict[str, Any]) -> Any:
+    if value in (None, ""):
+        return value
+    raw = str(value).strip()
+    key = f"oppago:{raw}"
+    if key in cache:
+        return cache[key]
+    from notaria.constants import OPORTUNIDADES_PAGO
+
+    idx = _as_int(raw)
+    meta = OPORTUNIDADES_PAGO.get(idx) if idx is not None else None
+    if not meta:
+        for item in OPORTUNIDADES_PAGO.values():
+            if str(item.get("codoppago") or "") == raw or str(item.get("idoppago")) == raw:
+                meta = item
+                break
+    label = (meta or {}).get("desoppago") or value
+    cache[key] = label
+    return label
+
+
+def humanize_patrimonial_value(field: str, value: Any, cache: Optional[Dict[str, Any]] = None) -> Any:
+    cache = cache if cache is not None else {}
+    if field == "idmon":
+        return _moneda_label(value, cache)
+    if field == "fpago":
+        return _fpago_label(value, cache)
+    if field == "idoppago":
+        return _oppago_label(value, cache)
+    return value
+
+
+def humanize_patrimonial_changes(
+    changes: Optional[Dict[str, Any]],
+    cache: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    from audit.services import drop_hidden_log_fields, drop_unchanged_log_fields
+
+    raw = drop_hidden_log_fields(changes or {}, "patrimonial")
+    if not raw:
+        return {}
+    cache = cache if cache is not None else {}
+    labeled: Dict[str, Any] = {}
+    for field, delta in raw.items():
+        source_field = (
+            field if field in PATRIMONIAL_FIELD_LABELS else PATRIMONIAL_LABEL_TO_FIELD.get(field, field)
+        )
+        label = PATRIMONIAL_FIELD_LABELS.get(source_field, field)
+        if isinstance(delta, dict) and ("old" in delta or "new" in delta):
+            labeled[label] = {
+                "old": humanize_patrimonial_value(source_field, delta.get("old"), cache),
+                "new": humanize_patrimonial_value(source_field, delta.get("new"), cache),
+            }
+        else:
+            labeled[label] = humanize_patrimonial_value(source_field, delta, cache)
+    return drop_unchanged_log_fields(labeled)
+
+
+def humanize_participa_changes(
+    changes: Optional[Dict[str, Any]],
+    cache: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    from audit.services import drop_hidden_log_fields, drop_unchanged_log_fields
+
+    raw = drop_hidden_log_fields(changes or {}, "contratantesxacto")
+    if not raw:
+        return {}
+    labeled: Dict[str, Any] = {}
+    for field, delta in raw.items():
+        labeled[PARTICIPA_FIELD_LABELS.get(field, field)] = delta
     return drop_unchanged_log_fields(labeled)
 
 

@@ -16,8 +16,12 @@ TABLE_CLIENTE2 = "cliente2"
 TABLE_FORMULARIO = "formulario"
 TABLE_CONTRATANTES = "contratantes"
 TABLE_CONTRATANTESXACTO = "contratantesxacto"
+TABLE_PATRIMONIAL = "patrimonial"
 
-HIDDEN_LOG_TABLES = frozenset({TABLE_CONTRATANTESXACTO})
+HIDDEN_LOG_TABLES = frozenset()
+HIDDEN_LOG_TABLE_ACTIONS = {
+    TABLE_CONTRATANTESXACTO: frozenset({"create", "delete"}),
+}
 
 HIDDEN_KARDEX_LOG_FIELDS = frozenset(
     {
@@ -36,7 +40,26 @@ HIDDEN_KARDEX_LOG_FIELDS = frozenset(
 HIDDEN_LOG_FIELDS_BY_TABLE = {
     TABLE_KARDEX: HIDDEN_KARDEX_LOG_FIELDS,
     TABLE_DETALLE_ACTOS: frozenset({"idtipoacto", "idtipkar", "kardex"}),
+    TABLE_CONTRATANTESXACTO: frozenset(
+        {
+            "idtipoacto",
+            "idtipkar",
+            "kardex",
+            "idcontratante",
+            "item",
+            "idcondicion",
+            "parte",
+        }
+    ),
+    TABLE_PATRIMONIAL: frozenset({"kardex", "idtipoacto"}),
 }
+
+
+def is_hidden_log(table_name: str, action: str = "") -> bool:
+    if table_name in HIDDEN_LOG_TABLES:
+        return True
+    hidden_actions = HIDDEN_LOG_TABLE_ACTIONS.get(table_name)
+    return bool(hidden_actions and action in hidden_actions)
 
 
 def drop_hidden_log_fields(data: Optional[Dict[str, Any]], table_name: str = "") -> Dict[str, Any]:
@@ -247,9 +270,9 @@ def persist_kardex_change_sync(payload: Dict[str, Any]) -> int:
     from audit.models import KardexChangeLog
 
     table_name = str(payload.get("table_name") or "")
-    if table_name in HIDDEN_LOG_TABLES:
-        return 0
     action = str(payload.get("action") or KardexChangeLog.ACTION_UPDATE)
+    if is_hidden_log(table_name, action):
+        return 0
     changes = drop_hidden_log_fields(payload.get("changes") or {}, table_name)
     if table_name == TABLE_KARDEX:
         from audit.labels import humanize_kardex_changes
@@ -259,6 +282,14 @@ def persist_kardex_change_sync(payload: Dict[str, Any]) -> int:
         from audit.labels import humanize_contratantes_changes
 
         changes = humanize_contratantes_changes(changes)
+    elif table_name == TABLE_CONTRATANTESXACTO:
+        from audit.labels import humanize_participa_changes
+
+        changes = humanize_participa_changes(changes)
+    elif table_name == TABLE_PATRIMONIAL:
+        from audit.labels import humanize_patrimonial_changes
+
+        changes = humanize_patrimonial_changes(changes)
     else:
         changes = drop_unchanged_log_fields(changes)
     if action == KardexChangeLog.ACTION_UPDATE and not changes:
@@ -360,7 +391,7 @@ def enqueue_instance_change(
         return
     try:
         table_name = instance._meta.db_table
-        if table_name in HIDDEN_LOG_TABLES:
+        if is_hidden_log(table_name, action):
             return
         if update_fields:
             allowed = set(update_fields)

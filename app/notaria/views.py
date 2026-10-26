@@ -183,6 +183,23 @@ def _sanitize_contratantesxacto_patch(data, instance):
     return data
 
 
+def _save_cxa_participation(row, percentage, amount) -> int:
+    """Write monto/porcentaje via save() so kardex logs see the real field diffs."""
+    from audit.signals import connect_signals
+
+    connect_signals()
+    new_pct = format_porcentaje(percentage)
+    new_monto = format_monto(amount)
+    if _norm_cxa_field(row.porcentaje) == _norm_cxa_field(new_pct) and _norm_cxa_field(
+        row.monto
+    ) == _norm_cxa_field(new_monto):
+        return 0
+    row.porcentaje = new_pct
+    row.monto = new_monto
+    row.save(update_fields=["porcentaje", "monto"])
+    return 1
+
+
 def _reset_sisgen_for_kardex(kardex_code):
     if not kardex_code:
         return
@@ -1076,26 +1093,18 @@ class KardexViewSet(ModelViewSet):
                     for i, vendedor in enumerate(vendedores):
                         percentage = vendedor_percentages[i] if i < len(vendedor_percentages) else 0
                         amount = vendedor_amounts[i] if i < len(vendedor_amounts) else 0
-                        updated_count = models.Contratantesxacto.objects.filter(
-                            pk=vendedor.id
-                        ).update(
-                            porcentaje=format_porcentaje(percentage),
-                            monto=format_monto(amount),
+                        updates_performed["contratantesxacto_percentage_updates"] += (
+                            _save_cxa_participation(vendedor, percentage, amount)
                         )
-                        updates_performed["contratantesxacto_percentage_updates"] += updated_count
 
                     for i, comprador in enumerate(compradores):
                         percentage = (
                             comprador_percentages[i] if i < len(comprador_percentages) else 0
                         )
                         amount = comprador_amounts[i] if i < len(comprador_amounts) else 0
-                        updated_count = models.Contratantesxacto.objects.filter(
-                            pk=comprador.id
-                        ).update(
-                            porcentaje=format_porcentaje(percentage),
-                            monto=format_monto(amount),
+                        updates_performed["contratantesxacto_percentage_updates"] += (
+                            _save_cxa_participation(comprador, percentage, amount)
                         )
-                        updates_performed["contratantesxacto_percentage_updates"] += updated_count
 
                     # Get participant names for display
                     participant_details = []
@@ -1253,19 +1262,6 @@ class KardexViewSet(ModelViewSet):
                 updates_performed["kardex_updates"] += kardex_updated
 
             _reset_sisgen_for_kardex(kardex)
-            try:
-                from audit.services import enqueue_manual_event
-
-                enqueue_manual_event(
-                    kardex=kardex,
-                    table_name="contratantesxacto",
-                    action="update",
-                    record_pk="*",
-                    changes={"calculation": {"old": None, "new": updates_performed}},
-                    source="kardex.calculate",
-                )
-            except Exception:
-                pass
 
             return Response(
                 {
@@ -1391,22 +1387,18 @@ class KardexViewSet(ModelViewSet):
                     for i, vendedor in enumerate(vendedores):
                         percentage = vendedor_percentages[i] if i < len(vendedor_percentages) else 0
                         amount = vendedor_amounts[i] if i < len(vendedor_amounts) else 0
-                        models.Contratantesxacto.objects.filter(pk=vendedor.id).update(
-                            porcentaje=format_porcentaje(percentage),
-                            monto=format_monto(amount),
+                        updates_performed["contratantesxacto_percentage_updates"] += (
+                            _save_cxa_participation(vendedor, percentage, amount)
                         )
-                        updates_performed["contratantesxacto_percentage_updates"] += 1
 
                     for i, comprador in enumerate(compradores):
                         percentage = (
                             comprador_percentages[i] if i < len(comprador_percentages) else 0
                         )
                         amount = comprador_amounts[i] if i < len(comprador_amounts) else 0
-                        models.Contratantesxacto.objects.filter(pk=comprador.id).update(
-                            porcentaje=format_porcentaje(percentage),
-                            monto=format_monto(amount),
+                        updates_performed["contratantesxacto_percentage_updates"] += (
+                            _save_cxa_participation(comprador, percentage, amount)
                         )
-                        updates_performed["contratantesxacto_percentage_updates"] += 1
 
                 # 4. Update kardex modification date
                 kardex_updated = models.Kardex.objects.filter(kardex=kardex).update(
@@ -1415,19 +1407,6 @@ class KardexViewSet(ModelViewSet):
                 updates_performed["kardex_updates"] += kardex_updated
 
             _reset_sisgen_for_kardex(kardex)
-            try:
-                from audit.services import enqueue_manual_event
-
-                enqueue_manual_event(
-                    kardex=kardex,
-                    table_name="contratantesxacto",
-                    action="update",
-                    record_pk="*",
-                    changes={"calculation": {"old": None, "new": updates_performed}},
-                    source="kardex.execute_calculation",
-                )
-            except Exception:
-                pass
 
             return Response(
                 {
@@ -1883,6 +1862,9 @@ class ContratantesxactoViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
+        from audit.signals import connect_signals
+
+        connect_signals()
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
         data = _sanitize_contratantesxacto_patch(_mutable_request_data(request.data), instance)
