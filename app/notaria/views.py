@@ -2,6 +2,10 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from core.permissions import IsSuperuser
+from core.protocolar_permissions import (
+    denied_tipkars,
+    ensure_protocolar_permission,
+)
 
 from ducumentation.protocolares.EscrituraPublicaDocumentService import (
     EscriturasPublicasReportService,
@@ -356,8 +360,13 @@ class KardexViewSet(ModelViewSet):
     def get_queryset(self):
         """
         Base queryset - filtering is handled in list() method.
+        Restricted users only see protocolares they are allowed to work.
         """
-        return models.Kardex.objects.all()
+        queryset = models.Kardex.objects.all()
+        denied = denied_tipkars(self.request.user)
+        if denied:
+            queryset = queryset.exclude(idtipkar__in=denied)
+        return queryset
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -495,6 +504,9 @@ class KardexViewSet(ModelViewSet):
 
         instance = self.get_object()
         data = request.data
+        next_idtipkar = data.get("idtipkar", instance.idtipkar)
+        if next_idtipkar not in (None, ""):
+            ensure_protocolar_permission(request.user, next_idtipkar)
         codactos = data.get("codactos", "")
         id_tipo_actos_array = [codactos[i : i + 3] for i in range(0, len(codactos), 3)]
         set_data = set(id_tipo_actos_array)
@@ -595,6 +607,8 @@ class KardexViewSet(ModelViewSet):
         # Validate required fields
         if not idtipkar or not fechaingreso:
             return Response({"error": "Missing required fields"}, status=400)
+
+        ensure_protocolar_permission(request.user, idtipkar)
 
         # Extract year from fechaingreso supporting DD/MM/YYYY and YYYY-MM-DD
         fechaingreso_str = str(fechaingreso or "").strip()

@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .permissions import IsStaffOrSuperuser
+from .permissions import IsStaffOrSuperuser, IsSuperuser
 from .serializers import AdminUserSerializer, UserSummarySerializer
 from .services.celery_status import celery_status_payload
 
@@ -31,13 +31,17 @@ class UserAdminViewSet(
     viewsets.GenericViewSet,
 ):
     """
-    Superuser-only list and update of core users (taxes linking, admin UI).
+    Staff can list users. Superuser can update taxes linking and protocolares.
     """
 
     serializer_class = AdminUserSerializer
-    # permission_classes = [IsAuthenticated, IsSuperuser]
     lookup_field = 'idusuario'
     http_method_names = ['get', 'head', 'options', 'put', 'patch']
+
+    def get_permissions(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return [IsAuthenticated(), IsSuperuser()]
+        return [IsAuthenticated(), IsStaffOrSuperuser()]
 
     def get_queryset(self):
         return User.objects.all().order_by('username')

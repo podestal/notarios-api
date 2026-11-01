@@ -55,6 +55,7 @@ from .storage_backends import (
 )
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
+from core.protocolar_permissions import ensure_protocolar_permission
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.views.decorators.http import require_GET
 from django.utils.decorators import method_decorator
@@ -207,6 +208,8 @@ def generate_document_by_tipkar(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        ensure_protocolar_permission(request.user, kardex_obj.idtipkar)
+
         tipkar = kardex_obj.idtipkar
 
         # Route to appropriate service based on tipkar
@@ -296,6 +299,8 @@ def update_document_by_tipkar(request):
                 {"success": False, "message": f"Kardex {kardex} no encontrado"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        ensure_protocolar_permission(request.user, kardex_obj.idtipkar)
 
         tipkar = kardex_obj.idtipkar
         
@@ -474,6 +479,13 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         if not kardex:
             return HttpResponse({"error": "Missing kardex parameter."}, status=400)
 
+        kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+        print(f"DEBUG: kardex_obj: {kardex_obj}")
+        if not kardex_obj:
+            return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
+
+        ensure_protocolar_permission(request.user, kardex_obj.idtipkar)
+
         # Get or create document tracking record (handle duplicates gracefully)
         todayTimeDate = datetime.now().isoformat() + "Z"
         print(f"DEBUG: kardex: {kardex}")
@@ -508,12 +520,6 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         except ValueError:
             return HttpResponse({"error": "Invalid template_id format."}, status=400)
         print(f"DEBUG: template_id: {template_id}")
-
-        # Get kardex object to determine tipkar
-        kardex_obj = Kardex.objects.filter(kardex=kardex).first()
-        print(f"DEBUG: kardex_obj: {kardex_obj}")
-        if not kardex_obj:
-            return HttpResponse({"error": f"Kardex {kardex} not found"}, status=404)
 
         tipkar = kardex_obj.idtipkar
 
@@ -601,6 +607,12 @@ class DocumentosGeneradosViewSet(ModelViewSet):
         if not kardex:
             return HttpResponse({"error": "Missing kardex parameter."}, status=400)
 
+        kardex_obj = Kardex.objects.filter(kardex=kardex).first()
+        if not kardex_obj:
+            return HttpResponse({"error": f"Kardex {kardex} no encontrado"}, status=404)
+
+        ensure_protocolar_permission(request.user, kardex_obj.idtipkar)
+
         # Parse template_id
         try:
             template_id = int(template_id)
@@ -638,11 +650,6 @@ class DocumentosGeneradosViewSet(ModelViewSet):
             source=request.path,
             filename=f"__PROY__{kardex}.docx",
         )
-
-        # Get kardex object to determine tipkar
-        kardex_obj = Kardex.objects.filter(kardex=kardex).first()
-        if not kardex_obj:
-            return HttpResponse({"error": f"Kardex {kardex} no encontrado"}, status=404)
 
         tipkar = kardex_obj.idtipkar
 

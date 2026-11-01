@@ -13,6 +13,7 @@ class UserAdmin(BaseUserAdmin):
         'negocio_id',
         'is_active',
         'is_staff',
+        'protocolar_denied',
     )
     list_filter = BaseUserAdmin.list_filter + ('negocio_id',)
     search_fields = ('username', 'email', 'first_name', 'last_name')
@@ -24,6 +25,16 @@ class UserAdmin(BaseUserAdmin):
                 'description': (
                     'taxes_usuario_id = id_usuario in Postgres taxes.usuarios. '
                     'Create that row first under Taxes → Usuarios, then paste the id here.'
+                ),
+            },
+        ),
+        (
+            'Protocolares',
+            {
+                'fields': ('protocolar_denied',),
+                'description': (
+                    'Lista de idtipkar denegados (1 escrituras, 2 no contenciosos, '
+                    '3 transferencias, 4 garantías, 5 testamentos). Vacío = todos permitidos.'
                 ),
             },
         ),

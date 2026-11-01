@@ -16,6 +16,16 @@ class User(AbstractUser):
         verbose_name='Negocio ID',
         help_text='Tenant (negocio) in Postgres taxes — copied from linked usuarios row.',
     )
+    protocolar_denied = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name='Protocolares denegados',
+        help_text=(
+            'idtipkar values this user cannot create or digitize '
+            '(1 escrituras, 2 no contenciosos, 3 transferencias, '
+            '4 garantías, 5 testamentos). Empty means all are allowed.'
+        ),
+    )
 
     @property
     def id(self):
