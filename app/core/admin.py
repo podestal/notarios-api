@@ -14,6 +14,7 @@ class UserAdmin(BaseUserAdmin):
         'is_active',
         'is_staff',
         'protocolar_denied',
+        'extraprotocolar_denied',
     )
     list_filter = BaseUserAdmin.list_filter + ('negocio_id',)
     search_fields = ('username', 'email', 'first_name', 'last_name')
@@ -35,6 +36,16 @@ class UserAdmin(BaseUserAdmin):
                 'description': (
                     'Lista de idtipkar denegados (1 escrituras, 2 no contenciosos, '
                     '3 transferencias, 4 garantías, 5 testamentos). Vacío = todos permitidos.'
+                ),
+            },
+        ),
+        (
+            'Extraprotocolares',
+            {
+                'fields': ('extraprotocolar_denied',),
+                'description': (
+                    'Claves denegadas (permisos_viaje, poderes, cartas, libros, '
+                    'domiciliario, …). Vacío = todos permitidos.'
                 ),
             },
         ),

@@ -2,6 +2,7 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from core.permissions import IsSuperuser
+from core.extraprotocolar_permissions import ExtraProtocolarRestrictedMixin
 from core.protocolar_permissions import (
     denied_tipkars,
     ensure_protocolar_permission,
@@ -3146,11 +3147,12 @@ class LegalizacionViewSet(ModelViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class PermiViajeViewSet(ModelViewSet):
+class PermiViajeViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the PermiViaje model.
     """
 
+    extra_type = "permisos_viaje"
     queryset = models.PermiViaje.objects.all().order_by("-id_viaje")
     serializer_class = serializers.PermiViajeSerializer
     pagination_class = pagination.KardexPagination
@@ -3357,11 +3359,12 @@ class PermiViajeViewSet(ModelViewSet):
             return report_service.generate_word_report(desde, hasta)
 
 
-class ViajeContratantesViewSet(ModelViewSet):
+class ViajeContratantesViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the ViajeContratantes model.
     """
 
+    extra_type = "permisos_viaje"
     queryset = models.ViajeContratantes.objects.all()
     serializer_class = serializers.ViajeContratantesSerializer
     pagination_class = pagination.KardexPagination
@@ -3389,11 +3392,12 @@ class ViajeContratantesViewSet(ModelViewSet):
         return Response(serializer.data)
 
 
-class IngresoPoderesViewSet(ModelViewSet):
+class IngresoPoderesViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the IngresoPoderes model.
     """
 
+    extra_type = "poderes"
     queryset = models.IngresoPoderes.objects.all().order_by("-id_poder")
     serializer_class = serializers.IngresoPoderesSerializer
     pagination_class = pagination.KardexPagination
@@ -3529,11 +3533,12 @@ class IngresoPoderesViewSet(ModelViewSet):
         return self.get_paginated_response(serializer.data)
 
 
-class PoderesFueraregViewSet(ModelViewSet):
+class PoderesFueraregViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the PoderesFuerareg model.
     """
 
+    extra_type = "poderes"
     queryset = models.PoderesFuerareg.objects.all().order_by("-id_fuerareg")
     serializer_class = serializers.PoderesFueraregSerializer
     pagination_class = pagination.KardexPagination
@@ -3585,11 +3590,12 @@ class PoderesFueraregViewSet(ModelViewSet):
             return report_service.generate_word_report(desde, hasta)
 
 
-class PoderesPensionViewSet(ModelViewSet):
+class PoderesPensionViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the PoderesPension model.
     """
 
+    extra_type = "poderes"
     queryset = models.PoderesPension.objects.all().order_by("-id_pension")
     serializer_class = serializers.PoderesPensionSerializer
     pagination_class = pagination.KardexPagination
@@ -3610,11 +3616,12 @@ class PoderesPensionViewSet(ModelViewSet):
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
-class PoderesContratantesViewSet(ModelViewSet):
+class PoderesContratantesViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the PoderesContratantes model.
     """
 
+    extra_type = "poderes"
     queryset = models.PoderesContratantes.objects.all()
     serializer_class = serializers.PoderesContratantesSerializer
     pagination_class = pagination.KardexPagination
@@ -3633,11 +3640,12 @@ class PoderesContratantesViewSet(ModelViewSet):
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
-class IngresoCartasViewSet(ModelViewSet):
+class IngresoCartasViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the IngresoCartas model.
     """
 
+    extra_type = "cartas"
     queryset = models.IngresoCartas.objects.all().order_by("-id_carta")
     serializer_class = serializers.IngresoCartasSerializer
     pagination_class = pagination.KardexPagination
@@ -3807,11 +3815,12 @@ class SellosViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
-class LibrosViewSet(ModelViewSet):
+class LibrosViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the Libros model.
     """
 
+    extra_type = "libros"
     queryset = models.Libros.objects.all().order_by("-id")
     serializer_class = serializers.LibrosSerializer
     pagination_class = pagination.KardexPagination
@@ -4047,11 +4056,12 @@ class TipolibroViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
-class CertDomiciliarioViewSet(ModelViewSet):
+class CertDomiciliarioViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
     """
     ViewSet for the CertDomiciliario model.
     """
 
+    extra_type = "domiciliario"
     queryset = models.CertDomiciliario.objects.all().order_by("-id_domiciliario")
     serializer_class = serializers.CertDomiciliarioSerializer
     pagination_class = pagination.KardexPagination

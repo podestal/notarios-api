@@ -55,6 +55,10 @@ from .storage_backends import (
 )
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
+from core.extraprotocolar_permissions import (
+    EXTRAPROTOCOLAR_ACTION_TYPES,
+    ensure_extraprotocolar_permission,
+)
 from core.protocolar_permissions import ensure_protocolar_permission
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.views.decorators.http import require_GET
@@ -845,6 +849,12 @@ class ExtraprotocolaresViewSet(ModelViewSet):
     serializer_class = serializers.DocumentosGeneradosSerializer  # Reuse existing serializer
     pagination_class = pagination.KardexPagination
     # permission_classes = [IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        extra_type = EXTRAPROTOCOLAR_ACTION_TYPES.get(getattr(self, "action", None))
+        if extra_type:
+            ensure_extraprotocolar_permission(request.user, extra_type)
 
     def get_queryset(self):
         """

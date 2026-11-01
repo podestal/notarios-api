@@ -26,6 +26,16 @@ class User(AbstractUser):
             '4 garantías, 5 testamentos). Empty means all are allowed.'
         ),
     )
+    extraprotocolar_denied = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name='Extraprotocolares denegados',
+        help_text=(
+            'Extra type keys this user cannot create or digitize '
+            '(permisos_viaje, poderes, cartas, libros, domiciliario, …). '
+            'Empty means all are allowed.'
+        ),
+    )
 
     @property
     def id(self):
