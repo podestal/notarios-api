@@ -26,7 +26,10 @@ from ducumentation.protocolares.TestamentosService import (
 from .services.pdt_libros_service import PdtLibrosService
 from .services.kardex_acto_cleanup import (
     delete_kardex_acto_related,
+    filter_participants_to_active_actos,
+    purge_orphan_contratantesxacto_for_kardex,
     rebuild_contratantes_condicion_for_kardex,
+    resolve_condition_pairs_for_kardex,
 )
 
 from ducumentation.extraprotocolares.cartas_notariales import CartasNotarialesReportService
@@ -508,41 +511,57 @@ class KardexViewSet(ModelViewSet):
         next_idtipkar = data.get("idtipkar", instance.idtipkar)
         if next_idtipkar not in (None, ""):
             ensure_protocolar_permission(request.user, next_idtipkar)
-        codactos = data.get("codactos", "")
-        id_tipo_actos_array = [codactos[i : i + 3] for i in range(0, len(codactos), 3)]
-        set_data = set(id_tipo_actos_array)
-        id_tipo_actos_array_instance = [
-            instance.codactos[i : i + 3] for i in range(0, len(instance.codactos), 3)
-        ]
-        set_instance = set(id_tipo_actos_array_instance)
+        # Only sync actos when the client actually sent codactos (partial PATCH
+        # must not treat a missing field as "clear all actos").
+        if "codactos" in data:
+            codactos = data.get("codactos") or ""
+            id_tipo_actos_array = [
+                codactos[i : i + 3] for i in range(0, len(codactos), 3)
+            ]
+            set_data = set(id_tipo_actos_array)
+            id_tipo_actos_array_instance = [
+                instance.codactos[i : i + 3]
+                for i in range(0, len(instance.codactos or ""), 3)
+            ]
+            set_instance = set(id_tipo_actos_array_instance)
 
-        only_in_set_data = set_data - set_instance
-        only_in_set_conditions = set_instance - set_data
+            only_in_set_data = set_data - set_instance
+            only_in_set_conditions = set_instance - set_data
 
-        for id_tipo_acto in only_in_set_conditions:
-            try:
-                tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
-            except models.Tiposdeacto.DoesNotExist:
-                return Response({"error": "Tipo de acto no encontrado."}, status=404)
+            for id_tipo_acto in only_in_set_conditions:
+                try:
+                    tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
+                except models.Tiposdeacto.DoesNotExist:
+                    return Response(
+                        {"error": "Tipo de acto no encontrado."}, status=404
+                    )
 
-            delete_kardex_acto_related(kardex=instance.kardex, idtipoacto=id_tipo_acto)
+                delete_kardex_acto_related(
+                    kardex=instance.kardex, idtipoacto=id_tipo_acto
+                )
 
-        for id_tipo_acto in only_in_set_data:
-            try:
-                tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
-            except models.Tiposdeacto.DoesNotExist:
-                return Response({"error": "Tipo de acto no encontrado."}, status=404)
+            for id_tipo_acto in only_in_set_data:
+                try:
+                    tipo_acto = models.Tiposdeacto.objects.get(idtipoacto=id_tipo_acto)
+                except models.Tiposdeacto.DoesNotExist:
+                    return Response(
+                        {"error": "Tipo de acto no encontrado."}, status=404
+                    )
 
-            detalle_data = {
-                "kardex": instance.kardex,
-                "idtipoacto": id_tipo_acto,
-                "actosunat": tipo_acto.actosunat,
-                "actouif": tipo_acto.actouif,
-                "idtipkar": int(instance.idtipkar),
-                "desacto": tipo_acto.desacto,
-            }
+                detalle_data = {
+                    "kardex": instance.kardex,
+                    "idtipoacto": id_tipo_acto,
+                    "actosunat": tipo_acto.actosunat,
+                    "actouif": tipo_acto.actouif,
+                    "idtipkar": int(instance.idtipkar),
+                    "desacto": tipo_acto.desacto,
+                }
 
-            models.DetalleActosKardex.objects.create(**detalle_data)
+                models.DetalleActosKardex.objects.create(**detalle_data)
+
+            # Safety net: drop any leftover CXA/patrimonial for actos no longer
+            # on detalle_actos_kardex (prevents the K162-style participa ghosts).
+            purge_orphan_contratantesxacto_for_kardex(instance.kardex)
 
         from signatum.services import (
             finalize_notarization_from_reservation,
@@ -1037,6 +1056,8 @@ class KardexViewSet(ModelViewSet):
                     status=404,
                 )
 
+            purge_orphan_contratantesxacto_for_kardex(kardex)
+
             results = []
             updates_performed = {
                 "patrimonial_updates": 0,
@@ -1335,6 +1356,8 @@ class KardexViewSet(ModelViewSet):
                     status=404,
                 )
 
+            purge_orphan_contratantesxacto_for_kardex(kardex)
+
             updates_performed = {
                 "patrimonial_updates": 0,
                 "contratantesxacto_condition_updates": 0,
@@ -1609,9 +1632,17 @@ class ContratantesViewSet(ModelViewSet):
         """
 
         instance = self.get_object()
-        data = request.data
+        data = _mutable_request_data(request.data)
+        kardex_code = data.get("kardex") or instance.kardex
 
-        data_condition_pairs = _normalize_condicion_entries(data.get("condicion"))
+        # Drop/remap conditions for actos no longer on this kardex (prevents
+        # recreating orphan CXA from a stale form after acto change).
+        data_condition_pairs = resolve_condition_pairs_for_kardex(
+            kardex_code, _normalize_condicion_entries(data.get("condicion"))
+        )
+        data["condicion"] = "".join(
+            f"{idc}.{item}/" for idc, item in data_condition_pairs
+        )
         instance_condition_pairs = _normalize_condicion_entries(instance.condicion)
 
         set_data = set(data_condition_pairs)
@@ -1623,7 +1654,7 @@ class ContratantesViewSet(ModelViewSet):
         for idcondicion, item in only_in_set_data:
             acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
             models.Contratantesxacto.objects.get_or_create(
-                kardex=data.get("kardex"),
+                kardex=kardex_code,
                 idtipoacto=acto_condicion.idtipoacto,
                 idcontratante=instance.idcontratante,
                 item=item,
@@ -1633,7 +1664,9 @@ class ContratantesViewSet(ModelViewSet):
                     "parte": acto_condicion.parte,
                     "porcentaje": "",
                     "uif": acto_condicion.uif,
-                    "formulario": acto_condicion.formulario,
+                    "formulario": _contratantesxacto_formulario_from_acto(
+                        acto_condicion
+                    ),
                     "monto": "",
                     "opago": "",
                     "ofondo": "",
@@ -1643,7 +1676,6 @@ class ContratantesViewSet(ModelViewSet):
 
         only_in_set_conditions = set_conditions - set_data
         for idcondicion, item in only_in_set_conditions:
-            print("removing contratantexacto for condition:", f"{idcondicion}.{item}")
             # If the condition is in the instance but not in the data, delete only that exact row
             models.Contratantesxacto.objects.filter(
                 idcontratante=instance.idcontratante,
@@ -1655,12 +1687,12 @@ class ContratantesViewSet(ModelViewSet):
         serializer = self.get_serializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        if only_in_set_conditions or only_in_set_data:
-            rebuild_contratantes_condicion_for_kardex(
-                instance.kardex, idcontratante=instance.idcontratante
-            )
-        _reset_sisgen_for_kardex(instance.kardex)
-        _refresh_kardex_fechaconclusion_from_contratantes(instance.kardex)
+        purge_orphan_contratantesxacto_for_kardex(kardex_code)
+        rebuild_contratantes_condicion_for_kardex(
+            kardex_code, idcontratante=instance.idcontratante
+        )
+        _reset_sisgen_for_kardex(kardex_code)
+        _refresh_kardex_fechaconclusion_from_contratantes(kardex_code)
         return Response(serializer.data)
 
     @transaction.atomic
@@ -1691,7 +1723,7 @@ class ContratantesViewSet(ModelViewSet):
         and ensure that Cliente2 is not orphaned.
         """
         idcliente = request.query_params.get("idcliente")
-        data = request.data
+        data = _mutable_request_data(request.data)
 
         if not idcliente:
             return Response({"error": "Debe proporcionar el idcliente"}, status=400)
@@ -1704,6 +1736,15 @@ class ContratantesViewSet(ModelViewSet):
                 {"error": "No se encontró Cliente1 con ese número de documento"}, status=404
             )
 
+        kardex_code = data.get("kardex") or ""
+        condition_pairs = resolve_condition_pairs_for_kardex(
+            kardex_code,
+            _normalize_condicion_entries(data.get("condicion")),
+        )
+        data["condicion"] = "".join(
+            f"{idc}.{item}/" for idc, item in condition_pairs
+        )
+
         # Step 2: Try up to 5 times to generate valid IDs
         for attempt in range(5):
             try:
@@ -1712,11 +1753,12 @@ class ContratantesViewSet(ModelViewSet):
                 idcontratante = utils.generate_new_id(models.Contratantes, "idcontratante")
                 idcliente2 = utils.generate_new_id(models.Cliente2, "idcliente")
 
-                condition_pairs = _normalize_condicion_entries(data.get("condicion"))
                 for idcondicion, item in condition_pairs:
-                    acto_condicion = models.Actocondicion.objects.get(idcondicion=idcondicion)
+                    acto_condicion = models.Actocondicion.objects.get(
+                        idcondicion=idcondicion
+                    )
                     models.Contratantesxacto.objects.get_or_create(
-                        kardex=data.get("kardex"),
+                        kardex=kardex_code,
                         idtipoacto=acto_condicion.idtipoacto,
                         idcontratante=idcontratante,
                         item=item,
@@ -1726,7 +1768,9 @@ class ContratantesViewSet(ModelViewSet):
                             "parte": acto_condicion.parte,
                             "porcentaje": "",
                             "uif": acto_condicion.uif,
-                            "formulario": _contratantesxacto_formulario_from_acto(acto_condicion),
+                            "formulario": _contratantesxacto_formulario_from_acto(
+                                acto_condicion
+                            ),
                             "monto": "",
                             "opago": "",
                             "ofondo": "",
@@ -1741,7 +1785,7 @@ class ContratantesViewSet(ModelViewSet):
                     continue  # Try again with a new idcontratante
 
                 # Create Contratante
-                contratante_serializer = self.get_serializer(data=request.data)
+                contratante_serializer = self.get_serializer(data=data)
                 contratante_serializer.is_valid(raise_exception=True)
                 contratante_serializer.save(idcontratante=idcontratante)
 
@@ -1802,7 +1846,8 @@ class ContratantesViewSet(ModelViewSet):
                 cliente2_serializer = serializers.Cliente2Serializer(data=cliente2_data)
                 cliente2_serializer.is_valid(raise_exception=True)
                 cliente2_serializer.save()
-                _reset_sisgen_for_kardex(data.get("kardex"))
+                purge_orphan_contratantesxacto_for_kardex(kardex_code)
+                _reset_sisgen_for_kardex(kardex_code)
 
                 # Return created contratante
                 transaction.savepoint_commit(sid)
@@ -1966,7 +2011,9 @@ class ContratantesxactoViewSet(ModelViewSet):
                 "renta_map": renta_map,
             },
         )
-        return Response(serializer.data)
+        return Response(
+            filter_participants_to_active_actos(serializer.data, kardex=kardex)
+        )
 
 
 class ClienteViewSet(ModelViewSet):

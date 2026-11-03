@@ -239,3 +239,102 @@ def delete_kardex_acto_related(*, kardex: str, idtipoacto: str) -> Dict[str, int
     )
 
     return dict(counts)
+
+
+def active_detalle_item_by_acto(kardex: str) -> Dict[str, str]:
+    """Map ``idtipoacto -> detalle_actos_kardex.item`` for the kardex."""
+    kardex_key = str(kardex or "").strip()
+    if not kardex_key:
+        return {}
+    return {
+        str(row.idtipoacto).strip(): str(row.item)
+        for row in models.DetalleActosKardex.objects.filter(kardex=kardex_key)
+        if row.idtipoacto is not None and str(row.idtipoacto).strip()
+    }
+
+
+def resolve_condition_pairs_for_kardex(
+    kardex: str,
+    pairs: Iterable[Tuple[str, str]],
+) -> List[Tuple[str, str]]:
+    """
+    Keep only conditions whose acto is still on the kardex.
+
+    Remaps ``item`` to the current ``detalle_actos_kardex.item`` for that acto so a
+    stale ``049.6027/`` after an acto recreate becomes ``049.6028/`` instead of
+    creating an orphan ``contratantesxacto`` row.
+    """
+    detalle_by_acto = active_detalle_item_by_acto(kardex)
+    if not detalle_by_acto:
+        return []
+
+    resolved: List[Tuple[str, str]] = []
+    seen: Set[Tuple[str, str]] = set()
+    for idcondicion, _item in pairs:
+        idc = str(idcondicion or "").strip()
+        if not idc:
+            continue
+        acto_condicion = (
+            models.Actocondicion.objects.filter(idcondicion=idc).first()
+        )
+        if not acto_condicion:
+            continue
+        acto = str(acto_condicion.idtipoacto or "").strip()
+        current_item = detalle_by_acto.get(acto)
+        if current_item is None:
+            continue
+        key = (idc, current_item)
+        if key in seen:
+            continue
+        seen.add(key)
+        resolved.append(key)
+    return resolved
+
+
+def purge_orphan_contratantesxacto_for_kardex(kardex: str) -> Dict[str, int]:
+    """
+    Delete leftover ``contratantesxacto`` (and related acto data) that no longer
+    match ``detalle_actos_kardex`` for this kardex.
+
+    Covers:
+    - acto removed / changed (e.g. 030 → 028) without a full cascade
+    - stale ``item`` after detalle was recreated for the same acto
+    """
+    kardex_key = str(kardex or "").strip()
+    if not kardex_key:
+        return {}
+
+    counts: Dict[str, int] = defaultdict(int)
+    active_actos = active_idtipoactos_for_kardex(kardex_key)
+    active_items = {
+        row.item
+        for row in models.DetalleActosKardex.objects.filter(kardex=kardex_key)
+    }
+
+    orphan_actos = {
+        str(v).strip()
+        for v in models.Contratantesxacto.objects.filter(kardex=kardex_key)
+        .values_list("idtipoacto", flat=True)
+        .distinct()
+        if v is not None and str(v).strip() and str(v).strip() not in active_actos
+    }
+    for orphan_acto in orphan_actos:
+        sub = delete_kardex_acto_related(kardex=kardex_key, idtipoacto=orphan_acto)
+        for key, value in sub.items():
+            counts[key] += int(value or 0)
+
+    stale_item_qs = models.Contratantesxacto.objects.filter(kardex=kardex_key)
+    if active_items:
+        stale_item_qs = stale_item_qs.exclude(item__in=active_items)
+    removed_stale = list(stale_item_qs)
+    if removed_stale:
+        counts["contratantes_condicion_updated"] += _sync_contratantes_condicion(
+            kardex=kardex_key, removed_rows=removed_stale
+        )
+        deleted_stale, _ = stale_item_qs.delete()
+        counts["contratantesxacto_stale_item"] = int(deleted_stale)
+        counts["contratantes_condicion_rebuilt"] += (
+            rebuild_contratantes_condicion_for_kardex(kardex_key)
+        )
+
+    return dict(counts)
