@@ -25,7 +25,7 @@ from django.db import connection
 from notaria.models import Usuarios
 
 RENTA_SQL = """
-    SELECT
+    SELECT DISTINCT
         k.idkardex AS id_kardex,
         k.kardex AS kardex_esc,
         k.contrato AS acto,
@@ -35,12 +35,21 @@ RENTA_SQL = """
     FROM kardex AS k
     INNER JOIN contratantes AS con ON con.kardex = k.kardex
     INNER JOIN cliente2 AS c2 ON c2.idcontratante = con.idcontratante
-    INNER JOIN contratantesxacto AS cxa ON cxa.idcontratante = con.idcontratante
-    LEFT JOIN renta AS re ON re.idcontratante = con.idcontratante
-    WHERE cxa.parte = 1
+    INNER JOIN contratantesxacto AS cxa
+        ON cxa.idcontratante = con.idcontratante
+       AND cxa.kardex = k.kardex
+    LEFT JOIN renta AS re
+        ON re.idcontratante = con.idcontratante
+       AND re.kardex = k.kardex
+    WHERE TRIM(CAST(cxa.parte AS CHAR)) = '1'
       AND LOWER(TRIM(k.responsable_new)) = LOWER(%s)
       AND k.codactos = '030'
-      AND (re.pregu1 IS NULL OR re.pregu2 IS NULL OR re.pregu3 IS NULL)
+      AND (
+            re.idrenta IS NULL
+         OR TRIM(IFNULL(re.pregu1, '')) = ''
+         OR TRIM(IFNULL(re.pregu2, '')) = ''
+         OR TRIM(IFNULL(re.pregu3, '')) = ''
+      )
       AND YEAR(k.fechaescritura) = %s
     ORDER BY k.idkardex ASC
 """
@@ -53,16 +62,21 @@ BIEN_SQL = """
         k.responsable_new AS responsable,
         k.fechaescritura
     FROM kardex AS k
-    LEFT JOIN detallebienes AS db ON db.kardex = k.kardex
     WHERE LOWER(TRIM(k.responsable_new)) = LOWER(%s)
       AND k.codactos IN ('030', '084', '033', '036', '037', '047', '024')
-      AND (db.detbien IS NULL OR db.idtipbien = 0 OR db.tipob = '')
       AND YEAR(k.fechaescritura) = %s
+      AND NOT EXISTS (
+          SELECT 1
+          FROM detallebienes AS db
+          WHERE db.kardex = k.kardex
+            AND IFNULL(db.idtipbien, 0) <> 0
+            AND TRIM(IFNULL(db.tipob, '')) <> ''
+      )
     ORDER BY k.idkardex ASC
 """
 
 OFONDO_SQL = """
-    SELECT
+    SELECT DISTINCT
         k.idkardex AS id_kardex,
         k.kardex AS kardex_esc,
         k.contrato AS acto,
@@ -70,12 +84,12 @@ OFONDO_SQL = """
         k.fechaescritura,
         c2.nombre AS contratante
     FROM kardex AS k
-    LEFT JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
+    INNER JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
     LEFT JOIN cliente2 AS c2 ON c2.idcontratante = cxa.idcontratante
     WHERE LOWER(TRIM(k.responsable_new)) = LOWER(%s)
       AND k.codactos = '094'
-      AND (cxa.ofondo = '' OR cxa.ofondo IS NULL)
-      AND (cxa.parte = '1' OR cxa.parte = '2')
+      AND TRIM(CAST(cxa.parte AS CHAR)) IN ('1', '2')
+      AND TRIM(IFNULL(cxa.ofondo, '')) = ''
       AND YEAR(k.fechaescritura) = %s
     ORDER BY k.idkardex ASC
 """
@@ -96,7 +110,7 @@ CONCLUSION_SQL = """
 
 # Same four PHP checks, scoped to one kardex (Panel General / compliance).
 RENTA_BY_KARDEX_SQL = """
-    SELECT
+    SELECT DISTINCT
         k.idkardex AS id_kardex,
         k.kardex AS kardex_esc,
         k.contrato AS acto,
@@ -106,12 +120,21 @@ RENTA_BY_KARDEX_SQL = """
     FROM kardex AS k
     INNER JOIN contratantes AS con ON con.kardex = k.kardex
     INNER JOIN cliente2 AS c2 ON c2.idcontratante = con.idcontratante
-    INNER JOIN contratantesxacto AS cxa ON cxa.idcontratante = con.idcontratante
-    LEFT JOIN renta AS re ON re.idcontratante = con.idcontratante
-    WHERE cxa.parte = 1
+    INNER JOIN contratantesxacto AS cxa
+        ON cxa.idcontratante = con.idcontratante
+       AND cxa.kardex = k.kardex
+    LEFT JOIN renta AS re
+        ON re.idcontratante = con.idcontratante
+       AND re.kardex = k.kardex
+    WHERE TRIM(CAST(cxa.parte AS CHAR)) = '1'
       AND k.kardex = %s
       AND k.codactos = '030'
-      AND (re.pregu1 IS NULL OR re.pregu2 IS NULL OR re.pregu3 IS NULL)
+      AND (
+            re.idrenta IS NULL
+         OR TRIM(IFNULL(re.pregu1, '')) = ''
+         OR TRIM(IFNULL(re.pregu2, '')) = ''
+         OR TRIM(IFNULL(re.pregu3, '')) = ''
+      )
     ORDER BY k.idkardex ASC
 """
 
@@ -123,15 +146,20 @@ BIEN_BY_KARDEX_SQL = """
         k.responsable_new AS responsable,
         k.fechaescritura
     FROM kardex AS k
-    LEFT JOIN detallebienes AS db ON db.kardex = k.kardex
     WHERE k.kardex = %s
       AND k.codactos IN ('030', '084', '033', '036', '037', '047', '024')
-      AND (db.detbien IS NULL OR db.idtipbien = 0 OR db.tipob = '')
+      AND NOT EXISTS (
+          SELECT 1
+          FROM detallebienes AS db
+          WHERE db.kardex = k.kardex
+            AND IFNULL(db.idtipbien, 0) <> 0
+            AND TRIM(IFNULL(db.tipob, '')) <> ''
+      )
     ORDER BY k.idkardex ASC
 """
 
 OFONDO_BY_KARDEX_SQL = """
-    SELECT
+    SELECT DISTINCT
         k.idkardex AS id_kardex,
         k.kardex AS kardex_esc,
         k.contrato AS acto,
@@ -139,12 +167,12 @@ OFONDO_BY_KARDEX_SQL = """
         k.fechaescritura,
         c2.nombre AS contratante
     FROM kardex AS k
-    LEFT JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
+    INNER JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
     LEFT JOIN cliente2 AS c2 ON c2.idcontratante = cxa.idcontratante
     WHERE k.kardex = %s
       AND k.codactos = '094'
-      AND (cxa.ofondo = '' OR cxa.ofondo IS NULL)
-      AND (cxa.parte = '1' OR cxa.parte = '2')
+      AND TRIM(CAST(cxa.parte AS CHAR)) IN ('1', '2')
+      AND TRIM(IFNULL(cxa.ofondo, '')) = ''
     ORDER BY k.idkardex ASC
 """
 
@@ -163,39 +191,52 @@ CONCLUSION_BY_KARDEX_SQL = """
 
 COUNT_BY_KARDEX_SQL = """
     SELECT kardex_esc AS kardex, COUNT(*) AS total FROM (
-        SELECT k.kardex AS kardex_esc
+        SELECT DISTINCT k.kardex AS kardex_esc, con.idcontratante AS err_key
         FROM kardex AS k
         INNER JOIN contratantes AS con ON con.kardex = k.kardex
-        INNER JOIN cliente2 AS c2 ON c2.idcontratante = con.idcontratante
-        INNER JOIN contratantesxacto AS cxa ON cxa.idcontratante = con.idcontratante
-        LEFT JOIN renta AS re ON re.idcontratante = con.idcontratante
-        WHERE cxa.parte = 1
+        INNER JOIN contratantesxacto AS cxa
+            ON cxa.idcontratante = con.idcontratante
+           AND cxa.kardex = k.kardex
+        LEFT JOIN renta AS re
+            ON re.idcontratante = con.idcontratante
+           AND re.kardex = k.kardex
+        WHERE TRIM(CAST(cxa.parte AS CHAR)) = '1'
           AND k.codactos = '030'
-          AND (re.pregu1 IS NULL OR re.pregu2 IS NULL OR re.pregu3 IS NULL)
+          AND (
+                re.idrenta IS NULL
+             OR TRIM(IFNULL(re.pregu1, '')) = ''
+             OR TRIM(IFNULL(re.pregu2, '')) = ''
+             OR TRIM(IFNULL(re.pregu3, '')) = ''
+          )
           AND k.kardex IN ({placeholders})
 
         UNION ALL
 
-        SELECT k.kardex AS kardex_esc
+        SELECT k.kardex AS kardex_esc, 'bien' AS err_key
         FROM kardex AS k
-        LEFT JOIN detallebienes AS db ON db.kardex = k.kardex
         WHERE k.codactos IN ('030', '084', '033', '036', '037', '047', '024')
-          AND (db.detbien IS NULL OR db.idtipbien = 0 OR db.tipob = '')
           AND k.kardex IN ({placeholders})
+          AND NOT EXISTS (
+              SELECT 1
+              FROM detallebienes AS db
+              WHERE db.kardex = k.kardex
+                AND IFNULL(db.idtipbien, 0) <> 0
+                AND TRIM(IFNULL(db.tipob, '')) <> ''
+          )
 
         UNION ALL
 
-        SELECT k.kardex AS kardex_esc
+        SELECT DISTINCT k.kardex AS kardex_esc, cxa.id AS err_key
         FROM kardex AS k
-        LEFT JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
+        INNER JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
         WHERE k.codactos = '094'
-          AND (cxa.ofondo = '' OR cxa.ofondo IS NULL)
-          AND (cxa.parte = '1' OR cxa.parte = '2')
+          AND TRIM(CAST(cxa.parte AS CHAR)) IN ('1', '2')
+          AND TRIM(IFNULL(cxa.ofondo, '')) = ''
           AND k.kardex IN ({placeholders})
 
         UNION ALL
 
-        SELECT k.kardex AS kardex_esc
+        SELECT k.kardex AS kardex_esc, 'conclusion' AS err_key
         FROM kardex AS k
         WHERE (k.fechaconclusion = '' OR k.fechaconclusion IS NULL)
           AND k.kardex IN ({placeholders})
@@ -205,42 +246,55 @@ COUNT_BY_KARDEX_SQL = """
 
 RANKING_SQL = """
     SELECT responsable, COUNT(*) AS total FROM (
-        SELECT TRIM(k.responsable_new) AS responsable
+        SELECT DISTINCT TRIM(k.responsable_new) AS responsable, k.kardex, con.idcontratante AS err_key
         FROM kardex AS k
         INNER JOIN contratantes AS con ON con.kardex = k.kardex
-        INNER JOIN cliente2 AS c2 ON c2.idcontratante = con.idcontratante
-        INNER JOIN contratantesxacto AS cxa ON cxa.idcontratante = con.idcontratante
-        LEFT JOIN renta AS re ON re.idcontratante = con.idcontratante
-        WHERE cxa.parte = 1
+        INNER JOIN contratantesxacto AS cxa
+            ON cxa.idcontratante = con.idcontratante
+           AND cxa.kardex = k.kardex
+        LEFT JOIN renta AS re
+            ON re.idcontratante = con.idcontratante
+           AND re.kardex = k.kardex
+        WHERE TRIM(CAST(cxa.parte AS CHAR)) = '1'
           AND TRIM(IFNULL(k.responsable_new, '')) <> ''
           AND k.codactos = '030'
-          AND (re.pregu1 IS NULL OR re.pregu2 IS NULL OR re.pregu3 IS NULL)
+          AND (
+                re.idrenta IS NULL
+             OR TRIM(IFNULL(re.pregu1, '')) = ''
+             OR TRIM(IFNULL(re.pregu2, '')) = ''
+             OR TRIM(IFNULL(re.pregu3, '')) = ''
+          )
           AND YEAR(k.fechaescritura) = %s
 
         UNION ALL
 
-        SELECT TRIM(k.responsable_new) AS responsable
+        SELECT TRIM(k.responsable_new) AS responsable, k.kardex, 'bien' AS err_key
         FROM kardex AS k
-        LEFT JOIN detallebienes AS db ON db.kardex = k.kardex
         WHERE TRIM(IFNULL(k.responsable_new, '')) <> ''
           AND k.codactos IN ('030', '084', '033', '036', '037', '047', '024')
-          AND (db.detbien IS NULL OR db.idtipbien = 0 OR db.tipob = '')
           AND YEAR(k.fechaescritura) = %s
+          AND NOT EXISTS (
+              SELECT 1
+              FROM detallebienes AS db
+              WHERE db.kardex = k.kardex
+                AND IFNULL(db.idtipbien, 0) <> 0
+                AND TRIM(IFNULL(db.tipob, '')) <> ''
+          )
 
         UNION ALL
 
-        SELECT TRIM(k.responsable_new) AS responsable
+        SELECT DISTINCT TRIM(k.responsable_new) AS responsable, k.kardex, cxa.id AS err_key
         FROM kardex AS k
-        LEFT JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
+        INNER JOIN contratantesxacto AS cxa ON cxa.kardex = k.kardex
         WHERE TRIM(IFNULL(k.responsable_new, '')) <> ''
           AND k.codactos = '094'
-          AND (cxa.ofondo = '' OR cxa.ofondo IS NULL)
-          AND (cxa.parte = '1' OR cxa.parte = '2')
+          AND TRIM(CAST(cxa.parte AS CHAR)) IN ('1', '2')
+          AND TRIM(IFNULL(cxa.ofondo, '')) = ''
           AND YEAR(k.fechaescritura) = %s
 
         UNION ALL
 
-        SELECT TRIM(k.responsable_new) AS responsable
+        SELECT TRIM(k.responsable_new) AS responsable, k.kardex, 'conclusion' AS err_key
         FROM kardex AS k
         WHERE TRIM(IFNULL(k.responsable_new, '')) <> ''
           AND (k.fechaconclusion = '' OR k.fechaconclusion IS NULL)
@@ -362,7 +416,10 @@ def list_errors_for_user(usuario: str, year: int) -> Dict[str, Any]:
                 _error_item(
                     row,
                     kind="bien",
-                    error="No existe bien, ingrese un bien",
+                    error=(
+                        "No existe un bien válido; complete tipo de bien "
+                        "y bien acto jurídico"
+                    ),
                     today=today,
                 )
             )
@@ -453,7 +510,10 @@ def list_errors_for_kardex(kardex: str) -> List[Dict[str, Any]]:
                 _compliance_error_item(
                     row,
                     kind="bien",
-                    error="No existe bien, ingrese un bien",
+                    error=(
+                        "No existe un bien válido; complete tipo de bien "
+                        "y bien acto jurídico"
+                    ),
                 )
             )
         cursor.execute(OFONDO_BY_KARDEX_SQL, [key])

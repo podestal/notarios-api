@@ -93,7 +93,7 @@ class PdtMisErroresHelpersTests(SimpleTestCase):
         self.assertEqual(out["counts"]["renta"], 1)
         self.assertEqual(out["counts"]["bien"], 1)
         self.assertIn("Ingrese renta de tercera categoria", out["renta"][0]["error"])
-        self.assertEqual(out["bien"][0]["error"], "No existe bien, ingrese un bien")
+        self.assertIn("No existe un bien válido", out["bien"][0]["error"])
         self.assertEqual(out["renta"][0]["contrato"], "COMPRAVENTA")
         self.assertEqual(out["total"], 2)
 
