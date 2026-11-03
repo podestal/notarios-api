@@ -37,6 +37,24 @@ def _normalize_kardex_date_string(value, field_name):
     )
 
 
+def _fktemplate_is_blank(value) -> bool:
+    """True for missing / placeholder plantilla ids (0, '', null)."""
+    if value is None:
+        return True
+    raw = str(value).strip()
+    return raw == "" or raw == "0"
+
+
+def _normalize_fktemplate(value) -> int:
+    """DB column is varchar; API clients expect a numeric id (0 = none)."""
+    if _fktemplate_is_blank(value):
+        return 0
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
 class UsuariosSerializer(serializers.ModelSerializer):
     """
     Serializer for the Usuarios model.
@@ -176,6 +194,24 @@ class KardexSerializer(serializers.ModelSerializer):
 
     def validate_fechaminuta(self, value):
         return _normalize_kardex_date_string(value, "fechaminuta")
+
+    def validate_fktemplate(self, value):
+        return _normalize_fktemplate(value)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["fktemplate"] = _normalize_fktemplate(data.get("fktemplate"))
+        return data
+
+    def update(self, instance, validated_data):
+        # Placeholder 0 from the plantilla select often arrives on unrelated saves
+        # (templates refetch / actos change). Never wipe an existing assignment.
+        if "fktemplate" in validated_data and _fktemplate_is_blank(
+            validated_data.get("fktemplate")
+        ):
+            if not _fktemplate_is_blank(getattr(instance, "fktemplate", None)):
+                validated_data.pop("fktemplate")
+        return super().update(instance, validated_data)
 
     def get_usuario(self, obj):
         users_map = self.context.get("users_map", {})
