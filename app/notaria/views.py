@@ -65,6 +65,7 @@ from .services.pdt_file_service import PdtFileService
 from .services.pdt_escrituras_service import PdtEscriturasService
 from .services.pdt_vehiculares_service import PdtVehicularesService
 from .services.pdt_garantias_service import PdtGarantiasService
+from .services.pdt_corrections_service import PdtCorrectionService
 from .services.pdt_mis_errores_service import (
     list_errors_for_user,
     parse_year,
@@ -1026,6 +1027,28 @@ class KardexViewSet(ModelViewSet):
 
         except Exception as e:
             return Response({"error": 1, "errorDescription": str(e)}, status=500)
+
+    @action(detail=False, methods=["post"], url_path="pdt-correct-errors")
+    def pdt_correct_errors(self, request):
+        """
+        Subsanar PDT errors (legacy pdt/correct_error.php).
+
+        Body:
+          - { "corrections": [ ... ] }
+          - { "listError": "[{...}]" }  (legacy PHP dashboard)
+        """
+        corrections = PdtCorrectionService.parse_payload(request.data)
+        if not corrections:
+            return Response(
+                {
+                    "error": 1,
+                    "errorDescription": (
+                        "Se requiere 'corrections' o 'listError' con al menos un elemento"
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(PdtCorrectionService().apply(corrections))
 
     @action(detail=False, methods=["post"])
     def calculate(self, request):
