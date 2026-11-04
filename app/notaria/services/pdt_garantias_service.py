@@ -97,7 +97,7 @@ class PdtGarantiasService(PdtProtocolarMixin):
                     has_medio_by_item=ctx["has_medio_by_item"],
                     has_medio_by_acto=ctx["has_medio_by_acto"],
                     empty_doc_medios=ctx["empty_doc_medios"],
-                    has_formulario=ctx["has_formulario"],
+                    missing_formulario=ctx["missing_formulario"],
                     renta_keys=ctx["renta_keys"],
                     porcentaje_by_parte={kardex: helpers["porcentaje_by_parte"]},
                     ruc_bad_contractors=helpers["ruc_bad"],

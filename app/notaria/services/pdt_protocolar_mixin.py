@@ -151,7 +151,7 @@ class PdtProtocolarMixin:
         has_medio_by_item: set,
         has_medio_by_acto: set,
         empty_doc_medios: set,
-        has_formulario: set,
+        missing_formulario: set,
         renta_keys: set,
         porcentaje_by_parte: Dict[str, Dict[int, Decimal]],
         ruc_bad_contractors: List[Tuple[str, str]],
@@ -302,7 +302,9 @@ class PdtProtocolarMixin:
                     is_correctable=True,
                 )
 
-        if acto_sunat in ("04", "03") and kardex not in has_formulario:
+        # Formulario only when renta says tax payable is NOT zero (pregu3='0').
+        # pregu3='1' → impuesto cero → no SUNAT form (matches Participa UI).
+        if acto_sunat in ("04", "03") and kardex in missing_formulario:
             self._add_error(
                 kardex=kardex,
                 id_kardex=id_kardex,
@@ -404,7 +406,7 @@ def fetch_bulk_protocolar_context(cursor, kardex_list: List[str]) -> Dict[str, A
             "has_medio_by_item": set(),
             "has_medio_by_acto": set(),
             "empty_doc_medios": set(),
-            "has_formulario": set(),
+            "missing_formulario": set(),
             "renta_keys": set(),
             "contratantes": {},
         }
@@ -451,16 +453,19 @@ def fetch_bulk_protocolar_context(cursor, kardex_list: List[str]) -> Dict[str, A
         if sunat in MEDIO_PAGO_CON_DOCUMENTO and not str(documentos or "").strip():
             empty_doc_medios.add((kardex, str(itemmp or "").strip()))
 
+    # Needs formulario when pregu3='0' (impuesto NO es cero) and no form row.
     cursor.execute(
         f"""
         SELECT DISTINCT r.kardex
         FROM renta r
-        JOIN formulario f ON f.idrenta = r.idrenta
+        LEFT JOIN formulario f ON f.idrenta = r.idrenta
         WHERE r.kardex IN ({placeholders})
+          AND TRIM(IFNULL(r.pregu3, '')) = '0'
+          AND f.idformulario IS NULL
         """,
         kardex_list,
     )
-    has_formulario = {row[0] for row in cursor.fetchall()}
+    missing_formulario = {row[0] for row in cursor.fetchall()}
 
     cursor.execute(
         f"""
@@ -530,7 +535,7 @@ def fetch_bulk_protocolar_context(cursor, kardex_list: List[str]) -> Dict[str, A
         "has_medio_by_item": has_medio_by_item,
         "has_medio_by_acto": has_medio_by_acto,
         "empty_doc_medios": empty_doc_medios,
-        "has_formulario": has_formulario,
+        "missing_formulario": missing_formulario,
         "renta_keys": renta_keys,
         "contratantes": contratantes,
     }
