@@ -261,7 +261,7 @@ class PdtProtocolarMixin:
 
         # Medio de pago — missing row is NOT correctable in PHP; empty docs / bad itemmp are
         exhibio_flag = str(exhibio_mp or "").strip().upper()
-        if exhibio_flag in ("SI", "1", "S", "TRUE"):
+        if exhibio_flag in ("SI", "1", "S", "TRUE", "YES"):
             if key_item not in has_medio_by_item and key_acto not in has_medio_by_acto:
                 self._add_error(
                     kardex=kardex,

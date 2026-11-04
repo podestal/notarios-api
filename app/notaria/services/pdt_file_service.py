@@ -150,7 +150,13 @@ def format_act_line(record: Dict[str, Any]) -> str:
 
     if acto_sunat in ACT_MINUTA_SUNAT:
         minuta = str(record.get("nminuta") or "")
-        exhibio = "1" if record.get("exhibiomp") == "SI" else "0"
+        # Prefer precomputed exhibio_mp from load_pdt_act_rows when present.
+        if record.get("exhibio_mp") not in (None, ""):
+            exhibio = str(record.get("exhibio_mp"))
+        else:
+            exhibio = (
+                "1" if str(record.get("exhibiomp") or "").strip().upper() == "SI" else "0"
+            )
     else:
         minuta = ""
         exhibio = ""
@@ -372,7 +378,11 @@ def load_pdt_act_rows(type_kardex: int, start_date: str, end_date: str) -> List[
         row["tipo_kardex_pdt"] = _pdt_tipo_kardex(row.get("idtipkar"))
         row["fecha_escritura_fmt"] = _fecha_escritura_ddmmyyyy(row.get("fechaescritura"))
         if acto_sunat in ACT_MINUTA_SUNAT:
-            row["exhibio_mp"] = "1" if row.get("exhibiomp") == "SI" else "0"
+            # PHP compares == 'SI'; DB/UI often store 'Si'/'No' — treat case-insensitively
+            # so .Act exhibio + .Mpa eligibility match user intent for SUNAT.
+            row["exhibio_mp"] = (
+                "1" if str(row.get("exhibiomp") or "").strip().upper() == "SI" else "0"
+            )
         else:
             row["exhibio_mp"] = ""
     return rows
@@ -626,25 +636,44 @@ def load_pdt_bie_rows(type_kardex: int, start_date: str, end_date: str) -> List[
 
 
 def _otg_preguntas(act: Dict[str, Any], *, tipper: str, parte: Any, renta: Optional[Dict], fecha_adq: str):
+    """
+    PDTClass::loadDataOtorgante renta questions.
+
+    - 01/22/16/26 + N + parte 1 → defaults 0/0/1
+    - 04/03 + N + parte 1 → renta row when fechaconst set; else defaults 0/0/1
+    - Final keep list is only 04/22/01/16/26 for *preguntas* exported in .Otg
+    - Acto 03 clears preguntas but PHP keeps idRenta for .For (temp_otg.idrenta)
+    """
     acto = str(act.get("actosunat") or "").strip()
     p1 = p2 = p3 = ""
     id_renta = 0
     parte_s = str(parte or "").strip()
-    if acto in RENTA_DEFAULT_SUNAT:
-        if tipper == "N" and parte_s in ("1", "1.0"):
+    if acto == "24":
+        p1 = p2 = p3 = ""
+    elif acto in RENTA_DEFAULT_SUNAT:
+        if tipper == "J":
+            p1 = p2 = p3 = ""
+        elif tipper == "N" and parte_s in ("1", "1.0"):
             p1, p2, p3 = "0", "0", "1"
-    elif acto == "04" and tipper == "N" and parte_s in ("1", "1.0"):
-        if fecha_adq:
-            if renta:
-                p1 = "" if renta.get("pregu1") is None else str(renta.get("pregu1"))
-                p2 = "" if renta.get("pregu2") is None else str(renta.get("pregu2"))
-                p3 = "" if renta.get("pregu3") is None else str(renta.get("pregu3"))
-                id_renta = php_intval(renta.get("idrenta"))
-        else:
-            p1, p2, p3 = "0", "0", "1"
+        elif tipper == "N" and parte_s in ("2", "2.0"):
+            p1 = p2 = p3 = ""
+    elif acto in ("04", "03"):
+        if tipper == "J":
+            p1 = p2 = p3 = ""
+        elif tipper == "N" and parte_s in ("1", "1.0"):
+            if fecha_adq:
+                if renta:
+                    p1 = "" if renta.get("pregu1") is None else str(renta.get("pregu1"))
+                    p2 = "" if renta.get("pregu2") is None else str(renta.get("pregu2"))
+                    p3 = "" if renta.get("pregu3") is None else str(renta.get("pregu3"))
+                    id_renta = php_intval(renta.get("idrenta"))
+            else:
+                p1, p2, p3 = "0", "0", "1"
+        elif tipper == "N" and parte_s in ("2", "2.0"):
+            p1 = p2 = p3 = ""
+    # PHP clears preguntas outside keep list, but does NOT clear idRenta.
     if acto not in RENTA_KEEP_SUNAT:
         p1 = p2 = p3 = ""
-        id_renta = 0
     return p1, p2, p3, id_renta
 
 

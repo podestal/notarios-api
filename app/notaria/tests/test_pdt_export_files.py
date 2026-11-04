@@ -170,14 +170,15 @@ class PdtOtgLineTests(SimpleTestCase):
         )
         self.assertEqual((p1, p2, p3, id_renta), ("1", "0", "1", 9))
 
+        # Acto 03: preguntas cleared for .Otg, but idRenta kept for .For (PHP quirk).
         p1, p2, p3, id_renta = _otg_preguntas(
             {"actosunat": "03"},
             tipper="N",
             parte="1",
-            renta={"pregu1": "1", "idrenta": 4},
+            renta={"pregu1": "1", "pregu2": "0", "pregu3": "1", "idrenta": 4},
             fecha_adq="01/01/2020",
         )
-        self.assertEqual((p1, p2, p3, id_renta), ("", "", "", 0))
+        self.assertEqual((p1, p2, p3, id_renta), ("", "", "", 4))
 
 
 class PdtMpaLineTests(SimpleTestCase):

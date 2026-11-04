@@ -53,6 +53,10 @@ class PdtActLineTests(SimpleTestCase):
         self.assertEqual(with_minuta[12], "10/04/2026")
         self.assertEqual(with_minuta[13], "1")
 
+        # UI stores 'Si' — must still export exhibio=1 for SUNAT
+        title_case = format_act_line(_base_act(actosunat="04", exhibiomp="Si")).split("|")
+        self.assertEqual(title_case[13], "1")
+
         without = format_act_line(_base_act(actosunat="01")).split("|")
         self.assertEqual(without[12].strip(), "")
         self.assertEqual(without[13], " ")
