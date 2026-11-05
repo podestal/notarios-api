@@ -18,6 +18,7 @@ from compliance.services.dashboard_service import (
 )
 from compliance.services.payload import SUPPORTED_SOURCES, serialize_cache_row
 from compliance.services.refresh_service import ComplianceRefreshService
+from compliance.services.contratantes_progress import ContratantesProgressService
 from compliance.services.kardex_detail_service import (
     ComplianceCacheNotFoundError,
     KardexComplianceDetailService,
@@ -366,6 +367,23 @@ class ComplianceKardexErrorsView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(detail, status=status.HTTP_200_OK)
+
+
+class ComplianceKardexContratantesView(APIView):
+    """
+    Contratantes stage: name, document, ubigeo, and condición.
+
+    GET /compliance/kardex/<kardex>/contratantes/
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, kardex: str):
+        try:
+            payload = ContratantesProgressService().build(kardex)
+        except LookupError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class ComplianceDashboardView(APIView):

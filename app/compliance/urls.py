@@ -3,6 +3,7 @@ from django.urls import path
 from compliance.views import (
     ComplianceDashboardView,
     ComplianceDetailView,
+    ComplianceKardexContratantesView,
     ComplianceKardexErrorsView,
     ComplianceMyKardexErrorsView,
     ComplianceMyKardexMonthView,
@@ -42,6 +43,11 @@ urlpatterns = [
         "kardex/<str:kardex>/errors/",
         ComplianceKardexErrorsView.as_view(),
         name="kardex-errors",
+    ),
+    path(
+        "kardex/<str:kardex>/contratantes/",
+        ComplianceKardexContratantesView.as_view(),
+        name="kardex-contratantes",
     ),
     path("<str:kardex>/", ComplianceDetailView.as_view(), name="detail"),
 ]
