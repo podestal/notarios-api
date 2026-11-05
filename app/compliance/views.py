@@ -19,6 +19,7 @@ from compliance.services.dashboard_service import (
 from compliance.services.payload import SUPPORTED_SOURCES, serialize_cache_row
 from compliance.services.refresh_service import ComplianceRefreshService
 from compliance.services.contratantes_progress import ContratantesProgressService
+from compliance.services.patrimonial_progress import PatrimonialProgressService
 from compliance.services.kardex_detail_service import (
     ComplianceCacheNotFoundError,
     KardexComplianceDetailService,
@@ -381,6 +382,24 @@ class ComplianceKardexContratantesView(APIView):
     def get(self, request, kardex: str):
         try:
             payload = ContratantesProgressService().build(kardex)
+        except LookupError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class ComplianceKardexPatrimonialView(APIView):
+    """
+    Patrimonial stage: cuantía, medio de pago, and detalle del bien.
+
+    GET /compliance/kardex/<kardex>/patrimonial/
+    Nothing saved yet is idle (gray), not an error.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, kardex: str):
+        try:
+            payload = PatrimonialProgressService().build(kardex)
         except LookupError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
         return Response(payload, status=status.HTTP_200_OK)
