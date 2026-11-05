@@ -39,9 +39,9 @@ class PatrimonialProgressTests(SimpleTestCase):
         self.assertIn("cuantia", fields)
         self.assertEqual(result["steps"][1]["status"], "error")
 
-    def test_medios_not_required_stay_idle(self):
+    def test_medios_not_required_are_done(self):
         result = _eval(medios_required=False, has_medio_rows=False, exhibe_medios=False)
-        self.assertEqual(result["steps"][1]["status"], "idle")
+        self.assertEqual(result["steps"][1]["status"], "done")
         self.assertEqual(result["status"], "done")
 
     def test_cuantia_not_required_does_not_flag_empty_amounts(self):
@@ -54,6 +54,11 @@ class PatrimonialProgressTests(SimpleTestCase):
         )
         self.assertEqual(result["steps"][0]["issues"], [])
         self.assertEqual(result["status"], "done")
+
+    def test_bien_not_required_is_done(self):
+        result = _eval(bien_required=False, has_valid_bien=False)
+        self.assertEqual(result["steps"][2]["status"], "done")
+        self.assertEqual(result["steps"][2]["issues"], [])
 
     def test_incomplete_bien(self):
         result = _eval(has_valid_bien=False, bien_incompleto=True)

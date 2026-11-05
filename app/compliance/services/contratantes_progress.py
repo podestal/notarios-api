@@ -144,6 +144,23 @@ def _sisgen_person_is_contratante(text: str) -> bool:
     return any(part in lowered for part in SISGEN_CONTRATANTE_RE_PARTS)
 
 
+def _persona_level(text: str) -> str:
+    """Missing phone or email is an aviso. Name, document, and ubigeo stay errors."""
+    lowered = text.lower()
+    if "información de contacto" in lowered or "informacion de contacto" in lowered:
+        return "warning"
+    return "error"
+
+
+def _stage_status(issues: List[Dict[str, str]]) -> str:
+    levels = {_clean(item.get("level")) for item in issues}
+    if "error" in levels:
+        return "error"
+    if "warning" in levels:
+        return "warning"
+    return "done"
+
+
 def _dedupe_key(issue: Dict[str, str]) -> str:
     return "|".join(
         [
@@ -226,7 +243,7 @@ class ContratantesProgressService:
         unique = _unique(issues)
         return {
             "kardex": key,
-            "status": "error" if unique else "done",
+            "status": _stage_status(unique),
             "count": len(unique),
             "issues": unique,
         }
@@ -247,13 +264,14 @@ class ContratantesProgressService:
         except Exception:
             sisgen = {}
         for text in list(sisgen.get("personas") or []):
+            cleaned = _clean(text)
             push(
                 {
                     "source": "sisgen",
-                    "level": "error",
-                    "field": _field_from_text(text),
+                    "level": _persona_level(cleaned),
+                    "field": _field_from_text(cleaned),
                     "idcontratante": "",
-                    "text": _clean(text),
+                    "text": cleaned,
                 }
             )
         for text in list(sisgen.get("errores") or []):

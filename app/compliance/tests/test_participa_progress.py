@@ -29,9 +29,9 @@ class ParticipaProgressTests(SimpleTestCase):
         self.assertIn("Falta el origen de fondos de Ana", texts)
         self.assertIn("Monto inválido de Ana", texts)
 
-    def test_renta_not_required_stays_idle(self):
+    def test_renta_not_required_is_done(self):
         result = _eval(renta_required=False, question_gaps=["Ana"])
-        self.assertEqual(result["steps"][1]["status"], "idle")
+        self.assertEqual(result["steps"][1]["status"], "done")
         self.assertEqual(result["steps"][1]["issues"], [])
         self.assertEqual(result["status"], "done")
 

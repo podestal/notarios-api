@@ -21,6 +21,18 @@ def _clean(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _instrument_closed(row) -> bool:
+    number = _clean(getattr(row, "numescritura", ""))
+    if not number or number in {"0", "0.0", "0.00"}:
+        return False
+    try:
+        if int(number) == 0:
+            return False
+    except ValueError:
+        pass
+    return bool(_clean(getattr(row, "fechaconclusion", "")))
+
+
 def _yes(value: Any) -> bool:
     return _clean(value).upper() in {"1", "S", "SI", "Y"}
 
@@ -109,7 +121,7 @@ def evaluate_participa(
             )
         preguntas_status = "error" if preguntas else "done"
     else:
-        preguntas_status = "idle"
+        preguntas_status = "done"
 
     parent = "error" if header or preguntas else "done"
     return _payload(parent, header, preguntas_status, preguntas)
@@ -149,7 +161,8 @@ class ParticipaProgressService:
         actos = list(models.Contratantesxacto.objects.filter(kardex=key))
         rentas = list(models.Renta.objects.filter(kardex=key))
         started = any(_clean(item.ofondo) for item in actos) or bool(rentas)
-        if not started:
+        closed = _instrument_closed(row)
+        if not started and not closed:
             body = _payload("idle", [], "idle", [])
             body["kardex"] = key
             body["applicable"] = True

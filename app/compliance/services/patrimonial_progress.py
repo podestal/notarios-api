@@ -31,6 +31,18 @@ def _clean(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _instrument_closed(row) -> bool:
+    number = _clean(getattr(row, "numescritura", ""))
+    if not number or number in {"0", "0.0", "0.00"}:
+        return False
+    try:
+        if int(number) == 0:
+            return False
+    except ValueError:
+        pass
+    return bool(_clean(getattr(row, "fechaconclusion", "")))
+
+
 def _yes(value: Any) -> bool:
     return _clean(value).upper() in {"1", "S", "SI", "Y"}
 
@@ -103,6 +115,8 @@ def evaluate_patrimonial(
     elif medios_required and exhibe_medios:
         medios.append(_issue("medio-pago", "filas", "Falta registrar el medio de pago"))
         medio_status = "error"
+    else:
+        medio_status = "done"
 
     bienes: List[Dict[str, str]] = []
     bien_status = "idle"
@@ -128,6 +142,8 @@ def evaluate_patrimonial(
             )
         )
         bien_status = "error"
+    else:
+        bien_status = "done"
 
     parent = "error" if header or medios or bienes else "done"
     return _payload(parent, header, medios, bienes, medio_status, bien_status)
@@ -168,7 +184,13 @@ class PatrimonialProgressService:
         patrimoniales = list(models.Patrimonial.objects.filter(kardex=key))
         medios = list(models.Detallemediopago.objects.filter(kardex=key))
         bienes = list(models.Detallebienes.objects.filter(kardex=key))
-        started = bool(patrimoniales)
+        closed = _instrument_closed(row)
+        if not patrimoniales and not closed:
+            body = _payload("idle", [], [], [])
+            body["kardex"] = key
+            body["applicable"] = True
+            return body
+        started = True
 
         codes = _parse_act_codes(_clean(row.codactos).replace(",", "").replace(" ", ""))
         tipos = {
@@ -197,8 +219,7 @@ class PatrimonialProgressService:
         )
 
         if skip_validation:
-            status = "done" if started else "idle"
-            result = _payload(status, [], [], [], status, status)
+            result = _payload("done", [], [], [], "done", "done")
             result["kardex"] = key
             result["applicable"] = True
             return result
@@ -208,11 +229,19 @@ class PatrimonialProgressService:
             cuantia_required=cuantia_required,
             medios_required=medios_required,
             bien_required=bien_required,
-            exhibe_medios=exhibe if patrimoniales else False,
-            missing_moneda=any(not _clean(item.idmon) or _clean(item.idmon) == "0" for item in patrimoniales),
-            missing_monto=any(_amount_missing(item.importetrans) for item in patrimoniales),
-            missing_fpago=any(not _clean(item.fpago) for item in patrimoniales),
-            missing_oportunidad=any(not _clean(item.idoppago) for item in patrimoniales),
+            exhibe_medios=True if (not patrimoniales and medios_required) else exhibe,
+            missing_moneda=(not patrimoniales and cuantia_required) or any(
+                not _clean(item.idmon) or _clean(item.idmon) == "0" for item in patrimoniales
+            ),
+            missing_monto=(not patrimoniales and cuantia_required) or any(
+                _amount_missing(item.importetrans) for item in patrimoniales
+            ),
+            missing_fpago=(not patrimoniales and cuantia_required) or any(
+                not _clean(item.fpago) for item in patrimoniales
+            ),
+            missing_oportunidad=(not patrimoniales and cuantia_required) or any(
+                not _clean(item.idoppago) for item in patrimoniales
+            ),
             has_medio_rows=bool(medios),
             medio_sin_tipo=any(item.codmepag in (None, 0, "") for item in medios),
             medio_sin_monto=any(
@@ -222,8 +251,7 @@ class PatrimonialProgressService:
             has_valid_bien=valid_bien,
             bien_incompleto=incompleto and not valid_bien,
         )
-        if started:
-            result = _merge_collectors(key, result)
+        result = _merge_collectors(key, result)
         result["kardex"] = key
         result["applicable"] = True
         return result

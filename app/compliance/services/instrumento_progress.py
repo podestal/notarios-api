@@ -99,7 +99,7 @@ class InstrumentoProgressService:
 
         started = any(_present(getattr(row, field, "")) for field in _ESCRITURA_FIELDS)
         result = evaluate_instrumento(
-            digitized=_has_document(key),
+            digitized=_has_document(key) or started,
             escritura_started=started,
             missing_numero=_numero_missing(row.numescritura),
             missing_conclusion=not _clean(row.fechaconclusion),
