@@ -4,6 +4,7 @@ from compliance.views import (
     ComplianceDashboardView,
     ComplianceDetailView,
     ComplianceKardexContratantesView,
+    ComplianceKardexListProgressView,
     ComplianceKardexPatrimonialView,
     ComplianceKardexParticipaView,
     ComplianceKardexInstrumentoView,
@@ -42,6 +43,11 @@ urlpatterns = [
         name="my-kardex-errors",
     ),
     path("refresh/", ComplianceRefreshView.as_view(), name="refresh"),
+    path(
+        "kardex/progress/",
+        ComplianceKardexListProgressView.as_view(),
+        name="kardex-list-progress",
+    ),
     path(
         "kardex/<str:kardex>/errors/",
         ComplianceKardexErrorsView.as_view(),

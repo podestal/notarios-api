@@ -22,6 +22,7 @@ from compliance.services.contratantes_progress import ContratantesProgressServic
 from compliance.services.patrimonial_progress import PatrimonialProgressService
 from compliance.services.participa_progress import ParticipaProgressService
 from compliance.services.instrumento_progress import InstrumentoProgressService
+from compliance.services.kardex_list_progress import KardexListProgressService
 from compliance.services.kardex_detail_service import (
     ComplianceCacheNotFoundError,
     KardexComplianceDetailService,
@@ -370,6 +371,25 @@ class ComplianceKardexErrorsView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(detail, status=status.HTTP_200_OK)
+
+
+class ComplianceKardexListProgressView(APIView):
+    """
+    Progress tone for the kardex list, one request for the visible page.
+
+    GET /compliance/kardex/progress/?kardex=A1,A2
+    incomplete | warning | complete
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        raw = request.query_params.get("kardex", "")
+        keys = [part.strip() for part in raw.split(",") if part.strip()]
+        return Response(
+            {"results": KardexListProgressService().summarize(keys)},
+            status=status.HTTP_200_OK,
+        )
 
 
 class ComplianceKardexContratantesView(APIView):
