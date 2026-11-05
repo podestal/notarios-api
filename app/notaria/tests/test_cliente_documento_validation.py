@@ -43,6 +43,23 @@ def test_validate_juridica_documento_rejects_invalid_cases(attrs, field):
     assert field in exc.value.detail
 
 
+def test_natural_person_requires_telfijo_or_telcel():
+    with pytest.raises(ValidationError) as exc:
+        utils.validate_natural_phone({"tipper": "N", "telfijo": "", "telcel": "  "})
+    assert "telcel" in exc.value.detail
+    assert "telfijo" in exc.value.detail
+
+
+def test_natural_person_accepts_either_phone():
+    assert utils.validate_natural_phone({"tipper": "N", "telfijo": "014445555", "telcel": ""})
+    assert utils.validate_natural_phone({"tipper": "N", "telfijo": "", "telcel": "999888777"})
+
+
+def test_juridica_does_not_require_personal_phone():
+    attrs = {"tipper": "J", "telfijo": "", "telcel": ""}
+    assert utils.validate_natural_phone(attrs) == attrs
+
+
 def test_validate_juridica_documento_skips_natural_person():
     attrs = {"tipper": "N", "idtipdoc": 8, "numdoc": ""}
     assert utils.validate_juridica_documento(attrs) == attrs

@@ -553,7 +553,8 @@ class ClienteSerializer(serializers.ModelSerializer):
             attrs["residente"] = utils.normalize_residente_for_tipper(
                 tipper, attrs.get("residente")
             )
-        return utils.validate_juridica_documento(attrs, self.instance)
+        attrs = utils.validate_juridica_documento(attrs, self.instance)
+        return utils.validate_natural_phone(attrs, self.instance)
 
 
 class Cliente2Serializer(serializers.ModelSerializer):
@@ -577,7 +578,8 @@ class Cliente2Serializer(serializers.ModelSerializer):
             attrs["residente"] = utils.normalize_residente_for_tipper(
                 tipper, attrs.get("residente")
             )
-        return utils.validate_juridica_documento(attrs, self.instance)
+        attrs = utils.validate_juridica_documento(attrs, self.instance)
+        return utils.validate_natural_phone(attrs, self.instance)
 
 
 class CreateCliente2Serializer(serializers.ModelSerializer):
@@ -642,7 +644,8 @@ class CreateCliente2Serializer(serializers.ModelSerializer):
         attrs["residente"] = utils.normalize_residente_for_tipper(
             attrs.get("tipper"), attrs.get("residente")
         )
-        return utils.validate_juridica_documento(attrs)
+        attrs = utils.validate_juridica_documento(attrs)
+        return utils.validate_natural_phone(attrs)
 
     # def create(self, validated_data):
     #     attempts = 0
@@ -729,7 +732,8 @@ class CreateClienteSerializer(serializers.ModelSerializer):
         attrs["residente"] = utils.normalize_residente_for_tipper(
             attrs.get("tipper"), attrs.get("residente")
         )
-        return utils.validate_juridica_documento(attrs)
+        attrs = utils.validate_juridica_documento(attrs)
+        return utils.validate_natural_phone(attrs)
 
     def create(self, validated_data):
         # Generate new idcliente

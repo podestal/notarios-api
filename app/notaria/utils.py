@@ -60,6 +60,28 @@ def validate_juridica_documento(attrs, instance=None):
     return attrs
 
 
+PHONE_REQUIRED_MESSAGE = (
+    "Ingrese teléfono fijo o teléfono celular. Debe registrar al menos uno."
+)
+
+
+def validate_natural_phone(attrs, instance=None):
+    """Persona natural must have telfijo or telcel. Email alone is not enough."""
+    tipper = (_effective_attr(attrs, instance, "tipper") or "").strip().upper()
+    if tipper != "N":
+        return attrs
+    telfijo = str(_effective_attr(attrs, instance, "telfijo") or "").strip()
+    telcel = str(_effective_attr(attrs, instance, "telcel") or "").strip()
+    if telfijo or telcel:
+        return attrs
+    raise serializers.ValidationError(
+        {
+            "telfijo": PHONE_REQUIRED_MESSAGE,
+            "telcel": PHONE_REQUIRED_MESSAGE,
+        }
+    )
+
+
 def normalize_residente_for_tipper(tipper, residente=None):
     """Persona jurídica must use empty residente; natural persons use 1/0."""
     if (tipper or "").strip().upper() == "J":
