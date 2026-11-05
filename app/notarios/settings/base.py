@@ -236,8 +236,11 @@ DJOSER = {
 }
 
 SIMPLE_JWT = {
+    # Hard 12h session from login (9–5, next morning they sign in again).
+    # Refresh is not rotated, so it cannot extend the session past that window.
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=12),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=10),
+    'REFRESH_TOKEN_LIFETIME': timedelta(hours=12),
+    'ROTATE_REFRESH_TOKENS': False,
     'AUTH_HEADER_TYPES': ('Bearer', 'JWT'),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'idusuario',
