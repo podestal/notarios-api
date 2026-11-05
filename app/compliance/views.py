@@ -20,6 +20,8 @@ from compliance.services.payload import SUPPORTED_SOURCES, serialize_cache_row
 from compliance.services.refresh_service import ComplianceRefreshService
 from compliance.services.contratantes_progress import ContratantesProgressService
 from compliance.services.patrimonial_progress import PatrimonialProgressService
+from compliance.services.participa_progress import ParticipaProgressService
+from compliance.services.instrumento_progress import InstrumentoProgressService
 from compliance.services.kardex_detail_service import (
     ComplianceCacheNotFoundError,
     KardexComplianceDetailService,
@@ -400,6 +402,42 @@ class ComplianceKardexPatrimonialView(APIView):
     def get(self, request, kardex: str):
         try:
             payload = PatrimonialProgressService().build(kardex)
+        except LookupError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class ComplianceKardexParticipaView(APIView):
+    """
+    Participa stage: origen de fondos, monto, and preguntas UIF.
+
+    GET /compliance/kardex/<kardex>/participa/
+    Nothing saved yet is idle (gray), not an error.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, kardex: str):
+        try:
+            payload = ParticipaProgressService().build(kardex)
+        except LookupError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class ComplianceKardexInstrumentoView(APIView):
+    """
+    Digitación (no errors) and escrituración (número and conclusión).
+
+    GET /compliance/kardex/<kardex>/instrumento/
+    Escrituración stays idle until that section is saved.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, kardex: str):
+        try:
+            payload = InstrumentoProgressService().build(kardex)
         except LookupError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
         return Response(payload, status=status.HTTP_200_OK)

@@ -5,6 +5,8 @@ from compliance.views import (
     ComplianceDetailView,
     ComplianceKardexContratantesView,
     ComplianceKardexPatrimonialView,
+    ComplianceKardexParticipaView,
+    ComplianceKardexInstrumentoView,
     ComplianceKardexErrorsView,
     ComplianceMyKardexErrorsView,
     ComplianceMyKardexMonthView,
@@ -54,6 +56,16 @@ urlpatterns = [
         "kardex/<str:kardex>/patrimonial/",
         ComplianceKardexPatrimonialView.as_view(),
         name="kardex-patrimonial",
+    ),
+    path(
+        "kardex/<str:kardex>/participa/",
+        ComplianceKardexParticipaView.as_view(),
+        name="kardex-participa",
+    ),
+    path(
+        "kardex/<str:kardex>/instrumento/",
+        ComplianceKardexInstrumentoView.as_view(),
+        name="kardex-instrumento",
     ),
     path("<str:kardex>/", ComplianceDetailView.as_view(), name="detail"),
 ]
