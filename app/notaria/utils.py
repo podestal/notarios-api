@@ -64,6 +64,39 @@ PHONE_REQUIRED_MESSAGE = (
     "Ingrese teléfono fijo o teléfono celular. Debe registrar al menos uno."
 )
 
+CONTRATANTE_PHONE_MESSAGE = (
+    "No se pudo crear el contratante porque el cliente no tiene teléfono fijo ni celular. "
+    "Registre al menos uno en la ficha del cliente."
+)
+
+
+def validation_error_text(exc) -> str:
+    """Flatten a DRF ValidationError into one sentence."""
+    messages = []
+
+    def walk(value):
+        if isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item)
+        else:
+            text = str(value or "").strip()
+            if text and text not in messages:
+                messages.append(text)
+
+    walk(getattr(exc, "detail", None))
+    return " ".join(messages) or "Los datos enviados no son válidos."
+
+
+def contratante_create_error(exc) -> str:
+    text = validation_error_text(exc)
+    lowered = text.lower()
+    if PHONE_REQUIRED_MESSAGE in text or "telfijo" in lowered or "telcel" in lowered:
+        return CONTRATANTE_PHONE_MESSAGE
+    return text
+
 
 def validate_natural_phone(attrs, instance=None):
     """Persona natural must have telfijo or telcel. Email alone is not enough."""

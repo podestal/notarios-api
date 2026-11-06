@@ -1,5 +1,6 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from core.permissions import IsSuperuser
 from core.extraprotocolar_permissions import ExtraProtocolarRestrictedMixin
@@ -1876,6 +1877,12 @@ class ContratantesViewSet(ModelViewSet):
                 transaction.savepoint_commit(sid)
                 return Response(contratante_serializer.data, status=status.HTTP_201_CREATED)
 
+            except ValidationError as exc:
+                transaction.savepoint_rollback(sid)
+                return Response(
+                    {"error": utils.contratante_create_error(exc)},
+                    status=400,
+                )
             except Exception as e:
                 transaction.savepoint_rollback(sid)
                 if attempt == 4:

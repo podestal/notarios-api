@@ -43,6 +43,12 @@ def test_validate_juridica_documento_rejects_invalid_cases(attrs, field):
     assert field in exc.value.detail
 
 
+def test_contratante_create_error_explains_missing_phone():
+    with pytest.raises(ValidationError) as exc:
+        utils.validate_natural_phone({"tipper": "N", "telfijo": "", "telcel": ""})
+    assert utils.contratante_create_error(exc.value) == utils.CONTRATANTE_PHONE_MESSAGE
+
+
 def test_natural_person_requires_telfijo_or_telcel():
     with pytest.raises(ValidationError) as exc:
         utils.validate_natural_phone({"tipper": "N", "telfijo": "", "telcel": "  "})
