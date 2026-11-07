@@ -1,6 +1,11 @@
+from types import SimpleNamespace
+
 from django.test import SimpleTestCase
 
-from compliance.services.patrimonial_progress import evaluate_patrimonial
+from compliance.services.patrimonial_progress import (
+    count_invalid_medio_pago_codigo,
+    evaluate_patrimonial,
+)
 
 
 def _eval(**overrides):
@@ -52,3 +57,27 @@ class PatrimonialProgressTests(SimpleTestCase):
         result = _eval(has_valid_bien=False, bien_incompleto=True)
         self.assertEqual(result["steps"][2]["status"], "error")
         self.assertIn("tipo de bien", result["steps"][2]["issues"][0]["text"])
+
+
+class InvalidMedioPagoCodigoTests(SimpleTestCase):
+    def test_vacio_catalog_code_is_invalid_when_rule_rejects_v(self):
+        rule = SimpleNamespace(data_value="01|02|03|04|05|06|07|08|99")
+        rules = SimpleNamespace(get=lambda code, field: rule)
+        count = count_invalid_medio_pago_codigo(
+            tipos=[SimpleNamespace(idtipoacto="096", actouif="016")],
+            medios=[SimpleNamespace(tipacto="096", codmepag=97)],
+            medios_uif_by_code={97: ""},
+            rules=rules,
+        )
+        self.assertEqual(count, 1)
+
+    def test_valid_transfer_code_passes(self):
+        rule = SimpleNamespace(data_value="01|02|03|04|05|06|07|08|99")
+        rules = SimpleNamespace(get=lambda code, field: rule)
+        count = count_invalid_medio_pago_codigo(
+            tipos=[SimpleNamespace(idtipoacto="096", actouif="016")],
+            medios=[SimpleNamespace(tipacto="096", codmepag=3)],
+            medios_uif_by_code={3: "04"},
+            rules=rules,
+        )
+        self.assertEqual(count, 0)

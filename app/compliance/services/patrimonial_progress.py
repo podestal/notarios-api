@@ -66,6 +66,50 @@ def _issue(step: str, field: str, text: str, source: str = "uif") -> Dict[str, s
     }
 
 
+def count_invalid_medio_pago_codigo(
+    *,
+    tipos: List[Any],
+    medios: List[Any],
+    medios_uif_by_code: Dict[int, str],
+    rules: Any,
+) -> int:
+    """
+    Same check as UIF OperationValidator field 44 (invalid_medio_pago_codigo).
+
+    Catalog uif empty → ``V``. For donación / acto 016, ``V`` is not allowed.
+    """
+    from uif.services.ro_validation_rules import (
+        FIELD_MEDIO_PAGO_CODIGO,
+        medio_pago_uif_validation_value,
+        validation_code,
+    )
+
+    errors = 0
+    for tipo in tipos:
+        uif_code = _clean(getattr(tipo, "actouif", ""))
+        if not uif_code:
+            continue
+        rule = rules.get(uif_code, FIELD_MEDIO_PAGO_CODIGO)
+        if not rule:
+            continue
+        act_code = _clean(getattr(tipo, "idtipoacto", "")).zfill(3)
+        rows = [
+            row
+            for row in medios
+            if str(getattr(row, "tipacto", "") or "").zfill(3) == act_code
+        ]
+        for row in rows:
+            try:
+                code = int(row.codmepag) if row.codmepag is not None else None
+            except (TypeError, ValueError):
+                code = None
+            raw = medios_uif_by_code.get(code, "") if code is not None else ""
+            codigo = medio_pago_uif_validation_value(raw)
+            if validation_code(codigo, rule.data_value):
+                errors += 1
+    return errors
+
+
 def evaluate_patrimonial(
     *,
     started: bool,

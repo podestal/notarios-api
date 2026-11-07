@@ -1,46 +1,27 @@
 """
 One progress tone per kardex for the list.
 
-Same stage rules as the progress rail, loaded in bulk for the current page.
-SISGEN, UIF, and PDT collectors stay on the open kardex: they repeat these
-gaps and would make the list one heavy validation per row.
+Uses the same stage services as the open-kardex rail. No parallel local rules:
+whatever Contratantes / Patrimonial / Participa / Instrumento return is what
+the list shows.
 """
 
 from __future__ import annotations
 
-from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Tuple
 
 from notaria import models
-from uif.services.load_data import _parse_act_codes
 
-from compliance.services.contratantes_progress import (
-    _label as contratante_label,
-    _stage_status,
-    local_contratante_issues,
-)
-from compliance.services.instrumento_progress import (
-    _ESCRITURA_FIELDS,
-    _numero_missing,
-    _present,
-    evaluate_instrumento,
-)
+from compliance.services.contratantes_progress import ContratantesProgressService
+from compliance.services.instrumento_progress import InstrumentoProgressService
 from compliance.services.participa_progress import (
     WITHOUT_PARTICIPA,
+    ParticipaProgressService,
     _clean,
-    _instrument_closed,
-    _label as participa_label,
-    _monto_missing,
-    _yes,
-    evaluate_participa,
-    sisgen_money_required,
 )
 from compliance.services.patrimonial_progress import (
-    PDT_BIEN_ACTS,
     WITHOUT_PATRIMONIAL,
-    _amount_missing,
-    evaluate_patrimonial,
+    PatrimonialProgressService,
 )
 
 STAGE_POINTS = 4
@@ -50,21 +31,6 @@ MAX_KEYS = 40
 TONE_INCOMPLETE = "incomplete"
 TONE_WARNING = "warning"
 TONE_COMPLETE = "complete"
-
-
-@dataclass
-class KardexBundle:
-    row: Any
-    contratantes: list = field(default_factory=list)
-    clientes: Dict[str, Any] = field(default_factory=dict)
-    actos: list = field(default_factory=list)
-    patrimoniales: list = field(default_factory=list)
-    medios: list = field(default_factory=list)
-    bienes: list = field(default_factory=list)
-    rentas: list = field(default_factory=list)
-    tipos: Dict[str, Any] = field(default_factory=dict)
-    valid_ubigeo: set = field(default_factory=set)
-    has_document: bool = False
 
 
 def list_tone(leaves: Iterable[str], error_count: int, warning_count: int) -> str:
@@ -82,30 +48,51 @@ def list_tone(leaves: Iterable[str], error_count: int, warning_count: int) -> st
     return TONE_COMPLETE
 
 
-def score_bundle(bundle: KardexBundle) -> str:
+def score_stages(
+    *,
+    tipkar: int,
+    contratantes: Dict[str, Any],
+    patrimonial: Dict[str, Any] | None,
+    participa: Dict[str, Any] | None,
+    instrumento: Dict[str, Any],
+) -> str:
+    """Same leaf / warning / error weights as the open rail completion score."""
     leaves: List[str] = []
     errors = 0
     warnings = 0
 
-    status, error_n, warning_n = _contratantes(bundle)
-    leaves.append(status)
-    errors += error_n
-    warnings += warning_n
+    leaves.append(_status(contratantes))
+    e, w = _issue_counts(contratantes.get("issues") or [])
+    errors += e
+    warnings += w
 
-    tip = _tip(bundle.row)
-    if tip not in WITHOUT_PATRIMONIAL:
-        patri_errors, patri_leaves = _patrimonial(bundle)
-        errors += patri_errors
-        leaves.extend(patri_leaves)
-    if tip not in WITHOUT_PARTICIPA:
-        part_errors, part_warnings, part_leaves = _participa(bundle)
-        errors += part_errors
-        warnings += part_warnings
-        leaves.extend(part_leaves)
+    if tipkar not in WITHOUT_PATRIMONIAL and patrimonial is not None:
+        by_id = {step["id"]: step for step in patrimonial.get("steps") or []}
+        for step_id in ("patrimonial", "medio-pago", "detalle-bien"):
+            step = by_id.get(step_id) or {}
+            e, w = _issue_counts(step.get("issues") or [])
+            errors += e
+            warnings += w
+        leaves.append(_status(by_id.get("medio-pago") or {}))
+        leaves.append(_status(by_id.get("detalle-bien") or {}))
 
-    inst_errors, inst_leaves = _instrumento(bundle)
-    errors += inst_errors
-    leaves.extend(inst_leaves)
+    if tipkar not in WITHOUT_PARTICIPA and participa is not None:
+        by_id = {step["id"]: step for step in participa.get("steps") or []}
+        for step_id in ("participa", "preguntas-uif"):
+            step = by_id.get(step_id) or {}
+            e, w = _issue_counts(step.get("issues") or [])
+            errors += e
+            warnings += w
+        leaves.append(_status(by_id.get("preguntas-uif") or {}))
+
+    by_id = {step["id"]: step for step in instrumento.get("steps") or []}
+    for step_id in ("digitacion", "escrituracion"):
+        step = by_id.get(step_id) or {}
+        e, w = _issue_counts(step.get("issues") or [])
+        errors += e
+        warnings += w
+        leaves.append(_status(step))
+
     return list_tone(leaves, errors, warnings)
 
 
@@ -115,72 +102,64 @@ class KardexListProgressService:
         if not ordered:
             return {}
 
-        rows = list(models.Kardex.objects.filter(kardex__in=ordered))
-        by_key = {_clean(row.kardex): row for row in rows}
-        found = [key for key in ordered if key in by_key]
-        if not found:
-            return {key: TONE_INCOMPLETE for key in ordered}
-
-        contratantes = list(models.Contratantes.objects.filter(kardex__in=found))
-        actos = list(models.Contratantesxacto.objects.filter(kardex__in=found))
-        person_ids = {
-            _clean(row.idcontratante)
-            for row in [*contratantes, *actos]
-            if _clean(getattr(row, "idcontratante", ""))
-        }
-        clientes = {
-            _clean(row.idcontratante): row
-            for row in models.Cliente2.objects.filter(idcontratante__in=person_ids)
-        } if person_ids else {}
-        ubigeo_codes = {
-            _clean(row.idubigeo) for row in clientes.values() if _clean(getattr(row, "idubigeo", ""))
-        }
-        valid_ubigeo = set(
-            models.Ubigeo.objects.filter(coddis__in=list(ubigeo_codes)).values_list("coddis", flat=True)
-        ) if ubigeo_codes else set()
-
-        patrimoniales = list(models.Patrimonial.objects.filter(kardex__in=found))
-        medios = list(models.Detallemediopago.objects.filter(kardex__in=found))
-        bienes = list(models.Detallebienes.objects.filter(kardex__in=found))
-        rentas = list(models.Renta.objects.filter(kardex__in=found))
-
-        act_codes = set()
-        for row in rows:
-            act_codes.update(_act_codes(row))
-        tipos = {
-            _clean(tipo.idtipoacto): tipo
-            for tipo in models.Tiposdeacto.objects.filter(idtipoacto__in=act_codes)
-        } if act_codes else {}
-        documents = _documents(found)
-
-        grouped = {
-            "contratantes": _group(contratantes),
-            "actos": _group(actos),
-            "patrimoniales": _group(patrimoniales),
-            "medios": _group(medios),
-            "bienes": _group(bienes),
-            "rentas": _group(rentas),
+        rows = {
+            _clean(row.kardex): row
+            for row in models.Kardex.objects.filter(kardex__in=ordered)
         }
         out: Dict[str, str] = {}
+        contratantes_svc = ContratantesProgressService()
+        patrimonial_svc = PatrimonialProgressService()
+        participa_svc = ParticipaProgressService()
+        instrumento_svc = InstrumentoProgressService()
+
         for key in ordered:
-            row = by_key.get(key)
+            row = rows.get(key)
             if row is None:
                 out[key] = TONE_INCOMPLETE
                 continue
-            bundle = KardexBundle(
-                row=row,
-                contratantes=grouped["contratantes"].get(key, []),
-                clientes=clientes,
-                actos=grouped["actos"].get(key, []),
-                patrimoniales=grouped["patrimoniales"].get(key, []),
-                medios=grouped["medios"].get(key, []),
-                bienes=grouped["bienes"].get(key, []),
-                rentas=grouped["rentas"].get(key, []),
-                tipos={code: tipos[code] for code in _act_codes(row) if code in tipos},
-                valid_ubigeo=valid_ubigeo,
-                has_document=key in documents,
+            try:
+                tipkar = int(row.idtipkar or 0)
+            except (TypeError, ValueError):
+                tipkar = 0
+
+            try:
+                contratantes = contratantes_svc.build(key)
+            except LookupError:
+                out[key] = TONE_INCOMPLETE
+                continue
+
+            patrimonial = None
+            if tipkar not in WITHOUT_PATRIMONIAL:
+                try:
+                    patrimonial = patrimonial_svc.build(key)
+                except LookupError:
+                    patrimonial = {"status": "idle", "steps": []}
+
+            participa = None
+            if tipkar not in WITHOUT_PARTICIPA:
+                try:
+                    participa = participa_svc.build(key)
+                except LookupError:
+                    participa = {"status": "idle", "steps": []}
+
+            try:
+                instrumento = instrumento_svc.build(key)
+            except LookupError:
+                instrumento = {
+                    "status": "idle",
+                    "steps": [
+                        {"id": "digitacion", "status": "idle", "issues": []},
+                        {"id": "escrituracion", "status": "idle", "issues": []},
+                    ],
+                }
+
+            out[key] = score_stages(
+                tipkar=tipkar,
+                contratantes=contratantes,
+                patrimonial=patrimonial,
+                participa=participa,
+                instrumento=instrumento,
             )
-            out[key] = score_bundle(bundle)
         return out
 
 
@@ -198,189 +177,12 @@ def _keys(keys: Iterable[str]) -> List[str]:
     return ordered
 
 
-def _group(rows: Iterable[Any]) -> Dict[str, list]:
-    grouped: Dict[str, list] = defaultdict(list)
-    for row in rows:
-        key = _clean(getattr(row, "kardex", ""))
-        if key:
-            grouped[key].append(row)
-    return grouped
+def _status(payload: Dict[str, Any]) -> str:
+    status = _clean(payload.get("status"))
+    return status if status in {"done", "warning", "error", "idle"} else "idle"
 
 
-def _documents(keys: List[str]) -> set:
-    try:
-        from ducumentation.models import Documentogenerados
-
-        return set(
-            Documentogenerados.objects.filter(kardex__in=keys).values_list("kardex", flat=True)
-        )
-    except Exception:
-        return set()
-
-
-def _tip(row: Any) -> int:
-    try:
-        return int(row.idtipkar)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _act_codes(row: Any) -> List[str]:
-    return _parse_act_codes(_clean(getattr(row, "codactos", "")).replace(",", "").replace(" ", ""))
-
-
-def _issue_counts(issues: List[Dict[str, str]]) -> tuple:
+def _issue_counts(issues: List[Dict[str, str]]) -> Tuple[int, int]:
     errors = sum(1 for item in issues if item.get("level") == "error")
     warnings = sum(1 for item in issues if item.get("level") == "warning")
     return errors, warnings
-
-
-def _contratantes(bundle: KardexBundle) -> tuple:
-    if not bundle.contratantes:
-        return "idle", 0, 0
-
-    issues: List[Dict[str, str]] = []
-    for row in bundle.contratantes:
-        cid = _clean(row.idcontratante)
-        cliente = bundle.clientes.get(cid)
-        code = _clean(cliente.idubigeo) if cliente else ""
-        try:
-            idtipdoc = int(cliente.idtipdoc or 0) if cliente else 0
-        except (TypeError, ValueError):
-            idtipdoc = 0
-        issues.extend(
-            local_contratante_issues(
-                idcontratante=cid,
-                label=contratante_label(cliente, cid),
-                tipper=_clean(cliente.tipper) if cliente else "",
-                prinom=_clean(cliente.prinom) if cliente else "",
-                apepat=_clean(cliente.apepat) if cliente else "",
-                razonsocial=_clean(cliente.razonsocial) if cliente else "",
-                nombre=_clean(cliente.nombre) if cliente else "",
-                numdoc=_clean(cliente.numdoc) if cliente else "",
-                idtipdoc=idtipdoc,
-                idubigeo=code,
-                ubigeo_ok=bool(code) and code in bundle.valid_ubigeo,
-                has_condicion=_has_condicion(bundle.actos, cid),
-                has_cliente=cliente is not None,
-            )
-        )
-    # Contact avisos come from SISGEN on the open rail. The list does not run
-    # that collector, so inventing them here made poderes look unfinished while
-    # the modal was already at 100%.
-    errors, warnings = _issue_counts(issues)
-    return _stage_status(issues), errors, warnings
-
-
-def _has_condicion(actos: list, person_id: str) -> bool:
-    for acto in actos:
-        if _clean(acto.idcontratante) == person_id and _clean(acto.idcondicion):
-            return True
-    return False
-
-
-def _patrimonial(bundle: KardexBundle) -> tuple:
-    row = bundle.row
-    closed = _instrument_closed(row)
-    if not bundle.patrimoniales and not closed:
-        return 0, ["idle", "idle"]
-
-    codes = _act_codes(row)
-    tipos = bundle.tipos
-    medios_required = any(_yes(getattr(tipo, "mediospago", "")) for tipo in tipos.values())
-    skip_validation = bool(tipos) and all(
-        _yes(getattr(tipo, "novalidapatri", "")) for tipo in tipos.values()
-    )
-    if skip_validation:
-        return 0, ["done", "done"]
-
-    bienes = bundle.bienes
-    valid_bien = any(int(item.idtipbien or 0) != 0 and _clean(item.tipob) for item in bienes)
-    incompleto = any(int(item.idtipbien or 0) == 0 or not _clean(item.tipob) for item in bienes)
-    exhibe = any(
-        _clean(item.exhibiomp).upper() not in {"N", "NO", "0"} for item in bundle.patrimoniales
-    )
-    result = evaluate_patrimonial(
-        started=True,
-        medios_required=medios_required,
-        bien_required=any(code in PDT_BIEN_ACTS for code in codes),
-        exhibe_medios=True if (not bundle.patrimoniales and medios_required) else exhibe,
-        has_medio_rows=bool(bundle.medios),
-        medio_sin_tipo=any(item.codmepag in (None, 0, "") for item in bundle.medios),
-        medio_sin_monto=any(
-            _clean(item.idmon) not in ("", "0") and _amount_missing(item.importemp)
-            for item in bundle.medios
-        ),
-        has_valid_bien=valid_bien,
-        bien_incompleto=incompleto and not valid_bien,
-    )
-    steps = {step["id"]: step for step in result["steps"]}
-    header_errors, _ = _issue_counts(steps["patrimonial"]["issues"])
-    return header_errors, [steps["medio-pago"]["status"], steps["detalle-bien"]["status"]]
-
-
-def _participa(bundle: KardexBundle) -> tuple:
-    row = bundle.row
-    closed = _instrument_closed(row)
-    started = any(_clean(item.ofondo) for item in bundle.actos) or bool(bundle.rentas)
-    if not started and not closed:
-        return 0, 0, ["idle"]
-
-    codes = _act_codes(row)
-    tipos = list(bundle.tipos.values())
-    money_required = sisgen_money_required(tipos)
-    pdt_ofondo = "094" in codes or _clean(row.codactos) == "094"
-
-    ofondo_gaps: List[str] = []
-    monto_gaps: List[str] = []
-    seen_ofondo: set = set()
-    seen_monto: set = set()
-
-    for item in bundle.actos:
-        person_id = _clean(item.idcontratante)
-        if not person_id:
-            continue
-        name = participa_label(bundle.clientes.get(person_id), person_id)
-        uif = _clean(item.uif).upper()
-        parte = _clean(item.parte)
-        needs_ofondo = (money_required and uif in {"O", "B"}) or (
-            pdt_ofondo and parte in {"1", "2"}
-        )
-        if needs_ofondo and not _clean(item.ofondo) and person_id not in seen_ofondo:
-            seen_ofondo.add(person_id)
-            ofondo_gaps.append(name)
-        if (
-            money_required
-            and uif in {"O", "B"}
-            and _monto_missing(item.monto)
-            and person_id not in seen_monto
-        ):
-            seen_monto.add(person_id)
-            monto_gaps.append(name)
-
-    # Renta gaps are PDT-only (acto 030) via the open-kardex collectors, not here.
-    result = evaluate_participa(
-        started=True,
-        ofondo_gaps=ofondo_gaps,
-        monto_gaps=monto_gaps,
-        renta_required=False,
-        question_gaps=[],
-        formulario_gaps=[],
-    )
-    steps = {step["id"]: step for step in result["steps"]}
-    header_errors, _ = _issue_counts(steps["participa"]["issues"])
-    return header_errors, 0, [steps["preguntas-uif"]["status"]]
-
-
-def _instrumento(bundle: KardexBundle) -> tuple:
-    row = bundle.row
-    started = any(_present(getattr(row, name, "")) for name in _ESCRITURA_FIELDS)
-    result = evaluate_instrumento(
-        digitized=bundle.has_document or started,
-        escritura_started=started,
-        missing_numero=_numero_missing(getattr(row, "numescritura", "")),
-        missing_conclusion=not _clean(getattr(row, "fechaconclusion", "")),
-    )
-    steps = {step["id"]: step for step in result["steps"]}
-    errors, _ = _issue_counts(steps["escrituracion"]["issues"])
-    return errors, [steps["digitacion"]["status"], steps["escrituracion"]["status"]]
