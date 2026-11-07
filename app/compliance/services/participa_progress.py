@@ -66,6 +66,22 @@ def _issue(step: str, field: str, text: str, source: str) -> Dict[str, str]:
     }
 
 
+def sisgen_money_required(tipos: List[Any]) -> bool:
+    """
+    Same gate as DocumentSearchService._sisgen_skip_uif_money_checks.
+
+    Acts in actosNOUIFSUNAT (e.g. poder 0604) do not get monto / origen de fondos
+    errors in SISGEN, even when tiposdeacto.origenfondo is on.
+    """
+    from sisgen.sisgen_acto_xml_rules import cod_ancert_requires_uif_sunat_xml
+
+    for tipo in tipos:
+        code = _clean(getattr(tipo, "cod_ancert", None) or getattr(tipo, "codigo_ancert", None))
+        if cod_ancert_requires_uif_sunat_xml(code):
+            return True
+    return False
+
+
 def _label(cliente: Optional[models.Cliente2], idcontratante: str) -> str:
     if cliente is None:
         return f"Contratante {idcontratante}"
@@ -170,11 +186,9 @@ class ParticipaProgressService:
 
         codes = _parse_act_codes(_clean(row.codactos).replace(",", "").replace(" ", ""))
         tipos = list(models.Tiposdeacto.objects.filter(idtipoacto__in=codes)) if codes else []
-        origen_on = any(_yes(getattr(tipo, "origenfondo", "")) for tipo in tipos)
-        origen_off = bool(tipos) and not origen_on
+        money_required = sisgen_money_required(tipos)
         pdt_ofondo = "094" in codes or _clean(row.codactos) == "094"
         pdt_renta = "030" in codes or _clean(row.codactos) == "030"
-        ofondo_required = pdt_ofondo or origen_on or not origen_off
 
         ids = {_clean(item.idcontratante) for item in actos if _clean(item.idcontratante)}
         clientes = {
@@ -205,13 +219,13 @@ class ParticipaProgressService:
             name = _label(clientes.get(person_id), person_id)
             uif = _clean(item.uif).upper()
             parte = _clean(item.parte)
-            needs_ofondo = ofondo_required and (
-                uif in {"O", "B"} or (pdt_ofondo and parte in {"1", "2"})
+            needs_ofondo = (money_required and uif in {"O", "B"}) or (
+                pdt_ofondo and parte in {"1", "2"}
             )
             if needs_ofondo and not _clean(item.ofondo) and person_id not in seen_ofondo:
                 seen_ofondo.add(person_id)
                 ofondo_gaps.append(name)
-            if ofondo_required and uif in {"O", "B"} and _monto_missing(item.monto) and person_id not in seen_monto:
+            if money_required and uif in {"O", "B"} and _monto_missing(item.monto) and person_id not in seen_monto:
                 seen_monto.add(person_id)
                 monto_gaps.append(name)
 

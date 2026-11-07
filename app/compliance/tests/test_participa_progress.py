@@ -1,6 +1,8 @@
+from types import SimpleNamespace
+
 from django.test import SimpleTestCase
 
-from compliance.services.participa_progress import evaluate_participa
+from compliance.services.participa_progress import evaluate_participa, sisgen_money_required
 
 
 def _eval(**overrides):
@@ -45,3 +47,11 @@ class ParticipaProgressTests(SimpleTestCase):
         result = _eval()
         self.assertEqual(result["status"], "done")
         self.assertEqual(result["steps"][1]["status"], "done")
+
+    def test_poder_0604_does_not_require_sisgen_money(self):
+        tipos = [SimpleNamespace(cod_ancert="0604", codigo_ancert="0604")]
+        self.assertFalse(sisgen_money_required(tipos))
+
+    def test_escritura_ancert_requires_sisgen_money(self):
+        tipos = [SimpleNamespace(cod_ancert="0215", codigo_ancert="0215")]
+        self.assertTrue(sisgen_money_required(tipos))

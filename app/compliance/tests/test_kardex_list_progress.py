@@ -107,9 +107,10 @@ class ScoreBundleTests(SimpleTestCase):
     def test_finished_kardex_is_complete(self):
         self.assertEqual(score_bundle(_bundle()), "complete")
 
-    def test_missing_contact_is_a_warning_when_everything_else_is_done(self):
+    def test_missing_contact_does_not_block_list_complete(self):
+        """List matches the modal: contact avisos are not invented here."""
         bundle = _bundle(cliente=_cliente(telfijo="", telcel="", email=""))
-        self.assertEqual(score_bundle(bundle), "warning")
+        self.assertEqual(score_bundle(bundle), "complete")
 
     def test_a_name_gap_is_incomplete(self):
         bundle = _bundle(cliente=_cliente(apepat=""))

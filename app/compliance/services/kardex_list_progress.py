@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List
 
 from notaria import models
 from uif.services.load_data import _parse_act_codes
@@ -37,6 +37,7 @@ from compliance.services.participa_progress import (
     _monto_missing,
     _yes,
     evaluate_participa,
+    sisgen_money_required,
 )
 from compliance.services.patrimonial_progress import (
     PDT_BIEN_ACTS,
@@ -274,20 +275,9 @@ def _contratantes(bundle: KardexBundle) -> tuple:
                 has_cliente=cliente is not None,
             )
         )
-        if _missing_contact(cliente):
-            who = contratante_label(cliente, cid)
-            issues.append(
-                {
-                    "source": "sisgen",
-                    "level": "warning",
-                    "field": "contacto",
-                    "idcontratante": cid,
-                    "text": (
-                        f"{who}: Falta información de contacto "
-                        "(registre al menos uno: telfijo, telcel o email)"
-                    ),
-                }
-            )
+    # Contact avisos come from SISGEN on the open rail. The list does not run
+    # that collector, so inventing them here made poderes look unfinished while
+    # the modal was already at 100%.
     errors, warnings = _issue_counts(issues)
     return _stage_status(issues), errors, warnings
 
@@ -297,14 +287,6 @@ def _has_condicion(actos: list, person_id: str) -> bool:
         if _clean(acto.idcontratante) == person_id and _clean(acto.idcondicion):
             return True
     return False
-
-
-def _missing_contact(cliente: Optional[Any]) -> bool:
-    if cliente is None or _clean(getattr(cliente, "tipper", "")).upper() != "N":
-        return False
-    return not any(
-        _clean(getattr(cliente, field, "")) for field in ("telfijo", "telcel", "email")
-    )
 
 
 def _patrimonial(bundle: KardexBundle) -> tuple:
@@ -371,11 +353,9 @@ def _participa(bundle: KardexBundle) -> tuple:
 
     codes = _act_codes(row)
     tipos = list(bundle.tipos.values())
-    origen_on = any(_yes(getattr(tipo, "origenfondo", "")) for tipo in tipos)
-    origen_off = bool(tipos) and not origen_on
+    money_required = sisgen_money_required(tipos)
     pdt_ofondo = "094" in codes or _clean(row.codactos) == "094"
     pdt_renta = "030" in codes or _clean(row.codactos) == "030"
-    ofondo_required = pdt_ofondo or origen_on or not origen_off
     renta_by_person = _latest_renta(bundle.rentas)
 
     ofondo_gaps: List[str] = []
@@ -394,14 +374,14 @@ def _participa(bundle: KardexBundle) -> tuple:
         name = participa_label(bundle.clientes.get(person_id), person_id)
         uif = _clean(item.uif).upper()
         parte = _clean(item.parte)
-        needs_ofondo = ofondo_required and (
-            uif in {"O", "B"} or (pdt_ofondo and parte in {"1", "2"})
+        needs_ofondo = (money_required and uif in {"O", "B"}) or (
+            pdt_ofondo and parte in {"1", "2"}
         )
         if needs_ofondo and not _clean(item.ofondo) and person_id not in seen_ofondo:
             seen_ofondo.add(person_id)
             ofondo_gaps.append(name)
         if (
-            ofondo_required
+            money_required
             and uif in {"O", "B"}
             and _monto_missing(item.monto)
             and person_id not in seen_monto
