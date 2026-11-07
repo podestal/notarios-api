@@ -72,7 +72,6 @@ def _bundle(**overrides):
         medios=[],
         bienes=[],
         rentas=[],
-        formularios={},
         tipos={
             "016": SimpleNamespace(
                 idtipoacto="016",

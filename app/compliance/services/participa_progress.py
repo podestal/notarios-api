@@ -2,8 +2,11 @@
 Participa stage for the kardex progress rail.
 
 Nothing saved yet stays gray. Once an origen de fondos or a renta row exists,
-gaps follow SISGEN (origen y monto de otorgantes/beneficiarios) and PDT
-(acto 094 origen, acto 030 preguntas, formulario si el impuesto no es cero).
+origen/monto follow SISGEN money rules (and PDT ofondo for acto 094).
+
+Renta / preguntas UIF come only from the PDT mis-errores collector — same
+PHP rule as getErrors.php: acto 030, parte 1, empty pregu1/2/3. The Participa
+UI flag formulario=1 is not a PDT error and must not invent rail issues.
 """
 
 from __future__ import annotations
@@ -45,15 +48,6 @@ def _monto_missing(value: Any) -> bool:
         return Decimal(text) <= 0
     except Exception:
         return True
-
-
-def _answered(value: Any) -> bool:
-    return _clean(value) in {"0", "1"}
-
-
-def _filled(value: Any) -> bool:
-    text = _clean(value)
-    return bool(text) and text not in {"0", "0.0", "0.00"}
 
 
 def _issue(step: str, field: str, text: str, source: str) -> Dict[str, str]:
@@ -188,29 +182,17 @@ class ParticipaProgressService:
         tipos = list(models.Tiposdeacto.objects.filter(idtipoacto__in=codes)) if codes else []
         money_required = sisgen_money_required(tipos)
         pdt_ofondo = "094" in codes or _clean(row.codactos) == "094"
-        pdt_renta = "030" in codes or _clean(row.codactos) == "030"
 
         ids = {_clean(item.idcontratante) for item in actos if _clean(item.idcontratante)}
         clientes = {
             _clean(cliente.idcontratante): cliente
             for cliente in models.Cliente2.objects.filter(idcontratante__in=ids)
         } if ids else {}
-        renta_by_person = _latest_renta(rentas)
-        formularios = {
-            _clean(item.idrenta): item
-            for item in models.Formulario.objects.filter(
-                idrenta__in=[_clean(item.idrenta) for item in renta_by_person.values()]
-            )
-        } if renta_by_person else {}
 
         ofondo_gaps: List[str] = []
         monto_gaps: List[str] = []
-        question_gaps: List[str] = []
-        formulario_gaps: List[str] = []
         seen_ofondo: set = set()
         seen_monto: set = set()
-        seen_renta: set = set()
-        renta_required = False
 
         for item in actos:
             person_id = _clean(item.idcontratante)
@@ -229,51 +211,19 @@ class ParticipaProgressService:
                 seen_monto.add(person_id)
                 monto_gaps.append(name)
 
-            needs_renta = _clean(item.formulario) == "1" or (pdt_renta and parte == "1")
-            if not needs_renta or person_id in seen_renta:
-                continue
-            seen_renta.add(person_id)
-            renta_required = True
-            renta = renta_by_person.get(person_id)
-            if renta is None or not all(_answered(getattr(renta, field)) for field in ("pregu1", "pregu2", "pregu3")):
-                question_gaps.append(name)
-                continue
-            if _clean(renta.pregu3) == "0":
-                form = formularios.get(_clean(renta.idrenta))
-                if form is None or not _filled(form.numformu) or not _filled(form.monto):
-                    formulario_gaps.append(name)
-
+        # Renta: only via _merge_collectors → PDT getErrors.php (acto 030).
         result = evaluate_participa(
             started=True,
             ofondo_gaps=ofondo_gaps,
             monto_gaps=monto_gaps,
-            renta_required=renta_required,
-            question_gaps=question_gaps,
-            formulario_gaps=formulario_gaps,
+            renta_required=False,
+            question_gaps=[],
+            formulario_gaps=[],
         )
         result = _merge_collectors(key, result)
         result["kardex"] = key
         result["applicable"] = True
         return result
-
-
-def _latest_renta(rows: List[models.Renta]) -> Dict[str, models.Renta]:
-    chosen: Dict[str, models.Renta] = {}
-    for row in rows:
-        person_id = _clean(row.idcontratante)
-        if not person_id:
-            continue
-        current = chosen.get(person_id)
-        if current is None or _renta_key(row) >= _renta_key(current):
-            chosen[person_id] = row
-    return chosen
-
-
-def _renta_key(row: models.Renta) -> int:
-    try:
-        return int(_clean(row.idrenta) or 0)
-    except ValueError:
-        return 0
 
 
 def _merge_collectors(kardex: str, result: Dict[str, Any]) -> Dict[str, Any]:

@@ -37,12 +37,6 @@ class ParticipaProgressTests(SimpleTestCase):
         self.assertEqual(result["steps"][1]["issues"], [])
         self.assertEqual(result["status"], "done")
 
-    def test_missing_formulario_when_impuesto_is_not_zero(self):
-        result = _eval(formulario_gaps=["Ana"])
-        self.assertEqual(result["steps"][1]["status"], "error")
-        self.assertIn("formulario", result["steps"][1]["issues"][0]["text"])
-        self.assertEqual(result["status"], "error")
-
     def test_complete(self):
         result = _eval()
         self.assertEqual(result["status"], "done")

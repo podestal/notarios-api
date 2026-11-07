@@ -28,12 +28,9 @@ from compliance.services.instrumento_progress import (
 )
 from compliance.services.participa_progress import (
     WITHOUT_PARTICIPA,
-    _answered,
     _clean,
-    _filled,
     _instrument_closed,
     _label as participa_label,
-    _latest_renta,
     _monto_missing,
     _yes,
     evaluate_participa,
@@ -65,7 +62,6 @@ class KardexBundle:
     medios: list = field(default_factory=list)
     bienes: list = field(default_factory=list)
     rentas: list = field(default_factory=list)
-    formularios: Dict[str, Any] = field(default_factory=dict)
     tipos: Dict[str, Any] = field(default_factory=dict)
     valid_ubigeo: set = field(default_factory=set)
     has_document: bool = False
@@ -147,11 +143,6 @@ class KardexListProgressService:
         medios = list(models.Detallemediopago.objects.filter(kardex__in=found))
         bienes = list(models.Detallebienes.objects.filter(kardex__in=found))
         rentas = list(models.Renta.objects.filter(kardex__in=found))
-        renta_ids = [_clean(row.idrenta) for row in rentas if _clean(row.idrenta)]
-        formularios = {
-            _clean(row.idrenta): row
-            for row in models.Formulario.objects.filter(idrenta__in=renta_ids)
-        } if renta_ids else {}
 
         act_codes = set()
         for row in rows:
@@ -185,7 +176,6 @@ class KardexListProgressService:
                 medios=grouped["medios"].get(key, []),
                 bienes=grouped["bienes"].get(key, []),
                 rentas=grouped["rentas"].get(key, []),
-                formularios=formularios,
                 tipos={code: tipos[code] for code in _act_codes(row) if code in tipos},
                 valid_ubigeo=valid_ubigeo,
                 has_document=key in documents,
@@ -297,8 +287,6 @@ def _patrimonial(bundle: KardexBundle) -> tuple:
 
     codes = _act_codes(row)
     tipos = bundle.tipos
-    cuantia_flags = [_clean(getattr(tipo, "cuantia", "")) for tipo in tipos.values()]
-    cuantia_required = any(_yes(flag) for flag in cuantia_flags) if cuantia_flags else True
     medios_required = any(_yes(getattr(tipo, "mediospago", "")) for tipo in tipos.values())
     skip_validation = bool(tipos) and all(
         _yes(getattr(tipo, "novalidapatri", "")) for tipo in tipos.values()
@@ -314,22 +302,9 @@ def _patrimonial(bundle: KardexBundle) -> tuple:
     )
     result = evaluate_patrimonial(
         started=True,
-        cuantia_required=cuantia_required,
         medios_required=medios_required,
         bien_required=any(code in PDT_BIEN_ACTS for code in codes),
         exhibe_medios=True if (not bundle.patrimoniales and medios_required) else exhibe,
-        missing_moneda=(not bundle.patrimoniales and cuantia_required) or any(
-            not _clean(item.idmon) or _clean(item.idmon) == "0" for item in bundle.patrimoniales
-        ),
-        missing_monto=(not bundle.patrimoniales and cuantia_required) or any(
-            _amount_missing(item.importetrans) for item in bundle.patrimoniales
-        ),
-        missing_fpago=(not bundle.patrimoniales and cuantia_required) or any(
-            not _clean(item.fpago) for item in bundle.patrimoniales
-        ),
-        missing_oportunidad=(not bundle.patrimoniales and cuantia_required) or any(
-            not _clean(item.idoppago) for item in bundle.patrimoniales
-        ),
         has_medio_rows=bool(bundle.medios),
         medio_sin_tipo=any(item.codmepag in (None, 0, "") for item in bundle.medios),
         medio_sin_monto=any(
@@ -355,17 +330,11 @@ def _participa(bundle: KardexBundle) -> tuple:
     tipos = list(bundle.tipos.values())
     money_required = sisgen_money_required(tipos)
     pdt_ofondo = "094" in codes or _clean(row.codactos) == "094"
-    pdt_renta = "030" in codes or _clean(row.codactos) == "030"
-    renta_by_person = _latest_renta(bundle.rentas)
 
     ofondo_gaps: List[str] = []
     monto_gaps: List[str] = []
-    question_gaps: List[str] = []
-    formulario_gaps: List[str] = []
     seen_ofondo: set = set()
     seen_monto: set = set()
-    seen_renta: set = set()
-    renta_required = False
 
     for item in bundle.actos:
         person_id = _clean(item.idcontratante)
@@ -389,34 +358,18 @@ def _participa(bundle: KardexBundle) -> tuple:
             seen_monto.add(person_id)
             monto_gaps.append(name)
 
-        needs_renta = _clean(item.formulario) == "1" or (pdt_renta and parte == "1")
-        if not needs_renta or person_id in seen_renta:
-            continue
-        seen_renta.add(person_id)
-        renta_required = True
-        renta = renta_by_person.get(person_id)
-        if renta is None or not all(
-            _answered(getattr(renta, field)) for field in ("pregu1", "pregu2", "pregu3")
-        ):
-            question_gaps.append(name)
-            continue
-        if _clean(renta.pregu3) == "0":
-            form = bundle.formularios.get(_clean(renta.idrenta))
-            if form is None or not _filled(form.numformu) or not _filled(form.monto):
-                formulario_gaps.append(name)
-
+    # Renta gaps are PDT-only (acto 030) via the open-kardex collectors, not here.
     result = evaluate_participa(
         started=True,
         ofondo_gaps=ofondo_gaps,
         monto_gaps=monto_gaps,
-        renta_required=renta_required,
-        question_gaps=question_gaps,
-        formulario_gaps=formulario_gaps,
+        renta_required=False,
+        question_gaps=[],
+        formulario_gaps=[],
     )
     steps = {step["id"]: step for step in result["steps"]}
     header_errors, _ = _issue_counts(steps["participa"]["issues"])
-    pregunta_errors, _ = _issue_counts(steps["preguntas-uif"]["issues"])
-    return header_errors + pregunta_errors, 0, [steps["preguntas-uif"]["status"]]
+    return header_errors, 0, [steps["preguntas-uif"]["status"]]
 
 
 def _instrumento(bundle: KardexBundle) -> tuple:

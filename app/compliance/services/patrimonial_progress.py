@@ -69,38 +69,25 @@ def _issue(step: str, field: str, text: str, source: str = "uif") -> Dict[str, s
 def evaluate_patrimonial(
     *,
     started: bool,
-    cuantia_required: bool,
     medios_required: bool,
     bien_required: bool,
     exhibe_medios: bool,
-    missing_moneda: bool,
-    missing_monto: bool,
-    missing_fpago: bool,
-    missing_oportunidad: bool,
     has_medio_rows: bool,
     medio_sin_tipo: bool,
     medio_sin_monto: bool,
     has_valid_bien: bool,
     bien_incompleto: bool,
 ) -> Dict[str, Any]:
-    """Return parent + child statuses. Not started is idle, not an error."""
+    """
+    Return parent + child statuses. Not started is idle, not an error.
+
+    Cuantía / forma / oportunidad gaps come only from UIF and SISGEN collectors
+    (same criteria as the errors panel). Empty idoppago is valid in UIF (``V``).
+    """
     if not started:
         return _payload("idle", [], [], [])
 
     header: List[Dict[str, str]] = []
-    if cuantia_required:
-        if missing_moneda:
-            header.append(_issue("patrimonial", "moneda", "Falta la moneda de la operación"))
-        if missing_monto:
-            header.append(_issue("patrimonial", "cuantia", "Falta la cuantía de la operación"))
-        if missing_fpago:
-            header.append(_issue("patrimonial", "fpago", "Falta la forma de pago"))
-        if missing_oportunidad:
-            header.append(_issue("patrimonial", "oportunidad", "Falta la oportunidad de pago"))
-    elif not missing_moneda and missing_monto:
-        header.append(
-            _issue("patrimonial", "cuantia", "Moneda informada sin monto de la operación")
-        )
 
     medios: List[Dict[str, str]] = []
     medio_status = "idle"
@@ -197,8 +184,6 @@ class PatrimonialProgressService:
             _clean(tipo.idtipoacto): tipo
             for tipo in models.Tiposdeacto.objects.filter(idtipoacto__in=codes)
         } if codes else {}
-        cuantia_flags = [_clean(getattr(tipo, "cuantia", "")) for tipo in tipos.values()]
-        cuantia_required = any(_yes(flag) for flag in cuantia_flags) if cuantia_flags else True
         medios_required = any(_yes(getattr(tipo, "mediospago", "")) for tipo in tipos.values())
         skip_validation = bool(tipos) and all(
             _yes(getattr(tipo, "novalidapatri", "")) for tipo in tipos.values()
@@ -226,22 +211,9 @@ class PatrimonialProgressService:
 
         result = evaluate_patrimonial(
             started=started,
-            cuantia_required=cuantia_required,
             medios_required=medios_required,
             bien_required=bien_required,
             exhibe_medios=True if (not patrimoniales and medios_required) else exhibe,
-            missing_moneda=(not patrimoniales and cuantia_required) or any(
-                not _clean(item.idmon) or _clean(item.idmon) == "0" for item in patrimoniales
-            ),
-            missing_monto=(not patrimoniales and cuantia_required) or any(
-                _amount_missing(item.importetrans) for item in patrimoniales
-            ),
-            missing_fpago=(not patrimoniales and cuantia_required) or any(
-                not _clean(item.fpago) for item in patrimoniales
-            ),
-            missing_oportunidad=(not patrimoniales and cuantia_required) or any(
-                not _clean(item.idoppago) for item in patrimoniales
-            ),
             has_medio_rows=bool(medios),
             medio_sin_tipo=any(item.codmepag in (None, 0, "") for item in medios),
             medio_sin_monto=any(
