@@ -125,4 +125,10 @@ def validate_kardex_like_uif_report(kardex_number: str) -> Dict:
 
 
 def collect_uif_issues(kardex: str) -> dict:
-    return build_uif_block(validate_kardex_like_uif_report(kardex))
+    from compliance.services.collector_cache import cached_call
+
+    return cached_call(
+        "uif",
+        kardex,
+        lambda: build_uif_block(validate_kardex_like_uif_report(kardex)),
+    )

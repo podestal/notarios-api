@@ -12,7 +12,13 @@ from notaria.services.pdt_mis_errores_service import (
 
 
 def collect_pdt_issues(kardex: str) -> dict:
-    return build_pdt_block(list_errors_for_kardex(kardex))
+    from compliance.services.collector_cache import cached_call
+
+    return cached_call(
+        "pdt",
+        kardex,
+        lambda: build_pdt_block(list_errors_for_kardex(kardex)),
+    )
 
 
 def bulk_collect_pdt_error_counts(kardex_keys: List[str]) -> Dict[str, int]:

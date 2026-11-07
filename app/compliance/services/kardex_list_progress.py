@@ -1,17 +1,21 @@
 """
 One progress tone per kardex for the list.
 
-Uses the same stage services as the open-kardex rail. No parallel local rules:
-whatever Contratantes / Patrimonial / Participa / Instrumento return is what
-the list shows.
+Uses the same stage services as the open rail (no parallel local rules).
+Collectors are memoized for the request and tones are built in parallel so a
+page does not re-run SISGEN/UIF/PDT three times per row.
 """
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, Iterable, List, Tuple
+
+from django.db import connection
 
 from notaria import models
 
+from compliance.services.collector_cache import CollectorCache, collector_cache_scope
 from compliance.services.contratantes_progress import ContratantesProgressService
 from compliance.services.instrumento_progress import InstrumentoProgressService
 from compliance.services.participa_progress import (
@@ -27,6 +31,7 @@ from compliance.services.patrimonial_progress import (
 STAGE_POINTS = 4
 ERROR_POINTS = 1
 MAX_KEYS = 40
+MAX_WORKERS = 8
 
 TONE_INCOMPLETE = "incomplete"
 TONE_WARNING = "warning"
@@ -104,63 +109,95 @@ class KardexListProgressService:
 
         rows = {
             _clean(row.kardex): row
-            for row in models.Kardex.objects.filter(kardex__in=ordered)
+            for row in models.Kardex.objects.filter(kardex__in=ordered).only(
+                "kardex",
+                "idtipkar",
+                "estado_sisgen",
+                "numescritura",
+            )
         }
-        out: Dict[str, str] = {}
-        contratantes_svc = ContratantesProgressService()
-        patrimonial_svc = PatrimonialProgressService()
-        participa_svc = ParticipaProgressService()
-        instrumento_svc = InstrumentoProgressService()
-
+        jobs = []
         for key in ordered:
             row = rows.get(key)
             if row is None:
-                out[key] = TONE_INCOMPLETE
                 continue
             try:
                 tipkar = int(row.idtipkar or 0)
             except (TypeError, ValueError):
                 tipkar = 0
+            jobs.append((key, tipkar))
 
-            try:
-                contratantes = contratantes_svc.build(key)
-            except LookupError:
-                out[key] = TONE_INCOMPLETE
-                continue
+        out: Dict[str, str] = {key: TONE_INCOMPLETE for key in ordered if key not in rows}
+        if not jobs:
+            return {key: TONE_INCOMPLETE for key in ordered}
 
-            patrimonial = None
-            if tipkar not in WITHOUT_PATRIMONIAL:
-                try:
-                    patrimonial = patrimonial_svc.build(key)
-                except LookupError:
-                    patrimonial = {"status": "idle", "steps": []}
-
-            participa = None
-            if tipkar not in WITHOUT_PARTICIPA:
-                try:
-                    participa = participa_svc.build(key)
-                except LookupError:
-                    participa = {"status": "idle", "steps": []}
-
-            try:
-                instrumento = instrumento_svc.build(key)
-            except LookupError:
-                instrumento = {
-                    "status": "idle",
-                    "steps": [
-                        {"id": "digitacion", "status": "idle", "issues": []},
-                        {"id": "escrituracion", "status": "idle", "issues": []},
-                    ],
-                }
-
-            out[key] = score_stages(
-                tipkar=tipkar,
-                contratantes=contratantes,
-                patrimonial=patrimonial,
-                participa=participa,
-                instrumento=instrumento,
-            )
+        cache = CollectorCache()
+        workers = min(MAX_WORKERS, len(jobs))
+        with collector_cache_scope(cache):
+            if workers == 1:
+                for key, tipkar in jobs:
+                    out[key] = _tone_for_kardex(key, tipkar, cache)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {
+                        pool.submit(_tone_for_kardex, key, tipkar, cache): key
+                        for key, tipkar in jobs
+                    }
+                    for future in as_completed(futures):
+                        key = futures[future]
+                        try:
+                            out[key] = future.result()
+                        except Exception:
+                            out[key] = TONE_INCOMPLETE
         return out
+
+
+def _tone_for_kardex(key: str, tipkar: int, cache: CollectorCache) -> str:
+    with collector_cache_scope(cache):
+        try:
+            return _score_kardex(key, tipkar)
+        finally:
+            connection.close()
+
+
+def _score_kardex(key: str, tipkar: int) -> str:
+    try:
+        contratantes = ContratantesProgressService().build(key)
+    except LookupError:
+        return TONE_INCOMPLETE
+
+    patrimonial = None
+    if tipkar not in WITHOUT_PATRIMONIAL:
+        try:
+            patrimonial = PatrimonialProgressService().build(key)
+        except LookupError:
+            patrimonial = {"status": "idle", "steps": []}
+
+    participa = None
+    if tipkar not in WITHOUT_PARTICIPA:
+        try:
+            participa = ParticipaProgressService().build(key)
+        except LookupError:
+            participa = {"status": "idle", "steps": []}
+
+    try:
+        instrumento = InstrumentoProgressService().build(key)
+    except LookupError:
+        instrumento = {
+            "status": "idle",
+            "steps": [
+                {"id": "digitacion", "status": "idle", "issues": []},
+                {"id": "escrituracion", "status": "idle", "issues": []},
+            ],
+        }
+
+    return score_stages(
+        tipkar=tipkar,
+        contratantes=contratantes,
+        patrimonial=patrimonial,
+        participa=participa,
+        instrumento=instrumento,
+    )
 
 
 def _keys(keys: Iterable[str]) -> List[str]:

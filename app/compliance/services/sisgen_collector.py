@@ -54,6 +54,12 @@ def bulk_collect_sisgen_issue_counts(kardex_list: list) -> dict:
 
 
 def collect_sisgen_issues(kardex: str) -> dict:
+    from compliance.services.collector_cache import cached_call
+
+    return cached_call("sisgen", kardex, lambda: _collect_sisgen_issues_uncached(kardex))
+
+
+def _collect_sisgen_issues_uncached(kardex: str) -> dict:
     service = DocumentSearchService()
     docs = service._execute_batch_query([kardex])
     if not docs:
