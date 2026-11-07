@@ -267,15 +267,21 @@ class PatrimonialProgressService:
             has_valid_bien=valid_bien,
             bien_incompleto=incompleto and not valid_bien,
         )
-        result = _merge_collectors(key, result)
+        result = _merge_collectors(key, result, kardex_row=row)
         result["kardex"] = key
         result["applicable"] = True
         return result
 
 
-def _merge_collectors(kardex: str, result: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_collectors(
+    kardex: str,
+    result: Dict[str, Any],
+    *,
+    kardex_row=None,
+) -> Dict[str, Any]:
     from compliance.services.pdt_collector import collect_pdt_issues
     from compliance.services.sisgen_collector import collect_sisgen_issues
+    from compliance.services.sisgen_progress_gate import should_report_sisgen_issues
     from compliance.services.uif_collector import collect_uif_issues
 
     by_step = {step["id"]: step for step in result["steps"]}
@@ -312,14 +318,15 @@ def _merge_collectors(kardex: str, result: Dict[str, Any]) -> Dict[str, Any]:
             continue
         push("detalle-bien", item.get("error") or item.get("error_description") or "", "pdt")
 
-    try:
-        sisgen = collect_sisgen_issues(kardex)
-    except Exception:
-        sisgen = {}
-    for text in list(sisgen.get("errores") or []):
-        step_id = _sisgen_step(text)
-        if step_id:
-            push(step_id, text, "sisgen")
+    if should_report_sisgen_issues(kardex_row):
+        try:
+            sisgen = collect_sisgen_issues(kardex)
+        except Exception:
+            sisgen = {}
+        for text in list(sisgen.get("errores") or []):
+            step_id = _sisgen_step(text)
+            if step_id:
+                push(step_id, text, "sisgen")
 
     return result
 

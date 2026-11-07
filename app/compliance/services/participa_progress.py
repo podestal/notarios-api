@@ -220,15 +220,21 @@ class ParticipaProgressService:
             question_gaps=[],
             formulario_gaps=[],
         )
-        result = _merge_collectors(key, result)
+        result = _merge_collectors(key, result, kardex_row=row)
         result["kardex"] = key
         result["applicable"] = True
         return result
 
 
-def _merge_collectors(kardex: str, result: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_collectors(
+    kardex: str,
+    result: Dict[str, Any],
+    *,
+    kardex_row=None,
+) -> Dict[str, Any]:
     from compliance.services.pdt_collector import collect_pdt_issues
     from compliance.services.sisgen_collector import collect_sisgen_issues
+    from compliance.services.sisgen_progress_gate import should_report_sisgen_issues
 
     by_step = {step["id"]: step for step in result["steps"]}
     seen = {_clean(issue["text"]).lower() for step in result["steps"] for issue in step["issues"]}
@@ -255,14 +261,15 @@ def _merge_collectors(kardex: str, result: Dict[str, Any]) -> Dict[str, Any]:
         elif kind == "renta":
             push("preguntas-uif", text, "pdt")
 
-    try:
-        sisgen = collect_sisgen_issues(kardex)
-    except Exception:
-        sisgen = {}
-    for text in list(sisgen.get("errores") or []):
-        step_id = _sisgen_step(text)
-        if step_id:
-            push(step_id, text, "sisgen")
+    if should_report_sisgen_issues(kardex_row):
+        try:
+            sisgen = collect_sisgen_issues(kardex)
+        except Exception:
+            sisgen = {}
+        for text in list(sisgen.get("errores") or []):
+            step_id = _sisgen_step(text)
+            if step_id:
+                push(step_id, text, "sisgen")
 
     return result
 

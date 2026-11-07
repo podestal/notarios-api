@@ -145,11 +145,12 @@ def _sisgen_person_is_contratante(text: str) -> bool:
 
 
 def _persona_level(text: str) -> str:
-    """Missing phone or email is an aviso. Name, document, and ubigeo stay errors."""
-    lowered = text.lower()
-    if "información de contacto" in lowered or "informacion de contacto" in lowered:
-        return "warning"
-    return "error"
+    """
+    SISGEN ``personas`` are avisos in the errors panel (Personas tab), not Errores.
+    Keep that level on the rail so constitution / registral / contact do not FALLÓ.
+    """
+    del text
+    return "warning"
 
 
 def _stage_status(issues: List[Dict[str, str]]) -> str:
@@ -239,7 +240,7 @@ class ContratantesProgressService:
                 )
             )
 
-        issues.extend(self._from_collectors(key, issues))
+        issues.extend(self._from_collectors(key, issues, kardex_row=kardex_row))
         unique = _unique(issues)
         return {
             "kardex": key,
@@ -248,7 +249,15 @@ class ContratantesProgressService:
             "issues": unique,
         }
 
-    def _from_collectors(self, kardex: str, existing: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def _from_collectors(
+        self,
+        kardex: str,
+        existing: List[Dict[str, str]],
+        *,
+        kardex_row=None,
+    ) -> List[Dict[str, str]]:
+        from compliance.services.sisgen_progress_gate import should_report_sisgen_issues
+
         seen = {_dedupe_key(item) for item in existing}
         extra: List[Dict[str, str]] = []
 
@@ -259,32 +268,33 @@ class ContratantesProgressService:
             seen.add(key)
             extra.append(issue)
 
-        try:
-            sisgen = collect_sisgen_issues(kardex)
-        except Exception:
-            sisgen = {}
-        for text in list(sisgen.get("personas") or []):
-            cleaned = _clean(text)
-            push(
-                {
-                    "source": "sisgen",
-                    "level": _persona_level(cleaned),
-                    "field": _field_from_text(cleaned),
-                    "idcontratante": "",
-                    "text": cleaned,
-                }
-            )
-        for text in list(sisgen.get("errores") or []):
-            if _sisgen_person_is_contratante(_clean(text)):
+        if should_report_sisgen_issues(kardex_row):
+            try:
+                sisgen = collect_sisgen_issues(kardex)
+            except Exception:
+                sisgen = {}
+            for text in list(sisgen.get("personas") or []):
+                cleaned = _clean(text)
                 push(
                     {
                         "source": "sisgen",
-                        "level": "error",
-                        "field": _field_from_text(text),
+                        "level": _persona_level(cleaned),
+                        "field": _field_from_text(cleaned),
                         "idcontratante": "",
-                        "text": _clean(text),
+                        "text": cleaned,
                     }
                 )
+            for text in list(sisgen.get("errores") or []):
+                if _sisgen_person_is_contratante(_clean(text)):
+                    push(
+                        {
+                            "source": "sisgen",
+                            "level": "error",
+                            "field": _field_from_text(text),
+                            "idcontratante": "",
+                            "text": _clean(text),
+                        }
+                    )
 
         try:
             uif = collect_uif_issues(kardex)
