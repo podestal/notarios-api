@@ -2251,21 +2251,46 @@ class Cliente2ViewSet(ModelViewSet):
 
     @transaction.atomic
     def perform_update(self, serializer):
-        updated_cliente2 = serializer.save()
+        # MySQL triggers fnprofesion_plantilla(_update) on cliente2 copy the
+        # incoming detaprofesion into profesion_plantilla, then overwrite
+        # detaprofesion with profesiones.desprofesion. Preserve free-text detail.
+        instance_before = serializer.instance
+        previous_plantilla = (
+            (getattr(instance_before, "profesion_plantilla", None) or "").strip()
+            if instance_before is not None
+            else ""
+        )
         detaprofesion_in = serializer.validated_data.get("detaprofesion", None)
+        plantilla_in = serializer.validated_data.get("profesion_plantilla", None)
+        custom_profesion = None
+        if detaprofesion_in is not None and str(detaprofesion_in).strip() != "":
+            custom_profesion = str(detaprofesion_in).strip()
+        elif plantilla_in is not None and str(plantilla_in).strip() != "":
+            custom_profesion = str(plantilla_in).strip()
+        elif previous_plantilla:
+            custom_profesion = previous_plantilla
+
+        updated_cliente2 = serializer.save()
         overrides = {}
-        if detaprofesion_in is not None:
-            # Force requested detail in cliente2 as well.
+        if custom_profesion is not None:
+            # Re-apply free text: trigger stores it in profesion_plantilla and
+            # resets detaprofesion to the catalog label. Sync cliente with the
+            # free-text value (cliente has no equivalent trigger).
             models.Cliente2.objects.filter(pk=updated_cliente2.pk).update(
-                detaprofesion=detaprofesion_in
+                detaprofesion=custom_profesion
             )
-            overrides["detaprofesion"] = detaprofesion_in
+            overrides["detaprofesion"] = custom_profesion
         utils.apply_juridica_residente_blank(updated_cliente2)
         if (getattr(updated_cliente2, "tipper", None) or "").strip().upper() == "J":
             overrides["residente"] = ""
         # DB triggers/procedures can mutate cliente2 fields after UPDATE.
         # Reload to sync cliente with the true persisted state.
         updated_cliente2.refresh_from_db()
+        if custom_profesion is not None:
+            # Expose free-text in the API response so the UI keeps the suffix
+            # the user typed (e.g. "ABOGADO litigante").
+            updated_cliente2.profesion_plantilla = custom_profesion
+            updated_cliente2.detaprofesion = custom_profesion
         _sync_cliente_from_cliente2(updated_cliente2, force_overrides=overrides or None)
         kardex_codes = (
             models.Contratantes.objects.filter(idcontratante=updated_cliente2.idcontratante)
