@@ -30,6 +30,7 @@ from uif.services.complementary import (
     has_medios_for_act,
 )
 from uif.services.conyuge_fields import resolve_conyuge_fields
+from uif.services.keys import lookup_cxa_rows
 from uif.services.constants import (
     ACTS_CONSTITUCION_RUC_CORRECTABLE,
     ACTS_EXEMPT_BENEFICIARIO_AMOUNT,
@@ -289,34 +290,31 @@ class ParticipantFieldsValidator:
         contratantesxacto_map: Dict,
     ) -> List[dict]:
         act_variants = {cod_acto, str(cod_acto).zfill(3), str(cod_acto).lstrip("0")}
-        act_padded = str(cod_acto).zfill(3)
         result = []
 
         for contratante in contratantes_map.get(kardex, []):
             if not firma_in_report_range(contratante.fechafirma, range_start, range_end):
                 continue
-            cxa = contratantesxacto_map.get(
-                f"{kardex}_{cod_acto}_{contratante.idcontratante}"
-            ) or contratantesxacto_map.get(
-                f"{kardex}_{act_padded}_{contratante.idcontratante}"
-            )
-            if not cxa or str(cxa.idtipoacto or "") not in act_variants:
-                continue
-            role = (cxa.uif or "").strip().upper()
-            if role not in PLANE_PARTICIPANT_ROLES:
-                continue
             cliente = clientes_map.get(contratante.idcontratante)
             if not cliente:
                 continue
-            result.append(
-                {
-                    "role": role,
-                    "cxa": cxa,
-                    "cliente": cliente,
-                    "contratante": contratante,
-                    "nombre": _participant_name(cliente, contratante.idcontratante),
-                }
-            )
+            for cxa in lookup_cxa_rows(
+                contratantesxacto_map, kardex, cod_acto, contratante.idcontratante
+            ):
+                if str(cxa.idtipoacto or "") not in act_variants:
+                    continue
+                role = (cxa.uif or "").strip().upper()
+                if role not in PLANE_PARTICIPANT_ROLES:
+                    continue
+                result.append(
+                    {
+                        "role": role,
+                        "cxa": cxa,
+                        "cliente": cliente,
+                        "contratante": contratante,
+                        "nombre": _participant_name(cliente, contratante.idcontratante),
+                    }
+                )
         result.sort(key=lambda x: x["role"], reverse=True)
         return result
 
@@ -328,33 +326,27 @@ class ParticipantFieldsValidator:
         clientes_map: Dict,
         contratantesxacto_map: Dict,
     ) -> List[dict]:
-        act_variants = {cod_acto, str(cod_acto).zfill(3), str(cod_acto).lstrip("0")}
-        act_padded = str(cod_acto).zfill(3)
         result = []
 
         for contratante in contratantes_map.get(kardex, []):
-            cxa = contratantesxacto_map.get(
-                f"{kardex}_{cod_acto}_{contratante.idcontratante}"
-            ) or contratantesxacto_map.get(
-                f"{kardex}_{act_padded}_{contratante.idcontratante}"
-            )
-            if not cxa:
-                continue
-            role = (cxa.uif or "").strip().upper()
-            if role not in PLANE_PARTICIPANT_ROLES:
-                continue
             cliente = clientes_map.get(contratante.idcontratante)
             if not cliente:
                 continue
-            result.append(
-                {
-                    "role": role,
-                    "cxa": cxa,
-                    "cliente": cliente,
-                    "contratante": contratante,
-                    "nombre": _participant_name(cliente, contratante.idcontratante),
-                }
-            )
+            for cxa in lookup_cxa_rows(
+                contratantesxacto_map, kardex, cod_acto, contratante.idcontratante
+            ):
+                role = (cxa.uif or "").strip().upper()
+                if role not in PLANE_PARTICIPANT_ROLES:
+                    continue
+                result.append(
+                    {
+                        "role": role,
+                        "cxa": cxa,
+                        "cliente": cliente,
+                        "contratante": contratante,
+                        "nombre": _participant_name(cliente, contratante.idcontratante),
+                    }
+                )
 
         result.sort(key=lambda x: x["role"], reverse=True)
         return result

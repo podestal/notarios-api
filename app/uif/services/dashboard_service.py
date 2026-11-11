@@ -291,15 +291,14 @@ class UifDashboardService:
         contratantesxacto_map = {}
         if all_contratante_ids and kardex_numbers and act_codes:
             act_filter = list({*act_codes, *[str(a).zfill(3) for a in act_codes]})
+            from uif.services.keys import append_cxa_to_map
+
             for cxa in models.Contratantesxacto.objects.filter(
                 kardex__in=kardex_numbers,
                 idtipoacto__in=act_filter,
                 idcontratante__in=all_contratante_ids,
             ):
-                key = f"{cxa.kardex}_{cxa.idtipoacto}_{cxa.idcontratante}"
-                contratantesxacto_map[key] = cxa
-                key_z = f"{cxa.kardex}_{str(cxa.idtipoacto).zfill(3)}_{cxa.idcontratante}"
-                contratantesxacto_map[key_z] = cxa
+                append_cxa_to_map(contratantesxacto_map, cxa)
 
         detalle_medio_pago_map = {}
         if kardex_numbers:

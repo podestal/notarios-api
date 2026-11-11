@@ -77,3 +77,35 @@ class ParticipantAmountTests(SimpleTestCase):
         )
         self.assertTrue(any(e["error_type"] == "amount_mismatch" for e in errors))
         self.assertIn("otorgantes", errors[0]["error_description"])
+
+    def test_same_person_otorgante_and_representante_keeps_o_amount(self):
+        """O+R on one contratante must still count the O monto toward the sum."""
+        patrimonial_map = {("K1", "094"): self._patrimonial("8000")}
+        o1 = MagicMock(idcontratante="1")
+        o_and_r = MagicMock(idcontratante="2")
+        b1 = MagicMock(idcontratante="3")
+        contratantes_map = {"K1": [o1, o_and_r, b1]}
+        clientes_map = {
+            "1": MagicMock(nombre="Vendedor1", razonsocial=None, tipper="N"),
+            "2": MagicMock(nombre="VendedorRep", razonsocial=None, tipper="N"),
+            "3": MagicMock(nombre="Comprador", razonsocial=None, tipper="N"),
+        }
+        contratantesxacto_map = {
+            "K1_094_1": self._cxa("O", "4000"),
+            "K1_094_2": [self._cxa("O", "4000"), self._cxa("R", "")],
+            "K1_094_3": self._cxa("B", "8000"),
+        }
+
+        errors = self.validator.validate(
+            "K1",
+            "094",
+            "COMPRA VENTA",
+            "010",
+            1,
+            patrimonial_map,
+            contratantes_map,
+            clientes_map,
+            contratantesxacto_map,
+        )
+        amount_errors = [e for e in errors if e["error_type"] == "amount_mismatch"]
+        self.assertEqual(amount_errors, [])

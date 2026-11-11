@@ -32,6 +32,11 @@ UIF_CONTRATANTE_FIELDS = {
     "missing_provincia": "ubigeo",
     "missing_distrito": "ubigeo",
     "missing_direccion": "direccion",
+    # Representante fields live on Contratantes (inscrito / sede / partida).
+    "missing_tipo_representacion": "representacion",
+    "missing_persona_que_representa": "representacion",
+    "missing_zona_registral": "zona_registral",
+    "missing_partida_registral": "partida_registral",
 }
 
 # PDT kinds that belong to later stages, not the contratante file.

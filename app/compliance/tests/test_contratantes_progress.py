@@ -1,6 +1,12 @@
+from unittest.mock import MagicMock, patch
+
 from django.test import SimpleTestCase
 
-from compliance.services.contratantes_progress import local_contratante_issues
+from compliance.services.contratantes_progress import (
+    ContratantesProgressService,
+    UIF_CONTRATANTE_FIELDS,
+    local_contratante_issues,
+)
 
 
 def _issues(**overrides):
@@ -58,3 +64,40 @@ class LocalContratanteIssuesTests(SimpleTestCase):
     def test_bad_display_name(self):
         texts = [item["text"] for item in _issues(nombre="12")]
         self.assertTrue(any("no es correcto" in text for text in texts))
+
+
+class ContratantesUifMappingTests(SimpleTestCase):
+    def test_zona_and_partida_are_contratante_uif_fields(self):
+        self.assertEqual(UIF_CONTRATANTE_FIELDS["missing_zona_registral"], "zona_registral")
+        self.assertEqual(
+            UIF_CONTRATANTE_FIELDS["missing_partida_registral"], "partida_registral"
+        )
+
+    @patch("compliance.services.contratantes_progress.collect_pdt_issues")
+    @patch("compliance.services.contratantes_progress.collect_uif_issues")
+    @patch(
+        "compliance.services.sisgen_progress_gate.should_report_sisgen_issues",
+        return_value=False,
+    )
+    def test_from_collectors_keeps_zona_partida(self, _gate, mock_uif, mock_pdt):
+        mock_uif.return_value = {
+            "errors": [
+                {
+                    "error_type": "missing_zona_registral",
+                    "error_description": "LUMBA: zona registral requerida",
+                    "idContratante": "0000001395",
+                },
+                {
+                    "error_type": "missing_partida_registral",
+                    "error_description": "LUMBA: número de partida registral requerido",
+                    "idContratante": "0000001395",
+                },
+            ]
+        }
+        mock_pdt.return_value = {"errors": []}
+        extra = ContratantesProgressService()._from_collectors(
+            "A344-2026", [], kardex_row=MagicMock()
+        )
+        fields = {item["field"] for item in extra}
+        self.assertEqual(fields, {"zona_registral", "partida_registral"})
+        self.assertTrue(all(item["source"] == "uif" for item in extra))
