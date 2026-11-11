@@ -150,7 +150,8 @@ def _merge_collectors(kardex: str, result: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         pdt = {}
     for item in list(pdt.get("errors") or []):
-        if _clean(item.get("kind")) == "conclusion":
+        kind = _clean(item.get("kind"))
+        if kind in {"conclusion", "acto"}:
             push(item.get("error") or item.get("error_description") or CONCLUSION, "pdt")
 
     return result

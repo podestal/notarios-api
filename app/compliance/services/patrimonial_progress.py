@@ -314,9 +314,12 @@ def _merge_collectors(
     except Exception:
         pdt = {}
     for item in list(pdt.get("errors") or []):
-        if _clean(item.get("kind")) != "bien":
-            continue
-        push("detalle-bien", item.get("error") or item.get("error_description") or "", "pdt")
+        kind = _clean(item.get("kind"))
+        text = item.get("error") or item.get("error_description") or ""
+        if kind == "bien":
+            push("detalle-bien", text, "pdt")
+        elif kind == "medio_pago":
+            push("medio-pago", text, "pdt")
 
     if should_report_sisgen_issues(kardex_row):
         try:

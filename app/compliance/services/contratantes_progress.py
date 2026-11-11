@@ -40,7 +40,15 @@ UIF_CONTRATANTE_FIELDS = {
 }
 
 # PDT kinds that belong to later stages, not the contratante file.
-PDT_OTHER_STAGES = {"renta", "bien", "ofondo", "conclusion"}
+PDT_OTHER_STAGES = {
+    "renta",
+    "bien",
+    "ofondo",
+    "conclusion",
+    "medio_pago",
+    "acto",
+    "formulario",
+}
 
 SISGEN_CONTRATANTE_RE_PARTS = (
     "contratante",
@@ -329,7 +337,8 @@ class ContratantesProgressService:
             if kind in PDT_OTHER_STAGES:
                 continue
             text = _clean(item.get("error") or item.get("error_description"))
-            if text and _sisgen_person_is_contratante(text):
+            # Protocolar OTG (RUC / %) and person-shaped mis-errores belong here.
+            if kind == "otorgante" or (text and _sisgen_person_is_contratante(text)):
                 push(
                     {
                         "source": "pdt",

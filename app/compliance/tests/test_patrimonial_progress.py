@@ -1,8 +1,10 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
 from compliance.services.patrimonial_progress import (
+    _merge_collectors,
     count_invalid_medio_pago_codigo,
     evaluate_patrimonial,
 )
@@ -57,6 +59,42 @@ class PatrimonialProgressTests(SimpleTestCase):
         result = _eval(has_valid_bien=False, bien_incompleto=True)
         self.assertEqual(result["steps"][2]["status"], "error")
         self.assertIn("tipo de bien", result["steps"][2]["issues"][0]["text"])
+
+
+class PatrimonialPdtMergeTests(SimpleTestCase):
+    @patch(
+        "compliance.services.sisgen_progress_gate.should_report_sisgen_issues",
+        return_value=False,
+    )
+    @patch("compliance.services.uif_collector.collect_uif_issues")
+    @patch("compliance.services.pdt_collector.collect_pdt_issues")
+    def test_medio_pago_pdt_lands_on_medio_pago_step(self, mock_pdt, mock_uif, _gate):
+        mock_uif.return_value = {"errors": []}
+        mock_pdt.return_value = {
+            "errors": [
+                {
+                    "kind": "medio_pago",
+                    "error": "Ingrese documentos del medio de pago.",
+                }
+            ]
+        }
+        result = evaluate_patrimonial(
+            started=True,
+            medios_required=True,
+            bien_required=False,
+            exhibe_medios=True,
+            has_medio_rows=True,
+            medio_sin_tipo=False,
+            medio_sin_monto=False,
+            has_valid_bien=False,
+            bien_incompleto=False,
+        )
+        merged = _merge_collectors("K155-2026", result, kardex_row=SimpleNamespace())
+        medio = next(step for step in merged["steps"] if step["id"] == "medio-pago")
+        self.assertEqual(medio["status"], "error")
+        self.assertTrue(
+            any("documentos del medio de pago" in i["text"] for i in medio["issues"])
+        )
 
 
 class InvalidMedioPagoCodigoTests(SimpleTestCase):

@@ -102,8 +102,12 @@ class PdtMisErroresHelpersTests(SimpleTestCase):
 
         self.assertEqual(count_errors_by_kardex([]), {})
 
+    @mock.patch(
+        "notaria.services.pdt_protocolar_mixin.list_protocolar_compliance_errors_for_kardex",
+        return_value=[],
+    )
     @mock.patch("notaria.services.pdt_mis_errores_service.connection")
-    def test_list_errors_for_kardex_maps_php_messages(self, mock_connection):
+    def test_list_errors_for_kardex_maps_php_messages(self, mock_connection, _proto):
         from notaria.services.pdt_mis_errores_service import list_errors_for_kardex
 
         cursor = mock.MagicMock()
@@ -139,3 +143,36 @@ class PdtMisErroresHelpersTests(SimpleTestCase):
         self.assertEqual(items[0]["kind"], "renta")
         self.assertIn("Ingrese renta de tercera categoria", items[0]["error_description"])
         self.assertEqual(items[0]["kardex"], "K10-2026")
+
+    @mock.patch(
+        "notaria.services.pdt_protocolar_mixin.list_protocolar_compliance_errors_for_kardex"
+    )
+    @mock.patch("notaria.services.pdt_mis_errores_service.connection")
+    def test_list_errors_for_kardex_merges_protocolar_medio_pago(
+        self, mock_connection, mock_proto
+    ):
+        from notaria.services.pdt_mis_errores_service import list_errors_for_kardex
+
+        cursor = mock.MagicMock()
+        mock_connection.cursor.return_value.__enter__.return_value = cursor
+        cursor.description = [
+            ("id_kardex",),
+            ("kardex_esc",),
+            ("acto",),
+            ("responsable",),
+            ("fechaescritura",),
+        ]
+        cursor.fetchall.return_value = []
+        mock_proto.return_value = [
+            {
+                "kind": "medio_pago",
+                "error_type": "medio_pago",
+                "error_description": "Ingrese documentos del medio de pago.",
+                "error": "Ingrese documentos del medio de pago.",
+                "kardex": "K155-2026",
+            }
+        ]
+        items = list_errors_for_kardex("K155-2026")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["kind"], "medio_pago")
+        self.assertIn("documentos del medio de pago", items[0]["error"])

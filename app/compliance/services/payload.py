@@ -22,6 +22,10 @@ def build_pdt_block(errors: Optional[List[Dict[str, Any]]] = None) -> Dict[str, 
         "bien": sum(1 for item in errors if item.get("kind") == "bien"),
         "ofondo": sum(1 for item in errors if item.get("kind") == "ofondo"),
         "conclusion": sum(1 for item in errors if item.get("kind") == "conclusion"),
+        "medio_pago": sum(1 for item in errors if item.get("kind") == "medio_pago"),
+        "acto": sum(1 for item in errors if item.get("kind") == "acto"),
+        "formulario": sum(1 for item in errors if item.get("kind") == "formulario"),
+        "otorgante": sum(1 for item in errors if item.get("kind") == "otorgante"),
     }
     return {
         "status": "ok",

@@ -258,7 +258,7 @@ def _merge_collectors(
         text = item.get("error") or item.get("error_description") or ""
         if kind == "ofondo":
             push("participa", text, "pdt")
-        elif kind == "renta":
+        elif kind in {"renta", "formulario"}:
             push("preguntas-uif", text, "pdt")
 
     if should_report_sisgen_issues(kardex_row):

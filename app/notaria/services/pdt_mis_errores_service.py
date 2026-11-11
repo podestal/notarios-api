@@ -469,6 +469,10 @@ PDT_KIND_LABELS = {
     "bien": "Bienes",
     "ofondo": "Origen de fondos",
     "conclusion": "Conclusión",
+    "medio_pago": "Medio de pago",
+    "acto": "Actos / escritura",
+    "formulario": "Formulario",
+    "otorgante": "Otorgantes",
 }
 
 
@@ -488,7 +492,10 @@ def _compliance_error_item(row: Dict[str, Any], *, kind: str, error: str) -> Dic
 
 
 def list_errors_for_kardex(kardex: str) -> List[Dict[str, Any]]:
-    """Four PHP checks for a single kardex (no responsable / year filter)."""
+    """
+    Compliance PDT for one kardex: Mis errores (renta/bien/ofondo/conclusion)
+    plus protocolar report checks (medio de pago, actos, bienes, formulario, OTG).
+    """
     key = str(kardex or "").strip()
     if not key:
         return []
@@ -535,6 +542,24 @@ def list_errors_for_kardex(kardex: str) -> List[Dict[str, Any]]:
                     error="Falta concluir el instrumento con la firma de los contratantes",
                 )
             )
+
+    from notaria.services.pdt_protocolar_mixin import (
+        list_protocolar_compliance_errors_for_kardex,
+    )
+
+    seen = {
+        f"{(item.get('kind') or '').strip()}|{(item.get('error') or '').strip().lower()}"
+        for item in items
+    }
+    for item in list_protocolar_compliance_errors_for_kardex(key):
+        dedupe = (
+            f"{(item.get('kind') or '').strip()}|"
+            f"{(item.get('error') or '').strip().lower()}"
+        )
+        if dedupe in seen:
+            continue
+        seen.add(dedupe)
+        items.append(item)
     return items
 
 
