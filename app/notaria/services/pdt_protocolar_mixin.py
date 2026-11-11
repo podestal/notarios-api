@@ -453,6 +453,30 @@ def fetch_bulk_protocolar_context(cursor, kardex_list: List[str]) -> Dict[str, A
         if sunat in MEDIO_PAGO_CON_DOCUMENTO and not str(documentos or "").strip():
             empty_doc_medios.add((kardex, str(itemmp or "").strip()))
 
+    # Transferencias vehiculares keep the bien in detallevehicular (PDT .Bie for tipkar 3),
+    # not detallebienes. Count them so protocolar does not invent "No existe bien".
+    cursor.execute(
+        f"""
+        SELECT
+            dv.kardex,
+            dv.itemmp,
+            dv.idtipacto,
+            p.itemmp
+        FROM detallevehicular dv
+        LEFT JOIN patrimonial p
+          ON p.kardex = dv.kardex
+         AND CAST(p.idtipoacto AS CHAR) = CAST(dv.idtipacto AS CHAR)
+        WHERE dv.kardex IN ({placeholders})
+        """,
+        kardex_list,
+    )
+    for kardex, itemmp, idtipacto, pat_itemmp in cursor.fetchall():
+        bienes_by_acto.add((kardex, str(idtipacto or "").strip()))
+        for candidate in (itemmp, pat_itemmp):
+            cleaned = str(candidate or "").strip()
+            if cleaned:
+                bienes_by_item.add((kardex, cleaned))
+
     # Needs formulario when pregu3='0' (impuesto NO es cero) and no form row.
     cursor.execute(
         f"""
