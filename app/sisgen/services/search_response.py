@@ -6,10 +6,14 @@ from typing import Any, Dict
 
 
 def slim_search_pagination(page_status: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    out = {
         "search_id": page_status.get("search_id"),
         "total_documents": page_status.get("total_documents"),
     }
+    stats = page_status.get("instrumento_stats")
+    if stats is not None:
+        out["instrumento_stats"] = stats
+    return out
 
 
 def slim_sisgen_status(sync: Dict[str, Any]) -> Dict[str, Any]:

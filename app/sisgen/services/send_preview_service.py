@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from sisgen.services.document_search_service import DocumentSearchService
+from sisgen.services.instrumento_stats import build_instrumento_stats
 from sisgen.utils.exceptions import DocumentSearchException, ValidationException
 from sisgen.utils.validators import SearchFiltersValidator
 
@@ -52,6 +53,7 @@ def build_send_preview(filters: Dict[str, Any]) -> Dict[str, Any]:
                 "kardex": doc.get("kardex") or "",
                 "idkardex": str(doc.get("idkardex", "")),
                 "contrato": (doc.get("contrato") or "").strip(),
+                "numero_instrumento": str(doc.get("numescritura") or "").strip(),
             }
         )
 
@@ -60,6 +62,7 @@ def build_send_preview(filters: Dict[str, Any]) -> Dict[str, Any]:
         "total": len(preview_documents),
         "filters": validated,
         "documents": preview_documents,
+        "instrumento_stats": build_instrumento_stats(preview_documents),
     }
 
 

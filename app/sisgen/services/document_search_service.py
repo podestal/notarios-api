@@ -33,6 +33,7 @@ class DocumentSearchService:
         # Initialize batch processing state
         self.search_id = None
         self.all_kardex = []  # Store all kardex numbers in order
+        self.all_numescritura = []  # Parallel Nº instrumento list for correlative stats
         self.processed_kardex = set()
         self.total_documents = 0
         self.validated_filters = None
@@ -53,6 +54,7 @@ class DocumentSearchService:
         service = cls()
         service.search_id = session_data.get('search_id')
         service.all_kardex = session_data.get('all_kardex', [])
+        service.all_numescritura = session_data.get('all_numescritura', [])
         service.processed_kardex = set(session_data.get('processed_kardex', []))
         service.total_documents = session_data.get('total_documents', 0)
         service.validated_filters = session_data.get('validated_filters')
@@ -64,11 +66,24 @@ class DocumentSearchService:
         return {
             'search_id': self.search_id,
             'all_kardex': self.all_kardex,
+            'all_numescritura': self.all_numescritura,
             'processed_kardex': list(self.processed_kardex),
             'total_documents': self.total_documents,
             'validated_filters': self.validated_filters,
             'current_page': self.current_page
         }
+
+    def _instrumento_stats_for_search(self) -> Dict:
+        from sisgen.services.instrumento_stats import build_instrumento_stats
+
+        docs = [
+            {"numero_instrumento": num}
+            for num in (self.all_numescritura or [])
+        ]
+        # Prefer stored parallel list; fall back to kardex count only if missing.
+        if not docs and self.all_kardex:
+            docs = [{"numero_instrumento": ""} for _ in self.all_kardex]
+        return build_instrumento_stats(docs)
 
     def _add_error(self, kardex: str, error: str):
         """Add error for a specific kardex"""
@@ -125,6 +140,9 @@ class DocumentSearchService:
             self.search_id = f"search_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(documents)}"
             self.total_documents = len(documents)
             self.all_kardex = [doc[0] for doc in documents]  # Store all kardex numbers in order
+            self.all_numescritura = [
+                "" if doc[1] is None else str(doc[1]).strip() for doc in documents
+            ]
             self.processed_kardex = set()
             
             # Handle empty results case
@@ -137,6 +155,7 @@ class DocumentSearchService:
                     'total_pages': 1,  # At least one page even when empty
                     'has_next': False,
                     'has_previous': False,
+                    'instrumento_stats': self._instrumento_stats_for_search(),
                     'message': 'No se encontraron documentos que coincidan con los criterios de búsqueda.'
                 }
             
@@ -147,7 +166,8 @@ class DocumentSearchService:
                 'current_page': 1,
                 'total_pages': math.ceil(self.total_documents / self.batch_size),
                 'has_next': self.total_documents > self.batch_size,
-                'has_previous': False
+                'has_previous': False,
+                'instrumento_stats': self._instrumento_stats_for_search(),
             }
             
         except Exception as e:
@@ -171,6 +191,7 @@ class DocumentSearchService:
                     'has_next': False,
                     'has_previous': False,
                     'page_size': self.batch_size,
+                    'instrumento_stats': self._instrumento_stats_for_search(),
                     'message': 'No se encontraron documentos que coincidan con los criterios de búsqueda.'
                 }
             
@@ -230,13 +251,14 @@ class DocumentSearchService:
 
     def _get_page_status(self) -> Dict:
         """Get current page status"""
-        total_pages = math.ceil(self.total_documents / self.batch_size)
+        total_pages = math.ceil(self.total_documents / self.batch_size) if self.total_documents else 1
         return {
             'search_id': self.search_id,
             'total_documents': self.total_documents,
             'processed': len(self.processed_kardex),
             'current_page': self.current_page,
             'total_pages': total_pages,
+            'instrumento_stats': self._instrumento_stats_for_search(),
             'has_next': self.current_page < total_pages,
             'has_previous': self.current_page > 1,
             'page_size': self.batch_size

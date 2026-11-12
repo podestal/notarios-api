@@ -82,11 +82,16 @@ def _serialize_send_job(job: SisgenSendJob, *, request=None) -> Dict[str, Any]:
 
 def _build_document_search_response(rows: list, page_status: dict) -> dict:
     enriched = attach_last_submission_status(rows)
-    return {
+    pagination = slim_search_pagination(page_status)
+    payload = {
         "error": 0,
         "data": [slim_search_document_row(row) for row in enriched],
-        "pagination": slim_search_pagination(page_status),
+        "pagination": pagination,
     }
+    stats = pagination.get("instrumento_stats")
+    if stats is not None:
+        payload["instrumento_stats"] = stats
+    return payload
 
 
 def _build_book_search_response(rows: list, page_status: dict) -> dict:
