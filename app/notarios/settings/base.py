@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'viajes',
     'signatum',
     'taxes',
+    'documentos.apps.DocumentosConfig',
 ]
 
 MIDDLEWARE = [
@@ -277,6 +278,12 @@ SIMPLE_JWT = {
 # }
 
 AWS_S3_ADDRESSING_STYLE = "virtual"
+
+# Local SUNARP / registral PDFs for the documentos app (vehiculares, inmuebles).
+DOCUMENTOS_NOTARIA_ROOT = os.environ.get(
+    "DOCUMENTOS_NOTARIA_ROOT",
+    "/mnt/documentos_notaria",
+)
 
 # Session Configuration
 SESSION_COOKIE_AGE = 86400  # 24 hours in seconds

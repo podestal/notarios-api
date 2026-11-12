@@ -38,6 +38,7 @@ urlpatterns += [
     path('compliance/', include('compliance.urls')),
     path('viajes/', include('viajes.urls')),
     path('taxes/', include('taxes.urls')),
+    path('documentos/', include('documentos.urls')),
     path('celery/', CeleryStatusView.as_view(), name='celery-status'),
     path('auth/', include('djoser.urls')),
     path('auth/', include('djoser.urls.jwt')),

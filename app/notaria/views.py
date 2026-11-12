@@ -2594,6 +2594,20 @@ class PatrimonialViewSet(ModelViewSet):
         # Remove related Detallemediopago records
         models.Detallemediopago.objects.filter(itemmp=instance.itemmp).delete()
 
+        # Unlink SUNARP boletas before deleting related DetalleVehicular rows.
+        from documentos.services.apply_vehicular import (
+            unlink_documentos_for_detvehs,
+            unlink_documentos_for_kardex_acto,
+        )
+
+        veh_ids = list(
+            models.Detallevehicular.objects.filter(
+                kardex=kardex, idtipacto=idtipoacto
+            ).values_list("detveh", flat=True)
+        )
+        unlink_documentos_for_detvehs(veh_ids)
+        unlink_documentos_for_kardex_acto(kardex=kardex, idtipacto=idtipoacto)
+
         # Remove related DetalleVehicular records
         models.Detallevehicular.objects.filter(kardex=kardex, idtipacto=idtipoacto).delete()
 
@@ -2671,8 +2685,11 @@ class DetalleVehicularViewSet(ModelViewSet):
         return response
 
     def destroy(self, request, *args, **kwargs):
+        from documentos.services.apply_vehicular import unlink_documentos_for_detveh
+
         instance = self.get_object()
         kardex_code = instance.kardex
+        unlink_documentos_for_detveh(instance.detveh)
         response = super().destroy(request, *args, **kwargs)
         _reset_sisgen_for_kardex(kardex_code)
         return response

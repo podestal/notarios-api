@@ -219,6 +219,19 @@ def delete_kardex_acto_related(*, kardex: str, idtipoacto: str) -> Dict[str, int
     ).delete()
     counts["detallebienes"] += int(deleted_bi_orphan)
 
+    from documentos.services.apply_vehicular import (
+        unlink_documentos_for_detvehs,
+        unlink_documentos_for_kardex_acto,
+    )
+
+    veh_ids = list(
+        models.Detallevehicular.objects.filter(
+            kardex=kardex_key, idtipacto=acto_key
+        ).values_list("detveh", flat=True)
+    )
+    unlink_documentos_for_detvehs(veh_ids)
+    unlink_documentos_for_kardex_acto(kardex=kardex_key, idtipacto=acto_key)
+
     deleted_veh, _ = models.Detallevehicular.objects.filter(
         kardex=kardex_key, idtipacto=acto_key
     ).delete()

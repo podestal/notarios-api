@@ -68,5 +68,9 @@ psycopg[binary]==3.2.9
 reportlab==4.4.1
 qrcode==8.2
 Pillow==11.2.1
+pdfplumber==0.11.7
 celery[redis]==5.4.0
+# celery 5.4 allows kombu<6; kombu 5.7+ requires redis-py>=6.1 which conflicts with
+# celery[redis]'s redis<6 pin. Keep kombu on 5.4.x so the Redis transport matches redis 5.x.
+kombu==5.4.2
 watchdog==6.0.0
