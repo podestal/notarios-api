@@ -829,7 +829,7 @@ class TransferenciasVehicularesReportService:
             traceback.print_exc()
             return []
 
-    def generate_excel_report(self, desde, hasta):
+    def generate_excel_report(self, desde, hasta, alfabetico=False):
         """Generate Excel report matching PHP script format"""
         try:
             from openpyxl import Workbook
@@ -844,6 +844,11 @@ class TransferenciasVehicularesReportService:
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
+
+            if alfabetico:
+                from ducumentation.protocolares.alfabeticos import sort_report_rows_alfabetico
+                report_data = sort_report_rows_alfabetico(report_data)
+            indice_label = "ALFABETICO" if alfabetico else "CRONOLOGICO"
             print(f"DEBUG: Data fetched in {time.time() - report_start:.2f}s, generating Excel...")
 
             notary_info = self._get_notary_info()
@@ -879,7 +884,7 @@ class TransferenciasVehicularesReportService:
 
             # Title section
             ws.merge_cells("A1:G1")
-            ws["A1"] = "INDICE CRONOLOGICO - REGISTRO DE TRANSFERENCIAS DE BIENES MUEBLES"
+            ws["A1"] = f"INDICE {indice_label} - REGISTRO DE TRANSFERENCIAS DE BIENES MUEBLES"
             ws["A1"].font = title_font
             ws["A1"].alignment = center_alignment
             ws["A1"].border = no_border
@@ -1026,7 +1031,7 @@ class TransferenciasVehicularesReportService:
                 content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
             response["Content-Disposition"] = (
-                f"attachment; filename=INDICE_CRONOLOGICO_VEHICULAR_{anio}.xlsx"
+                f"attachment; filename=INDICE_{indice_label}_VEHICULAR_{anio}.xlsx"
             )
             response["Access-Control-Allow-Origin"] = "*"
 
@@ -1040,7 +1045,7 @@ class TransferenciasVehicularesReportService:
 
             return HttpResponse(f"Error generating Excel report: {e}", status=500)
 
-    def generate_word_report(self, desde, hasta):
+    def generate_word_report(self, desde, hasta, alfabetico=False):
         """Generate Word report matching PHP script format"""
         try:
             from docx import Document
@@ -1056,6 +1061,11 @@ class TransferenciasVehicularesReportService:
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
+
+            if alfabetico:
+                from ducumentation.protocolares.alfabeticos import sort_report_rows_alfabetico
+                report_data = sort_report_rows_alfabetico(report_data)
+            indice_label = "ALFABETICO" if alfabetico else "CRONOLOGICO"
             print(f"DEBUG: Data fetched in {time.time() - report_start:.2f}s, generating Word...")
 
             notary_info = self._get_notary_info()
@@ -1075,7 +1085,7 @@ class TransferenciasVehicularesReportService:
 
             # Title
             title = doc.add_heading(
-                "INDICE CRONOLOGICO - REGISTRO DE TRANSFERENCIAS DE BIENES MUEBLES", 0
+                f"INDICE {indice_label} - REGISTRO DE TRANSFERENCIAS DE BIENES MUEBLES", 0
             )
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
@@ -1180,7 +1190,7 @@ class TransferenciasVehicularesReportService:
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
             response["Content-Disposition"] = (
-                f"attachment; filename=INDICE_CRONOLOGICO_VEHICULAR_{anio}.docx"
+                f"attachment; filename=INDICE_{indice_label}_VEHICULAR_{anio}.docx"
             )
             response["Access-Control-Allow-Origin"] = "*"
 

@@ -795,7 +795,7 @@ class EscriturasPublicasReportService:
             traceback.print_exc()
             return []
 
-    def generate_excel_report(self, desde, hasta):
+    def generate_excel_report(self, desde, hasta, alfabetico=False):
         """Generate Excel report matching PHP script format"""
         try:
             from openpyxl import Workbook
@@ -805,6 +805,11 @@ class EscriturasPublicasReportService:
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
+
+            if alfabetico:
+                from ducumentation.protocolares.alfabeticos import sort_report_rows_alfabetico
+                report_data = sort_report_rows_alfabetico(report_data)
+            indice_label = "ALFABETICO" if alfabetico else "CRONOLOGICO"
 
             notary_info = self._get_notary_info()
 
@@ -839,7 +844,7 @@ class EscriturasPublicasReportService:
 
             # Title section
             ws.merge_cells("A1:G1")
-            ws["A1"] = "INDICE CRONOLOGICO - REGISTRO DE ESCRITURAS PUBLICAS"
+            ws["A1"] = f"INDICE {indice_label} - REGISTRO DE ESCRITURAS PUBLICAS"
             ws["A1"].font = title_font
             ws["A1"].alignment = center_alignment
             ws["A1"].border = no_border
@@ -986,7 +991,7 @@ class EscriturasPublicasReportService:
                 content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
             response["Content-Disposition"] = (
-                f"attachment; filename=INDICE_CRONOLOGICO_ESCRITURAS_PUBLICAS_{anio}.xlsx"
+                f"attachment; filename=INDICE_{indice_label}_ESCRITURAS_PUBLICAS_{anio}.xlsx"
             )
             response["Access-Control-Allow-Origin"] = "*"
 
@@ -1000,7 +1005,7 @@ class EscriturasPublicasReportService:
 
             return HttpResponse(f"Error generating Excel report: {e}", status=500)
 
-    def generate_word_report(self, desde, hasta):
+    def generate_word_report(self, desde, hasta, alfabetico=False):
         """Generate Word report matching PHP script format"""
         try:
             from docx import Document
@@ -1011,6 +1016,11 @@ class EscriturasPublicasReportService:
 
             # Get data
             report_data = self._get_report_data(desde, hasta)
+
+            if alfabetico:
+                from ducumentation.protocolares.alfabeticos import sort_report_rows_alfabetico
+                report_data = sort_report_rows_alfabetico(report_data)
+            indice_label = "ALFABETICO" if alfabetico else "CRONOLOGICO"
 
             notary_info = self._get_notary_info()
 
@@ -1028,7 +1038,7 @@ class EscriturasPublicasReportService:
                 section.right_margin = Inches(0.5)
 
             # Title
-            title = doc.add_heading("INDICE CRONOLOGICO - REGISTRO DE ESCRITURAS PUBLICAS", 0)
+            title = doc.add_heading(f"INDICE {indice_label} - REGISTRO DE ESCRITURAS PUBLICAS", 0)
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             subtitle = doc.add_heading(f"AÑO {anio}", 0)
@@ -1132,7 +1142,7 @@ class EscriturasPublicasReportService:
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
             response["Content-Disposition"] = (
-                f"attachment; filename=INDICE_CRONOLOGICO_ESCRITURAS_PUBLICAS_{anio}.docx"
+                f"attachment; filename=INDICE_{indice_label}_ESCRITURAS_PUBLICAS_{anio}.docx"
             )
             response["Access-Control-Allow-Origin"] = "*"
 

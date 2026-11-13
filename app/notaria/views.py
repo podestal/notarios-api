@@ -24,6 +24,7 @@ from ducumentation.protocolares.GarantiasService import (
 from ducumentation.protocolares.TestamentosService import (
     TestamentosReportService,
 )
+from ducumentation.protocolares.alfabeticos import AlfabeticosReportService
 from .services.pdt_libros_service import PdtLibrosService
 from .services.kardex_acto_cleanup import (
     delete_kardex_acto_related,
@@ -858,6 +859,76 @@ class KardexViewSet(ModelViewSet):
         else:
             response = service.generate_word_report(desde=initialDate, hasta=finalDate)
         return response
+
+    def _alfabetico_report(self, request, idtipkar: str):
+        """
+        Índice alfabético protocolar (PHP consultas/alfabeticos + excel/alfabetico).
+
+        Query params:
+        - initialDate / finalDate: YYYY-MM-DD or DD/MM/YYYY
+        - tipo_documento: EXCEL | WORD (default) | JSON
+          JSON (or formato=json) returns the paginated consulta table
+          (contratantes.indice='1', ORDER BY cliente ASC).
+        - page, page_size: only for JSON list (default page_size=10).
+        """
+        initial_date = request.query_params.get("initialDate")
+        final_date = request.query_params.get("finalDate")
+        if not initial_date or not final_date:
+            return Response(
+                {"error": "initialDate and finalDate are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tipo_documento = (request.query_params.get("tipo_documento") or "").strip().upper()
+        formato = (request.query_params.get("formato") or "").strip().lower()
+        wants_json = tipo_documento == "JSON" or formato == "json"
+
+        service = AlfabeticosReportService()
+        try:
+            if wants_json:
+                page = request.query_params.get("page", 1)
+                page_size = request.query_params.get("page_size")
+                payload = service.list_rows(
+                    idtipkar=idtipkar,
+                    desde=initial_date,
+                    hasta=final_date,
+                    page=page,
+                    page_size=page_size,
+                )
+                return Response(payload)
+            return service.generate_report(
+                idtipkar=idtipkar,
+                desde=initial_date,
+                hasta=final_date,
+                tipo_documento=tipo_documento,
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["get"], url_path="escrituras-alfabetico")
+    def escrituras_alfabetico(self, request):
+        """Índice alfabético — Escrituras Públicas (idtipkar=1)."""
+        return self._alfabetico_report(request, "1")
+
+    @action(detail=False, methods=["get"], url_path="no-contenciosos-alfabetico")
+    def no_contenciosos_alfabetico(self, request):
+        """Índice alfabético — Asuntos no contenciosos (idtipkar=2)."""
+        return self._alfabetico_report(request, "2")
+
+    @action(detail=False, methods=["get"], url_path="transferencias-alfabetico")
+    def transferencias_alfabetico(self, request):
+        """Índice alfabético — Transferencias vehiculares (idtipkar=3)."""
+        return self._alfabetico_report(request, "3")
+
+    @action(detail=False, methods=["get"], url_path="garantias-alfabetico")
+    def garantias_alfabetico(self, request):
+        """Índice alfabético — Garantías mobiliarias (idtipkar=4)."""
+        return self._alfabetico_report(request, "4")
+
+    @action(detail=False, methods=["get"], url_path="testamentos-alfabetico")
+    def testamentos_alfabetico(self, request):
+        """Índice alfabético — Testamentos (idtipkar=5)."""
+        return self._alfabetico_report(request, "5")
 
     @action(
         detail=False,
