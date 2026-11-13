@@ -135,6 +135,12 @@ class CreateKardexSerializer(serializers.ModelSerializer):
     def validate_fechaminuta(self, value):
         return _normalize_kardex_date_string(value, "fechaminuta")
 
+    def validate(self, attrs):
+        from notaria.folio_serie import validate_kardex_folio_and_serie
+
+        attrs = super().validate(attrs)
+        return validate_kardex_folio_and_serie(attrs, instance=self.instance)
+
 
 class KardexSerializer(serializers.ModelSerializer):
     """
@@ -197,6 +203,12 @@ class KardexSerializer(serializers.ModelSerializer):
 
     def validate_fktemplate(self, value):
         return _normalize_fktemplate(value)
+
+    def validate(self, attrs):
+        from notaria.folio_serie import validate_kardex_folio_and_serie
+
+        attrs = super().validate(attrs)
+        return validate_kardex_folio_and_serie(attrs, instance=self.instance)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

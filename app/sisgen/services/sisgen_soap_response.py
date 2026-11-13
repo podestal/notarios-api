@@ -24,9 +24,11 @@ SISGEN_IT_CONTACT_NOTE = (
     "la fecha/hora del envío y el mensaje de error mostrado."
 )
 
-# local / localf / test stacks: keep SisgenSoapResponse rows but skip bulky XML unless SISGEN erred.
-# development / production (and anything else): always persist request + response XML.
-_SISGEN_XML_ON_ERROR_ONLY_ENVS = frozenset({"local", "localf", "test", "testing"})
+# Default: persist bulky request/response XML only when SISGEN erred.
+# Opt into always-on with SISGEN_PERSIST_XML=always (set in docker-compose.yml for local dev).
+_SISGEN_XML_ALWAYS = frozenset({"always", "1", "true", "yes", "on"})
+_SISGEN_XML_NEVER = frozenset({"never", "0", "false", "no", "off"})
+_SISGEN_XML_ON_ERROR = frozenset({"on_error", "error", "errors"})
 _DOC_ERROR_STATUSES = frozenset({"FALLIDO", "CON OBSERVACIONES"})
 
 
@@ -41,13 +43,25 @@ def soap_response_is_ok(parsed: Dict[str, Any]) -> bool:
     return rs == "OK"
 
 
+def sisgen_persist_xml_mode() -> str:
+    """
+    Resolve XML persistence mode: always | on_error | never.
+
+    Priority: SISGEN_PERSIST_XML env → on_error (safe default).
+    """
+    raw = (os.environ.get("SISGEN_PERSIST_XML") or "").strip().lower()
+    if raw in _SISGEN_XML_ALWAYS:
+        return "always"
+    if raw in _SISGEN_XML_NEVER:
+        return "never"
+    if raw in _SISGEN_XML_ON_ERROR:
+        return "on_error"
+    return "on_error"
+
+
 def sisgen_xml_on_error_only() -> bool:
-    """True on local/localf/test — persist request/response XML only when SISGEN returns an error."""
-    env = (os.environ.get("ENVIRONMENT") or "").strip().lower()
-    if env in _SISGEN_XML_ON_ERROR_ONLY_ENVS:
-        return True
-    settings_module = (os.environ.get("DJANGO_SETTINGS_MODULE") or "").strip().lower()
-    return settings_module.endswith(".local")
+    """True when we only persist request/response XML after a SISGEN error."""
+    return sisgen_persist_xml_mode() == "on_error"
 
 
 def sisgen_submission_has_errors(
@@ -77,12 +91,18 @@ def should_persist_sisgen_xml(
     http_status: Optional[int] = None,
 ) -> bool:
     """
-    Whether to store SISGEN request/response XML (debug files + DB raw fields).
+    Whether to store SISGEN request/response XML (debug files + DB fields).
 
-    Always on development/production. On local/localf/test only when SISGEN returned an error.
+    Controlled by SISGEN_PERSIST_XML:
+      - always (docker-compose.yml / local dev): save every send
+      - on_error (default): save only when SISGEN/HTTP erred
+      - never: never store bulky XML
     """
-    if not sisgen_xml_on_error_only():
+    mode = sisgen_persist_xml_mode()
+    if mode == "always":
         return True
+    if mode == "never":
+        return False
     return sisgen_submission_has_errors(parsed, http_status=http_status)
 
 
@@ -475,8 +495,8 @@ def save_response_logs_for_batch(
     Crea una fila SisgenSoapResponse por documento devuelto en el SOAP, o por cada
     kardex del batch si SISGEN no devolvió DocumentoNotarial (solo ACK o error SOAP).
 
-    On local/localf/test, bulky request/response XML is stored only when SISGEN erred.
-    Dashboard metadata (status, user_facing, summary) is always saved.
+    Bulky request/response XML is stored per SISGEN_PERSIST_XML (always on
+    docker-compose.yml; on_error elsewhere by default). Dashboard metadata is always saved.
 
     Returns IDs of rows created.
     """
@@ -499,6 +519,7 @@ def save_response_logs_for_batch(
         "http_status": http_status,
         "soap_return_status": (parsed.get("return_status") or "")[:64],
         "soap_return_message": parsed.get("return_message") or "",
+        "request_xml": stored_request,
         "raw_response_xml": stored_raw,
         "created_by": user if user is not None and getattr(user, "is_authenticated", False) else None,
     }

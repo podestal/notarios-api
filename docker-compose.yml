@@ -38,6 +38,8 @@ services:
       - APP_VERSION=${APP_VERSION}
       - KARDEX_ABBREVIATIONS=${KARDEX_ABBREVIATIONS}
       - XML_NOTARIA_ROOT=${XML_NOTARIA_ROOT:-/app/xml_notaria}
+      # Local docker-compose.yml only: always save SISGEN request + response XML
+      - SISGEN_PERSIST_XML=always
       - CLAVE_PUBLICA=${CLAVE_PUBLICA:-}
       - CLAVE_PRIVADA=${CLAVE_PRIVADA:-}
       - WEB_SERVICE_SUNAT=${WEB_SERVICE_SUNAT:-}
@@ -103,6 +105,8 @@ services:
       - APP_VERSION=${APP_VERSION}
       - KARDEX_ABBREVIATIONS=${KARDEX_ABBREVIATIONS}
       - XML_NOTARIA_ROOT=${XML_NOTARIA_ROOT:-/app/xml_notaria}
+      # Local docker-compose.yml only: always save SISGEN request + response XML
+      - SISGEN_PERSIST_XML=always
       - CLAVE_PUBLICA=${CLAVE_PUBLICA:-}
       - CLAVE_PRIVADA=${CLAVE_PRIVADA:-}
       - WEB_SERVICE_SUNAT=${WEB_SERVICE_SUNAT:-}

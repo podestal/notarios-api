@@ -124,10 +124,10 @@ class SisgenSoapUserErrorsTests(SimpleTestCase):
 
 
 class SisgenXmlPersistPolicyTests(SimpleTestCase):
-    def test_development_always_persists_xml(self):
+    def test_persist_xml_always_flag(self):
         from sisgen.services import sisgen_soap_response as mod
 
-        with mock.patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=False):
+        with mock.patch.dict(os.environ, {"SISGEN_PERSIST_XML": "always"}, clear=False):
             self.assertTrue(
                 mod.should_persist_sisgen_xml(
                     {"return_status": "OK", "summary": {"soap_level_ok": True}, "documents": []},
@@ -135,10 +135,15 @@ class SisgenXmlPersistPolicyTests(SimpleTestCase):
                 )
             )
 
-    def test_local_skips_xml_on_success(self):
+    def test_default_skips_xml_on_success(self):
         from sisgen.services import sisgen_soap_response as mod
 
-        with mock.patch.dict(os.environ, {"ENVIRONMENT": "local", "DJANGO_SETTINGS_MODULE": "notarios.settings.dev"}, clear=False):
+        env = {
+            "ENVIRONMENT": "development",
+            "DJANGO_SETTINGS_MODULE": "notarios.settings.dev",
+            "SISGEN_PERSIST_XML": "",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
             self.assertFalse(
                 mod.should_persist_sisgen_xml(
                     {"return_status": "OK", "summary": {"soap_level_ok": True}, "documents": [
@@ -148,10 +153,10 @@ class SisgenXmlPersistPolicyTests(SimpleTestCase):
                 )
             )
 
-    def test_local_persists_xml_on_soap_error(self):
+    def test_default_persists_xml_on_soap_error(self):
         from sisgen.services import sisgen_soap_response as mod
 
-        with mock.patch.dict(os.environ, {"ENVIRONMENT": "localf"}, clear=False):
+        with mock.patch.dict(os.environ, {"SISGEN_PERSIST_XML": ""}, clear=False):
             self.assertTrue(
                 mod.should_persist_sisgen_xml(
                     {"return_status": "INTERNAL_SERVER_ERROR", "summary": {"soap_level_ok": False}},
@@ -159,10 +164,10 @@ class SisgenXmlPersistPolicyTests(SimpleTestCase):
                 )
             )
 
-    def test_test_env_persists_xml_on_document_errors(self):
+    def test_on_error_persists_xml_on_document_errors(self):
         from sisgen.services import sisgen_soap_response as mod
 
-        with mock.patch.dict(os.environ, {"ENVIRONMENT": "testing"}, clear=False):
+        with mock.patch.dict(os.environ, {"SISGEN_PERSIST_XML": "on_error"}, clear=False):
             self.assertTrue(
                 mod.should_persist_sisgen_xml(
                     {
@@ -171,5 +176,16 @@ class SisgenXmlPersistPolicyTests(SimpleTestCase):
                         "documents": [{"doc_status": "FALLIDO", "errors": ["RO04"], "has_errors": True}],
                     },
                     http_status=200,
+                )
+            )
+
+    def test_never_skips_even_on_error(self):
+        from sisgen.services import sisgen_soap_response as mod
+
+        with mock.patch.dict(os.environ, {"SISGEN_PERSIST_XML": "never"}, clear=False):
+            self.assertFalse(
+                mod.should_persist_sisgen_xml(
+                    {"return_status": "INTERNAL_SERVER_ERROR", "summary": {"soap_level_ok": False}},
+                    http_status=500,
                 )
             )

@@ -390,8 +390,10 @@ def _serialize_sisgen_soap_response(
         or SISGEN_IT_CONTACT_NOTE,
     }
     if include_raw:
+        row["request_xml"] = obj.request_xml or ""
         row["raw_response_xml"] = obj.raw_response_xml or ""
     else:
+        row["request_xml_bytes"] = len((obj.request_xml or "").encode("utf-8"))
         row["raw_response_xml_bytes"] = len((obj.raw_response_xml or "").encode("utf-8"))
     return row
 

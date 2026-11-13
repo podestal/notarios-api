@@ -462,10 +462,10 @@ class SISGENXmlGenerator:
         return TIPO_KARDEX_SISGEN_MAPPING.get(key, "E")
 
     def _clean_folio(self, folio: str) -> str:
-        """Clean folio number by removing non-numeric characters"""
+        """Legacy helper: digits only (kept for callers that still strip text)."""
         if not folio:
             return "0"
-        return ''.join(c for c in folio if c.isdigit()) or "0"
+        return "".join(c for c in folio if c.isdigit()) or "0"
 
     def _num_folios_libro_notarial_pe(self, folio_ini: int, folio_fin: int) -> int:
         """
@@ -480,13 +480,17 @@ class SISGENXmlGenerator:
         return max(1, 2 * (folio_fin - folio_ini) + 1)
 
     def _calculate_num_folios(self, doc: Dict) -> int:
-        """NumFolios para SISGEN; usa convención libro PE (anverso + vueltas entre números)."""
+        """NumFolios para SISGEN; cuenta anverso/VTA como en escrituración."""
         try:
-            folio_ini = self._clean_folio(doc.get("folioini", "0"))
-            folio_fin = self._clean_folio(doc.get("foliofin", "0"))
-            fi = int(folio_ini)
-            ff = int(folio_fin)
-            return self._num_folios_libro_notarial_pe(fi, ff)
+            from notaria.folio_serie import folio_serie_page_count
+
+            count = folio_serie_page_count(doc.get("folioini"), doc.get("foliofin"))
+            if count > 0:
+                return count
+            # Fallback legado si tokens inválidos: solo dígitos.
+            folio_ini = self._clean_folio(str(doc.get("folioini") or ""))
+            folio_fin = self._clean_folio(str(doc.get("foliofin") or ""))
+            return self._num_folios_libro_notarial_pe(int(folio_ini), int(folio_fin))
         except Exception:
             return 1
 
@@ -1768,22 +1772,27 @@ class SISGENXmlGenerator:
         cod_a = str(doc.get("cod_ancert") or "").strip()
         kardex = doc.get("kardex")
 
-        # Mismo criterio que NumFolios en XML: _clean_folio + enteros (PHP/legado suele
-        # guardar folios con sufijos o texto; int(float(...)) fallaba y bloqueaba el envío).
-        try:
-            fi_s = self._clean_folio(
-                str(doc.get("folioini") if doc.get("folioini") is not None else "")
+        # Folio + serie notarial: mismos tokens que escrituración (dígitos o "N VTA").
+        from notaria.folio_serie import validate_folio_serie_pair
+
+        errs.extend(
+            validate_folio_serie_pair(
+                doc.get("folioini"),
+                doc.get("foliofin"),
+                label_ini="Folio inicial",
+                label_fin="Folio final",
+                require_both=True,
             )
-            ff_s = self._clean_folio(
-                str(doc.get("foliofin") if doc.get("foliofin") is not None else "")
+        )
+        errs.extend(
+            validate_folio_serie_pair(
+                doc.get("papelini"),
+                doc.get("papelfin"),
+                label_ini="Serie notarial inicial",
+                label_fin="Serie notarial final",
+                require_both=False,
             )
-            fi = int(fi_s)
-            ff = int(ff_s)
-        except (TypeError, ValueError):
-            errs.append("folios no numéricos")
-        else:
-            if ff < fi:
-                errs.append("folio final menor que inicial")
+        )
 
         if cod_a != "0919":
             for p in doc.get("participants") or []:

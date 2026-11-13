@@ -42,6 +42,7 @@ class SisgenSoapResponse(models.Model):
     document_status = models.CharField(max_length=64, blank=True, default="")
 
     parsed_payload = models.JSONField(default=dict)
+    request_xml = models.TextField(blank=True, default="")
     raw_response_xml = models.TextField(blank=True, default="")
 
     created_by = models.ForeignKey(
