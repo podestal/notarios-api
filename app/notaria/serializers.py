@@ -311,6 +311,9 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
     cliente = serializers.SerializerMethodField()
     condicion_str = serializers.SerializerMethodField()
     cliente_id = serializers.SerializerMethodField()
+    tipper = serializers.SerializerMethodField()
+    partes = serializers.SerializerMethodField()
+    uif_roles = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Contratantes
@@ -329,6 +332,9 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
             "visita",
             "cliente",
             "cliente_id",
+            "tipper",
+            "partes",
+            "uif_roles",
             "idcontratanterp",
             "idsedereg",
             "numpartida",
@@ -352,13 +358,42 @@ class ContratantesKardexSerializer(serializers.ModelSerializer):
             return f"{cliente['idcliente']}"
         return ""
 
-    def get_condicion_str(self, obj):
+    def get_tipper(self, obj):
+        clientes_map = self.context.get("clientes_map", {})
+        cliente = clientes_map.get(obj.idcontratante) or {}
+        return str(cliente.get("tipper") or "").strip().upper()
+
+    def _condicion_rows(self, obj):
         condicion_map = self.context.get("condicion_map", {})
-        nombres = []
+        rows = []
         for idcondicion in utils.condicion_ids(obj.condicion):
-            condicion = condicion_map.get(idcondicion)
-            if condicion and condicion["condicion"] not in nombres:
-                nombres.append(condicion["condicion"])
+            row = condicion_map.get(idcondicion)
+            if row:
+                rows.append(row)
+        return rows
+
+    def get_partes(self, obj):
+        partes = []
+        for row in self._condicion_rows(obj):
+            parte = str(row.get("parte") or "").strip()
+            if parte and parte not in partes:
+                partes.append(parte)
+        return partes
+
+    def get_uif_roles(self, obj):
+        roles = []
+        for row in self._condicion_rows(obj):
+            uif = str(row.get("uif") or "").strip().upper()
+            if uif and uif not in roles:
+                roles.append(uif)
+        return roles
+
+    def get_condicion_str(self, obj):
+        nombres = []
+        for condicion in self._condicion_rows(obj):
+            name = condicion.get("condicion")
+            if name and name not in nombres:
+                nombres.append(name)
         return " / ".join(nombres)
 
 
@@ -403,6 +438,9 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
 
     cliente = serializers.SerializerMethodField()
     cliente_id = serializers.SerializerMethodField()
+    tipper = serializers.SerializerMethodField()
+    tiporepresentacion = serializers.SerializerMethodField()
+    idcontratanterp = serializers.SerializerMethodField()
     condicion_str = serializers.SerializerMethodField()
     renta = serializers.SerializerMethodField()
 
@@ -426,6 +464,9 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
             "montop",
             "cliente",
             "cliente_id",
+            "tipper",
+            "tiporepresentacion",
+            "idcontratanterp",
             "condicion_str",
             "renta",
         ]
@@ -446,6 +487,19 @@ class GetContratantesxactoSerializerByKardex(serializers.ModelSerializer):
         if cliente:
             return f"{cliente['idcliente']}"
         return ""
+
+    def get_tipper(self, obj):
+        clientes_map = self.context.get("clientes_map", {})
+        cliente = clientes_map.get(obj.idcontratante) or {}
+        return str(cliente.get("tipper") or "").strip().upper()
+
+    def get_tiporepresentacion(self, obj):
+        meta = self.context.get("contratantes_meta", {}).get(obj.idcontratante) or {}
+        return str(meta.get("tiporepresentacion") or "").strip()
+
+    def get_idcontratanterp(self, obj):
+        meta = self.context.get("contratantes_meta", {}).get(obj.idcontratante) or {}
+        return str(meta.get("idcontratanterp") or "").strip()
 
     def get_condicion_str(self, obj):
         condicion_map = self.context.get("condicion_map", {})

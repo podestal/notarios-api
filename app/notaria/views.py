@@ -1916,18 +1916,23 @@ class ContratantesViewSet(ModelViewSet):
             c["idcondicion"]: c
             for c in models.Actocondicion.objects.filter(
                 idcondicion__in=contratantes_tipoactos
-            ).values("idcondicion", "condicion")
+            ).values("idcondicion", "condicion", "parte", "uif")
         }
 
         clientes_map = {
             c["idcontratante"]: c
             for c in models.Cliente2.objects.filter(idcontratante__in=contratante_ids).values(
-                "idcontratante", "nombre", "numdoc", "idcliente", "razonsocial"
+                "idcontratante",
+                "nombre",
+                "numdoc",
+                "idcliente",
+                "razonsocial",
+                "tipper",
             )
         }
 
         if not contratantes.exists():
-            return Response({}, status=200)
+            return Response([], status=200)
 
         serializer = serializers.ContratantesKardexSerializer(
             contratantes,
@@ -2021,8 +2026,20 @@ class ContratantesxactoViewSet(ModelViewSet):
         clientes_map = {
             c["idcontratante"]: c
             for c in models.Cliente2.objects.filter(idcontratante__in=contratantes_ids).values(
-                "idcontratante", "nombre", "numdoc", "idcliente", "razonsocial"
+                "idcontratante",
+                "nombre",
+                "numdoc",
+                "idcliente",
+                "razonsocial",
+                "tipper",
             )
+        }
+
+        contratantes_meta = {
+            c["idcontratante"]: c
+            for c in models.Contratantes.objects.filter(
+                kardex=kardex, idcontratante__in=contratantes_ids
+            ).values("idcontratante", "tiporepresentacion", "idcontratanterp")
         }
 
         renta_map = {
@@ -2039,6 +2056,7 @@ class ContratantesxactoViewSet(ModelViewSet):
                 "clientes_map": clientes_map,
                 "condicion_map": condicion_map,
                 "renta_map": renta_map,
+                "contratantes_meta": contratantes_meta,
             },
         )
         return Response(
