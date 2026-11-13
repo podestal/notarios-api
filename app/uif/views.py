@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.permissions import IsStaffOrSuperuser
 from notaria import pagination
 from uif.services.corrections import UifCorrectionService
 from uif.services.dashboard_service import UifDashboardService
@@ -16,6 +17,8 @@ from uif.services.report_data import parse_report_dates
 from uif.services.reports import UifReportService
 
 logger = logging.getLogger(__name__)
+
+_STAFF_ONLY = [IsAuthenticated, IsStaffOrSuperuser]
 
 
 class UifErrorsDashboardView(APIView):
@@ -25,7 +28,7 @@ class UifErrorsDashboardView(APIView):
     Query params: initialDate, finalDate, type (errors|ro|no_envian), page, page_size.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = _STAFF_ONLY
     pagination_class = pagination.KardexPagination
 
     def get(self, request):
@@ -50,7 +53,7 @@ class UifErrorsCorrectView(APIView):
       - { "listError": "[{...}]" }  (legacy PHP dashboard)
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = _STAFF_ONLY
 
     def post(self, request):
         corrections = UifCorrectionService.parse_corrections_payload(request.data)
@@ -77,7 +80,7 @@ class UifReportExcelView(APIView):
     reportPolicy: all (default, PHP _arrObjRo) | clean (zero field errors only).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = _STAFF_ONLY
 
     def get(self, request):
         initial_date = request.query_params.get("initialDate")
@@ -114,7 +117,7 @@ class UifReportPlaneView(APIView):
     responseFormat=json (default, legacy) | file (direct download).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = _STAFF_ONLY
 
     def get(self, request):
         initial_date = request.query_params.get("initialDate")

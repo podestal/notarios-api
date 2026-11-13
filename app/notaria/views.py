@@ -2,7 +2,7 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
-from core.permissions import IsSuperuser
+from core.permissions import IsStaffOrSuperuser, IsSuperuser
 from core.extraprotocolar_permissions import ExtraProtocolarRestrictedMixin
 from core.protocolar_permissions import (
     denied_tipkars,
@@ -859,7 +859,12 @@ class KardexViewSet(ModelViewSet):
             response = service.generate_word_report(desde=initialDate, hasta=finalDate)
         return response
 
-    @action(detail=False, methods=["get"], url_path="uif-errors")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="uif-errors",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def uif_error_dashboard(self, request):
         """Backward-compatible alias — delegates to the `uif` app dashboard service."""
         from uif.services.dashboard_service import UifDashboardService
@@ -871,21 +876,36 @@ class KardexViewSet(ModelViewSet):
             get_paginated_response_fn=self.get_paginated_response,
         )
 
-    @action(detail=False, methods=["get"], url_path="uif-report-excel")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="uif-report-excel",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def uif_report_excel(self, request):
         """Backward-compatible alias — delegates to `uif` app (reportPolicy=all|clean)."""
         from uif.views import UifReportExcelView
 
         return UifReportExcelView().get(request)
 
-    @action(detail=False, methods=["get"], url_path="uif-report-plane")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="uif-report-plane",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def uif_report_plane(self, request):
         """Backward-compatible alias — delegates to `uif` app plane report."""
         from uif.views import UifReportPlaneView
 
         return UifReportPlaneView().get(request)
 
-    @action(detail=False, methods=["get"], url_path="pdt-escrituras")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pdt-escrituras",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def pdt_errors(self, request):
         """
         Get PDT validation errors for escrituras in a date range.
@@ -926,7 +946,12 @@ class KardexViewSet(ModelViewSet):
         except Exception as e:
             return Response({"error": 1, "errorDescription": str(e)}, status=500)
 
-    @action(detail=False, methods=["get"], url_path="pdt-vehiculares")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pdt-vehiculares",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def pdt_vehiculares(self, request):
         """
         Get PDT validation errors for vehicular acts in a date range.
@@ -967,7 +992,12 @@ class KardexViewSet(ModelViewSet):
         except Exception as e:
             return Response({"error": 1, "errorDescription": str(e)}, status=500)
 
-    @action(detail=False, methods=["get"], url_path="pdt-mis-errores")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pdt-mis-errores",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def pdt_mis_errores(self, request):
         """Personal PDT error list (legacy getErrors.php)."""
         year = parse_year(request.query_params.get("year"))
@@ -981,14 +1011,24 @@ class KardexViewSet(ModelViewSet):
             )
         return Response(list_errors_for_user(usuario, year))
 
-    @action(detail=False, methods=["get"], url_path="pdt-ranking-errores")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pdt-ranking-errores",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def pdt_ranking_errores(self, request):
         """Worker ranking by PDT error count (legacy reportRankErrors)."""
         year = parse_year(request.query_params.get("year"))
         ranking = ranking_for_year(year)
         return Response({"year": year, "ranking": ranking, "total": len(ranking)})
 
-    @action(detail=False, methods=["get"], url_path="pdt-garantias")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pdt-garantias",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def pdt_garantias(self, request):
         """
         Get PDT validation errors for garantías in a date range.
@@ -1029,7 +1069,12 @@ class KardexViewSet(ModelViewSet):
         except Exception as e:
             return Response({"error": 1, "errorDescription": str(e)}, status=500)
 
-    @action(detail=False, methods=["post"], url_path="pdt-correct-errors")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="pdt-correct-errors",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def pdt_correct_errors(self, request):
         """
         Subsanar PDT errors (legacy pdt/correct_error.php).
@@ -1488,7 +1533,12 @@ class KardexViewSet(ModelViewSet):
                 {"error": 1, "errorDescription": f"Error ejecutando cálculo: {str(e)}"}, status=500
             )
 
-    @action(detail=False, methods=["get"], url_path="pdt-file")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pdt-file",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def generate_pdt_file(self, request):
         """
         Generate PDT files (.lib, .act, .bie, etc.)
@@ -4075,7 +4125,12 @@ class LibrosViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    @action(detail=False, methods=["get"], url_path="pdt-errors")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pdt-errors",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def pdt_errors(self, request):
         """
         Get PDT errors for libros in a date range.
@@ -4146,7 +4201,12 @@ class LibrosViewSet(ExtraProtocolarRestrictedMixin, ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=["get"], url_path="download-pdt")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="download-pdt",
+        permission_classes=[IsAuthenticated, IsStaffOrSuperuser],
+    )
     def download_pdt_file(self, request):
         """
         Download PDT file for libros.

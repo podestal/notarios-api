@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from .permissions import IsSuperuser
+from core.permissions import IsStaffOrSuperuser
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .services.document_search_service import DocumentSearchService
@@ -104,7 +104,7 @@ def _build_book_search_response(rows: list, page_status: dict) -> dict:
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DocumentSearchView(APIView):
-    # permission_classes = [IsAuthenticated, IsSuperuser]
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
 
     def post(self, request):
         """Search for notarial documents with pagination"""
@@ -233,7 +233,7 @@ class SendToSISGENPreviewView(APIView):
     POST body: same filters as /sisgen/search/ (fechaDesde, fechaHasta, tipoInstrumento, estado, codigoActo).
     """
 
-    permission_classes = [IsAuthenticated, IsSuperuser]
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
 
     def post(self, request):
         filters = extract_search_filters(request.data)
@@ -269,7 +269,7 @@ class SendToSISGENView(APIView):
     - Optional filter fields (fechaDesde, fechaHasta, ...) — validated before enqueue.
     """
 
-    permission_classes = [IsAuthenticated, IsSuperuser]
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
 
     def post(self, request):
         try:
@@ -344,7 +344,7 @@ class SendToSISGENView(APIView):
 class SisgenSendJobDetailView(APIView):
     """GET /sisgen/send-jobs/<job_id>/ — poll async send job status and result."""
 
-    permission_classes = [IsAuthenticated, IsSuperuser]
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
 
     def get(self, request, job_id: int):
         try:
@@ -355,7 +355,7 @@ class SisgenSendJobDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if job.user_id != request.user.id and not request.user.is_superuser:
+        if job.user_id != request.user.id and not (request.user.is_staff or request.user.is_superuser):
             return Response(
                 {"error": 1, "message": "Forbidden"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -416,7 +416,7 @@ class SisgenSoapResponseListView(APIView):
     Query: ``offset``, ``limit`` (opcional), ``include_raw=1``.
     """
 
-    # permission_classes = [IsAuthenticated, IsSuperuser]
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
 
     _MAX_AUTO_FETCH = 50000
     _MAX_LIMIT_PARAM = 100000
@@ -499,7 +499,7 @@ class SisgenErrorsByKardexView(APIView):
     GET /sisgen/errors/kardex/<kardex>/
     """
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
 
     def get(self, request, kardex: str):
         kardex_code = (kardex or "").strip()
@@ -524,7 +524,7 @@ class SisgenValidationRecalculateView(APIView):
     Recalculate and upsert search-validation errors for one kardex.
     """
 
-    # permission_classes = [IsAuthenticated, IsSuperuser]
+    permission_classes = [IsAuthenticated, IsStaffOrSuperuser]
 
     @staticmethod
     def _recalculate_and_upsert(kardex: str, idkardex_filter: str, user):
