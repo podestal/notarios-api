@@ -60,6 +60,8 @@ def slim_search_document_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "numero_instrumento": row.get("numescritura"),
         "fecha_escritura": row.get("fechaescritura") or "",
         "contrato": row.get("contrato"),
+        "folioini": row.get("folioini") or "",
+        "foliofin": row.get("foliofin") or "",
         "estado_sisgen": row.get("estado_sisgen"),
         "idtipkar": row.get("idtipkar"),
         "sisgen_error_count": count_sisgen_errors(row),
