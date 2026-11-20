@@ -2259,13 +2259,16 @@ class ClienteViewSet(ModelViewSet):
     @action(detail=False, methods=["get"])
     def by_ruc(self, request):
         """
-        Get Cliente records by RUC.
+        Get Cliente records by RUC, or by CODJU correlative in numdoc_plantilla.
         """
-        ruc = request.query_params.get("ruc")
+        ruc = (request.query_params.get("ruc") or "").strip()
         if not ruc:
             return Response({"error": "ruc parameter is required."}, status=400)
 
-        clientes = models.Cliente.objects.filter(numdoc=ruc)
+        if ruc.upper().startswith("CODJU"):
+            clientes = models.Cliente.objects.filter(numdoc_plantilla__iexact=ruc)
+        else:
+            clientes = models.Cliente.objects.filter(numdoc=ruc)
         if not clientes.exists():
             return Response({}, status=200)
 
