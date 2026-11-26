@@ -340,6 +340,7 @@ class DocumentFormatter:
             "OTORGANTE",
             "TRANSFERENTE",
             "PROPIETARIO",
+            "DECLARANTE",
         }
         acquirer_roles = {
             "COMPRADOR",
@@ -408,6 +409,7 @@ class DocumentFormatter:
             "TRANSFERENTE / PROPIETARIO (VENDEDOR)",
             "SOLICITANTE/BENEFICIARIO",  # No Contenciosos
             "CONTRAYENTE",  # Matrimonio / capitulaciones
+            "DECLARANTE",  # Declaración / reconocimiento de calidad de bien
         }
 
         ACQUIRER_ROLES = {
